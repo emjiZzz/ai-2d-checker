@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # npm dependencies for root, packages, and apps
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      lint-format-packages:
+        patterns:
+          - "eslint*"
+          - "prettier*"
+          - "typescript*"
+
+  # pip dependencies for Python sidecar
+  - package-ecosystem: "pip"
+    directory: "/services/ai-auditor"
+    schedule:
+      interval: "weekly"
+
+  # Cargo dependencies for Tauri Rust core
+  - package-ecosystem: "cargo"
+    directory: "/apps/desktop/src-tauri"
+    schedule:
+      interval: "weekly"

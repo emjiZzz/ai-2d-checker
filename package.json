@@ -1,0 +1,36 @@
+{
+  "name": "ai-2d-checker-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise-grade local-first AI-powered engineering drawing compliance desktop application",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "bootstrap": "powershell -ExecutionPolicy Bypass -File ./tools/scripts/setup-dev.ps1",
+    "verify": "powershell -ExecutionPolicy Bypass -File ./tools/scripts/verify-env.ps1",
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{js,ts,tsx,json,css,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{js,ts,tsx,json,css,md,yaml,yml}\"",
+    "clean": "turbo run clean && rimraf node_modules",
+    "test": "turbo run test",
+    "prepare": "husky install || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.3.0",
+    "@commitlint/config-conventional": "^19.2.2",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.8.0",
+    "eslint": "^9.2.0",
+    "husky": "^9.0.11",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.7",
+    "turbo": "^1.13.3",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.59.3"
+  }
+}

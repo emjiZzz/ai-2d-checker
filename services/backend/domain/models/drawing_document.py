@@ -1,0 +1,25 @@
+from datetime import datetime
+from typing import Any, Dict, Optional
+from beanie import Document
+from pydantic import Field
+from pymongo import IndexModel, ASCENDING
+
+class DrawingDocument(Document):
+    file_name: str = Field(..., description="Original name of the uploaded drawing")
+    file_path: str = Field(..., description="Normalized relative path within storage root")
+    file_hash: str = Field(..., description="SHA-256 checksum of file content to prevent duplication")
+    file_size_bytes: int = Field(..., description="File size in bytes")
+    format: str = Field(..., description="File extension format ('dwg' or 'dxf')")
+    status: str = Field("queued", description="Ingestion/extraction state: queued, processing, completed, failed")
+    entity_counts: Dict[str, int] = Field(default_factory=dict, description="Counts of lines, circles, dimensions, etc.")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Extracted structural drawing metadata")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Record creation time")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Record last update time")
+
+    class Settings:
+        name = "drawing_documents"
+        indexes = [
+            IndexModel([("file_hash", ASCENDING)], unique=True),
+            IndexModel([("created_at", ASCENDING)]),
+            IndexModel([("status", ASCENDING)])
+        ]

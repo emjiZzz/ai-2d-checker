@@ -1,0 +1,58 @@
+# ======================================================================
+# requirements-dev.txt
+#
+# These are DEVELOPMENT-ONLY Python packages.
+# They are NOT needed to run the actual app — only for developers who
+# are writing code, running tests, or checking for code quality issues.
+#
+# HOW TO INSTALL:
+#   pip install -r requirements-dev.txt
+#
+# You only need to run this once after cloning the project.
+# ======================================================================
+
+
+# ----------------------------------------------------------------------
+# CODE QUALITY — Linting & Type Checking
+# These tools check your code for errors and bad practices.
+# ----------------------------------------------------------------------
+
+# ruff: A very fast Python linter. Checks for style issues and bugs.
+# Run it with: ruff check .
+ruff>=0.4.0
+
+# mypy: Checks that your type hints (e.g. str, int, list) are correct.
+# Run it with: mypy .
+mypy>=1.10.0
+
+
+# ----------------------------------------------------------------------
+# TESTING — Running Automated Tests
+# These packages let you write and run tests to make sure code works.
+# ----------------------------------------------------------------------
+
+# pytest: The main testing framework. Run tests with: pytest
+pytest>=8.2.0
+
+# pytest-asyncio: Allows testing async (await) Python functions.
+pytest-asyncio>=0.23.0
+
+# pytest-cov: Measures how much of your code is covered by tests.
+# Run with: pytest --cov
+pytest-cov>=5.0.0
+
+# pytest-benchmark: Measures how fast your functions run (performance).
+pytest-benchmark>=4.0.0
+
+
+# ----------------------------------------------------------------------
+# TYPE STUBS — IDE Autocomplete Support
+# These packages give your code editor better autocomplete suggestions
+# for popular libraries that don't include type hints by default.
+# ----------------------------------------------------------------------
+
+# Type hints for the "requests" HTTP library.
+types-requests>=2.31.0
+
+# Type hints for the "setuptools" package manager library.
+types-setuptools>=69.0.0

@@ -1,0 +1,12 @@
+{
+  "name": "@ai-2d-checker/config",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared configurations for ESLint, Prettier, and TypeScript in the AI-2D-Checker monorepo",
+  "main": "eslint/index.js",
+  "files": [
+    "eslint",
+    "prettier",
+    "tsconfig"
+  ]
+}

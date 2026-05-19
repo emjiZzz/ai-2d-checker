@@ -1,0 +1,22 @@
+# CODEOWNERS file for AI-2D-Checker repository.
+# Defines owners of directories for automatic PR review assignments.
+
+# Wildcard owner
+*                                       @default-lead-engineer
+
+# Frontend
+/apps/desktop/src/                     @frontend-team-lead
+/packages/ui/                           @frontend-team-lead
+
+# Backend (FastAPI Python sidecar)
+/services/ai-auditor/                  @backend-team-lead
+/services/ai-auditor/services/ai/      @ai-specialist
+
+# Rust Shell (Tauri core)
+/apps/desktop/src-tauri/               @tauri-architect-lead
+
+# Infrastructure / DevOps
+/.github/                              @devops-lead
+/tools/                                @devops-lead
+/turbo.json                            @devops-lead
+/package.json                          @devops-lead

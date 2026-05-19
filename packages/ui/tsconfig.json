@@ -1,0 +1,8 @@
+{
+  "extends": "@ai-2d-checker/config/tsconfig/react.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"]
+}
