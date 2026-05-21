@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes-gcm = "0.10.3"
 rand = "0.8.5"
-base64 = "0.21.7"
+base64 = "0.22.1"
 sha2 = "0.10.8"
 chrono = "0.4.38"
 lazy_static = "1.5.0"

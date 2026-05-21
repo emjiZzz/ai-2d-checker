@@ -754,7 +754,7 @@ name = "desktop"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "lazy_static",
  "rand",
