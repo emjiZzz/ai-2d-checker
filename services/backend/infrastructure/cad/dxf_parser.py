@@ -30,21 +30,25 @@ class DXFParser:
         start_time = time.time()
 
         try:
-            # Attempt UTF-8 first (modern DXF/DWG files)
-            doc = ezdxf.readfile(str(file_path), encoding="utf-8")
+            # 1. Let ezdxf auto-detect based on DXF header ($DWGCODEPAGE)
+            doc = ezdxf.readfile(str(file_path))
+            logger.info(f"DXF auto-detected encoding: {doc.encoding}")
         except (ezdxf.DXFError, UnicodeDecodeError):
             try:
-                # CP932 = Shift-JIS: standard encoding for Japanese AutoCAD DWG/DXF files
-                logger.info(f"UTF-8 failed. Retrying with CP932 (Shift-JIS) for Japanese drawing: {file_path}")
+                # 2. Force CP932 (Shift-JIS) for Japanese files that lack header codepages
+                logger.info(f"Auto-detect failed. Trying CP932 (Shift-JIS) for: {file_path}")
                 doc = ezdxf.readfile(str(file_path), encoding="cp932")
             except (ezdxf.DXFError, UnicodeDecodeError):
                 try:
-                    # Latin-1 / ISO-8859-1 fallback for legacy Western CAD files
-                    logger.info(f"CP932 failed. Retrying with Latin-1 fallback for: {file_path}")
-                    doc = ezdxf.readfile(str(file_path), encoding="latin-1")
-                except ezdxf.DXFError as dxf_err:
-                    logger.error(f"Failed to decode DXF structure: {str(dxf_err)}")
-                    raise ValueError(f"Corrupt or incompatible DXF structure: {str(dxf_err)}")
+                    # 3. Force UTF-8
+                    doc = ezdxf.readfile(str(file_path), encoding="utf-8")
+                except (ezdxf.DXFError, UnicodeDecodeError):
+                    try:
+                        # 4. Latin-1 / ISO-8859-1 fallback
+                        doc = ezdxf.readfile(str(file_path), encoding="latin-1")
+                    except ezdxf.DXFError as dxf_err:
+                        logger.error(f"Failed to decode DXF structure: {str(dxf_err)}")
+                        raise ValueError(f"Corrupt or incompatible DXF structure: {str(dxf_err)}")
                 except Exception as e:
                     logger.error(f"Failed to read file: {str(e)}")
                     raise

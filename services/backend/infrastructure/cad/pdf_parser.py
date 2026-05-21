@@ -46,6 +46,9 @@ class PDFParser:
             if len(doc) > 0:
                 page = doc[0] # Focus on page 1 of blueprint
                 
+                # Apply transformation matrix to align vectors with the visually rotated page
+                rm = page.rotation_matrix
+                
                 # 1. Extract vector geometry paths
                 drawings = page.get_drawings()
                 for i, draw in enumerate(drawings):
@@ -58,7 +61,7 @@ class PDFParser:
                     for item in items:
                         item_type = item[0]
                         if item_type == "l": # Line
-                            p1, p2 = item[1], item[2]
+                            p1, p2 = item[1] * rm, item[2] * rm
                             entities.append({
                                 "entity_type": "line",
                                 "layer": "PDF_Geometry",
@@ -76,6 +79,10 @@ class PDFParser:
                             counts["line"] += 1
                         elif item_type == "re": # Rectangle
                             rect = item[1]
+                            p1 = fitz.Point(rect.x0, rect.y0) * rm
+                            p2 = fitz.Point(rect.x1, rect.y0) * rm
+                            p3 = fitz.Point(rect.x1, rect.y1) * rm
+                            p4 = fitz.Point(rect.x0, rect.y1) * rm
                             entities.append({
                                 "entity_type": "polyline",
                                 "layer": "PDF_Geometry",
@@ -88,16 +95,16 @@ class PDFParser:
                                 },
                                 "geometry": {
                                     "points": [
-                                        [rect.x0, rect.y0, 0.0],
-                                        [rect.x1, rect.y0, 0.0],
-                                        [rect.x1, rect.y1, 0.0],
-                                        [rect.x0, rect.y1, 0.0]
+                                        [p1.x, p1.y, 0.0],
+                                        [p2.x, p2.y, 0.0],
+                                        [p3.x, p3.y, 0.0],
+                                        [p4.x, p4.y, 0.0]
                                     ]
                                 }
                             })
                             counts["polyline"] += 1
                         elif item_type == "c": # Curve
-                            p1, p2, p3, p4 = item[1], item[2], item[3], item[4]
+                            p1, p2, p3, p4 = item[1] * rm, item[2] * rm, item[3] * rm, item[4] * rm
                             entities.append({
                                 "entity_type": "polyline",
                                 "layer": "PDF_Geometry",
@@ -117,29 +124,38 @@ class PDFParser:
                             })
                             counts["polyline"] += 1
 
-                # 2. Extract Text blocks
-                text_blocks = page.get_text("blocks")
-                for j, block in enumerate(text_blocks):
-                    tx0, ty0, tx1, ty1, text_val, block_no, block_type = block
-                    text_val = text_val.strip()
-                    if not text_val:
+                # 2. Extract Text blocks using detailed dictionary (preserves exact position, size, and color)
+                text_dict = page.get_text("dict")
+                for block in text_dict.get("blocks", []):
+                    if block.get("type") != 0: # 0 = text, 1 = image
                         continue
-                        
-                    entities.append({
-                        "entity_type": "text",
-                        "layer": "PDF_Text",
-                        "properties": {
-                            "handle": f"pdf_text_{j}",
-                            "color": "#ffffff",
-                            "text": text_val,
-                            "height": abs(ty1 - ty0),
-                            "is_multiline": "\n" in text_val
-                        },
-                        "geometry": {
-                            "insert": [tx0, ty0, 0.0]
-                        }
-                    })
-                    counts["text"] += 1
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            text_val = span.get("text", "").strip()
+                            if not text_val:
+                                continue
+                            
+                            # Convert int color to hex
+                            color_int = span.get("color", 0)
+                            color_hex = f"#{color_int:06x}"
+                            
+                            origin_pt = fitz.Point(span.get("origin", (0, 0))) * rm
+                            entities.append({
+                                "entity_type": "text",
+                                "layer": "PDF_Text",
+                                "properties": {
+                                    "handle": f"pdf_text_{counts['text']}",
+                                    "color": color_hex,
+                                    "text": text_val,
+                                    "height": span.get("size", 12.0),
+
+                                    "font": span.get("font", "Arial")
+                                },
+                                "geometry": {
+                                    "insert": [origin_pt.x, origin_pt.y, 0.0]
+                                }
+                            })
+                            counts["text"] += 1
 
         except ImportError:
             logger.warning("pymupdf (fitz) is not installed. Generating highly robust, structural baseline entities from page layout context.")

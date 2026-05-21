@@ -251,6 +251,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     let drawnEntities = 0;
 
     // 5. Draw entity layers
+    // To prevent massive lag when drawing 40,000+ fallback vectors, we BATCH draw calls by stroke style!
+    const pathBatches: Record<string, { stroke: string, width: number, path: Path2D }> = {};
+
     Object.entries(layers).forEach(([layerName, entities]) => {
       // Respect layer controls
       if (activeLayers[layerName] === false) return;
@@ -266,80 +269,26 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         const geo = ent.geometry;
         if (!geo) return;
 
-        // Viewport Virtualization & Culling based on geometry types
-        if (ent.type === 'line' && geo.start && geo.end) {
-          const [x1, y1] = geo.start;
-          const [x2, y2] = geo.end;
-          
-          const left = Math.min(x1, x2);
-          const right = Math.max(x1, x2);
-          const top = Math.min(y1, y2);
-          const bottom = Math.max(y1, y2);
+        const strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
+        const strokeWidth = ent.style?.strokeWidth || ent.properties?.strokeWidth || 1;
+        const batchKey = `${strokeColor}_${strokeWidth}`;
 
-          // Culling check
-          if (right < minX || left > maxX || bottom < minY || top > maxY) return;
-
-          drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
-        } 
-        else if (ent.type === 'circle' && (geo.center || geo.location)) {
-          const [cx, cy] = geo.center || geo.location;
-          const r = geo.radius || ent.properties?.radius || 1;
-
-          if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
-
-          drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-          ctx.stroke();
-        } 
-        else if (ent.type === 'arc' && (geo.center || geo.location)) {
-          const [cx, cy] = geo.center || geo.location;
-          const r = geo.radius || ent.properties?.radius || 1;
-          const startAngle = ((ent.properties?.start_angle ?? 0) * Math.PI) / 180;
-          const endAngle = ((ent.properties?.end_angle ?? 0) * Math.PI) / 180;
-
-          if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
-
-          drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.arc(cx, cy, r, startAngle, endAngle, false);
-          ctx.stroke();
-        }
-        else if (ent.type === 'text' && (geo.location || geo.insert)) {
+        // Text is drawn directly since it requires complex sub-pixel dpr matrix scaling and cannot use Path2D
+        if (ent.type === 'text' && (geo.location || geo.insert)) {
           const [tx, ty] = geo.location || geo.insert;
           
-          // Calculate exact screen coordinates by applying current viewport translation and scale
           const screenX = tx * effectiveScale + viewport.x;
           const screenY = ty * effectiveScale + viewport.y;
-          
-          // Resolve standard CAD text height and scale to screen scale
           const baseHeight = ent.properties?.height || ent.style?.fontSize || 12;
           const screenHeight = baseHeight * effectiveScale * 1.0;
 
-          // Font decluttering: if font is too small to be legible on screen, skip rendering it
           if (screenHeight < 4) return;
-
-          // Perform screen-space culling with safety margins
           if (screenX < -500 || screenX > width + 500 || screenY < -500 || screenY > height + 500) return;
 
           drawnEntities++;
           
           ctx.save();
-          // Reset transformation matrix to draw text on unscaled canvas context with high-DPI resolution.
-          // This bypasses browser sub-pixel rendering limitations and guarantees 100% crisp, visible labels.
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          
-          // Japanese/CJK capable font stack: Yu Gothic & MS Gothic for Windows, Noto as universal fallback
           ctx.fillStyle = ent.style?.stroke || ent.style?.fill || '#ffffff';
           ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
           
@@ -350,12 +299,58 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             ctx.fillText(textVal, screenX, screenY);
           }
           ctx.restore();
+          return;
+        }
+
+        // Initialize Path2D batch if needed
+        if (!pathBatches[batchKey]) {
+          pathBatches[batchKey] = { stroke: strokeColor, width: strokeWidth as number, path: new Path2D() };
+        }
+        const p2d = pathBatches[batchKey].path;
+
+        // Viewport Virtualization & Culling based on geometry types
+        if (ent.type === 'line' && geo.start && geo.end) {
+          const [x1, y1] = geo.start;
+          const [x2, y2] = geo.end;
+          
+          const left = Math.min(x1, x2);
+          const right = Math.max(x1, x2);
+          const top = Math.min(y1, y2);
+          const bottom = Math.max(y1, y2);
+
+          if (right < minX || left > maxX || bottom < minY || top > maxY) return;
+
+          drawnEntities++;
+          p2d.moveTo(x1, y1);
+          p2d.lineTo(x2, y2);
+        } 
+        else if (ent.type === 'circle' && (geo.center || geo.location)) {
+          const [cx, cy] = geo.center || geo.location;
+          const r = geo.radius || ent.properties?.radius || 1;
+
+          if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
+
+          drawnEntities++;
+          p2d.moveTo(cx + r, cy);
+          p2d.arc(cx, cy, r, 0, 2 * Math.PI);
+        } 
+        else if (ent.type === 'arc' && (geo.center || geo.location)) {
+          const [cx, cy] = geo.center || geo.location;
+          const r = geo.radius || ent.properties?.radius || 1;
+          const startAngle = ((ent.properties?.start_angle ?? 0) * Math.PI) / 180;
+          const endAngle = ((ent.properties?.end_angle ?? 0) * Math.PI) / 180;
+
+          if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
+
+          drawnEntities++;
+          // Math.cos/sin ensures the path accurately connects to the start of the arc
+          p2d.moveTo(cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
+          p2d.arc(cx, cy, r, startAngle, endAngle, false);
         }
         else if (ent.type === 'polyline' && (geo.vertices || geo.points)) {
           const vertices = geo.vertices || geo.points;
           if (vertices.length < 2) return;
 
-          // Polyline bounding check
           let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
           vertices.forEach(([vx, vy]: [number, number]) => {
             if (vx < pMinX) pMinX = vx;
@@ -367,16 +362,20 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           if (pMaxX < minX || pMinX > maxX || pMaxY < minY || pMinY > maxY) return;
 
           drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.moveTo(vertices[0][0], vertices[0][1]);
+          p2d.moveTo(vertices[0][0], vertices[0][1]);
           for (let i = 1; i < vertices.length; i++) {
-            ctx.lineTo(vertices[i][0], vertices[i][1]);
+            p2d.lineTo(vertices[i][0], vertices[i][1]);
           }
-          ctx.stroke();
         }
       });
+    });
+
+    // Fire a single consolidated stroke call per unique color/thickness batch!
+    Object.values(pathBatches).forEach(batch => {
+      ctx.beginPath();
+      ctx.strokeStyle = batch.stroke;
+      ctx.lineWidth = batch.width / viewport.scale;
+      ctx.stroke(batch.path);
     });
 
     // 6. Draw compliance violations reticles if active
