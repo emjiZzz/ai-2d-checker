@@ -45,14 +45,14 @@
   --bg-sidebar: #ffffff;
   --bg-topbar: #ffffff;
   --border-color: #e4e4e7;
- 
+
   --text-primary: #18181b;
   --text-muted: #71717a;
   --bg-bubble-user: #f4f4f5;
- 
+
   --app-gradient: none;
   --sidebar-item-hover: rgba(0, 0, 0, 0.05);
- 
+
   --primary-glow: linear-gradient(135deg, #2563eb, #1d4ed8);
   --accent-cyan: #2563eb;
 }
@@ -151,9 +151,9 @@ body {
 }
 
 .nav-item svg {
-  width: 32px;
-  height: 32px;
-  padding: 7px;
+  width: 34px;
+  height: 34px;
+  padding: 6px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-color);
@@ -315,6 +315,7 @@ body {
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 [data-theme="hc-dark"] .card {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.1);
 }
@@ -407,6 +408,7 @@ body {
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.38);
   filter: brightness(1.05);
 }
+
 [data-theme="hc-dark"] .btn-primary:hover {
   box-shadow: 0 6px 20px rgba(0, 229, 255, 0.4);
 }
@@ -560,4 +562,10 @@ body {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* Select Dropdown Fix */
+select.form-input option {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
 }

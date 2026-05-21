@@ -3,6 +3,7 @@ import os
 import uuid
 import hashlib
 import aiofiles
+from pathlib import Path
 from fastapi import APIRouter, Depends, status, HTTPException, File, UploadFile, Form
 from fastapi.responses import FileResponse
 from typing import List, Optional

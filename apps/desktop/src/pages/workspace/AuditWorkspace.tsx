@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useWorkspaceStore, DrawingItem } from "../../stores/workspaceStore";
-import { useAuthStore } from "../../stores/authStore";
 import { useConnectionStore } from "../../stores/connectionStore";
 import { DrawingCanvas } from "../../components/review/DrawingCanvas";
 import {
@@ -11,23 +10,19 @@ import {
   ZoomOut,
   Maximize,
   Compass,
-  LogOut,
-  Cpu,
-  Bookmark,
-  History,
-  Settings as SettingsIcon,
-  ShieldCheck,
-  Moon,
-  Sun,
+  Loader,
   Upload,
   Trash2,
   AlertTriangle,
   Check,
-  Loader,
-  ChevronLeft,
-  ChevronRight
+  Bookmark,
+  History,
+  Settings as SettingsIcon,
+  Cpu,
+  ChevronRight,
+  ChevronLeft
 } from "lucide-react";
-import { useThemeStore } from "../../stores/themeStore";
+
 import { StandardsManager } from "../../components/StandardsManager";
 
 // ─── UPLOAD ZONE ─────────────────────────────────────────────────────────────
@@ -220,20 +215,14 @@ const UploadZone: React.FC<UploadZoneProps> = ({
 };
 
 export const AuditWorkspace: React.FC = () => {
-  const { user, logout } = useAuthStore();
   const backendUrl = useConnectionStore((s) => s.backendUrl);
   const apiToken = useConnectionStore((s) => s.apiToken);
-  const { theme, toggleTheme } = useThemeStore();
 
   // Selected workspace navigation sub-view
   const [currentNav, setCurrentNav] = useState<"workspace" | "standards" | "history" | "settings">("workspace");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
-
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   // Local drawing catalog for selections
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
-  const [selectedStandard, setSelectedStandard] = useState("");
-  const [standards, setStandards] = useState<any[]>([]);
 
   // Canvas size and container references
   const containerRefOld = React.useRef<HTMLDivElement>(null);
@@ -251,7 +240,7 @@ export const AuditWorkspace: React.FC = () => {
         if (apiToken) {
           headers["Authorization"] = `Bearer ${apiToken}`;
         }
-        
+
         // Load drawings
         const dwgRes = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
         const dwgData = await dwgRes.json();
@@ -287,15 +276,9 @@ export const AuditWorkspace: React.FC = () => {
         const stdRes = await fetch(`${backendUrl}/api/v1/standards`, { headers });
         const stdData = await stdRes.json();
         if (stdRes.ok && stdData.success && stdData.data.length > 0) {
-          setStandards(stdData.data);
-          setSelectedStandard(stdData.data[0].id);
+          // No longer assigning standards here
         } else {
-          const mockStd = [
-            { id: "std_01", name: "ISO-1101 Geometrical Tolerances", category: "Standard Manual" },
-            { id: "std_02", name: "ASME Y14.5 Dimensioning & Tolerancing", category: "Inspection Guideline" }
-          ];
-          setStandards(mockStd);
-          setSelectedStandard(mockStd[0].id);
+          // No longer assigning mock standards here
         }
       } catch (err) {
         console.error("Failed to load metadata in auditor workspace:", err);
@@ -383,106 +366,60 @@ export const AuditWorkspace: React.FC = () => {
   const medCount = violations.filter((v) => v.severity === "medium").length;
   const lowCount = violations.filter((v) => v.severity === "low").length;
 
-  // UploadZone is now a standalone component above — just pass props:
-  const uploadZoneProps = {
-    uploadDrawingFile,
-    clearUpload,
-  };
+  // uploadZoneProps was removed
 
   return (
     <div className="workspace-container">
       {/* 1. LEFT SIDEBAR (ENGINEERING NAVIGATION) */}
-      {(() => {
-        const isExpanded = !sidebarCollapsed || sidebarHovered;
-        const sidebarWidth = isExpanded ? '240px' : '60px';
-        return (
-          <aside
-            className={`workspace-sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarHovered ? 'hover-expanded' : ''}`}
-            style={{ width: sidebarWidth, transition: 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden', flexShrink: 0 }}
-            onMouseEnter={() => setSidebarHovered(true)}
-            onMouseLeave={() => setSidebarHovered(false)}
-          >
-            {/* ── BRANDING ── */}
-            <div className="sidebar-branding" style={{ padding: '16px 12px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-color)', minHeight: '60px' }}>
-              <div className="brand-logo" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--primary-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(37,99,235,0.25)' }}>
-                <Cpu size={18} style={{ color: '#fff' }} />
-              </div>
-              <div style={{ overflow: 'hidden', opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-8px)', transition: 'opacity 0.2s ease, transform 0.2s ease', whiteSpace: 'nowrap', flexGrow: 1 }}>
-                <h1 className="brand-title" style={{ fontSize: '0.92rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>AI-2D-Checker</h1>
-                <span className="brand-badge" style={{ fontSize: '0.58rem' }}>COMPLIANCE ENGINE</span>
-              </div>
-              {isExpanded && (
-                <button
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-cyan)'; e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                  title={sidebarCollapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
-                >
-                  {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-                </button>
-              )}
-            </div>
-
-            {/* ── NAV ITEMS ── */}
-            <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '4px', flexGrow: 1 }}>
-              {([
-                { key: 'workspace', icon: <Compass size={17} />, label: 'Audit Workspace' },
-                { key: 'standards', icon: <Bookmark size={17} />, label: 'Standards Manuals' },
-                { key: 'history',   icon: <History size={17} />,  label: 'Drawing History'  },
-                { key: 'settings', icon: <SettingsIcon size={17} />, label: 'Audit Settings' },
-              ] as const).map(({ key, icon, label }) => (
-                <button
-                  key={key}
-                  className={`nav-item ${currentNav === key ? 'active' : ''}`}
-                  onClick={() => setCurrentNav(key)}
-                  title={!isExpanded ? label : undefined}
-                  style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '8px', justifyContent: 'flex-start', width: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}
-                >
-                  <span style={{ flexShrink: 0, display: 'flex' }}>{icon}</span>
-                  <span style={{ opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-6px)', transition: 'opacity 0.18s ease, transform 0.18s ease', fontSize: '0.85rem', fontWeight: 550 }}>
-                    {label}
-                  </span>
-                </button>
-              ))}
-            </nav>
-
-            {/* ── FOOTER ── */}
-            <div className="sidebar-footer" style={{ padding: '12px 8px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {/* User Profile Row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'var(--bg-dark)', borderRadius: '8px', border: '1px solid var(--border-color)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                <ShieldCheck size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
-                <div style={{ overflow: 'hidden', opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-6px)', transition: 'opacity 0.18s ease, transform 0.18s ease' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{user?.username || 'Engineer'}</div>
-                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>Compliance Auditor</div>
-                </div>
-              </div>
-
-              {/* Theme + Logout */}
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  onClick={toggleTheme}
-                  title="Toggle Theme"
-                  style={{ background: 'transparent', border: '1px solid var(--border-color)', padding: '9px', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-cyan)'; e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                >
-                  {theme === 'hc-dark' ? <Moon size={15} /> : <Sun size={15} />}
-                </button>
-                <button
-                  onClick={() => logout()}
-                  title="Logout Portal"
-                  className="btn-logout"
-                  style={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', overflow: 'hidden', whiteSpace: 'nowrap', justifyContent: 'flex-start' }}
-                >
-                  <LogOut size={15} style={{ flexShrink: 0 }} />
-                  <span style={{ opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-6px)', transition: 'opacity 0.18s ease, transform 0.18s ease', fontSize: '0.8rem', fontWeight: 600 }}>Logout</span>
-                </button>
-              </div>
-            </div>
-          </aside>
-        );
-      })()}
+      <aside
+        className="workspace-sidebar"
+        style={{ width: '60px', flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', borderRight: '1px solid var(--border-color)', zIndex: 10 }}
+      >
+        {/* ── NAV ITEMS ── */}
+        <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
+          {([
+            { key: 'workspace', icon: <Compass size={22} />, label: 'Audit Workspace' },
+            { key: 'standards', icon: <Bookmark size={22} />, label: 'Standards Manuals' },
+            { key: 'history',   icon: <History size={22} />,  label: 'Drawing History'  },
+            { key: 'settings', icon: <SettingsIcon size={22} />, label: 'Audit Settings' },
+          ] as const).map(({ key, icon, label }) => (
+            <button
+              key={key}
+              className={`nav-item ${currentNav === key ? 'active' : ''}`}
+              onClick={() => setCurrentNav(key)}
+              data-tooltip={label}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '44px',
+                height: '44px',
+                margin: '0 auto',
+                borderRadius: '8px',
+                border: 'none',
+                background: currentNav === key ? 'rgba(128, 128, 128, 0.15)' : 'transparent',
+                color: currentNav === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (currentNav !== key) {
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                  e.currentTarget.style.background = 'rgba(128, 128, 128, 0.08)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentNav !== key) {
+                  e.currentTarget.style.color = 'var(--text-muted)';
+                  e.currentTarget.style.background = 'transparent';
+                }
+              }}
+            >
+              {icon}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
       {currentNav === "standards" && (
@@ -564,7 +501,7 @@ export const AuditWorkspace: React.FC = () => {
                     Drag & drop or browse matching formats (.dwg, .dxf, .pdf) for revision comparisons.
                   </p>
                 </div>
-                
+
                 {/* Global Compatibility Badge */}
                 <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`}>
                   <span className="compatibility-indicator-dot"></span>
@@ -654,10 +591,10 @@ export const AuditWorkspace: React.FC = () => {
                   <div className="viewport-label">Reference CAD (Old)</div>
                   <div className="cad-canvas-mock" ref={containerRefOld}>
                     {oldDrawing ? (
-                      <DrawingCanvas 
-                        layers={oldLayers} 
-                        width={oldSize.width} 
-                        height={oldSize.height} 
+                      <DrawingCanvas
+                        layers={oldLayers}
+                        width={oldSize.width}
+                        height={oldSize.height}
                         drawing={oldDrawing}
                       />
                     ) : (
@@ -692,10 +629,10 @@ export const AuditWorkspace: React.FC = () => {
                   <div className="viewport-label">Revision CAD (New)</div>
                   <div className="cad-canvas-mock" ref={containerRefNew}>
                     {newDrawing ? (
-                      <DrawingCanvas 
-                        layers={newLayers} 
-                        width={newSize.width} 
-                        height={newSize.height} 
+                      <DrawingCanvas
+                        layers={newLayers}
+                        width={newSize.width}
+                        height={newSize.height}
                         drawing={newDrawing}
                       />
                     ) : (
@@ -729,12 +666,20 @@ export const AuditWorkspace: React.FC = () => {
           </main>
 
           {/* RIGHT VIEWPORT (STAGE 2: AI COMPLIANCE AUDITOR) */}
-          <aside className="stage2-right-panel">
+          <aside className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}>
+            <button 
+              className="panel-collapse-btn"
+              onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
+              title={isRightPanelCollapsed ? "Expand Stage 2 Panel" : "Collapse Stage 2 Panel"}
+            >
+              {isRightPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+            <div className="panel-content-wrapper">
             {/* Top Auditor Launch controller */}
             <div className="card settings-card" style={{ marginBottom: "20px" }}>
               <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
-                Stage 2 AI compliance Auditer
+                Stage 2 AI Compliance Auditor
               </h3>
 
               <div className="form-group" style={{ marginTop: "12px" }}>
@@ -757,10 +702,21 @@ export const AuditWorkspace: React.FC = () => {
                 className="btn btn-primary"
                 onClick={handleAuditTrigger}
                 disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
-                style={{ width: "100%", marginTop: "16px", display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}
+                style={{ 
+                  width: "100%", 
+                  marginTop: "16px", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "8px", 
+                  justifyContent: "center",
+                  padding: "10px 16px",
+                  whiteSpace: "nowrap"
+                }}
               >
-                <Play size={14} />
-                {auditStatus === "queued" || auditStatus === "auditing" ? "Running AI Auditing Pipeline..." : "Execute compliance Audit"}
+                <Play size={14} fill="currentColor" />
+                <span>
+                  {auditStatus === "queued" || auditStatus === "auditing" ? "Running AI Auditing Pipeline..." : "Execute Compliance Audit"}
+                </span>
               </button>
             </div>
 
@@ -841,6 +797,7 @@ export const AuditWorkspace: React.FC = () => {
                 ))}
               </div>
             </div>
+            </div>
           </aside>
         </div>
       )}
@@ -849,7 +806,7 @@ export const AuditWorkspace: React.FC = () => {
         .workspace-container {
           display: flex;
           width: 100vw;
-          height: 100vh;
+          height: calc(100vh - 44px); /* Account for AppHeader height */
           background: var(--bg-dark);
           overflow: hidden;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -864,7 +821,7 @@ export const AuditWorkspace: React.FC = () => {
           flex-direction: column;
           flex-shrink: 0;
           transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.28s ease;
-          overflow: hidden;
+          overflow: visible;
           position: relative;
           z-index: 10;
         }
@@ -938,6 +895,35 @@ export const AuditWorkspace: React.FC = () => {
           cursor: pointer;
           border-radius: 6px;
           transition: all 0.2s ease;
+          position: relative;
+        }
+
+        .nav-item::after {
+          content: attr(data-tooltip);
+          position: absolute;
+          left: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          margin-left: 8px;
+          padding: 6px 10px;
+          background: rgba(24, 24, 27, 0.95);
+          border: 1px solid var(--border-color);
+          color: var(--text-primary);
+          font-size: 0.75rem;
+          white-space: nowrap;
+          border-radius: 6px;
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.15s ease, margin-left 0.15s ease;
+          pointer-events: none;
+          z-index: 1000;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .nav-item:hover::after {
+          opacity: 1;
+          visibility: visible;
+          margin-left: 12px;
         }
 
         .nav-item:hover {
@@ -1031,9 +1017,11 @@ export const AuditWorkspace: React.FC = () => {
         .workspace-main-viewport.padded {
           flex-grow: 1;
           height: 100%;
+          min-height: 0;
           overflow-y: auto;
           background: var(--bg-dark);
           padding: 30px 32px;
+          box-sizing: border-box;
         }
 
         .dual-stage-layout {
@@ -1046,11 +1034,13 @@ export const AuditWorkspace: React.FC = () => {
         .stage1-center-panel {
           flex-grow: 1;
           height: 100%;
+          min-height: 0;
           display: flex;
           flex-direction: column;
           padding: 20px;
           overflow: hidden;
           border-right: 1px solid var(--border-color);
+          box-sizing: border-box;
         }
 
         .cad-viewer-container {
@@ -1156,12 +1146,14 @@ export const AuditWorkspace: React.FC = () => {
           display: grid;
           grid-template-columns: 1fr 1fr;
           flex-grow: 1;
+          min-height: 0;
           overflow: hidden;
         }
 
         .viewport-panel {
           display: flex;
           flex-direction: column;
+          min-height: 0;
           border-right: 1px solid var(--border-color);
         }
 
@@ -1181,11 +1173,13 @@ export const AuditWorkspace: React.FC = () => {
 
         .cad-canvas-mock {
           flex-grow: 1;
+          min-height: 0;
           background: var(--bg-dark);
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
+          overflow: hidden;
         }
 
         .blueprint-overlay {
@@ -1269,13 +1263,66 @@ export const AuditWorkspace: React.FC = () => {
           display: flex;
           flex-direction: column;
           flex-shrink: 0;
-          padding: 20px;
-          overflow-y: auto;
           border-left: 1px solid var(--border-color);
           box-shadow: -4px 0 20px rgba(0, 0, 0, 0.04);
+          position: relative;
+          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         [data-theme="hc-dark"] .stage2-right-panel {
           box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .stage2-right-panel.collapsed {
+          width: 0px;
+          overflow: visible;
+        }
+
+        .panel-content-wrapper {
+          display: flex;
+          flex-direction: column;
+          width: 400px;
+          flex: 1;
+          min-height: 0;
+          padding: 20px;
+          opacity: 1;
+          transition: opacity 0.2s ease;
+          overflow-y: auto;
+          box-sizing: border-box;
+        }
+
+        .stage2-right-panel.collapsed .panel-content-wrapper {
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .panel-collapse-btn {
+          position: absolute;
+          top: 50%;
+          left: -18px;
+          transform: translateY(-50%);
+          width: 18px;
+          height: 48px;
+          background: rgba(24, 24, 27, 0.85);
+          backdrop-filter: blur(6px);
+          border: 1px solid var(--border-color);
+          border-right: none;
+          border-radius: 8px 0 0 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: var(--text-muted);
+          z-index: 50;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: -3px 0 8px rgba(0,0,0,0.2);
+        }
+        .panel-collapse-btn:hover {
+          color: var(--accent-cyan);
+          background: rgba(37, 99, 235, 0.15);
+          width: 24px;
+          left: -24px;
+          border-color: var(--accent-cyan);
+          box-shadow: -3px 0 15px rgba(0, 229, 255, 0.25);
         }
 
         .compliance-circle {
@@ -1385,6 +1432,11 @@ export const AuditWorkspace: React.FC = () => {
         .sev-badge.high { background: rgba(249, 73, 22, 0.15); color: #fed7aa; }
         .sev-badge.medium { background: rgba(234, 179, 8, 0.15); color: #fef08a; }
         .sev-badge.low { background: rgba(59, 130, 246, 0.15); color: #bfdbfe; }
+
+        [data-theme="hc-light"] .sev-badge.critical { color: #b91c1c; background: rgba(239, 68, 68, 0.1); }
+        [data-theme="hc-light"] .sev-badge.high { color: #c2410c; background: rgba(249, 115, 22, 0.1); }
+        [data-theme="hc-light"] .sev-badge.medium { color: #a16207; background: rgba(234, 179, 8, 0.1); }
+        [data-theme="hc-light"] .sev-badge.low { color: #1d4ed8; background: rgba(59, 130, 246, 0.1); }
 
         .clause-lbl {
           font-size: 0.7rem;

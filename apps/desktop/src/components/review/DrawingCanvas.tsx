@@ -269,7 +269,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         const geo = ent.geometry;
         if (!geo) return;
 
-        const strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
+        let strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
+        if (theme === 'hc-light') {
+          const lowerColor = strokeColor.toLowerCase();
+          if (lowerColor === '#ffffff' || lowerColor === '#fff') strokeColor = '#18181b';
+          if (lowerColor === '#00e5ff') strokeColor = '#0ea5e9';
+        }
         const strokeWidth = ent.style?.strokeWidth || ent.properties?.strokeWidth || 1;
         const batchKey = `${strokeColor}_${strokeWidth}`;
 
@@ -289,7 +294,14 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           
           ctx.save();
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.fillStyle = ent.style?.stroke || ent.style?.fill || '#ffffff';
+          
+          let textColor = ent.style?.stroke || ent.style?.fill || '#ffffff';
+          if (theme === 'hc-light') {
+            const lowerColor = textColor.toLowerCase();
+            if (lowerColor === '#ffffff' || lowerColor === '#fff') textColor = '#18181b';
+            if (lowerColor === '#00e5ff') textColor = '#0ea5e9';
+          }
+          ctx.fillStyle = textColor;
           ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
           
           const rawText = geo.text || geo.content || ent.properties?.text || '';
@@ -791,17 +803,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           position: 'absolute',
           top: 12,
           right: 12,
-          background: 'rgba(9, 9, 11, 0.75)',
+          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(63, 63, 70, 0.4)',
+          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
           padding: '10px 14px',
           borderRadius: '10px',
           fontFamily: 'sans-serif',
-          color: '#e4e4e7',
+          color: theme === 'hc-light' ? '#3f3f46' : '#e4e4e7',
           display: 'flex',
           alignItems: 'center',
           gap: '14px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
           pointerEvents: 'none',
           userSelect: 'none',
           transition: 'all 0.3s ease'
@@ -810,29 +822,29 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         {/* Animated Cyber Dial */}
         <div style={{ position: 'relative', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="36" height="36" viewBox="0 0 36 36" style={{ transform: `rotate(${(viewport.x + viewport.y) * 0.05}deg)`, transition: 'transform 0.1s linear' }}>
-            <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1.5" />
-            <circle cx="18" cy="18" r="16" fill="none" stroke={isNeonCAD ? "#00ffcc" : "#00e5ff"} strokeWidth="1.5" strokeDasharray="8, 6" />
-            <line x1="18" y1="2" x2="18" y2="8" stroke={isNeonCAD ? "#00ffcc" : "#00e5ff"} strokeWidth="1.5" />
-            <line x1="18" y1="28" x2="18" y2="34" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="1.5" />
-            <line x1="2" y1="18" x2="8" y2="18" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="1.5" />
-            <line x1="28" y1="18" x2="34" y2="18" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="1.5" />
+            <circle cx="18" cy="18" r="16" fill="none" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'} strokeWidth="1.5" />
+            <circle cx="18" cy="18" r="16" fill="none" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" strokeDasharray="8, 6" />
+            <line x1="18" y1="2" x2="18" y2="8" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" />
+            <line x1="18" y1="28" x2="18" y2="34" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+            <line x1="2" y1="18" x2="8" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+            <line x1="28" y1="18" x2="34" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
           </svg>
           <div style={{
             position: 'absolute',
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            backgroundColor: isNeonCAD ? '#00ffcc' : '#00e5ff',
-            boxShadow: `0 0 8px ${isNeonCAD ? '#00ffcc' : '#00e5ff'}`
+            backgroundColor: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff'),
+            boxShadow: `0 0 8px ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')}`
           }} />
         </div>
         
         {/* Nav Stats */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
+          <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: theme === 'hc-light' ? '#71717a' : '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
           <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', display: 'flex', gap: '10px' }}>
-            <span>X: <span style={{ color: isNeonCAD ? '#00ffcc' : '#00e5ff' }}>{viewport.x.toFixed(0)}</span></span>
-            <span>Y: <span style={{ color: isNeonCAD ? '#00ffcc' : '#00e5ff' }}>{viewport.y.toFixed(0)}</span></span>
+            <span>X: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.x.toFixed(0)}</span></span>
+            <span>Y: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.y.toFixed(0)}</span></span>
             <span>MAG: <span style={{ color: '#ec4899' }}>{viewport.scale.toFixed(2)}x</span></span>
           </div>
         </div>
@@ -844,29 +856,29 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           position: 'absolute',
           bottom: 12,
           right: 12,
-          background: 'rgba(9, 9, 11, 0.75)',
+          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(63, 63, 70, 0.4)',
+          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
           padding: '8px 12px',
           borderRadius: '10px',
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
           userSelect: 'none',
           zIndex: 10
         }}
       >
         {/* Render Quality Badge */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-          <span style={{ fontSize: '0.55rem', color: '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
+          <span style={{ fontSize: '0.55rem', color: theme === 'hc-light' ? '#a1a1aa' : '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
           <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
             350 DPI High-Res
           </span>
         </div>
  
-        <div style={{ width: '1px', height: '24px', backgroundColor: 'rgba(63, 63, 70, 0.5)' }} />
+        <div style={{ width: '1px', height: '24px', backgroundColor: theme === 'hc-light' ? 'rgba(228, 228, 231, 1)' : 'rgba(63, 63, 70, 0.5)' }} />
  
         {/* Neon CAD Toggle Button */}
         <button
@@ -875,13 +887,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             setRedrawTrigger(prev => prev + 1);
           }}
           style={{
-            background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-            border: `1px solid ${isNeonCAD ? '#00ffcc' : 'rgba(63, 63, 70, 0.8)'}`,
+            background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : (theme === 'hc-light' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.03)'),
+            border: `1px solid ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)')}`,
             padding: '4px 10px',
             borderRadius: '6px',
             fontSize: '0.68rem',
             fontWeight: 600,
-            color: isNeonCAD ? '#00ffcc' : '#a1a1aa',
+            color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#71717a' : '#a1a1aa'),
             cursor: 'pointer',
             transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
             outline: 'none',
@@ -891,10 +903,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             boxShadow: isNeonCAD ? '0 0 10px rgba(0, 255, 204, 0.25)' : 'none'
           }}
           onMouseEnter={(e) => {
-            if (!isNeonCAD) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(161, 161, 170, 0.8)' : 'rgba(255, 255, 255, 0.3)';
           }}
           onMouseLeave={(e) => {
-            if (!isNeonCAD) e.currentTarget.style.borderColor = 'rgba(63, 63, 70, 0.8)';
+            if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)';
           }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -910,18 +922,18 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           position: 'absolute',
           bottom: 12,
           left: 12,
-          background: 'rgba(9, 9, 11, 0.75)',
+          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(63, 63, 70, 0.4)',
+          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
           padding: '8px 12px',
           borderRadius: '10px',
           fontFamily: 'monospace',
           fontSize: '0.62rem',
-          color: '#a1a1aa',
+          color: theme === 'hc-light' ? '#71717a' : '#a1a1aa',
           display: 'flex',
           gap: '12px',
           pointerEvents: 'none',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
+          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)'
         }}
       >
         <div>ZOOM: <span style={{ color: '#00e5ff', fontWeight: 600 }}>{(viewport.scale * 100).toFixed(0)}%</span></div>
