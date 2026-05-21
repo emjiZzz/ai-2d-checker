@@ -1,10 +1,26 @@
 import os
 import asyncio
 import time
+import ctypes
 from pathlib import Path
 from ...config import settings
 from ...logger import logger
 from ...core.security import validate_sandboxed_path
+
+def get_short_path_name(long_name: str) -> str:
+    """
+    Returns the Windows 8.3 short path version of a long path.
+    Bypasses legacy CLI spaces parsing bugs on Windows.
+    """
+    if os.name != 'nt':
+        return long_name
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        ctypes.windll.kernel32.GetShortPathNameW(long_name, buf, 1024)
+        return buf.value or long_name
+    except Exception as e:
+        logger.warning(f"Failed to resolve short path for '{long_name}': {str(e)}")
+        return long_name
 
 class ODAConverter:
     def __init__(self, converter_path: str = settings.ODA_CONVERTER_PATH):
@@ -50,11 +66,16 @@ class ODAConverter:
             except Exception as e:
                 logger.warning(f"Could not purge pre-existing DXF file at {expected_dxf_path}: {str(e)}")
 
+        # Convert paths to 8.3 short paths on Windows to avoid space-parsing bugs in ODA CLI
+        short_converter = get_short_path_name(str(self.converter_path))
+        short_input_dir = get_short_path_name(str(input_dir))
+        short_dxf_output_dir = get_short_path_name(str(dxf_output_dir))
+
         # Configure command: ODAFileConverter input_dir output_dir version format recurse audit [filter]
         # Using ACAD2018 format and DXF output type
         args = [
-            str(input_dir),
-            str(dxf_output_dir),
+            short_input_dir,
+            short_dxf_output_dir,
             "ACAD2018",
             "DXF",
             "0",
@@ -63,7 +84,7 @@ class ODAConverter:
         ]
 
         logger.info(
-            f"Invoking secure ODA subprocess: '{self.converter_path}' with args {args[2:]} "
+            f"Invoking secure ODA subprocess: '{short_converter}' with args {args[2:]} "
             f"for file '{file_name}'"
         )
         
@@ -71,7 +92,7 @@ class ODAConverter:
         try:
             # Safe process spawn wrapper
             proc = await asyncio.create_subprocess_exec(
-                str(self.converter_path),
+                short_converter,
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE

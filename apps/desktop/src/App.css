@@ -2,7 +2,7 @@
    AI-2D-Checker — Modern Minimalist Corporate/Engineering Theme
    ============================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
   /* Common Palette / Brand Accent Gradients */
@@ -40,28 +40,31 @@
 
 /* High Contrast Light Mode Theme Variables (Antigravity High Contrast Light) */
 [data-theme="hc-light"] {
-  --bg-dark: #FFFFFF;
-  --bg-card: #FFFFFF;
-  --bg-sidebar: #FFFFFF;
-  --bg-topbar: #FFFFFF;
-  --border-color: #000000;
-
-  --text-primary: #000000;
-  --text-muted: #111827;
-  --bg-bubble-user: #E9EEF6;
-
+  --bg-dark: #f4f4f5;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-topbar: #ffffff;
+  --border-color: #e4e4e7;
+ 
+  --text-primary: #18181b;
+  --text-muted: #71717a;
+  --bg-bubble-user: #f4f4f5;
+ 
   --app-gradient: none;
-  --sidebar-item-hover: rgba(0, 0, 0, 0.08);
-
-  --primary-glow: linear-gradient(135deg, #0044ff, #0022aa);
-  --accent-cyan: #0044ff;
+  --sidebar-item-hover: rgba(0, 0, 0, 0.05);
+ 
+  --primary-glow: linear-gradient(135deg, #2563eb, #1d4ed8);
+  --accent-cyan: #2563eb;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Outfit', sans-serif;
+  /* Noto Sans JP covers Japanese (Hiragana, Katakana, Kanji).
+     MS Gothic / Yu Gothic are system fallbacks for Windows.
+     The chain ensures graceful rendering without layout shifts. */
+  font-family: 'Outfit', 'Noto Sans JP', 'Yu Gothic', 'MS Gothic', 'Meiryo', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -306,19 +309,30 @@ body {
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 24px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border-radius: 14px;
+  padding: 20px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-theme="hc-dark"] .card {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.card:hover {
+  transform: translateY(-1px);
 }
 
 .card-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 20px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
+  border-left: 3px solid var(--accent-cyan);
+  padding-left: 10px;
+  color: var(--text-primary);
 }
 
 .card-description {
@@ -378,18 +392,23 @@ body {
 .btn-primary {
   background: var(--primary-glow);
   color: #ffffff;
-  border: 2px solid transparent;
+  border: 1px solid transparent;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 [data-theme="hc-dark"] .btn-primary {
-  color: #000000;
+  color: #09090b;
+  box-shadow: 0 4px 14px rgba(0, 229, 255, 0.18);
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
-  background: transparent;
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.38);
+  filter: brightness(1.05);
+}
+[data-theme="hc-dark"] .btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(0, 229, 255, 0.4);
 }
 
 .btn-secondary {

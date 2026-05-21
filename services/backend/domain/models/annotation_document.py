@@ -23,7 +23,7 @@ class AnnotationDocument(Document):
     # Context
     violation_id: Optional[str] = Field(None, description="Optional link to a generated AuditViolation")
     status: str = Field(default="open", description="open, resolved, dismissed")
-    
+    pen_type: str = Field("checker_blue", description="Virtual pen color: checker_blue, resolved_pink")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

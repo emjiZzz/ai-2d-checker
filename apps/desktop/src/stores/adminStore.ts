@@ -56,7 +56,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         headers["Authorization"] = `Bearer ${apiToken}`;
       }
 
-      const response = await fetch(`${backendUrl}/admin/users`, { headers });
+      const response = await fetch(`${backendUrl}/api/v1/admin/users`, { headers });
       const data = await response.json();
 
       if (response.ok && data.success) {
@@ -84,7 +84,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         headers["Authorization"] = `Bearer ${apiToken}`;
       }
 
-      const response = await fetch(`${backendUrl}/admin/users`, {
+      const response = await fetch(`${backendUrl}/api/v1/admin/users`, {
         method: "POST",
         headers,
         body: JSON.stringify({ username, password, role }),
@@ -119,7 +119,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         headers["Authorization"] = `Bearer ${apiToken}`;
       }
 
-      const response = await fetch(`${backendUrl}/admin/users/${username}`, {
+      const response = await fetch(`${backendUrl}/api/v1/admin/users/${username}`, {
         method: "DELETE",
         headers,
       });
@@ -153,14 +153,14 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       }
 
       // Fetch MongoDB state
-      const mongoRes = await fetch(`${backendUrl}/system/database`, { headers });
+      const mongoRes = await fetch(`${backendUrl}/api/v1/system/database`, { headers });
       const mongoData = await mongoRes.json();
       if (mongoRes.ok && mongoData.success) {
         set({ mongoDiagnostics: mongoData.data });
       }
 
       // Fetch storage quotas
-      const storageRes = await fetch(`${backendUrl}/system/storage`, { headers });
+      const storageRes = await fetch(`${backendUrl}/api/v1/system/storage`, { headers });
       const storageData = await storageRes.json();
       if (storageRes.ok && storageData.success) {
         set({ storageQuotas: storageData.data });

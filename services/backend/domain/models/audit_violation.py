@@ -15,6 +15,10 @@ class AuditViolation(Document):
     source: str = Field(..., description="Violation detector source: rule_engine or gemini_vision")
     coordinates: Optional[List[List[float]]] = Field(None, description="Visual boundary coordinates: [[x1, y1], [x2, y2]] or coordinates of affected points")
     standard_reference: Optional[str] = Field(None, description=" Grounding text or section identifier in the standard document")
+    pen_type: str = Field("ai_red", description="Virtual pen color: ai_green, ai_red, checker_blue, resolved_green, resolved_pink")
+    is_resolved: bool = Field(False, description="Whether the violation has been verified as resolved")
+    resolved_at: Optional[datetime] = Field(None, description="Timestamp when the violation was verified as resolved")
+    checker_remarks: Optional[str] = Field(None, description="Supervisor or checker feedback comment")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:

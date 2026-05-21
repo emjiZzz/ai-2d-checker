@@ -6,7 +6,8 @@ from pymongo import IndexModel, ASCENDING, DESCENDING
 
 class AuditSession(Document):
     drawing_id: str = Field(..., description="Reference ID of the audited DrawingDocument")
-    standard_id: str = Field(..., description="Reference ID of the grounding StandardDocument")
+    standard_id: Optional[str] = Field(None, description="Reference ID of the grounding StandardDocument")
+    client_name: Optional[str] = Field(None, description="Name of the audited Client")
     status: str = Field("queued", description="Active pipeline status: queued, processing, completed, failed")
     compliance_score: Optional[float] = Field(None, description="Computed compliance score (0-100) where 100 is fully compliant")
     confidence_score: Optional[float] = Field(None, description="Aggregated confidence metric (0.0 - 1.0) of standard match accuracy")
@@ -22,6 +23,7 @@ class AuditSession(Document):
         indexes = [
             IndexModel([("drawing_id", ASCENDING)]),
             IndexModel([("standard_id", ASCENDING)]),
+            IndexModel([("client_name", ASCENDING)]),
             IndexModel([("status", ASCENDING)]),
             IndexModel([("confidence_score", DESCENDING)]),
             IndexModel([("created_at", DESCENDING)])

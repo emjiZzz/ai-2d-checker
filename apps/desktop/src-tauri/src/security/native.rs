@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::process::Command;
 use crate::security::{traversal::validate_sandboxed_path, logging};

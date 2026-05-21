@@ -13,6 +13,7 @@ from .audit_violation import AuditViolation
 from .user_account import UserAccountDocument
 from .user_session import UserSessionDocument
 from .role_permissions import RolePermissionsDocument
+from .client import ClientDocument
 
 # Document list for typed Beanie initialization mapping
 __all_models__ = [
@@ -30,5 +31,6 @@ __all_models__ = [
     AuditViolation,
     UserAccountDocument,
     UserSessionDocument,
-    RolePermissionsDocument
+    RolePermissionsDocument,
+    ClientDocument
 ]

@@ -1,9 +1,14 @@
 import time
+import sys
+import asyncio
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .logger import logger
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Import Phase 2 Core and Infrastructure
 from .core.security import initialize_local_api_token
@@ -21,6 +26,11 @@ app = FastAPI(
     description="Offline-first secure local drawing validation and compliance backend"
 )
 
+# Add Phase 2 Hardened Middlewares in order
+app.add_middleware(ExceptionLoggingMiddleware)
+app.add_middleware(RequestDurationMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
+
 # Configure CORS - Allowed scopes for local Tauri client
 app.add_middleware(
     CORSMiddleware,
@@ -33,11 +43,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Add Phase 2 Hardened Middlewares in order
-app.add_middleware(ExceptionLoggingMiddleware)
-app.add_middleware(RequestDurationMiddleware)
-app.add_middleware(CorrelationIDMiddleware)
 
 # Middleware: Host verification to strictly enforce localhost-only binding
 @app.middleware("http")

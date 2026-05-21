@@ -37,12 +37,12 @@ class BackgroundAuditQueue:
             self.worker_task = None
             logger.info("Background Drawing Audit Queue worker stopped.")
 
-    async def enqueue(self, drawing_id: str, standard_id: str, session_id: str) -> None:
+    async def enqueue(self, drawing_id: str, standard_id: Optional[str], session_id: str, client_name: Optional[str] = None) -> None:
         """
         Adds a standard compliance audit task to the background queue.
         """
-        logger.info(f"Enqueuing compliance audit task - Drawing: {drawing_id}, Standard: {standard_id}, Session: {session_id}")
-        await self.queue.put((drawing_id, standard_id, session_id))
+        logger.info(f"Enqueuing compliance audit task - Drawing: {drawing_id}, Standard: {standard_id}, Client: {client_name}, Session: {session_id}")
+        await self.queue.put((drawing_id, standard_id, session_id, client_name))
 
     async def _worker(self) -> None:
         """
@@ -51,11 +51,11 @@ class BackgroundAuditQueue:
         logger.info("Background Drawing Audit Queue worker is active and listening for tasks.")
         while True:
             try:
-                drawing_id, standard_id, session_id = await self.queue.get()
-                logger.info(f"Dequeued compliance audit task - Drawing ID: {drawing_id}, Standard ID: {standard_id}, Session ID: {session_id}. Running orchestrator...")
+                drawing_id, standard_id, session_id, client_name = await self.queue.get()
+                logger.info(f"Dequeued compliance audit task - Drawing ID: {drawing_id}, Standard ID: {standard_id}, Client: {client_name}, Session ID: {session_id}. Running orchestrator...")
                 
                 try:
-                    await self.orchestrator.run_audit(drawing_id, standard_id, session_id)
+                    await self.orchestrator.run_audit(drawing_id, standard_id, session_id, client_name)
                 except Exception as w_err:
                     logger.error(f"Worker failed to execute compliance audit for session {session_id}: {str(w_err)}")
                 finally:

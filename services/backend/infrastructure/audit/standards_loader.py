@@ -32,6 +32,8 @@ class StandardsLoader:
     async def ingest_standard(
         src_file_path: Path,
         name: str,
+        scope: str = "client_specific",
+        client_name: Optional[str] = None,
         category: Optional[str] = None,
         description: Optional[str] = None,
         max_size_mb: int = 50
@@ -41,7 +43,7 @@ class StandardsLoader:
         Returns:
             document: Saved StandardDocument instance.
             is_duplicate: True if the standard already existed in the system.
-        """
+            """
         # 1. Traversal and bounds checking
         validate_sandboxed_path(src_file_path)
 
@@ -56,8 +58,8 @@ class StandardsLoader:
 
         # Validate format
         ext = src_file_path.suffix.lower().lstrip(".")
-        if ext not in ("pdf", "txt", "md"):
-            raise ValueError(f"Unsupported format: .{ext}. Standards must be PDF, TXT, or Markdown.")
+        if ext not in ("pdf", "txt", "md", "xlsx", "xls"):
+            raise ValueError(f"Unsupported format: .{ext}. Standards must be PDF, TXT, Excel, or Markdown.")
 
         # Compute secure hash
         standard_hash = StandardsLoader.calculate_file_hash(src_file_path)
@@ -100,6 +102,8 @@ class StandardsLoader:
             standard_hash=standard_hash,
             file_size_bytes=file_size_bytes,
             format=ext,
+            scope=scope,
+            client_name=client_name,
             category=category,
             description=description,
             metadata=parsed_meta

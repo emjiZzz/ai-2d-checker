@@ -10,6 +10,8 @@ class StandardDocument(Document):
     standard_hash: str = Field(..., description="SHA-256 hash checksum of the standard document")
     file_size_bytes: int = Field(..., description="File size in bytes")
     format: str = Field(..., description="File extension/format: pdf, txt, md")
+    scope: str = Field("client_specific", description="Scope of standard: 'universal' or 'client_specific'")
+    client_name: Optional[str] = Field(None, description="Associated client name if scope is client_specific")
     category: Optional[str] = Field(None, description="Category of the standard e.g., Dimensioning, Tolerancing, Welding")
     description: Optional[str] = Field(None, description="Detailed description of the standard contents")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata from parsing")
@@ -19,5 +21,7 @@ class StandardDocument(Document):
         name = "standard_documents"
         indexes = [
             IndexModel([("standard_hash", ASCENDING)], unique=True),
+            IndexModel([("scope", ASCENDING)]),
+            IndexModel([("client_name", ASCENDING)]),
             IndexModel([("created_at", ASCENDING)])
         ]

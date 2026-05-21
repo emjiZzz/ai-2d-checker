@@ -74,19 +74,31 @@ class StandardDocumentResponse(BaseModel):
     standard_hash: str
     file_size_bytes: int
     format: str
+    scope: str = "client_specific"
+    client_name: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
     metadata: dict
     created_at: datetime
 
+class ClientResponse(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
+
+class CreateClientRequest(BaseModel):
+    name: str
+
 class LaunchAuditRequest(BaseModel):
     drawing_id: str
-    standard_id: str
+    standard_id: Optional[str] = None
+    client_name: Optional[str] = None
 
 class AuditSessionResponse(BaseModel):
     id: str
     drawing_id: str
-    standard_id: str
+    standard_id: Optional[str] = None
+    client_name: Optional[str] = None
     status: str
     compliance_score: Optional[float] = None
     confidence_score: Optional[float] = None
@@ -109,6 +121,10 @@ class AuditViolationResponse(BaseModel):
     source: str
     coordinates: Optional[list] = None
     standard_reference: Optional[str] = None
+    pen_type: str
+    is_resolved: bool
+    resolved_at: Optional[datetime] = None
+    checker_remarks: Optional[str] = None
     created_at: datetime
 
 # PBKDF2 Auth & Session Schemas

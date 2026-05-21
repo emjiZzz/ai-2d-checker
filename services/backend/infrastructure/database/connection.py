@@ -93,6 +93,18 @@ class DatabaseConnectionManager:
                     except Exception as seed_err:
                         logger.warning(f"Failed to verify or seed default user accounts: {str(seed_err)}")
 
+                    # Seed initial corporate client directories
+                    try:
+                        from ...domain.models.client import ClientDocument
+                        initial_clients = ["KEMCO", "AGCC", "JFE", "NIKKO", "TEX"]
+                        for name in initial_clients:
+                            client_exists = await ClientDocument.find_one(ClientDocument.name == name)
+                            if not client_exists:
+                                await ClientDocument(name=name).save()
+                                logger.info(f"Seeded target client directory: '{name}' successfully.")
+                    except Exception as client_seed_err:
+                        logger.warning(f"Failed to verify or seed default clients: {str(client_seed_err)}")
+
                     self.connected = True
                     logger.info(
                         f"Successfully connected to MongoDB database '{settings.MONGO_DB_NAME}' "

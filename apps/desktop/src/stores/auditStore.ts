@@ -13,12 +13,15 @@ export interface StandardDocument {
   description: string | null;
   metadata: Record<string, any>;
   created_at: string;
+  scope?: string;
+  client_name?: string | null;
 }
 
 export interface AuditSession {
   id: string;
   drawing_id: string;
-  standard_id: string;
+  standard_id?: string | null;
+  client_name?: string | null;
   status: string;
   compliance_score: number | null;
   confidence_score: number | null;
@@ -42,6 +45,10 @@ export interface AuditViolation {
   source: string;
   coordinates: number[][] | null;
   standard_reference: string | null;
+  pen_type: string;
+  is_resolved: boolean;
+  resolved_at: string | null;
+  checker_remarks: string | null;
   created_at: string;
 }
 
@@ -59,7 +66,7 @@ interface AuditState {
 
   // Actions
   fetchStandards: () => Promise<void>;
-  uploadStandard: (file: File, name: string, category?: string, description?: string) => Promise<boolean>;
+  uploadStandard: (file: File, name: string, category?: string, description?: string, scope?: string, clientName?: string) => Promise<boolean>;
   launchAudit: (drawingId: string, standardId: string) => Promise<boolean>;
   pollAuditStatus: (sessionId: string) => void;
   fetchSessionDetails: (sessionId: string) => Promise<void>;
@@ -102,7 +109,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     }
   },
 
-  uploadStandard: async (file: File, name: string, category = "", description = "") => {
+  uploadStandard: async (file: File, name: string, category = "", description = "", scope = "universal", clientName = "") => {
     const { backendUrl, apiToken } = useConnectionStore.getState();
     
     set({
@@ -111,13 +118,15 @@ export const useAuditStore = create<AuditState>((set, get) => ({
       errorMessage: null,
     });
 
-    logger.info(`Uploading engineering standard: ${name} (${file.name})`);
+    logger.info(`Uploading engineering standard: ${name} (${file.name}) [Scope: ${scope}]`);
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("name", name);
     if (category) formData.append("category", category);
     if (description) formData.append("description", description);
+    formData.append("scope", scope);
+    if (clientName && scope === "client_specific") formData.append("client_name", clientName);
 
     try {
       const headers: Record<string, string> = {};

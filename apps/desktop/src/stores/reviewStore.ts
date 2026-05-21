@@ -30,8 +30,12 @@ interface ReviewState {
   // Comparison
   isComparisonMode: boolean;
   toggleComparisonMode: () => void;
+  
+  // Real-time hover sync coordinate (standardized space)
+  hoveredCoords: { x: number; y: number } | null;
+  setHoveredCoords: (coords: { x: number; y: number } | null) => void;
 }
-
+ 
 export const useReviewStore = create<ReviewState>((set) => ({
   sessionId: null,
   drawingId: null,
@@ -61,5 +65,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
   
   isComparisonMode: false,
-  toggleComparisonMode: () => set((state) => ({ isComparisonMode: !state.isComparisonMode }))
+  toggleComparisonMode: () => set((state) => ({ isComparisonMode: !state.isComparisonMode })),
+  
+  hoveredCoords: null,
+  setHoveredCoords: (coords) => set({ hoveredCoords: coords })
 }));

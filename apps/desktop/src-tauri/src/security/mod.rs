@@ -3,7 +3,7 @@ pub mod encryption;
 pub mod logging;
 pub mod native;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::env;
 
 /// Traverses directories upward from the execution context to discover the 'storage' root path.

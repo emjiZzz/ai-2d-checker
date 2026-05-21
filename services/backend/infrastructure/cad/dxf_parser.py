@@ -30,14 +30,24 @@ class DXFParser:
         start_time = time.time()
 
         try:
-            # Read drawing file structure
-            doc = ezdxf.readfile(str(file_path))
-        except ezdxf.DXFError as dxf_err:
-            logger.error(f"Failed to decode DXF structure: {str(dxf_err)}")
-            raise ValueError(f"Corrupt or incompatible DXF structure: {str(dxf_err)}")
-        except Exception as e:
-            logger.error(f"Failed to read file: {str(e)}")
-            raise
+            # Attempt UTF-8 first (modern DXF/DWG files)
+            doc = ezdxf.readfile(str(file_path), encoding="utf-8")
+        except (ezdxf.DXFError, UnicodeDecodeError):
+            try:
+                # CP932 = Shift-JIS: standard encoding for Japanese AutoCAD DWG/DXF files
+                logger.info(f"UTF-8 failed. Retrying with CP932 (Shift-JIS) for Japanese drawing: {file_path}")
+                doc = ezdxf.readfile(str(file_path), encoding="cp932")
+            except (ezdxf.DXFError, UnicodeDecodeError):
+                try:
+                    # Latin-1 / ISO-8859-1 fallback for legacy Western CAD files
+                    logger.info(f"CP932 failed. Retrying with Latin-1 fallback for: {file_path}")
+                    doc = ezdxf.readfile(str(file_path), encoding="latin-1")
+                except ezdxf.DXFError as dxf_err:
+                    logger.error(f"Failed to decode DXF structure: {str(dxf_err)}")
+                    raise ValueError(f"Corrupt or incompatible DXF structure: {str(dxf_err)}")
+                except Exception as e:
+                    logger.error(f"Failed to read file: {str(e)}")
+                    raise
 
         # 2. Extract Layers
         layers = []
@@ -54,7 +64,7 @@ class DXFParser:
                 "geometry": {}
             })
 
-        # 3. Extract Graphical Geometries from Model Space
+        # 3. Extract Graphical Geometries from Model Space and Paper Space (Layouts)
         entities = []
         counts = {
             "line": 0,
@@ -67,16 +77,39 @@ class DXFParser:
             "layer": len(layers)
         }
 
-        msp = doc.modelspace()
-        for entity in msp:
+        def process_entity(entity, layout_name, depth=0):
+            if depth > 10:
+                logger.warning(f"Recursive block/dimension explosion depth limit reached at entity: {entity.dxftype()}")
+                return
+
+            dxftype = entity.dxftype()
+            if dxftype in ("INSERT", "DIMENSION"):
+                try:
+                    # ezdxf's explode() decomposes INSERT blocks and DIMENSIONS into standard primitives (lines, text, arcs)
+                    # positioned and rotated correctly in world coordinates, then destroys the source compound entity.
+                    exploded_query = entity.explode()
+                    for child in exploded_query:
+                        process_entity(child, layout_name, depth + 1)
+                    return
+                except Exception as explode_err:
+                    logger.warning(f"Unable to explode legacys complex {dxftype} entity: {str(explode_err)}")
+                    # Fallback to normal mapping if explode fails
+                    pass
+
             mapped = EntityMapper.map_any(entity)
             if mapped:
+                mapped["properties"]["layout_space"] = layout_name
                 entities.append(mapped)
                 entity_type = mapped["entity_type"]
                 if entity_type in counts:
                     counts[entity_type] += 1
                 else:
                     counts[entity_type] = 1
+
+        for layout in doc.layouts:
+            layout_entities = list(layout)
+            for entity in layout_entities:
+                process_entity(entity, layout.name)
 
         # 4. Extract standard metadata headers
         metadata = {

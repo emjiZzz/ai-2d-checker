@@ -1,15 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuditStore } from "../stores/auditStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import {
-  FileText,
-  UploadCloud,
-  Plus,
-  Loader2,
-  AlertCircle,
-  Tag,
-  Layers,
-  Calendar,
-  HardDrive
+  FileText, UploadCloud, Plus, Loader2, AlertCircle,
+  Tag, Layers, Calendar, HardDrive, FolderOpen, Trash2
 } from "lucide-react";
 
 export const StandardsManager: React.FC = () => {
@@ -23,19 +17,38 @@ export const StandardsManager: React.FC = () => {
     resetStore
   } = useAuditStore();
 
+  const {
+    clients,
+    fetchClients,
+    createClient,
+    deleteClient
+  } = useWorkspaceStore();
+
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  
+  // Scoping context for the upload modal
+  const [uploadScope, setUploadScope] = useState<"universal" | "client_specific">("universal");
+  const [uploadClient, setUploadClient] = useState<string>("");
+
+  // Directory explorer state
+  const [activeClientTab, setActiveClientTab] = useState<string | null>(null);
+  const [newClientName, setNewClientName] = useState("");
+  const [isAddingClient, setIsAddingClient] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchStandards();
-  }, []);
+    fetchClients();
+  }, [fetchStandards, fetchClients]);
 
+  const universalStandards = standards.filter(s => s.scope === "universal" || !s.scope);
+  
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -52,14 +65,13 @@ export const StandardsManager: React.FC = () => {
     if (files && files.length > 0) {
       const file = files[0];
       const ext = file.name.split(".").pop()?.toLowerCase();
-      if (ext && ["pdf", "txt", "md"].includes(ext)) {
+      if (ext && ["pdf", "txt", "md", "xlsx", "xls"].includes(ext)) {
         setSelectedFile(file);
         if (!name) {
-          // Pre-populate name with friendly filename
           setName(file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ").toUpperCase());
         }
       } else {
-        alert("Unsupported file format! Please upload PDF, TXT or Markdown.");
+        alert("Unsupported file format! Please upload PDF, TXT, Excel or Markdown.");
       }
     }
   };
@@ -83,11 +95,12 @@ export const StandardsManager: React.FC = () => {
       selectedFile,
       name,
       category || "General Compliance",
-      description || "Engineering drafting compliance parameters."
+      description || "Engineering drafting compliance parameters.",
+      uploadScope,
+      uploadClient
     );
 
     if (success) {
-      // Clear forms
       setName("");
       setCategory("");
       setDescription("");
@@ -104,79 +117,161 @@ export const StandardsManager: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
+  const triggerUploadModal = (scope: "universal" | "client_specific", clientName = "") => {
+    resetStore();
+    setUploadScope(scope);
+    setUploadClient(clientName);
+    setShowUploadModal(true);
+  };
+
+  const handleCreateClient = async () => {
+    if (newClientName.trim()) {
+      await createClient(newClientName.trim());
+      setNewClientName("");
+      setIsAddingClient(false);
+    }
+  };
+
+  const StandardCard = ({ std }: { std: any }) => (
+    <div className="card standard-card" key={std.id}>
+      <div className="std-card-top">
+        <div className="std-icon-box">
+          <FileText size={20} />
+        </div>
+        <div className="std-badge">{std.format.toUpperCase()}</div>
+      </div>
+      <h4 className="std-title" title={std.name}>{std.name}</h4>
+      <p className="std-desc">{std.description || "No description provided."}</p>
+      <div className="std-meta-grid">
+        <div className="std-meta-item">
+          <Tag size={12} /><span>{std.category || "General"}</span>
+        </div>
+        <div className="std-meta-item">
+          <HardDrive size={12} /><span>{formatBytes(std.file_size_bytes)}</span>
+        </div>
+        <div className="std-meta-item">
+          <Layers size={12} /><span>{std.metadata.page_count || 1} sections</span>
+        </div>
+        <div className="std-meta-item">
+          <Calendar size={12} /><span>{new Date(std.created_at).toLocaleDateString()}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="standards-layout">
-      {/* Header section with Action Button */}
+      {/* 1. UNIVERSAL STANDARDS SECTION */}
       <div className="standards-header">
         <div>
-          <h3 className="section-title">Standards Knowledge Library</h3>
-          <p className="section-desc">
-            Manage your offline engineering rules and reference files inside the traversal-hardened local sidecar sandbox.
-          </p>
+          <h3 className="section-title">KMTI Checking Manuals (Universal)</h3>
+          <p className="section-desc">Global internal standards and checksheets applied universally across all drawing audits.</p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => {
-            resetStore();
-            setShowUploadModal(true);
-          }}
-          style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
-        >
-          <Plus size={16} /> Add Standard Document
+        <button className="btn btn-primary" onClick={() => triggerUploadModal("universal")} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+          <Plus size={16} /> Add Universal Manual
         </button>
       </div>
 
-      {/* Grid of Standards */}
-      {standards.length === 0 ? (
-        <div className="empty-standards-card">
-          <FileText size={48} style={{ opacity: 0.3, marginBottom: "16px" }} />
-          <h4>No Ingested Standards Yet</h4>
-          <p>Ingest standard reference PDF/Markdown templates to initiate comparative compliance checks.</p>
-          <button
-            className="btn btn-secondary mt-3"
-            onClick={() => setShowUploadModal(true)}
-          >
-            Ingest Your First Standard
-          </button>
+      {universalStandards.length === 0 ? (
+        <div className="empty-standards-card" style={{ padding: "40px 20px" }}>
+          <FileText size={36} style={{ opacity: 0.3, marginBottom: "16px" }} />
+          <h4>No Universal Manuals</h4>
+          <p>Ingest the baseline KMTI Checking Manual or Checksheet Excel files here.</p>
         </div>
       ) : (
-        <div className="standards-grid">
-          {standards.map((std) => (
-            <div className="card standard-card" key={std.id}>
-              <div className="std-card-top">
-                <div className="std-icon-box">
-                  <FileText size={20} />
-                </div>
-                <div className="std-badge">
-                  {std.format.toUpperCase()}
-                </div>
-              </div>
-
-              <h4 className="std-title" title={std.name}>{std.name}</h4>
-              <p className="std-desc">{std.description || "No description provided."}</p>
-
-              <div className="std-meta-grid">
-                <div className="std-meta-item">
-                  <Tag size={12} />
-                  <span>{std.category || "General"}</span>
-                </div>
-                <div className="std-meta-item">
-                  <HardDrive size={12} />
-                  <span>{formatBytes(std.file_size_bytes)}</span>
-                </div>
-                <div className="std-meta-item">
-                  <Layers size={12} />
-                  <span>{std.metadata.page_count || 1} sections</span>
-                </div>
-                <div className="std-meta-item">
-                  <Calendar size={12} />
-                  <span>{new Date(std.created_at).toLocaleDateString()}</span>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="standards-grid" style={{ marginBottom: "40px" }}>
+          {universalStandards.map(std => <StandardCard key={std.id} std={std} />)}
         </div>
       )}
+
+      {/* 2. CLIENT SPECIFIC DIRECTORIES */}
+      <div className="standards-header" style={{ marginTop: "50px", borderTop: "1px solid var(--border-color)", paddingTop: "30px" }}>
+        <div>
+          <h3 className="section-title">Client Target Directories</h3>
+          <p className="section-desc">Manage specific checking guidelines aligned to independent clients.</p>
+        </div>
+      </div>
+
+      <div className="clients-explorer-container" style={{ display: "flex", gap: "24px", minHeight: "400px" }}>
+        
+        {/* Left Sidebar: Clients Roster */}
+        <div className="card clients-sidebar" style={{ width: "260px", flexShrink: 0, padding: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h4 style={{ margin: 0, fontSize: "0.95rem" }}>Clients</h4>
+            <button className="btn-icon" onClick={() => setIsAddingClient(!isAddingClient)} title="New Client">
+              <Plus size={16} />
+            </button>
+          </div>
+
+          {isAddingClient && (
+            <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+              <input type="text" className="form-input" style={{ padding: "6px" }} placeholder="Client Code..." value={newClientName} onChange={(e) => setNewClientName(e.target.value)} autoFocus />
+              <button className="btn btn-primary" style={{ padding: "6px 12px" }} onClick={handleCreateClient}>Add</button>
+            </div>
+          )}
+
+          <div className="clients-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {clients.map(c => (
+              <div 
+                key={c.id} 
+                className={`client-nav-item ${activeClientTab === c.name ? "active" : ""}`}
+                onClick={() => setActiveClientTab(c.name)}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "10px 12px", borderRadius: "8px", cursor: "pointer",
+                  background: activeClientTab === c.name ? "var(--sidebar-item-hover)" : "transparent",
+                  border: activeClientTab === c.name ? "1px solid var(--accent-cyan)" : "1px solid transparent"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <FolderOpen size={16} style={{ color: activeClientTab === c.name ? "var(--accent-cyan)" : "var(--text-muted)" }} />
+                  <span style={{ fontWeight: 500, color: activeClientTab === c.name ? "var(--text-primary)" : "var(--text-muted)" }}>{c.name}</span>
+                </div>
+                {activeClientTab === c.name && (
+                  <Trash2 
+                    size={14} 
+                    className="text-danger" 
+                    style={{ cursor: "pointer", opacity: 0.7 }}
+                    onClick={(e) => { e.stopPropagation(); if(confirm(`Delete ${c.name} and all its standards?`)) deleteClient(c.name); }} 
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Content: Selected Client Standards */}
+        <div className="client-content-area" style={{ flexGrow: 1 }}>
+          {!activeClientTab ? (
+            <div className="empty-standards-card" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <FolderOpen size={48} style={{ opacity: 0.2, margin: "0 auto 16px" }} />
+              <h4>Select a Client Directory</h4>
+              <p>Choose a client from the sidebar to view or inject their specific drafting standards.</p>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <h4 style={{ margin: 0, fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <FolderOpen size={20} className="text-purple" /> {activeClientTab} Standards
+                </h4>
+                <button className="btn btn-secondary" onClick={() => triggerUploadModal("client_specific", activeClientTab)} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                  <UploadCloud size={16} /> Ingest {activeClientTab} Standard
+                </button>
+              </div>
+
+              {standards.filter(s => s.scope === "client_specific" && s.client_name === activeClientTab).length === 0 ? (
+                <div className="empty-standards-card" style={{ padding: "40px 20px" }}>
+                  <p>No specific standards ingested for {activeClientTab} yet.</p>
+                </div>
+              ) : (
+                <div className="standards-grid">
+                  {standards.filter(s => s.scope === "client_specific" && s.client_name === activeClientTab).map(std => <StandardCard key={std.id} std={std} />)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* UPLOAD MODAL DIALOG */}
       {showUploadModal && (
@@ -185,15 +280,9 @@ export const StandardsManager: React.FC = () => {
             <div className="modal-header">
               <h3 className="card-title">
                 <UploadCloud size={18} className="text-purple" />
-                Ingest Reference Standard
+                Ingest {uploadScope === "universal" ? "Universal Manual" : `${uploadClient} Standard`}
               </h3>
-              <button
-                className="close-button"
-                onClick={() => setShowUploadModal(false)}
-                disabled={uploadStatus === "uploading"}
-              >
-                &times;
-              </button>
+              <button className="close-button" onClick={() => setShowUploadModal(false)} disabled={uploadStatus === "uploading"}>&times;</button>
             </div>
 
             <form onSubmit={handleSubmit} className="modal-body">
@@ -210,21 +299,15 @@ export const StandardsManager: React.FC = () => {
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   style={{ display: "none" }}
-                  accept=".pdf,.txt,.md"
+                  accept=".pdf,.txt,.md,.xlsx,.xls"
                 />
                 <div className="upload-icon-container">
-                  {uploadStatus === "uploading" ? (
-                    <Loader2 size={24} className="spin-animation text-purple" />
-                  ) : (
-                    <UploadCloud size={24} className="text-purple" />
-                  )}
+                  {uploadStatus === "uploading" ? <Loader2 size={24} className="spin-animation text-purple" /> : <UploadCloud size={24} className="text-purple" />}
                 </div>
                 <span className="upload-prompt" style={{ fontSize: "0.85rem" }}>
-                  {selectedFile
-                    ? `Selected: ${selectedFile.name} (${formatBytes(selectedFile.size)})`
-                    : "Drag & Drop standard reference, or browse"}
+                  {selectedFile ? `Selected: ${selectedFile.name} (${formatBytes(selectedFile.size)})` : "Drag & Drop standard reference, or browse"}
                 </span>
-                <span className="upload-specs" style={{ fontSize: "0.7rem" }}>PDF, TXT, or Markdown (Max 50MB)</span>
+                <span className="upload-specs" style={{ fontSize: "0.7rem" }}>PDF, TXT, Excel or Markdown (Max 50MB)</span>
               </div>
 
               <div className="form-group">
@@ -267,10 +350,7 @@ export const StandardsManager: React.FC = () => {
               {uploadStatus === "uploading" && (
                 <div className="progress-container" style={{ margin: "16px 0 8px 0" }}>
                   <div className="progress-bar-bg" style={{ height: "4px" }}>
-                    <div
-                      className="progress-bar-fill"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
+                    <div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }}></div>
                   </div>
                   <div className="progress-labels">
                     <span>Processing & chunking knowledge blocks...</span>
@@ -289,21 +369,8 @@ export const StandardsManager: React.FC = () => {
               )}
 
               <div className="modal-actions" style={{ marginTop: "24px", display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowUploadModal(false)}
-                  disabled={uploadStatus === "uploading"}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={uploadStatus === "uploading" || !selectedFile || !name.trim()}
-                >
-                  Confirm Ingestion
-                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)} disabled={uploadStatus === "uploading"}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={uploadStatus === "uploading" || !selectedFile || !name.trim()}>Confirm Ingestion</button>
               </div>
             </form>
           </div>

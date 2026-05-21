@@ -30,8 +30,61 @@ class StandardsParser:
             return StandardsParser._parse_pdf(canonical_path)
         elif ext in (".txt", ".md"):
             return StandardsParser._parse_text_or_markdown(canonical_path)
+        elif ext in (".xlsx", ".xls"):
+            return StandardsParser._parse_excel(canonical_path)
         else:
-            raise ValueError(f"Unsupported standard file extension: {ext}. Only PDF, TXT, and Markdown are supported.")
+            raise ValueError(f"Unsupported standard file extension: {ext}. Only PDF, TXT, Excel, and Markdown are supported.")
+
+    @staticmethod
+    def _parse_excel(file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        logger.info(f"Parsing Excel Engineering Standard: {file_path.name}")
+        chunks: List[Dict[str, Any]] = []
+        global_metadata: Dict[str, Any] = {
+            "title": file_path.stem,
+            "page_count": 1
+        }
+        
+        try:
+            import openpyxl
+            # Load workbook in data_only mode to get values, not formulas
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+            global_metadata["page_count"] = len(wb.sheetnames)
+            
+            for sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                current_chunk = []
+                
+                # Iterate rows and extract textual rules
+                for row_idx, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                    row_data = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
+                    if row_data:
+                        content_line = " | ".join(row_data)
+                        current_chunk.append(content_line)
+                        
+                        # Chunk roughly every 10 rows or if it gets large
+                        if len(current_chunk) >= 10:
+                            chunk_text = "\\n".join(current_chunk)
+                            chunks.append({
+                                "content": chunk_text,
+                                "section_header": f"Sheet: {sheet_name}",
+                                "metadata": {"sheet": sheet_name, "row_end": row_idx, "char_count": len(chunk_text)}
+                            })
+                            current_chunk = []
+                
+                # Flush remaining lines in the sheet
+                if current_chunk:
+                    chunk_text = "\\n".join(current_chunk)
+                    chunks.append({
+                        "content": chunk_text,
+                        "section_header": f"Sheet: {sheet_name}",
+                        "metadata": {"sheet": sheet_name, "char_count": len(chunk_text)}
+                    })
+                    
+        except Exception as e:
+            logger.error(f"Error parsing Excel Standard file {file_path.name}: {str(e)}")
+            raise ValueError(f"Failed to read and parse Excel file: {str(e)}")
+            
+        return chunks, global_metadata
 
     @staticmethod
     def _parse_pdf(file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:

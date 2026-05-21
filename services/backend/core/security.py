@@ -46,7 +46,7 @@ def initialize_local_api_token() -> str:
     settings.API_TOKEN = token
     return token
 
-def verify_api_token(authorization: str = Header(..., description="API Security Bearer Token")) -> str:
+def verify_api_token(authorization: str | None = Header(None, description="API Security Bearer Token")) -> str:
     """
     FastAPI dependency validating requests contain the exact matching localhost token.
     Rejects unauthorized queries with 401.
@@ -54,6 +54,13 @@ def verify_api_token(authorization: str = Header(..., description="API Security 
     if not settings.API_TOKEN:
         # If token was not initialized, initialize it now
         initialize_local_api_token()
+
+    if not authorization:
+        logger.warning("Rejected API request: Missing Authorization header.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access Denied: Missing Authorization Header."
+        )
 
     expected_prefix = "Bearer "
     if not authorization.startswith(expected_prefix):

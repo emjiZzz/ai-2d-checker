@@ -11,6 +11,27 @@ if env_path.exists():
 else:
     load_dotenv()  # Fallback to local search
 
+def _auto_detect_oda_converter() -> str:
+    # 1. Respect explicit environment override if provided
+    env_path = os.getenv("ODA_CONVERTER_PATH")
+    if env_path:
+        return env_path
+        
+    # 2. Automatically scan the standard Windows install folder for any version
+    default_dir = Path("C:/Program Files/ODA")
+    if default_dir.exists():
+        try:
+            for sub_dir in default_dir.iterdir():
+                if sub_dir.is_dir() and "ODAFileConverter" in sub_dir.name:
+                    exec_path = sub_dir / "ODAFileConverter.exe"
+                    if exec_path.exists():
+                        return str(exec_path.resolve().as_posix())
+        except Exception:
+            pass
+            
+    # 3. Standard fallback path
+    return "C:/Program Files/ODA/ODAFileConverter/ODAFileConverter.exe"
+
 class Settings:
     PROJECT_NAME: str = "AI-2D-Checker Standalone Backend"
     VERSION: str = "1.0.0"
@@ -32,8 +53,8 @@ class Settings:
     # Secrets
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
     
-    # ODA File Converter
-    ODA_CONVERTER_PATH: str = os.getenv("ODA_CONVERTER_PATH", "C:/Program Files/ODA/ODAFileConverter/ODAFileConverter.exe")
+    # ODA File Converter Auto-Discovery
+    ODA_CONVERTER_PATH: str = _auto_detect_oda_converter()
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "500"))
 
 settings = Settings()

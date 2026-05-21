@@ -119,12 +119,58 @@ class EntityMapper:
         }
 
     @staticmethod
+    def _clean_mtext_content(raw: str) -> str:
+        """
+        Strip MTEXT rich-text formatting control codes from CAD text entities.
+        AutoCAD MTEXT uses codes like:
+          \\W0.8;   = width factor
+          \\H2.5;   = height
+          \\A1;     = alignment (0=bottom, 1=center, 2=top)
+          \\T0.5;   = tracking/character spacing
+          \\S ...;  = stacked fractions
+          \\P       = paragraph break
+          \\~       = non-breaking space
+          {{\\...}} = font/color change groups
+        """
+        import re
+        if not raw:
+            return raw
+
+        # Handle bytes (cp932 encoded Japanese text from legacy DXF files)
+        if isinstance(raw, bytes):
+            for enc in ('utf-8', 'cp932', 'latin-1'):
+                try:
+                    raw = raw.decode(enc)
+                    break
+                except (UnicodeDecodeError, AttributeError):
+                    continue
+            else:
+                raw = raw.decode('utf-8', errors='replace')
+
+        # Strip MTEXT format codes: \X...; or \X patterns
+        text = re.sub(r'\\[WwHhAaTtQqFfCcLlOoKkPpNn][^;]*;', '', raw)
+        # Strip \P paragraph breaks
+        text = re.sub(r'\\[Pp]', ' ', text)
+        # Strip \~ non-breaking spaces
+        text = text.replace('\\~', ' ')
+        # Strip stacked fraction blocks \S...^...;
+        text = re.sub(r'\\S[^;]*;', '', text)
+        # Strip curly-brace groups for font/color changes { }
+        text = re.sub(r'[{}]', '', text)
+        # Strip remaining single backslash escapes
+        text = re.sub(r'\\(.)', r'\1', text)
+        return text.strip()
+
+    @staticmethod
     def map_text(entity: Any) -> Dict[str, Any]:
         # Text/MText maps literal strings
         dxftype = entity.dxftype()
-        text_content = entity.text if dxftype == "MTEXT" else entity.dxf.text
+        raw_content = entity.text if dxftype == "MTEXT" else entity.dxf.text
         insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0,0,0]
         height = entity.dxf.height if hasattr(entity.dxf, "height") else 2.5
+
+        # Clean MTEXT control codes and decode bytes if necessary
+        text_content = EntityMapper._clean_mtext_content(raw_content) if raw_content else ""
         
         return {
             "entity_type": "text",

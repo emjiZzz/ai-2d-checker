@@ -55,3 +55,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# === Scratch / Debug Scripts ===
+scratch/
