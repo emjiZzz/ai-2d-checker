@@ -16,6 +16,6 @@
   "devDependencies": {
     "@ai-2d-checker/config": "workspace:*",
     "rimraf": "^5.0.7",
-    "typescript": "^5.4.5"
+    "typescript": "^6.0.3"
   }
 }
