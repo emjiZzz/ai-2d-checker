@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useWorkspaceStore, DrawingItem } from "../../stores/workspaceStore";
 import { useConnectionStore } from "../../stores/connectionStore";
 import { DrawingCanvas } from "../../components/review/DrawingCanvas";
+import { useReviewStore } from "../../stores/reviewStore";
+import { useAuthStore } from "../../stores/authStore";
 import {
   CheckCircle2,
   Play,
@@ -14,11 +16,10 @@ import {
   Upload,
   Trash2,
   AlertTriangle,
-  Check,
   Bookmark,
   History,
+  Layers,
   Settings as SettingsIcon,
-  Cpu,
   ChevronRight,
   ChevronLeft
 } from "lucide-react";
@@ -41,8 +42,8 @@ interface UploadZoneProps {
 }
 
 const UploadZone: React.FC<UploadZoneProps> = ({
-  side, uploadState, progress, fileName, fileSize, error, activeDrawing,
-  uploadDrawingFile, clearUpload,
+  side, uploadState, progress, fileName, error,
+  uploadDrawingFile,
 }) => {
   const [isDragActive, setIsDragActive] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -64,152 +65,78 @@ const UploadZone: React.FC<UploadZoneProps> = ({
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       await uploadDrawingFile(e.target.files[0], side);
-      // Reset the input value so the same file can be re-selected after a clear
       e.target.value = "";
     }
   };
 
   const triggerFileInput = () => fileInputRef.current?.click();
-
-  const formatBytes = (bytes: number | null) => {
-    if (bytes === null) return "";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1048576).toFixed(1)} MB`;
-  };
-
-  const getExtBadgeClass = (name: string) => {
-    const ext = name.split(".").pop()?.toLowerCase();
-    if (ext === "dwg") return "badge-dwg";
-    if (ext === "dxf") return "badge-dxf";
-    if (ext === "pdf") return "badge-pdf";
-    return "badge-default";
-  };
-
-  const isOld = side === "old";
-  const labelText = isOld ? "REFERENCE DRAWING (OLD VERSION)" : "REVISION DRAWING (NEW VERSION)";
-  const labelDesc = isOld ? "Serves as compliance baseline anchor" : "Target containing modification revisions";
   const canInteract = uploadState === "idle" || uploadState === "failed";
 
   return (
-    <div className={`form-group upload-zone-group ${side}`}>
-      <label className="form-label upload-zone-title-label">
-        <span>{labelText}</span>
-        <span className="upload-zone-subtitle-desc">{labelDesc}</span>
-      </label>
+    <div
+      className={`upload-dropzone-container ${side} ${uploadState} ${isDragActive ? "dragging" : ""}`}
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+      onClick={canInteract ? triggerFileInput : undefined}
+      style={{ cursor: canInteract ? "pointer" : "default" }}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.dwg,.dxf"
+        onChange={handleFileInput}
+        style={{ display: "none" }}
+      />
 
-      <div
-        className={`upload-dropzone-container ${uploadState} ${isDragActive ? "dragging" : ""}`}
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}
-        onClick={canInteract ? triggerFileInput : undefined}
-        style={{ cursor: canInteract ? "pointer" : "default" }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.dwg,.dxf"
-          onChange={handleFileInput}
-          style={{ display: "none" }}
-        />
-
-        {uploadState === "idle" && (
-          <div className="dropzone-idle-view" style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center', width: '100%' }}>
-            <div className="dropzone-icon-circle" style={{ margin: 0, flexShrink: 0 }}>
-              <Upload size={14} className="dropzone-upload-icon" />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}>
-              <p className="dropzone-main-text" style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600 }}>
-                Drag & drop or <span className="browse-link" style={{ color: 'var(--accent-cyan)' }}>browse</span>
-              </p>
-              <p className="dropzone-sub-text" style={{ margin: '1px 0 0 0', fontSize: '0.72rem' }}>
-                DWG, DXF, PDF (max. 50MB)
-              </p>
-            </div>
-            <div className="supported-formats-badges" style={{ margin: 0, display: 'flex', gap: '4px', marginLeft: 'auto', flexShrink: 0 }}>
-              <span className="format-badge dwg" style={{ fontSize: '0.65rem', padding: '3px 6px' }}>DWG</span>
-              <span className="format-badge dxf" style={{ fontSize: '0.65rem', padding: '3px 6px' }}>DXF</span>
-              <span className="format-badge pdf" style={{ fontSize: '0.65rem', padding: '3px 6px' }}>PDF</span>
-            </div>
+      {uploadState === "idle" && (
+        <div className="dropzone-idle-view">
+          <div className="dropzone-icon-circle">
+            <Upload size={14} className="dropzone-upload-icon" />
           </div>
-        )}
-
-        {(uploadState === "validating" || uploadState === "uploading" || uploadState === "processing") && (
-          <div className="dropzone-active-view" style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '0 8px' }}>
-            <div className="pulsing-loader-wrapper" style={{ margin: 0, flexShrink: 0, width: '26px', height: '26px' }}>
-              <Loader size={14} className="loader-spin-icon spin-animation" />
-            </div>
-            <div className="active-details-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', flexGrow: 1, margin: 0 }}>
-              <span className="active-status-title" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                {uploadState === "validating" && "Scanning signature..."}
-                {uploadState === "uploading" && `Uploading... ${progress}%`}
-                {uploadState === "processing" && "Ingesting CAD layout..."}
-              </span>
-              <span className="active-filename-sub" style={{ margin: 0, fontSize: '0.72rem' }}>{fileName}</span>
-            </div>
-            <div className="dropzone-progress-bar-bg" style={{ width: '80px', flexShrink: 0, margin: 0 }}>
-              <div className="dropzone-progress-bar-fill" style={{ width: `${progress}%` }}></div>
-            </div>
+          <div className="dropzone-text-group">
+            <p className="dropzone-main-text">
+              Drag & drop or <span className="browse-link">browse</span>
+            </p>
+            <p className="dropzone-sub-text">
+              DWG, DXF, PDF (max. 50MB)
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {uploadState === "completed" && activeDrawing && (
-          <div className="dropzone-completed-view" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-            <div className="completed-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="file-info-col" style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                <span className={`file-format-badge ${getExtBadgeClass(activeDrawing.file_name)}`} style={{ padding: '4px 6px', fontSize: '0.7rem' }}>
-                  {activeDrawing.format.toUpperCase()}
-                </span>
-                <div className="completed-metadata" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <span className="completed-filename" title={activeDrawing.file_name} style={{ fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
-                    {activeDrawing.file_name}
-                  </span>
-                  <span className="completed-filesize" style={{ fontSize: '0.72rem' }}>
-                    {formatBytes(activeDrawing.file_size_bytes ?? fileSize)}
-                  </span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div className="completed-status-badge" style={{ margin: 0, padding: '2px 6px', fontSize: '0.7rem' }}>
-                  <Check size={8} style={{ marginRight: "3px" }} />
-                  <span>Ingested</span>
-                </div>
-                <button className="btn-clear-upload" onClick={() => clearUpload(side)} title="Remove drawing" style={{ padding: '4px' }}>
-                  <Trash2 size={10} />
-                </button>
-              </div>
-            </div>
-            <div className="drawing-entities-stats-grid" style={{ margin: 0, padding: '4px 6px' }}>
-              {([
-                { val: activeDrawing.entity_counts?.line ?? activeDrawing.entity_counts?.LINE ?? 0, lbl: 'Lines' },
-                { val: activeDrawing.entity_counts?.circle ?? activeDrawing.entity_counts?.CIRCLE ?? 0, lbl: 'Circles' },
-                { val: activeDrawing.entity_counts?.text ?? activeDrawing.entity_counts?.TEXT ?? 0, lbl: 'Text' },
-                { val: activeDrawing.entity_counts?.dimension ?? activeDrawing.entity_counts?.DIMENSION ?? 0, lbl: 'Dims' },
-              ]).map(({ val, lbl }) => (
-                <div key={lbl} className="stat-unit">
-                  <span className="stat-unit-val" style={{ fontSize: '0.75rem' }}>{val}</span>
-                  <span className="stat-unit-lbl" style={{ fontSize: '0.62rem' }}>{lbl}</span>
-                </div>
-              ))}
-            </div>
+      {(uploadState === "validating" || uploadState === "uploading" || uploadState === "processing") && (
+        <div className="dropzone-active-view">
+          <div className="pulsing-loader-wrapper">
+            <Loader size={14} className="loader-spin-icon spin-animation" />
           </div>
-        )}
+          <div className="active-details-wrapper">
+            <span className="active-status-title">
+              {uploadState === "validating" && "Scanning signature..."}
+              {uploadState === "uploading" && `Uploading... ${progress}%`}
+              {uploadState === "processing" && "Ingesting CAD layout..."}
+            </span>
+            <span className="active-filename-sub">{fileName}</span>
+          </div>
+          <div className="dropzone-progress-bar-bg">
+            <div className="dropzone-progress-bar-fill" style={{ width: `${progress}%` }}></div>
+          </div>
+        </div>
+      )}
 
-        {uploadState === "failed" && (
-          <div className="dropzone-failed-view" onClick={(e) => { e.stopPropagation(); triggerFileInput(); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '0 8px', cursor: 'pointer' }}>
-            <div className="failed-icon-circle" style={{ margin: 0, flexShrink: 0, width: '26px', height: '26px' }}>
-              <AlertTriangle size={14} className="dropzone-error-icon" />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', flexGrow: 1 }}>
-              <span className="failed-status-title" style={{ fontSize: '0.85rem', fontWeight: 700 }}>Ingestion Failure</span>
-              <p className="failed-error-desc" style={{ margin: 0, fontSize: '0.72rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>{error || "Security/validation rejection."}</p>
-            </div>
-            <span className="retry-link-label" style={{ fontSize: '0.72rem', marginLeft: 'auto', flexShrink: 0 }}>Retry</span>
+      {uploadState === "failed" && (
+        <div className="dropzone-failed-view" onClick={(e) => { e.stopPropagation(); triggerFileInput(); }}>
+          <div className="failed-icon-circle">
+            <AlertTriangle size={14} className="dropzone-error-icon" />
           </div>
-        )}
-      </div>
+          <div className="failed-text-group">
+            <span className="failed-status-title">Ingestion Failure</span>
+            <p className="failed-error-desc">{error || "Security/validation rejection."}</p>
+          </div>
+          <span className="retry-link-label">Retry browse</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -293,16 +220,10 @@ export const AuditWorkspace: React.FC = () => {
     newDrawing,
     oldLayers,
     newLayers,
-    panX,
-    panY,
-    zoom,
-    activeLayers,
     auditStatus,
     complianceScore,
     violations,
     selectedViolation,
-    setViewport,
-    toggleLayer,
     runAudit,
     selectViolation,
     // Stage 1 upload state machine values
@@ -325,6 +246,20 @@ export const AuditWorkspace: React.FC = () => {
     setSelectedClient,
     fetchClients
   } = useWorkspaceStore();
+
+  // Connect to reviewStore for synchronized viewport control
+  const {
+    viewport: reviewViewport,
+    setViewport: setReviewViewport,
+    isLaserSyncEnabled,
+    toggleLaserSync,
+    isOverlayModeEnabled,
+    toggleOverlayMode
+  } = useReviewStore();
+
+  // Auth: read current user role to enforce access gates
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     fetchClients();
@@ -367,7 +302,7 @@ export const AuditWorkspace: React.FC = () => {
     return () => {
       observer.disconnect();
     };
-  }, [oldDrawing, newDrawing, currentNav]);
+  }, [oldDrawing, newDrawing, currentNav, isRightPanelCollapsed]);
 
   const handleAuditTrigger = async () => {
     if (!newDrawing || !selectedClient) return;
@@ -378,6 +313,39 @@ export const AuditWorkspace: React.FC = () => {
   const highCount = violations.filter((v) => v.severity === "high").length;
   const medCount = violations.filter((v) => v.severity === "medium").length;
   const lowCount = violations.filter((v) => v.severity === "low").length;
+
+  // Calculate entity counts for delta scanner
+  const getEntitySum = (drawing: any) => {
+    if (!drawing || !drawing.entity_counts) return 0;
+    return Object.values(drawing.entity_counts).reduce((sum: number, count: any) => sum + (Number(count) || 0), 0);
+  };
+  const oldEntityCount = getEntitySum(oldDrawing);
+  const newEntityCount = getEntitySum(newDrawing);
+  const entityDelta = newEntityCount - oldEntityCount;
+
+  // Coordinate Shift / Scale Mismatch Diagnostics
+  let hasAlignmentDisparity = false;
+  if (oldDrawing?.metadata?.render_bounds && newDrawing?.metadata?.render_bounds) {
+    const [oldXmin, oldYmin, oldXmax, oldYmax] = oldDrawing.metadata.render_bounds;
+    const [newXmin, newYmin, newXmax, newYmax] = newDrawing.metadata.render_bounds;
+
+    const oldW = oldXmax - oldXmin;
+    const oldH = oldYmax - oldYmin;
+    const newW = newXmax - newXmin;
+    const newH = newYmax - newYmin;
+
+    const oldCx = (oldXmin + oldXmax) / 2;
+    const oldCy = (oldYmin + oldYmax) / 2;
+    const newCx = (newXmin + newXmax) / 2;
+    const newCy = (newYmin + newYmax) / 2;
+
+    const dimMismatch = Math.abs(oldW - newW) / Math.max(oldW, 1) > 0.1 || Math.abs(oldH - newH) / Math.max(oldH, 1) > 0.1;
+    const centerMismatch = Math.abs(oldCx - newCx) / Math.max(oldW, 1) > 0.1 || Math.abs(oldCy - newCy) / Math.max(oldH, 1) > 0.1;
+
+    if (dimMismatch || centerMismatch) {
+      hasAlignmentDisparity = true;
+    }
+  }
 
   // uploadZoneProps was removed
 
@@ -392,8 +360,9 @@ export const AuditWorkspace: React.FC = () => {
         <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
           {([
             { key: 'workspace', icon: <Compass size={22} />, label: 'Audit Workspace' },
-            { key: 'standards', icon: <Bookmark size={22} />, label: 'Standards Manuals' },
-            { key: 'history',   icon: <History size={22} />,  label: 'Drawing History'  },
+            // Standards Manuals: admin-only — completely hidden from regular users
+            ...(isAdmin ? [{ key: 'standards' as const, icon: <Bookmark size={22} />, label: 'Standards Manuals' }] : []),
+            { key: 'history', icon: <History size={22} />, label: 'Drawing History' },
             { key: 'settings', icon: <SettingsIcon size={22} />, label: 'Audit Settings' },
           ] as const).map(({ key, icon, label }) => (
             <button
@@ -435,7 +404,8 @@ export const AuditWorkspace: React.FC = () => {
       </aside>
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
-      {currentNav === "standards" && (
+      {/* Standards Manuals — admin-only panel */}
+      {currentNav === "standards" && isAdmin && (
         <div className="viewport-standards-manager">
           <StandardsManager />
         </div>
@@ -504,183 +474,309 @@ export const AuditWorkspace: React.FC = () => {
           <main className="stage1-center-panel">
             {/* Top Drawing Selection and Upload Box */}
             {/* Split Screen Upload Ingestion Station */}
-            <div className="card settings-card upload-station-card" style={{ marginBottom: "20px" }}>
-              <div className="upload-station-header">
-                <div>
-                  <h3 className="card-title" style={{ margin: 0, fontSize: "0.95rem" }}>
-                    Stage 1: Version Ingestion Station
-                  </h3>
-                  <p className="card-subtitle" style={{ margin: "2px 0 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                    Drag & drop or browse matching formats (.dwg, .dxf, .pdf) for revision comparisons.
-                  </p>
+            <div className="card settings-card upload-station-card" style={{ marginBottom: "12px", padding: "10px 16px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                    <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
+                      Stage 1: Version Ingestion
+                    </h3>
+                    <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
+                      <span className="compatibility-indicator-dot"></span>
+                      <span className="compatibility-text">
+                        {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
+                        {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
+                        {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
+                        {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
+                      </span>
+                    </div>
+
+                    {/* File Format Badges */}
+                    {oldDrawing && (
+                      <span className="format-badge-pill ref-format">
+                        REF: {oldDrawing.file_name.split(".").pop()?.toUpperCase()}
+                      </span>
+                    )}
+                    {newDrawing && (
+                      <span className="format-badge-pill rev-format">
+                        REV: {newDrawing.file_name.split(".").pop()?.toUpperCase()}
+                      </span>
+                    )}
+
+                    {/* Delta Complexity Pill */}
+                    {oldDrawing && newDrawing && (
+                      <span className="complexity-delta-pill">
+                        REF: {oldEntityCount.toLocaleString()} ↔ REV: {newEntityCount.toLocaleString()} Entities ({entityDelta >= 0 ? `+${entityDelta.toLocaleString()}` : entityDelta.toLocaleString()})
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Laser Sync Controller Switch */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500" }}>Laser Sync:</span>
+                    <button
+                      onClick={toggleLaserSync}
+                      className={`laser-sync-toggle-switch ${isLaserSyncEnabled ? "active" : "inactive"}`}
+                      title={isLaserSyncEnabled ? "Disable Synchronized Crosshairs" : "Enable Synchronized Crosshairs"}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        position: "relative",
+                        width: "36px",
+                        height: "18px",
+                        borderRadius: "10px",
+                        background: isLaserSyncEnabled ? "rgba(0, 255, 204, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                        border: isLaserSyncEnabled ? "1px solid rgba(0, 255, 204, 0.4)" : "1px solid rgba(255, 255, 255, 0.1)",
+                        cursor: "pointer",
+                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                        padding: 0,
+                        outline: "none"
+                      }}
+                    >
+                      <span
+                        className="laser-sync-dot"
+                        style={{
+                          display: "block",
+                          width: "10px",
+                          height: "10px",
+                          borderRadius: "50%",
+                          background: isLaserSyncEnabled ? "#00ffcc" : "#a1a1aa",
+                          boxShadow: isLaserSyncEnabled ? "0 0 8px #00ffcc" : "none",
+                          position: "absolute",
+                          left: isLaserSyncEnabled ? "22px" : "4px",
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                        }}
+                      />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Global Compatibility Badge */}
-                <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`}>
-                  <span className="compatibility-indicator-dot"></span>
-                  <span className="compatibility-text">
-                    {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
-                    {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
-                    {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
-                    {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                {/* Left Card: Old Version Reference */}
-                <UploadZone
-                  side="old"
-                  uploadState={oldUploadState}
-                  progress={oldUploadProgress}
-                  fileName={oldFileName}
-                  fileSize={oldFileSize}
-                  error={oldError}
-                  activeDrawing={oldDrawing}
-                  uploadDrawingFile={uploadDrawingFile}
-                  clearUpload={clearUpload}
-                />
-
-                {/* Right Card: New Version Revision */}
-                <UploadZone
-                  side="new"
-                  uploadState={newUploadState}
-                  progress={newUploadProgress}
-                  fileName={newFileName}
-                  fileSize={newFileSize}
-                  error={newError}
-                  activeDrawing={newDrawing}
-                  uploadDrawingFile={uploadDrawingFile}
-                  clearUpload={clearUpload}
-                />
+                {/* Bounds Scanner Warning */}
+                {hasAlignmentDisparity && (
+                  <div className="alignment-mismatch-banner">
+                    <span className="warning-icon">⚠️</span>
+                    <span className="warning-text">Alignment warning: Scale or coordinate shift detected between viewports (bounds mismatch &gt; 10%). Direct alignment mapping may require offset adjustment.</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Split Screen CAD Viewer */}
             <div className="cad-viewer-container">
               {/* Toolbar */}
               <div className="viewer-toolbar">
                 <div className="toolbar-group">
-                  <button className="toolbar-btn" onClick={() => setViewport(panX, panY, zoom + 0.1)} title="Zoom In">
+                  <button
+                    className="toolbar-btn"
+                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.min(25, reviewViewport.scale * 1.25) })}
+                    title="Zoom In"
+                  >
                     <ZoomIn size={14} />
                   </button>
-                  <button className="toolbar-btn" onClick={() => setViewport(panX, panY, Math.max(0.2, zoom - 0.1))} title="Zoom Out">
+                  <button
+                    className="toolbar-btn"
+                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.max(0.1, reviewViewport.scale / 1.25) })}
+                    title="Zoom Out"
+                  >
                     <ZoomOut size={14} />
                   </button>
-                  <button className="toolbar-btn" onClick={() => setViewport(0, 0, 1)} title="Reset Viewport">
+                  <button
+                    className="toolbar-btn"
+                    onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
+                    title="Reset Viewport"
+                  >
                     <Maximize size={14} />
                   </button>
                 </div>
 
                 <div className="toolbar-divider"></div>
 
-                <div className="toolbar-group">
-                  <span className="toolbar-label">Layers:</span>
-                  {Object.keys(activeLayers).map((layer) => (
+                {/* Visual Diff Overlay Toggle — only when both drawings loaded */}
+                {oldDrawing && newDrawing && (
+                  <>
                     <button
-                      key={layer}
-                      className={`toolbar-toggle-btn ${activeLayers[layer] ? "active" : ""}`}
-                      onClick={() => toggleLayer(layer)}
+                      className={`toolbar-btn overlay-toggle-btn ${isOverlayModeEnabled ? "active" : ""}`}
+                      onClick={toggleOverlayMode}
+                      title={isOverlayModeEnabled ? "Disable Visual Diff Overlay" : "Enable Visual Diff Overlay (Red/Green blend)"}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "4px 10px",
+                        fontSize: "0.65rem",
+                        fontWeight: 600,
+                        letterSpacing: "0.03em",
+                        background: isOverlayModeEnabled ? "rgba(244,63,94,0.12)" : undefined,
+                        border: isOverlayModeEnabled ? "1px solid rgba(244,63,94,0.5)" : undefined,
+                        color: isOverlayModeEnabled ? "#f43f5e" : undefined,
+                        boxShadow: isOverlayModeEnabled ? "0 0 10px rgba(244,63,94,0.25)" : undefined,
+                        borderRadius: "6px",
+                        transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)",
+                        whiteSpace: "nowrap"
+                      }}
                     >
-                      {layer}
+                      <Layers size={12} />
+                      DIFF OVERLAY
                     </button>
-                  ))}
-                </div>
-
-                <div className="toolbar-divider"></div>
+                    <div className="toolbar-divider"></div>
+                  </>
+                )}
 
                 <div className="toolbar-group" style={{ marginLeft: "auto" }}>
-                  <span className="diff-legend-item unchanged"><span className="legend-dot unchanged"></span>Unchanged</span>
-                  <span className="diff-legend-item added"><span className="legend-dot added"></span>Added</span>
-                  <span className="diff-legend-item removed"><span className="legend-dot removed"></span>Removed</span>
-                  <span className="diff-legend-item modified"><span className="legend-dot modified"></span>Modified</span>
+                  {isOverlayModeEnabled ? (
+                    <>
+                      <span className="diff-legend-item" style={{ color: "#f43f5e", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.65rem", fontWeight: 500 }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#f43f5e", display: "inline-block", boxShadow: "0 0 6px #f43f5e" }} />
+                        Reference (V1)
+                      </span>
+                      <span className="diff-legend-item" style={{ color: "#10b981", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.65rem", fontWeight: 500 }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#10b981", display: "inline-block", boxShadow: "0 0 6px #10b981" }} />
+                        Revision (V2)
+                      </span>
+                      <span className="diff-legend-item" style={{ color: "#eab308", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.65rem", fontWeight: 500 }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#eab308", display: "inline-block", boxShadow: "0 0 6px #eab308" }} />
+                        Overlapping / Unchanged
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="diff-legend-item unchanged"><span className="legend-dot unchanged"></span>Unchanged</span>
+                      <span className="diff-legend-item added"><span className="legend-dot added"></span>Added</span>
+                      <span className="diff-legend-item removed"><span className="legend-dot removed"></span>Removed</span>
+                      <span className="diff-legend-item modified"><span className="legend-dot modified"></span>Modified</span>
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Viewport Panels */}
-              <div className="split-viewports">
-                {/* Left Viewport (Old) */}
-                <div className="viewport-panel">
-                  <div className="viewport-label">Reference CAD (Old)</div>
-                  <div className="cad-canvas-mock" ref={containerRefOld}>
-                    {oldDrawing ? (
-                      <DrawingCanvas
-                        layers={oldLayers}
-                        width={oldSize.width}
-                        height={oldSize.height}
-                        drawing={oldDrawing}
-                      />
-                    ) : (
-                      <div className="canvas-empty" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {oldUploadState !== "idle" && oldUploadState !== "failed" ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                            <Loader size={24} className="loader-spin-icon spin-animation" style={{ color: "var(--accent-cyan)" }} />
-                            <span style={{ fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.05em", color: "var(--accent-cyan)", textTransform: "uppercase" }}>
-                              Ingesting Reference Layout...
-                            </span>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", padding: "30px" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "52px", height: "52px", borderRadius: "50%", background: "rgba(37, 99, 235, 0.05)", border: "1px solid rgba(37, 99, 235, 0.15)", color: "var(--accent-cyan)" }}>
-                              <Compass size={24} style={{ opacity: 0.85 }} />
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", textAlign: "center" }}>
-                              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>Reference CAD Awaiting Ingestion</span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", maxWidth: "260px", lineHeight: 1.4 }}>
-                                Upload the historical drawing (OLD version) in the station deck above to initialize vector rendering.
-                              </span>
-                            </div>
-                          </div>
-                        )}
+              {isOverlayModeEnabled && oldDrawing && newDrawing ? (
+                // ── VISUAL DIFF OVERLAY MODE: Single full-width fused canvas ──
+                <div className="split-viewports" data-overlay="true">
+                  <div className="viewport-panel">
+                    <div className="viewport-header" style={{ background: "linear-gradient(90deg, rgba(244,63,94,0.08) 0%, rgba(16,185,129,0.08) 100%)", borderBottom: "1px solid rgba(244,63,94,0.2)" }}>
+                      <div className="viewport-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ color: "#f43f5e", fontWeight: 700, fontSize: "0.68rem" }}>V1</span>
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.6rem" }}>⊕</span>
+                        <span style={{ color: "#10b981", fontWeight: 700, fontSize: "0.68rem" }}>V2</span>
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.68rem", marginLeft: "4px" }}>Visual Diff Overlay</span>
                       </div>
-                    )}
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <div className="ingested-file-pill ref" style={{ borderColor: "rgba(244,63,94,0.4)" }}>
+                          <span className="pill-label" style={{ color: "#f43f5e" }}>REF:</span>
+                          <span className="pill-filename" title={oldDrawing.file_name}>{oldDrawing.file_name}</span>
+                        </div>
+                        <div className="ingested-file-pill rev" style={{ borderColor: "rgba(16,185,129,0.4)" }}>
+                          <span className="pill-label" style={{ color: "#10b981" }}>REV:</span>
+                          <span className="pill-filename" title={newDrawing.file_name}>{newDrawing.file_name}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="cad-canvas-mock" ref={containerRefOld}>
+                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                        <DrawingCanvas
+                          layers={oldLayers}
+                          width={oldSize.width}
+                          height={oldSize.height}
+                          drawing={oldDrawing}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
+              ) : (
+                // ── STANDARD SPLIT-VIEW MODE ──
+                <div className="split-viewports">
+                  {/* Left Viewport (Old) */}
+                  <div className="viewport-panel">
+                    <div className="viewport-header">
+                      <div className="viewport-label">Reference CAD (Old)</div>
+                      {oldDrawing && (
+                        <div className="ingested-file-pill ref">
+                          <span className="pill-label">REF:</span>
+                          <span className="pill-filename" title={oldDrawing.file_name}>
+                            {oldDrawing.file_name}
+                          </span>
+                          <button className="pill-clear-btn" onClick={() => clearUpload("old")} title="Remove reference drawing">
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="cad-canvas-mock" ref={containerRefOld}>
+                      {oldDrawing ? (
+                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                          <DrawingCanvas
+                            layers={oldLayers}
+                            width={oldSize.width}
+                            height={oldSize.height}
+                            drawing={oldDrawing}
+                          />
+                        </div>
+                      ) : (
+                        <UploadZone
+                          side="old"
+                          uploadState={oldUploadState}
+                          progress={oldUploadProgress}
+                          fileName={oldFileName}
+                          fileSize={oldFileSize}
+                          error={oldError}
+                          activeDrawing={oldDrawing}
+                          uploadDrawingFile={uploadDrawingFile}
+                          clearUpload={clearUpload}
+                        />
+                      )}
+                    </div>
+                  </div>
 
-                {/* Right Viewport (New) */}
-                <div className="viewport-panel">
-                  <div className="viewport-label">Revision CAD (New)</div>
-                  <div className="cad-canvas-mock" ref={containerRefNew}>
-                    {newDrawing ? (
-                      <DrawingCanvas
-                        layers={newLayers}
-                        width={newSize.width}
-                        height={newSize.height}
-                        drawing={newDrawing}
-                      />
-                    ) : (
-                      <div className="canvas-empty" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {newUploadState !== "idle" && newUploadState !== "failed" ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                            <Loader size={24} className="loader-spin-icon spin-animation" style={{ color: "var(--accent-cyan)" }} />
-                            <span style={{ fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.05em", color: "var(--accent-cyan)", textTransform: "uppercase" }}>
-                              Ingesting Revision Layout...
-                            </span>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", padding: "30px" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "52px", height: "52px", borderRadius: "50%", background: "rgba(37, 99, 235, 0.05)", border: "1px solid rgba(37, 99, 235, 0.15)", color: "var(--accent-cyan)" }}>
-                              <Cpu size={24} style={{ opacity: 0.85 }} />
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", textAlign: "center" }}>
-                              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>Revision CAD Awaiting Ingestion</span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", maxWidth: "260px", lineHeight: 1.4 }}>
-                                Upload the revised drawing (NEW version) in the station deck above to prepare compliance auditing.
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  {/* Right Viewport (New) */}
+                  <div className="viewport-panel">
+                    <div className="viewport-header">
+                      <div className="viewport-label">Revision CAD (New)</div>
+                      {newDrawing && (
+                        <div className="ingested-file-pill rev">
+                          <span className="pill-label">REV:</span>
+                          <span className="pill-filename" title={newDrawing.file_name}>
+                            {newDrawing.file_name}
+                          </span>
+                          <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="cad-canvas-mock" ref={containerRefNew}>
+                      {newDrawing ? (
+                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                          <DrawingCanvas
+                            layers={newLayers}
+                            width={newSize.width}
+                            height={newSize.height}
+                            drawing={newDrawing}
+                          />
+                        </div>
+                      ) : (
+                        <UploadZone
+                          side="new"
+                          uploadState={newUploadState}
+                          progress={newUploadProgress}
+                          fileName={newFileName}
+                          fileSize={newFileSize}
+                          error={newError}
+                          activeDrawing={newDrawing}
+                          uploadDrawingFile={uploadDrawingFile}
+                          clearUpload={clearUpload}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </main>
 
           {/* RIGHT VIEWPORT (STAGE 2: AI COMPLIANCE AUDITOR) */}
           <aside className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}>
-            <button 
+            <button
               className="panel-collapse-btn"
               onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
               title={isRightPanelCollapsed ? "Expand Stage 2 Panel" : "Collapse Stage 2 Panel"}
@@ -688,128 +784,128 @@ export const AuditWorkspace: React.FC = () => {
               {isRightPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
             </button>
             <div className="panel-content-wrapper">
-            {/* Top Auditor Launch controller */}
-            <div className="card settings-card" style={{ marginBottom: "20px" }}>
-              <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
-                Stage 2 AI Compliance Auditor
-              </h3>
+              {/* Top Auditor Launch controller */}
+              <div className="card settings-card" style={{ marginBottom: "20px" }}>
+                <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
+                  Stage 2 AI Compliance Auditor
+                </h3>
 
-              <div className="form-group" style={{ marginTop: "12px" }}>
-                <label className="form-label">Grounding Client Profile</label>
-                <select
-                  className="form-input select-input"
-                  value={selectedClient || ""}
-                  onChange={(e) => setSelectedClient(e.target.value)}
-                >
-                  <option value="" disabled>Select Target Client</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                className="btn btn-primary"
-                onClick={handleAuditTrigger}
-                disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
-                style={{ 
-                  width: "100%", 
-                  marginTop: "16px", 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "8px", 
-                  justifyContent: "center",
-                  padding: "10px 16px",
-                  whiteSpace: "nowrap"
-                }}
-              >
-                <Play size={14} fill="currentColor" />
-                <span>
-                  {auditStatus === "queued" || auditStatus === "auditing" ? "Running AI Auditing Pipeline..." : "Execute Compliance Audit"}
-                </span>
-              </button>
-            </div>
-
-            {/* Compliance gauge & status */}
-            {auditStatus === "completed" && (
-              <div className="card settings-card" style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                <div className="compliance-circle" style={{ borderColor: complianceScore && complianceScore >= 80 ? "#10b981" : "#f59e0b" }}>
-                  <span className="compliance-val">{complianceScore}%</span>
-                  <span className="compliance-lbl">Compliance</span>
-                </div>
-
-                <div className="severity-bar-grid">
-                  <div className="bar-card critical">
-                    <span className="bar-val">{criticalCount}</span>
-                    <span className="bar-lbl">Critical</span>
-                  </div>
-                  <div className="bar-card high">
-                    <span className="bar-val">{highCount}</span>
-                    <span className="bar-lbl">High</span>
-                  </div>
-                  <div className="bar-card medium">
-                    <span className="bar-val">{medCount}</span>
-                    <span className="bar-lbl">Med</span>
-                  </div>
-                  <div className="bar-card low">
-                    <span className="bar-val">{lowCount}</span>
-                    <span className="bar-lbl">Low</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Violations feed container */}
-            <div className="violations-feed-card card settings-card" style={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <h4 className="card-title">Infractions & Grounding Explanations</h4>
-
-              <div className="violations-list" style={{ overflowY: "auto", flexGrow: 1, marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                {auditStatus === "idle" && (
-                  <div className="empty-state">Trigger compliance run to scan revision drawing against engineering manuals.</div>
-                )}
-                {auditStatus === "queued" || auditStatus === "auditing" ? (
-                  <div className="empty-state">
-                    <div className="loader spin-animation"></div>
-                    <span style={{ marginTop: "12px" }}>Reasoning over draft dimensions...</span>
-                  </div>
-                ) : null}
-
-                {auditStatus === "completed" && violations.length === 0 ? (
-                  <div className="empty-state success">
-                    <CheckCircle2 size={36} style={{ color: "#10b981" }} />
-                    <span style={{ marginTop: "12px", color: "#10b981" }}>No compliance infractions found! Drawing is perfectly grounded.</span>
-                  </div>
-                ) : null}
-
-                {auditStatus === "completed" && violations.map((v) => (
-                  <div
-                    key={v.id}
-                    className={`violation-card-item ${v.severity} ${selectedViolation?.id === v.id ? "selected" : ""}`}
-                    onClick={() => selectViolation(v)}
+                <div className="form-group" style={{ marginTop: "12px" }}>
+                  <label className="form-label">Grounding Client Profile</label>
+                  <select
+                    className="form-input select-input"
+                    value={selectedClient || ""}
+                    onChange={(e) => setSelectedClient(e.target.value)}
                   >
-                    <div className="card-header-row">
-                      <span className={`sev-badge ${v.severity}`}>{v.severity.toUpperCase()}</span>
-                      <span className="clause-lbl">{v.standard_reference || "General"}</span>
+                    <option value="" disabled>Select Target Client</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAuditTrigger}
+                  disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
+                  style={{
+                    width: "100%",
+                    marginTop: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    justifyContent: "center",
+                    padding: "10px 16px",
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  <Play size={14} fill="currentColor" />
+                  <span>
+                    {auditStatus === "queued" || auditStatus === "auditing" ? "Running AI Auditing Pipeline..." : "Execute Compliance Audit"}
+                  </span>
+                </button>
+              </div>
+
+              {/* Compliance gauge & status */}
+              {auditStatus === "completed" && (
+                <div className="card settings-card" style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                  <div className="compliance-circle" style={{ borderColor: complianceScore && complianceScore >= 80 ? "#10b981" : "#f59e0b" }}>
+                    <span className="compliance-val">{complianceScore}%</span>
+                    <span className="compliance-lbl">Compliance</span>
+                  </div>
+
+                  <div className="severity-bar-grid">
+                    <div className="bar-card critical">
+                      <span className="bar-val">{criticalCount}</span>
+                      <span className="bar-lbl">Critical</span>
                     </div>
-
-                    <h5 className="violation-title">{v.category}</h5>
-                    <p className="violation-desc">{v.description}</p>
-
-                    <div className="recommendation-box">
-                      <strong>AI Suggestion:</strong> {v.recommendation}
+                    <div className="bar-card high">
+                      <span className="bar-val">{highCount}</span>
+                      <span className="bar-lbl">High</span>
                     </div>
-
-                    <div className="card-footer-row">
-                      <span className="confidence-badge">Confidence: {(v.confidence * 100).toFixed(0)}%</span>
-                      <span className="focus-action-btn">Focus on Drawing →</span>
+                    <div className="bar-card medium">
+                      <span className="bar-val">{medCount}</span>
+                      <span className="bar-lbl">Med</span>
+                    </div>
+                    <div className="bar-card low">
+                      <span className="bar-val">{lowCount}</span>
+                      <span className="bar-lbl">Low</span>
                     </div>
                   </div>
-                ))}
+                </div>
+              )}
+
+              {/* Violations feed container */}
+              <div className="violations-feed-card card settings-card" style={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <h4 className="card-title">Infractions & Grounding Explanations</h4>
+
+                <div className="violations-list" style={{ overflowY: "auto", flexGrow: 1, marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {auditStatus === "idle" && (
+                    <div className="empty-state">Trigger compliance run to scan revision drawing against engineering manuals.</div>
+                  )}
+                  {auditStatus === "queued" || auditStatus === "auditing" ? (
+                    <div className="empty-state">
+                      <div className="loader spin-animation"></div>
+                      <span style={{ marginTop: "12px" }}>Reasoning over draft dimensions...</span>
+                    </div>
+                  ) : null}
+
+                  {auditStatus === "completed" && violations.length === 0 ? (
+                    <div className="empty-state success">
+                      <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                      <span style={{ marginTop: "12px", color: "#10b981" }}>No compliance infractions found! Drawing is perfectly grounded.</span>
+                    </div>
+                  ) : null}
+
+                  {auditStatus === "completed" && violations.map((v) => (
+                    <div
+                      key={v.id}
+                      className={`violation-card-item ${v.severity} ${selectedViolation?.id === v.id ? "selected" : ""}`}
+                      onClick={() => selectViolation(v)}
+                    >
+                      <div className="card-header-row">
+                        <span className={`sev-badge ${v.severity}`}>{v.severity.toUpperCase()}</span>
+                        <span className="clause-lbl">{v.standard_reference || "General"}</span>
+                      </div>
+
+                      <h5 className="violation-title">{v.category}</h5>
+                      <p className="violation-desc">{v.description}</p>
+
+                      <div className="recommendation-box">
+                        <strong>AI Suggestion:</strong> {v.recommendation}
+                      </div>
+
+                      <div className="card-footer-row">
+                        <span className="confidence-badge">Confidence: {(v.confidence * 100).toFixed(0)}%</span>
+                        <span className="focus-action-btn">Focus on Drawing →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
             </div>
           </aside>
         </div>
@@ -1048,6 +1144,7 @@ export const AuditWorkspace: React.FC = () => {
           flex-grow: 1;
           height: 100%;
           min-height: 0;
+          min-width: 0;
           display: flex;
           flex-direction: column;
           padding: 20px;
@@ -1065,6 +1162,7 @@ export const AuditWorkspace: React.FC = () => {
           flex-direction: column;
           overflow: hidden;
           min-height: 0;
+          min-width: 0;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
         }
         [data-theme="hc-dark"] .cad-viewer-container {
@@ -1157,9 +1255,10 @@ export const AuditWorkspace: React.FC = () => {
 
         .split-viewports {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
           flex-grow: 1;
           min-height: 0;
+          min-width: 0;
           overflow: hidden;
         }
 
@@ -1167,11 +1266,25 @@ export const AuditWorkspace: React.FC = () => {
           display: flex;
           flex-direction: column;
           min-height: 0;
+          min-width: 0;
           border-right: 1px solid var(--border-color);
         }
 
         .viewport-panel:last-child {
           border-right: none;
+        }
+
+        .viewport-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: var(--bg-dark);
+          border-bottom: 1px solid var(--border-color);
+          padding-right: 8px;
+        }
+
+        .viewport-header .viewport-label {
+          border-bottom: none;
         }
 
         .viewport-label {
@@ -1187,6 +1300,7 @@ export const AuditWorkspace: React.FC = () => {
         .cad-canvas-mock {
           flex-grow: 1;
           min-height: 0;
+          min-width: 0;
           background: var(--bg-dark);
           position: relative;
           display: flex;
@@ -1517,25 +1631,76 @@ export const AuditWorkspace: React.FC = () => {
         .upload-station-card {
           border: 1px solid var(--border-color);
           background: var(--bg-card);
-          padding: 12px 18px !important;
+          padding: 10px 16px !important;
           margin-bottom: 12px !important;
         }
 
-        .upload-station-header {
-          display: flex;
-          justify-content: space-between;
+        .format-badge-pill {
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.62rem;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: var(--text-muted);
+        }
+        .format-badge-pill.ref-format {
+          color: var(--accent-cyan);
+          background: rgba(0, 255, 204, 0.05);
+          border-color: rgba(0, 255, 204, 0.15);
+        }
+        .format-badge-pill.rev-format {
+          color: #a78bfa;
+          background: rgba(139, 92, 246, 0.05);
+          border-color: rgba(139, 92, 246, 0.15);
+        }
+        .complexity-delta-pill {
+          padding: 3px 8px;
+          border-radius: 20px;
+          font-size: 0.65rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          display: inline-flex;
           align-items: center;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 6px;
+          gap: 6px;
+          letter-spacing: 0.01em;
+        }
+        .alignment-mismatch-banner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 6px;
+          background: rgba(245, 158, 11, 0.06);
+          border: 1px solid rgba(245, 158, 11, 0.2);
+          margin-top: 4px;
+          animation: banner-fade-in 0.3s ease;
+        }
+        .alignment-mismatch-banner .warning-icon {
+          font-size: 0.85rem;
+          filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4));
+        }
+        .alignment-mismatch-banner .warning-text {
+          font-size: 0.68rem;
+          color: #f59e0b;
+          font-weight: 500;
+          line-height: 1.3;
+        }
+        @keyframes banner-fade-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         .compatibility-badge-status {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 6px 12px;
+          gap: 6px;
+          padding: 3px 8px;
           border-radius: 20px;
-          font-size: 0.68rem;
+          font-size: 0.62rem;
           font-weight: 800;
           letter-spacing: 0.05em;
           text-transform: uppercase;
@@ -1570,8 +1735,8 @@ export const AuditWorkspace: React.FC = () => {
         }
 
         .compatibility-indicator-dot {
-          width: 6px;
-          height: 6px;
+          width: 5px;
+          height: 5px;
           border-radius: 50%;
           background: currentColor;
         }
@@ -1582,83 +1747,125 @@ export const AuditWorkspace: React.FC = () => {
           100% { opacity: 0.85; }
         }
 
-        .upload-zone-group {
+        .ingested-files-pills {
           display: flex;
-          flex-direction: column;
           gap: 8px;
+          align-items: center;
         }
 
-        .upload-zone-title-label {
+        .ingested-file-pill {
           display: flex;
-          justify-content: space-between;
-          align-items: baseline;
+          align-items: center;
+          gap: 6px;
+          padding: 3px 8px;
+          border-radius: 6px;
+          background: var(--bg-dark);
+          border: 1px solid var(--border-color);
+          font-size: 0.68rem;
+          color: var(--text-primary);
+          transition: all 0.2s ease;
         }
 
-        .upload-zone-subtitle-desc {
+        .ingested-file-pill.ref {
+          border-left: 3px solid var(--accent-cyan);
+        }
+
+        .ingested-file-pill.rev {
+          border-left: 3px solid #8b5cf6;
+        }
+
+        .ingested-file-pill .pill-label {
+          font-weight: 800;
           font-size: 0.65rem;
-          color: var(--text-muted, #71717a);
-          font-weight: normal;
-        }        .upload-dropzone-container {
+          letter-spacing: 0.03em;
+        }
+
+        .ingested-file-pill.ref .pill-label {
+          color: var(--accent-cyan);
+        }
+
+        .ingested-file-pill.rev .pill-label {
+          color: #a78bfa;
+        }
+
+        .ingested-file-pill .pill-filename {
+          font-weight: 500;
+          max-width: 180px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .pill-clear-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .pill-clear-btn:hover {
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.1);
+          transform: scale(1.1);
+        }
+
+        .upload-dropzone-container {
           position: relative;
-          min-height: 85px;
-          border: 1.5px dashed var(--border-color);
-          background: var(--bg-dark);
-          border-radius: 10px;
+          width: 100%;
+          height: 100%;
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 14px 16px;
+          padding: 20px;
           box-sizing: border-box;
           overflow: hidden;
+          background: transparent;
+          border: 1px dashed rgba(255, 255, 255, 0.05);
         }
 
-        .upload-zone-group.old .upload-dropzone-container.idle:hover,
-        .upload-zone-group.old .upload-dropzone-container.failed:hover {
-          border-color: var(--accent-cyan);
-          background: rgba(37, 99, 235, 0.02);
-          box-shadow: 0 4px 15px rgba(37, 99, 235, 0.04);
-        }
-        [data-theme="hc-dark"] .upload-zone-group.old .upload-dropzone-container.idle:hover,
-        [data-theme="hc-dark"] .upload-zone-group.old .upload-dropzone-container.failed:hover {
-          border-color: var(--accent-cyan);
-          background: rgba(0, 229, 255, 0.03);
-          box-shadow: 0 4px 15px rgba(0, 229, 255, 0.08);
+        .upload-dropzone-container * {
+          pointer-events: none;
         }
 
-        .upload-zone-group.new .upload-dropzone-container.idle:hover,
-        .upload-zone-group.new .upload-dropzone-container.failed:hover {
-          border-color: #8b5cf6;
-          background: rgba(139, 92, 246, 0.02);
-          box-shadow: 0 4px 15px rgba(139, 92, 246, 0.04);
-        }
-        [data-theme="hc-dark"] .upload-zone-group.new .upload-dropzone-container.idle:hover,
-        [data-theme="hc-dark"] .upload-zone-group.new .upload-dropzone-container.failed:hover {
-          border-color: #a78bfa;
-          background: rgba(167, 139, 250, 0.03);
-          box-shadow: 0 4px 15px rgba(167, 139, 250, 0.08);
+        [data-theme="hc-light"] .upload-dropzone-container {
+          border-color: rgba(0, 0, 0, 0.05);
         }
 
-        .upload-zone-group.old .upload-dropzone-container.dragging {
+        .upload-dropzone-container.old:hover {
+          background: rgba(37, 99, 235, 0.01);
+          border-color: rgba(37, 99, 235, 0.15);
+        }
+
+        .upload-dropzone-container.new:hover {
+          background: rgba(139, 92, 246, 0.01);
+          border-color: rgba(139, 92, 246, 0.15);
+        }
+
+        .upload-dropzone-container.old.dragging {
           border-color: var(--accent-cyan) !important;
-          background: rgba(37, 99, 235, 0.06) !important;
-          box-shadow: 0 0 15px rgba(37, 99, 235, 0.12) !important;
+          background: rgba(37, 99, 235, 0.05) !important;
+          box-shadow: inset 0 0 10px rgba(37, 99, 235, 0.1) !important;
         }
-        [data-theme="hc-dark"] .upload-zone-group.old .upload-dropzone-container.dragging {
-          background: rgba(0, 229, 255, 0.08) !important;
-          box-shadow: 0 0 15px rgba(0, 229, 255, 0.2) !important;
+        [data-theme="hc-dark"] .upload-dropzone-container.old.dragging {
+          background: rgba(0, 229, 255, 0.06) !important;
         }
 
-        .upload-zone-group.new .upload-dropzone-container.dragging {
+        .upload-dropzone-container.new.dragging {
           border-color: #8b5cf6 !important;
-          background: rgba(139, 92, 246, 0.06) !important;
-          box-shadow: 0 0 15px rgba(139, 92, 246, 0.12) !important;
+          background: rgba(139, 92, 246, 0.05) !important;
+          box-shadow: inset 0 0 10px rgba(139, 92, 246, 0.1) !important;
         }
-        [data-theme="hc-dark"] .upload-zone-group.new .upload-dropzone-container.dragging {
+        [data-theme="hc-dark"] .upload-dropzone-container.new.dragging {
           border-color: #a78bfa !important;
-          background: rgba(167, 139, 250, 0.08) !important;
-          box-shadow: 0 0 15px rgba(167, 139, 250, 0.2) !important;
+          background: rgba(167, 139, 250, 0.06) !important;
         }
 
         .dropzone-idle-view {
@@ -1666,13 +1873,14 @@ export const AuditWorkspace: React.FC = () => {
           flex-direction: column;
           align-items: center;
           text-align: center;
+          gap: 12px;
         }
 
         .dropzone-icon-circle {
-          width: 26px;
-          height: 26px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
-          background: var(--bg-dark);
+          background: rgba(255, 255, 255, 0.02);
           border: 1px solid var(--border-color);
           display: flex;
           align-items: center;
@@ -1681,21 +1889,25 @@ export const AuditWorkspace: React.FC = () => {
           transition: all 0.25s ease;
         }
 
-        .upload-dropzone-container:hover .dropzone-icon-circle {
+        .upload-dropzone-container.old:hover .dropzone-icon-circle {
           transform: translateY(-2px);
           border-color: var(--accent-cyan);
           color: var(--accent-cyan);
           background: rgba(37, 99, 235, 0.06);
         }
-        [data-theme="hc-dark"] .upload-dropzone-container:hover .dropzone-icon-circle {
-          background: rgba(0, 229, 255, 0.08);
+
+        .upload-dropzone-container.new:hover .dropzone-icon-circle {
+          transform: translateY(-2px);
+          border-color: #8b5cf6;
+          color: #a78bfa;
+          background: rgba(139, 92, 246, 0.06);
         }
 
         .dropzone-main-text {
-          font-size: 0.8rem;
-          font-weight: 550;
-          color: var(--text-primary, #f4f4f5);
-          margin: 0 0 2px 0;
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
         }
 
         .browse-link {
@@ -1704,29 +1916,15 @@ export const AuditWorkspace: React.FC = () => {
           font-weight: 700;
         }
 
+        .upload-dropzone-container.new .browse-link {
+          color: #a78bfa;
+        }
+
         .dropzone-sub-text {
-          font-size: 0.68rem;
-          color: var(--text-muted, #71717a);
-          margin: 0;
+          font-size: 0.72rem;
+          color: var(--text-muted);
+          margin: 4px 0 0 0;
         }
-
-        .supported-formats-badges {
-          display: flex;
-          gap: 6px;
-          margin-top: 4px;
-        }
-
-        .format-badge {
-          font-size: 0.58rem;
-          font-weight: 800;
-          padding: 2px 6px;
-          border-radius: 4px;
-          letter-spacing: 0.03em;
-        }
-
-        .format-badge.dwg { background: rgba(249, 115, 22, 0.1); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.2); }
-        .format-badge.dxf { background: rgba(20, 184, 166, 0.1); color: #99f6e4; border: 1px solid rgba(20, 184, 166, 0.2); }
-        .format-badge.pdf { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.2); }
 
         /* Active Processing View */
         .dropzone-active-view {

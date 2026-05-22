@@ -112,13 +112,15 @@ class ExtractionPipeline:
                 """Strip only surrogate escape characters that would corrupt MongoDB,
                 while fully preserving valid Unicode including Japanese (CJK) characters."""
                 if isinstance(data, str):
-                    # Only remove surrogate characters (\ud800-\udfff) which are invalid in UTF-8
-                    # Do NOT use 'replace' here — that would destroy legitimate Japanese/CJK text
-                    return data.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace').replace('\ufffd', '')
+                    # Direct filtration of characters in the UTF-16 surrogate range: [0xD800, 0xDFFF]
+                    # This is extremely robust and does not rely on encoding/decoding cycles
+                    return "".join(c for c in data if not (0xD800 <= ord(c) <= 0xDFFF))
                 elif isinstance(data, dict):
-                    return {k: sanitize_utf8(v) for k, v in data.items()}
+                    return {sanitize_utf8(k): sanitize_utf8(v) for k, v in data.items()}
                 elif isinstance(data, list):
                     return [sanitize_utf8(v) for v in data]
+                elif isinstance(data, tuple):
+                    return tuple(sanitize_utf8(v) for v in data)
                 return data
 
             for item in layers + entities:

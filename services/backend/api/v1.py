@@ -34,6 +34,7 @@ from ..infrastructure.cad.diagnostics import CADDiagnostics
 from ..domain.models.drawing_document import DrawingDocument
 from ..domain.models.extraction_job import ExtractionJob
 from ..domain.models.standard_document import StandardDocument
+from ..domain.models.standard_chunk import StandardChunk
 from ..domain.models.audit_session import AuditSession
 from ..domain.models.audit_violation import AuditViolation
 from ..domain.models.extracted_entity import ExtractedEntity
@@ -665,6 +666,87 @@ async def list_standards():
     ]
     return StandardResponse(success=True, data=res)
 
+@router.delete(
+    "/standards/{id}",
+    response_model=StandardResponse[dict],
+    summary="Delete a registered engineering standard and its chunks",
+    dependencies=[Depends(get_auth_token)]
+)
+async def delete_standard(id: str):
+    """
+    Permanently removes a StandardDocument and all associated StandardChunk records
+    from MongoDB. The source file on disk is also removed if it exists.
+    """
+    doc = await StandardDocument.get(id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Standard document not found for ID: {id}"
+        )
+
+    # Remove all associated text chunks from the vector store
+    chunks = await StandardChunk.find(StandardChunk.standard_id == id).to_list()
+    for chunk in chunks:
+        await chunk.delete()
+
+    # Remove source file from disk if it exists
+    try:
+        file_path = get_storage_root() / doc.file_path
+        if file_path.exists():
+            file_path.unlink()
+    except Exception as e:
+        logger.warning(f"Could not remove standard source file: {str(e)}")
+
+    await doc.delete()
+    return StandardResponse(
+        success=True,
+        data={"message": f"Standard '{doc.name}' and all its chunks have been permanently removed."}
+    )
+
+@router.patch(
+    "/standards/{id}",
+    response_model=StandardResponse[StandardDocumentResponse],
+    summary="Update metadata fields of a registered engineering standard",
+    dependencies=[Depends(get_auth_token)]
+)
+async def update_standard(id: str, name: Optional[str] = None, category: Optional[str] = None, description: Optional[str] = None):
+    """
+    Updates the editable metadata fields (name, category, description) of an existing standard.
+    """
+    doc = await StandardDocument.get(id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Standard document not found for ID: {id}"
+        )
+
+    if name is not None:
+        doc.name = name.strip()
+    if category is not None:
+        doc.category = category.strip() or None
+    if description is not None:
+        doc.description = description.strip() or None
+
+    await doc.save()
+    return StandardResponse(
+        success=True,
+        data=StandardDocumentResponse(
+            id=str(doc.id),
+            name=doc.name,
+            file_path=doc.file_path,
+            standard_hash=doc.standard_hash,
+            file_size_bytes=doc.file_size_bytes,
+            format=doc.format,
+            scope=doc.scope,
+            client_name=doc.client_name,
+            category=doc.category,
+            description=doc.description,
+            metadata=doc.metadata,
+            created_at=doc.created_at
+        )
+    )
+
+
 @router.get(
     "/clients",
     response_model=StandardResponse[List[ClientResponse]],
@@ -977,7 +1059,7 @@ from ..core.auth import hash_password, verify_password, create_jwt_token
 from ..domain.models.user_account import UserAccountDocument
 from ..domain.models.user_session import UserSessionDocument
 from .dependencies import get_current_user, require_role
-from .schemas import LoginRequest, LoginResponse, UserAccountResponse, CreateUserRequest
+from .schemas import LoginRequest, LoginResponse, UserAccountResponse, CreateUserRequest, UpdateUserRequest
 from ..infrastructure.database.connection import db_manager
 
 @router.post(
@@ -1132,4 +1214,55 @@ async def delete_enterprise_user(username: str):
         
     await user.delete()
     return StandardResponse(success=True, data={"message": f"Successfully deleted user: {username}"})
+
+
+@router.patch(
+    "/admin/users/{username}",
+    response_model=StandardResponse[UserAccountResponse],
+    summary="Update an enterprise account's parameters or reset password",
+    dependencies=[Depends(require_role("admin"))]
+)
+async def update_enterprise_user(username: str, request: UpdateUserRequest):
+    user = await UserAccountDocument.find_one(UserAccountDocument.username == username)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found."
+        )
+        
+    if username == "admin":
+        if request.active is not None and request.active is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot deactivate the default administrator account."
+            )
+        if request.role is not None and request.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot demote the default administrator account."
+            )
+
+    if request.active is not None:
+        user.active = request.active
+        
+    if request.role is not None:
+        user.role = request.role
+        user.permissions = ["all"] if request.role == "admin" else ["audit"]
+        
+    if request.password is not None:
+        user.hashed_password = hash_password(request.password)
+        
+    await user.save()
+    
+    return StandardResponse(
+        success=True,
+        data=UserAccountResponse(
+            id=str(user.id),
+            username=user.username,
+            role=user.role,
+            active=user.active,
+            created_at=user.created_at,
+            permissions=user.permissions
+        )
+    )
 

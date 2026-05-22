@@ -412,9 +412,70 @@ async def test_background_fifo_queue(mock_beanie_docs):
     assert pipeline.queue.qsize() == 1
     
     # Process one queue frame
-    drawing_id, standard_id, session_id = await pipeline.queue.get()
-    await pipeline.orchestrator.run_audit(drawing_id, standard_id, session_id)
+    drawing_id, standard_id, session_id, client_name = await pipeline.queue.get()
+    await pipeline.orchestrator.run_audit(drawing_id, standard_id, session_id, client_name)
     pipeline.queue.task_done()
     
     assert pipeline.queue.qsize() == 0
-    orchestrator_mock.run_audit.assert_called_once_with("dwg_999", "std_999", session.id)
+    orchestrator_mock.run_audit.assert_called_once_with("dwg_999", "std_999", session.id, None)
+
+
+def test_standards_excel_style_aware():
+    """
+    Verify style-aware Excel parsing with bold mapping and warning color flags.
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    
+    bootstrap_storage()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "StandardSheet"
+    
+    # 1. Row with bold text
+    ws.cell(row=1, column=1, value="Title Block").font = Font(bold=True)
+    ws.cell(row=1, column=2, value="Requirement")
+    
+    # 2. Row with Yellow background fill
+    cell_y = ws.cell(row=2, column=1, value="Note")
+    cell_y.fill = PatternFill(start_color="FFFFF2CC", fill_type="solid")
+    ws.cell(row=2, column=2, value="Guideline Info")
+    
+    # 3. Row with Red background fill
+    cell_r = ws.cell(row=3, column=1, value="Warning")
+    cell_r.fill = PatternFill(start_color="FFFF0000", fill_type="solid")
+    ws.cell(row=3, column=2, value="Illegal Layer")
+    
+    # 4. Row with Green background fill
+    cell_g = ws.cell(row=4, column=1, value="Success")
+    cell_g.fill = PatternFill(start_color="FF00FF00", fill_type="solid")
+    ws.cell(row=4, column=2, value="Correct Scales")
+    
+    test_file_path = get_storage_root() / "standards" / "test_std.xlsx"
+    test_file_path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(test_file_path)
+    
+    try:
+        chunks, metadata = StandardsParser.parse_file(test_file_path)
+        assert len(chunks) > 0
+        assert metadata["title"] == "test_std"
+        assert metadata["page_count"] == 1
+        
+        combined_content = "\n".join(chunk["content"] for chunk in chunks)
+        
+        # Check bold text converted to markdown
+        assert "**Title Block**" in combined_content
+        
+        # Check Yellow flag
+        assert "[IMPORTANT / ATTENTION REQUIRED]" in combined_content
+        
+        # Check Red flag
+        assert "[INCORRECT / DANGER FLAG]" in combined_content
+        
+        # Check Green flag
+        assert "[CORRECT / STANDARDS COMPLIANT]" in combined_content
+        
+    finally:
+        if test_file_path.exists():
+            test_file_path.unlink()
+

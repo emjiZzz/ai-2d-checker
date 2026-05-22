@@ -10,40 +10,46 @@ interface ReviewState {
   // Session details
   sessionId: string | null;
   drawingId: string | null;
-  
+
   // Viewport & Navigation
   viewport: ViewportState;
   setViewport: (viewport: ViewportState) => void;
   resetViewport: () => void;
-  
+
   // Layer controls
   activeLayers: Record<string, boolean>;
   toggleLayer: (layerName: string) => void;
   setAllLayers: (visible: boolean) => void;
-  
+
   // Overlays & Annotations
   showViolations: boolean;
   toggleViolations: () => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
-  
+
   // Comparison
   isComparisonMode: boolean;
   toggleComparisonMode: () => void;
-  
+
   // Real-time hover sync coordinate (standardized space)
   hoveredCoords: { x: number; y: number } | null;
   setHoveredCoords: (coords: { x: number; y: number } | null) => void;
+  isLaserSyncEnabled: boolean;
+  toggleLaserSync: () => void;
+
+  // Visual Diff Overlay Mode (Option A)
+  isOverlayModeEnabled: boolean;
+  toggleOverlayMode: () => void;
 }
- 
+
 export const useReviewStore = create<ReviewState>((set) => ({
   sessionId: null,
   drawingId: null,
-  
+
   viewport: { x: 0, y: 0, scale: 1 },
   setViewport: (vp) => set({ viewport: vp }),
   resetViewport: () => set({ viewport: { x: 0, y: 0, scale: 1 } }),
-  
+
   activeLayers: {},
   toggleLayer: (layerName) => set((state) => ({
     activeLayers: {
@@ -58,15 +64,20 @@ export const useReviewStore = create<ReviewState>((set) => ({
     }
     return { activeLayers: updated };
   }),
-  
+
   showViolations: true,
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
-  
+
   isComparisonMode: false,
   toggleComparisonMode: () => set((state) => ({ isComparisonMode: !state.isComparisonMode })),
-  
+
   hoveredCoords: null,
-  setHoveredCoords: (coords) => set({ hoveredCoords: coords })
+  setHoveredCoords: (coords) => set({ hoveredCoords: coords }),
+  isLaserSyncEnabled: true,
+  toggleLaserSync: () => set((state) => ({ isLaserSyncEnabled: !state.isLaserSyncEnabled })),
+
+  isOverlayModeEnabled: false,
+  toggleOverlayMode: () => set((state) => ({ isOverlayModeEnabled: !state.isOverlayModeEnabled }))
 }));

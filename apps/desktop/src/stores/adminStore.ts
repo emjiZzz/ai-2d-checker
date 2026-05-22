@@ -27,6 +27,7 @@ interface AdminState {
   fetchUsers: () => Promise<void>;
   createUser: (username: string, password: string, role: string) => Promise<boolean>;
   deleteUser: (username: string) => Promise<boolean>;
+  updateUser: (username: string, updates: { active?: boolean; role?: string; password?: string }) => Promise<boolean>;
   fetchDiagnostics: () => Promise<void>;
   triggerBackup: () => Promise<string | null>;
   triggerRestore: (backupFile: string) => Promise<boolean>;
@@ -135,6 +136,42 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       }
     } catch (err) {
       set({ error: "Network error deleting user.", isLoading: false });
+      return false;
+    }
+  },
+
+  updateUser: async (username, updates) => {
+    set({ isLoading: true, error: null });
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    const { sessionToken } = useAuthStore.getState();
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Session-Token": sessionToken || "",
+      };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
+
+      const response = await fetch(`${backendUrl}/api/v1/admin/users/${username}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(updates),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        set({ isLoading: false });
+        get().fetchUsers();
+        return true;
+      } else {
+        set({ error: data.error?.message || "Failed to update user.", isLoading: false });
+        return false;
+      }
+    } catch (err) {
+      set({ error: "Network error updating user.", isLoading: false });
       return false;
     }
   },

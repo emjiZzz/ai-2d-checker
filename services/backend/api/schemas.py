@@ -150,3 +150,8 @@ class CreateUserRequest(BaseModel):
     password: str
     role: str
 
+class UpdateUserRequest(BaseModel):
+    active: Optional[bool] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
+

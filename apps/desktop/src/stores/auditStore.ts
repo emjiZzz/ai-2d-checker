@@ -67,6 +67,8 @@ interface AuditState {
   // Actions
   fetchStandards: () => Promise<void>;
   uploadStandard: (file: File, name: string, category?: string, description?: string, scope?: string, clientName?: string) => Promise<boolean>;
+  deleteStandard: (id: string) => Promise<boolean>;
+  updateStandard: (id: string, name: string, category: string, description: string) => Promise<boolean>;
   launchAudit: (drawingId: string, standardId: string) => Promise<boolean>;
   pollAuditStatus: (sessionId: string) => void;
   fetchSessionDetails: (sessionId: string) => Promise<void>;
@@ -195,6 +197,40 @@ export const useAuditStore = create<AuditState>((set, get) => ({
       });
     } catch (err: any) {
       set({ uploadStatus: "error", errorMessage: err.message, uploadProgress: 0 });
+      return false;
+    }
+  },
+
+  deleteStandard: async (id: string) => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    try {
+      const headers: Record<string, string> = {};
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+      const res = await fetch(`${backendUrl}/api/v1/standards/${id}`, { method: "DELETE", headers });
+      if (!res.ok) throw new Error(`Delete failed: HTTP ${res.status}`);
+      await get().fetchStandards();
+      return true;
+    } catch (err: any) {
+      logger.warn(`Failed to delete standard ${id}: ${err.message}`);
+      return false;
+    }
+  },
+
+  updateStandard: async (id: string, name: string, category: string, description: string) => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+      const params = new URLSearchParams();
+      if (name) params.set("name", name);
+      if (category) params.set("category", category);
+      if (description) params.set("description", description);
+      const res = await fetch(`${backendUrl}/api/v1/standards/${id}?${params.toString()}`, { method: "PATCH", headers });
+      if (!res.ok) throw new Error(`Update failed: HTTP ${res.status}`);
+      await get().fetchStandards();
+      return true;
+    } catch (err: any) {
+      logger.warn(`Failed to update standard ${id}: ${err.message}`);
       return false;
     }
   },
