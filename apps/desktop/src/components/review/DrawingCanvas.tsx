@@ -167,59 +167,52 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     ctx.fillStyle = theme === 'hc-light' ? '#f4f4f5' : '#09090b'; 
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Draw Professional World-Space Paper Sheet
-    if (drawing?.metadata?.render_bounds) {
-      ctx.save();
-      // Apply world space transformations to anchor the paper to the CAD coordinates
-      ctx.translate(viewport.x, viewport.y);
-      ctx.scale(effectiveScale, effectiveScale);
-      ctx.translate(-normXMin, -normYMin);
-
-      const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-      const paperWidth = xmax - xmin;
-      const paperHeight = ymax - ymin;
-      const margin = (paperWidth + paperHeight) * 0.025; // 2.5% responsive margin
-      
-      // Drop shadow for the drafting paper
-      ctx.shadowColor = theme === 'hc-light' ? 'rgba(0, 0, 0, 0.15)' : 'rgba(0, 0, 0, 0.6)';
-      ctx.shadowBlur = 40 / effectiveScale;
-      ctx.shadowOffsetX = 10 / effectiveScale;
-      ctx.shadowOffsetY = 15 / effectiveScale;
-
-      // Solid paper background
-      ctx.fillStyle = theme === 'hc-light' ? '#ffffff' : '#121214'; // Brilliant white or elevated dark paper
-      ctx.fillRect(xmin - margin, ymin - margin, paperWidth + margin * 2, paperHeight + margin * 2);
-      
-      // Subtle crisp border outline for the paper edge
-      ctx.shadowColor = 'transparent';
-      ctx.strokeStyle = theme === 'hc-light' ? '#d4d4d8' : '#27272a';
-      ctx.lineWidth = 1.5 / effectiveScale;
-      ctx.strokeRect(xmin - margin, ymin - margin, paperWidth + margin * 2, paperHeight + margin * 2);
-      
-      ctx.restore();
-    }
- 
-    // 3. Draw fine engineering grids over the paper in screen-space
+    // 2. Draw fine engineering grids aligned to raw CAD space (rendered in screen-space for pixel-crisp lines)
     ctx.save();
-    ctx.strokeStyle = theme === 'hc-light' ? 'rgba(9, 9, 11, 0.05)' : 'rgba(63, 63, 70, 0.15)'; 
-    ctx.lineWidth = 0.5;
     
-    const gridSpacing = 50 * viewport.scale;
-    const offsetX = viewport.x % gridSpacing;
-    const offsetY = viewport.y % gridSpacing;
- 
-    for (let x = offsetX; x < width; x += gridSpacing) {
+    // Choose theme-based styling (perfect grey/zinc engineering aesthetics)
+    ctx.strokeStyle = theme === 'hc-light' ? 'rgba(9, 9, 11, 0.08)' : 'rgba(63, 63, 70, 0.25)'; 
+    ctx.lineWidth = 1; // 1px pixel-crisp lines
+    
+    const targetScreenSpacing = 50; // Tighter grid spacing for professional engineering look
+    const rawWorldSpacing = targetScreenSpacing / effectiveScale;
+    const exponent = Math.floor(Math.log10(rawWorldSpacing));
+    const powerOf10 = Math.pow(10, exponent);
+    const ratio = rawWorldSpacing / powerOf10;
+
+    let worldSpacing = powerOf10;
+    if (ratio > 5) {
+      worldSpacing = powerOf10 * 5;
+    } else if (ratio > 2) {
+      worldSpacing = powerOf10 * 2;
+    }
+
+    const screenSpacing = worldSpacing * effectiveScale;
+    const screenOriginX = viewport.x - normXMin * effectiveScale;
+    const screenOriginY = viewport.y - normYMin * effectiveScale;
+
+    // Draw vertical grid lines
+    const kStartX = Math.floor((0 - screenOriginX) / screenSpacing);
+    const kEndX = Math.ceil((width - screenOriginX) / screenSpacing);
+    for (let k = kStartX; k <= kEndX; k++) {
+      const sx = Math.round(screenOriginX + k * screenSpacing);
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, height);
       ctx.stroke();
     }
-    for (let y = offsetY; y < height; y += gridSpacing) {
+
+    // Draw horizontal grid lines
+    const kStartY = Math.floor((0 - screenOriginY) / screenSpacing);
+    const kEndY = Math.ceil((height - screenOriginY) / screenSpacing);
+    for (let k = kStartY; k <= kEndY; k++) {
+      const sy = Math.round(screenOriginY + k * screenSpacing);
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
+      ctx.moveTo(0, sy);
+      ctx.lineTo(width, sy);
       ctx.stroke();
     }
+
     ctx.restore();
  
     // 3. Setup transformations (apply normalization!)

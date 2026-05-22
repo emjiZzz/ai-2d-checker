@@ -346,13 +346,26 @@ export const AuditWorkspace: React.FC = () => {
       }
     };
 
-    window.addEventListener("resize", handleResize);
-    // Initial call after DOM elements rendering
-    const timer = setTimeout(handleResize, 300);
+    // Use ResizeObserver for instant container-driven size updates
+    const observer = new ResizeObserver(() => {
+      // Use requestAnimationFrame to avoid "ResizeObserver loop limit exceeded" warnings
+      window.requestAnimationFrame(() => {
+        handleResize();
+      });
+    });
+
+    if (containerRefOld.current) {
+      observer.observe(containerRefOld.current);
+    }
+    if (containerRefNew.current) {
+      observer.observe(containerRefNew.current);
+    }
+
+    // Call initially to ensure correct dimensions are set immediately
+    handleResize();
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      clearTimeout(timer);
+      observer.disconnect();
     };
   }, [oldDrawing, newDrawing, currentNav]);
 
