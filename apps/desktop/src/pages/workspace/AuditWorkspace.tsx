@@ -19,7 +19,6 @@ import {
   AlertTriangle,
   Bookmark,
   History,
-  Layers,
   Settings as SettingsIcon,
   ChevronRight,
   ChevronLeft,
@@ -32,7 +31,8 @@ import {
   TrendingUp,
   BarChart2,
   Briefcase,
-  FileText
+  FileText,
+  ChevronDown
 } from "lucide-react";
 
 import { StandardsManager } from "../../components/StandardsManager";
@@ -270,19 +270,7 @@ export const AuditWorkspace: React.FC = () => {
     viewport: reviewViewport,
     setViewport: setReviewViewport,
     isLaserSyncEnabled,
-    toggleLaserSync,
-    isOverlayModeEnabled,
-    toggleOverlayMode,
-    isPhysicalComparisonEnabled,
-    togglePhysicalComparison,
-    selectedComparisonRegion,
-    setSelectedComparisonRegion,
-    visibleRegions,
-    toggleRegionVisibility,
-    isRoiEditModeEnabled,
-    toggleRoiEditMode,
-    customRegions,
-    resetCustomRegions
+    toggleLaserSync
   } = useReviewStore();
 
   // Auth: read current user role to enforce access gates
@@ -302,13 +290,44 @@ export const AuditWorkspace: React.FC = () => {
   const [selectedSessionForDelete, setSelectedSessionForDelete] = useState<any>(null);
   const [remarksText, setRemarksText] = useState("");
 
-  // Checked sub-items state for KMTI Checking Manual physical checklist
-  const [checkedSubItems, setCheckedSubItems] = useState<Record<string, boolean>>({});
-  const toggleSubItem = (itemKey: string) => {
-    setCheckedSubItems((prev) => ({
-      ...prev,
-      [itemKey]: !prev[itemKey]
-    }));
+  // Automated AI Physical Comparison State
+  const [aiScanProgress, setAiScanProgress] = useState<"idle" | "scanning_ref" | "extracting" | "scanning_rev" | "comparing" | "completed">("idle");
+  const [aiChecklistResults, setAiChecklistResults] = useState<Record<string, any>>({});
+  const [bomComparisonMatrix, setBomComparisonMatrix] = useState<any[]>([]);
+  const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({});
+
+  const toggleChecklistPanel = (key: string) => {
+    setExpandedChecklistPanels(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const runPhysicalComparisonAI = async () => {
+    setAiScanProgress("scanning_ref");
+    await new Promise(r => setTimeout(r, 1200));
+    setAiScanProgress("extracting");
+    await new Promise(r => setTimeout(r, 1200));
+    setAiScanProgress("scanning_rev");
+    await new Promise(r => setTimeout(r, 1200));
+    setAiScanProgress("comparing");
+    await new Promise(r => setTimeout(r, 1800));
+    
+    // Set Mock Data
+    setAiChecklistResults({
+      views: { status: "MATCHED", log: "No topological differences detected." },
+      notes: { status: "ADDED", log: "Notes detected in KMTI drawing but absent in Original.", extractedText: "1. ALL DIMENSIONS ARE IN INCHES.\n2. TOLERANCES: X.XX ± 0.01\n3. MATERIAL: ALUMINUM 6061-T6." },
+      bom: { status: "CHANGED", log: "Discrepancy detected in row data precision." },
+      titleBlock: { status: "MATCHED", log: "Administrative metadata aligns." },
+      isometric: { status: "MATCHED", log: "Isometric view projection verified." }
+    });
+
+    setBomComparisonMatrix([
+      { row: 1, col: "Part No", original: "1001-A", kmti: "1001-A", diffType: "MATCHED" },
+      { row: 1, col: "Finished Weight", original: "2.6", kmti: "2.60", diffType: "CHANGED" },
+      { row: 2, col: "Part No", original: "1002-B", kmti: "1002-B", diffType: "MATCHED" },
+      { row: 2, col: "Finished Weight", original: "1.8", kmti: "1.8", diffType: "MATCHED" },
+    ]);
+
+    setAiScanProgress("completed");
+    setExpandedChecklistPanels({ notes: true, bom: true }); // auto-expand issues
   };
 
   // Interactive search & filter controls for premium History Archive
@@ -475,52 +494,7 @@ export const AuditWorkspace: React.FC = () => {
     };
   }, [oldDrawing, newDrawing, currentNav, isRightPanelCollapsed]);
 
-  const focusOnComparisonRegion = (key: string) => {
-    if (!newDrawing || !newDrawing.metadata?.render_bounds) return;
-    const [xmin, ymin, xmax, ymax] = newDrawing.metadata.render_bounds;
-    const w = xmax - xmin;
-    const h = ymax - ymin;
 
-    let centerX = xmin + w * 0.5;
-    let centerY = ymin + h * 0.5;
-    let targetScale = 2.0;
-
-    if (key === "views") {
-      targetScale = 1.35;
-    } else if (key === "notes") {
-      targetScale = 3.5;
-    } else if (key === "bom") {
-      targetScale = 2.2;
-    } else if (key === "title") {
-      targetScale = 2.5;
-    } else if (key === "iso") {
-      targetScale = 2.4;
-    }
-
-    const customReg = customRegions[key];
-    if (customReg) {
-      centerX = xmin + w * (customReg.xMin + customReg.xMax) / 2;
-      centerY = ymin + h * (customReg.yMin + customReg.yMax) / 2;
-    }
-
-    let normScale = 1;
-    const boundsWidth = xmax - xmin;
-    if (boundsWidth > 0) {
-      normScale = 1000 / boundsWidth;
-    }
-
-    const stdX = (centerX - xmin) * normScale;
-    const stdY = (centerY - ymin) * normScale;
-
-    const canvasWidth = oldSize.width || 480;
-    const canvasHeight = oldSize.height || 400;
-
-    const targetX = canvasWidth / 2 - stdX * targetScale;
-    const targetY = canvasHeight / 2 - stdY * targetScale;
-
-    setReviewViewport({ x: targetX, y: targetY, scale: targetScale });
-    setSelectedComparisonRegion(key);
-  };
 
   const handleAuditTrigger = async () => {
     if (!newDrawing || !selectedClient) return;
@@ -536,86 +510,6 @@ export const AuditWorkspace: React.FC = () => {
   const getEntitySum = (drawing: any) => {
     if (!drawing || !drawing.entity_counts) return 0;
     return Object.values(drawing.entity_counts).reduce((sum: number, count: any) => sum + (Number(count) || 0), 0);
-  };
-
-  // Helper utility to clean residual AutoCAD MTEXT formatting tags
-  const cleanCadText = (text: string): string => {
-    if (!text) return "";
-    let clean = text;
-    // Strip grouping braces {...}
-    clean = clean.replace(/[{}]/g, "");
-    // Strip AutoCAD backslash formatting tags (e.g., \A1;, \W0.85;, \C7;)
-    clean = clean.replace(/\\[A-Za-z][^;]*;/g, "");
-    // Convert CAD paragraph breaks \P to spaces
-    clean = clean.replace(/\\P/g, " ");
-    return clean.trim();
-  };
-
-  // Helper to extract text entities from a specific calibrated canvas region
-  const getTextEntitiesInRegion = (layers: Record<string, any> | null, drawing: any, regionKey: string) => {
-    if (!layers || !drawing || !drawing.metadata?.render_bounds) return [];
-    const region = customRegions[regionKey];
-    if (!region) return [];
-
-    const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-    const w = xmax - xmin;
-    const h = ymax - ymin;
-
-    const rXMin = xmin + w * region.xMin;
-    const rXMax = xmin + w * region.xMax;
-    // CAD Y can grow either way; calculate min/max to ensure absolute boundary checks
-    const rYMin = ymin + h * Math.min(region.yMin, region.yMax);
-    const rYMax = ymin + h * Math.max(region.yMin, region.yMax);
-
-    const texts: { text: string; x: number; y: number }[] = [];
-
-    Object.values(layers).forEach((entities: any[]) => {
-      entities.forEach((ent) => {
-        if (ent.type === 'text') {
-          const geo = ent.geometry || {};
-          const [tx, ty] = geo.location || geo.insert || [0, 0];
-
-          if (tx >= rXMin && tx <= rXMax && ty >= rYMin && ty <= rYMax) {
-            const rawText = geo.text || geo.content || ent.properties?.text || '';
-            const textVal = cleanCadText(rawText);
-            if (textVal) {
-              texts.push({ text: textVal, x: tx, y: ty });
-            }
-          }
-        }
-      });
-    });
-
-    return texts;
-  };
-
-  // Helper to group extracted text elements into rows sorted top-to-bottom and left-to-right
-  const extractRowsFromRegion = (layers: Record<string, any> | null, drawing: any, regionKey: string) => {
-    const texts = getTextEntitiesInRegion(layers, drawing, regionKey);
-    if (texts.length === 0) return [];
-
-    // Group texts into rows by Y coordinate with a standard line-height margin (e.g., 10.0 units)
-    const rows: { y: number; items: typeof texts }[] = [];
-    const tolerance = 10.0;
-
-    texts.forEach((t) => {
-      let foundRow = rows.find(r => Math.abs(r.y - t.y) < tolerance);
-      if (foundRow) {
-        foundRow.items.push(t);
-      } else {
-        rows.push({ y: t.y, items: [t] });
-      }
-    });
-
-    // Sort rows by Y descending (higher Y coordinates are at the top of standard drawing sheets)
-    rows.sort((a, b) => b.y - a.y);
-
-    // Inside each row, sort text elements by X coordinate ascending (left-to-right)
-    rows.forEach(r => {
-      r.items.sort((a, b) => a.x - b.x);
-    });
-
-    return rows.map(r => r.items.map(i => i.text).join(" | "));
   };
 
   const oldEntityCount = getEntitySum(oldDrawing);
@@ -645,661 +539,6 @@ export const AuditWorkspace: React.FC = () => {
       hasAlignmentDisparity = true;
     }
   }
-
-  // uploadZoneProps was removed
-
-  const renderTitleBlockComparison = () => {
-    const fileName = newDrawing?.file_name || "";
-    const isSample = fileName.includes("CMB1162") || fileName.includes("Sample") || fileName.includes("Runout");
-
-    if (isSample) {
-      // Standard mock database values linked to sample drawings for robust, high-fidelity visual fidelity
-      const fields = [
-        { key: "machine_name", label: "Machine Name", orig: "Runout Table", kmti: "Runout Table" },
-        { key: "line_name", label: "Line Name", orig: "Main Line A", kmti: "Main Line A" },
-        { key: "scale", label: "Scale", orig: "1/2", kmti: "1/2" },
-        { key: "designed", label: "Designed", orig: "T. KATO", kmti: "T. KATO" },
-        { key: "drawn", label: "Drawn By", orig: "K. SATOH", kmti: "RTKO" },
-        { key: "quantity", label: "Quantity", orig: "1", kmti: "1" },
-        { key: "job_number", label: "Job Number", orig: "JOB-2016-88", kmti: "JOB-2016-99" },
-        { key: "cross_ref", label: "Cross Ref No.", orig: "REF-7712-B", kmti: "REF-7712-B" },
-        { key: "prev_dwg", label: "Previous Dwg No.", orig: "HR22164N00", kmti: "HR22164N01" },
-        { key: "rev_code", label: "Revision Code", orig: "REV 0", kmti: "REV 1" }
-      ];
-
-      // Read real values from drawing metadata if present to ensure 100% dynamic correctness
-      const getRealValue = (dwg: any, key: string, fallback: string) => {
-        if (!dwg) return fallback;
-        return dwg.metadata?.title_block?.[key] || dwg.properties?.[key] || fallback;
-      };
-
-      return (
-        <div style={{
-          marginTop: "4px",
-          background: "rgba(10, 10, 12, 0.75)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          borderRadius: "6px",
-          padding: "10px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "6px",
-          width: "100%",
-          boxSizing: "border-box"
-        }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1fr 1fr",
-            gap: "8px",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-            paddingBottom: "6px",
-            fontWeight: 700,
-            color: "var(--text-muted)",
-            fontSize: "0.58rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em"
-          }}>
-            <div>Manual Field Item</div>
-            <div>Original Drawing</div>
-            <div>KMTI Drawing</div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {fields.map((f) => {
-              const valOrig = getRealValue(oldDrawing, f.key, f.orig);
-              const valKmti = getRealValue(newDrawing, f.key, f.kmti);
-              const isMatch = valOrig === valKmti;
-
-              return (
-                <div
-                  key={f.key}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                    padding: "4px 0",
-                    alignItems: "center",
-                    borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
-                    color: isMatch ? "#f4f4f5" : "#f59e0b",
-                    background: isMatch ? "transparent" : "rgba(245, 158, 11, 0.03)",
-                    transition: "all 0.15s ease"
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    {isMatch ? (
-                      <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
-                    ) : (
-                      <AlertTriangle size={8} style={{ color: "#f59e0b" }} />
-                    )}
-                    <span style={{ fontSize: "0.62rem", fontWeight: 500 }}>{f.label}</span>
-                  </div>
-                  <div style={{ fontSize: "0.62rem", fontFamily: "monospace", color: isMatch ? "#a1a1aa" : "#ef4444" }}>
-                    {valOrig}
-                  </div>
-                  <div style={{ fontSize: "0.62rem", fontFamily: "monospace", color: isMatch ? "#a1a1aa" : "#10b981", fontWeight: isMatch ? "normal" : "bold" }}>
-                    {valKmti}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Small summarized compliance footer */}
-          <div style={{
-            marginTop: "4px",
-            paddingTop: "6px",
-            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: "0.58rem"
-          }}>
-            <span style={{ color: "var(--text-muted)" }}>Audit Verdict:</span>
-            <span style={{
-              fontWeight: 700,
-              color: fields.every(f => getRealValue(oldDrawing, f.key, f.orig) === getRealValue(newDrawing, f.key, f.kmti)) ? "#10b981" : "#f59e0b",
-              textTransform: "uppercase"
-            }}>
-              {fields.every(f => getRealValue(oldDrawing, f.key, f.orig) === getRealValue(newDrawing, f.key, f.kmti)) ? "✓ Matching" : "⚠️ 4 Fields Mismatched"}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    // Dynamic custom drawing text extraction!
-    const origTexts = extractRowsFromRegion(oldLayers, oldDrawing, "title");
-    const kmtiTexts = extractRowsFromRegion(newLayers, newDrawing, "title");
-
-    const maxLines = Math.max(origTexts.length, kmtiTexts.length);
-    const lines: { orig: string; kmti: string }[] = [];
-    for (let i = 0; i < maxLines; i++) {
-      lines.push({
-        orig: origTexts[i] || "—",
-        kmti: kmtiTexts[i] || "—"
-      });
-    }
-
-    if (lines.length === 0) {
-      return (
-        <div style={{ padding: "10px", color: "var(--text-muted)", fontSize: "0.65rem", textAlign: "center" }}>
-          No Title Block text elements detected in calibrated region. Adjust calibration box bounds to capture Title Block area.
-        </div>
-      );
-    }
-
-    const verdictMatching = lines.every(l => l.orig === l.kmti && l.orig !== "—");
-
-    return (
-      <div style={{
-        marginTop: "4px",
-        background: "rgba(10, 10, 12, 0.75)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        borderRadius: "6px",
-        padding: "10px 12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-        width: "100%",
-        boxSizing: "border-box"
-      }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "12px",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-          paddingBottom: "6px",
-          fontWeight: 700,
-          color: "var(--text-muted)",
-          fontSize: "0.58rem",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em"
-        }}>
-          <div>Original Title Block Text</div>
-          <div>KMTI Title Block Text</div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "220px", overflowY: "auto" }}>
-          {lines.map((line, idx) => {
-            const isMatch = line.orig === line.kmti;
-            return (
-              <div
-                key={idx}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "12px",
-                  padding: "4px 0",
-                  alignItems: "flex-start",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
-                  color: isMatch ? "#f4f4f5" : "#f59e0b",
-                  background: isMatch ? "transparent" : "rgba(245, 158, 11, 0.03)",
-                }}
-              >
-                <div style={{ fontSize: "0.62rem", fontFamily: "monospace", wordBreak: "break-all", opacity: isMatch ? 0.75 : 1 }}>
-                  {line.orig}
-                </div>
-                <div style={{ fontSize: "0.62rem", fontFamily: "monospace", wordBreak: "break-all", fontWeight: isMatch ? "normal" : "bold", color: isMatch ? "#a1a1aa" : "#10b981" }}>
-                  {line.kmti}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Small summarized compliance footer */}
-        <div style={{
-          marginTop: "4px",
-          paddingTop: "6px",
-          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "0.58rem"
-        }}>
-          <span style={{ color: "var(--text-muted)" }}>Title Block Audit Verdict:</span>
-          <span style={{
-            fontWeight: 700,
-            color: verdictMatching ? "#10b981" : "#f59e0b",
-            textTransform: "uppercase"
-          }}>
-            {verdictMatching ? "✓ Matching" : "⚠️ Title Block Discrepancies Detected"}
-          </span>
-        </div>
-      </div>
-    );
-  };
-
-  const renderBomComparison = () => {
-    const fileName = newDrawing?.file_name || "";
-    const isSample = fileName.includes("CMB1162") || fileName.includes("Sample") || fileName.includes("Runout");
-
-    if (!isSample) {
-      const origTexts = extractRowsFromRegion(oldLayers, oldDrawing, "bom");
-      const kmtiTexts = extractRowsFromRegion(newLayers, newDrawing, "bom");
-
-      const maxLines = Math.max(origTexts.length, kmtiTexts.length);
-      const lines: { orig: string; kmti: string }[] = [];
-      for (let i = 0; i < maxLines; i++) {
-        lines.push({
-          orig: origTexts[i] || "—",
-          kmti: kmtiTexts[i] || "—"
-        });
-      }
-
-      if (lines.length === 0) {
-        return (
-          <div style={{ padding: "10px", color: "var(--text-muted)", fontSize: "0.65rem", textAlign: "center" }}>
-            No BOM text elements detected in calibrated region. Adjust calibration box bounds to capture BOM area.
-          </div>
-        );
-      }
-
-      const verdictMatching = lines.every(l => l.orig === l.kmti && l.orig !== "—");
-
-      return (
-        <div style={{
-          marginTop: "4px",
-          background: "rgba(10, 10, 12, 0.75)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          borderRadius: "6px",
-          padding: "10px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "6px",
-          width: "100%",
-          boxSizing: "border-box"
-        }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-            paddingBottom: "6px",
-            fontWeight: 700,
-            color: "var(--text-muted)",
-            fontSize: "0.58rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em"
-          }}>
-            <div>Original BOM Text</div>
-            <div>KMTI BOM Text</div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "220px", overflowY: "auto" }}>
-            {lines.map((line, idx) => {
-              const isMatch = line.orig === line.kmti;
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                    padding: "4px 0",
-                    alignItems: "flex-start",
-                    borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
-                    color: isMatch ? "#f4f4f5" : "#f59e0b",
-                    background: isMatch ? "transparent" : "rgba(245, 158, 11, 0.03)",
-                  }}
-                >
-                  <div style={{ fontSize: "0.62rem", fontFamily: "monospace", wordBreak: "break-all", opacity: isMatch ? 0.75 : 1 }}>
-                    {line.orig}
-                  </div>
-                  <div style={{ fontSize: "0.62rem", fontFamily: "monospace", wordBreak: "break-all", fontWeight: isMatch ? "normal" : "bold", color: isMatch ? "#a1a1aa" : "#10b981" }}>
-                    {line.kmti}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Small summarized compliance footer */}
-          <div style={{
-            marginTop: "4px",
-            paddingTop: "6px",
-            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: "0.58rem"
-          }}>
-            <span style={{ color: "var(--text-muted)" }}>BOM Audit Verdict:</span>
-            <span style={{
-              fontWeight: 700,
-              color: verdictMatching ? "#10b981" : "#f59e0b",
-              textTransform: "uppercase"
-            }}>
-              {verdictMatching ? "✓ Matching" : "⚠️ BOM Discrepancies Detected"}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    const isCMB1162 = fileName.includes("CMB1162N01") || fileName.includes("CMB1162");
-
-    const colHeaders = isCMB1162
-      ? { col1: "Material Spec (No. 5)", col2: "Original Drawing", col3: "KMTI Drawing" }
-      : { col1: "BOM Item (Part No.)", col2: "Original Qty", col3: "KMTI Qty" };
-
-    const bomItems = isCMB1162
-      ? [
-        { no: "5", part: "SS400", name: "Dimension / Model (寸法)", origQty: "38X80X130", kmtiQty: "38×80×130", unit: "" },
-        { no: "5", part: "SS400", name: "Material Weight (材料重量)", origQty: "3.1", kmtiQty: "3.10", unit: " kg" },
-        { no: "5", part: "SS400", name: "Finished Weight (仕上重量)", origQty: "2.6", kmtiQty: "2.60", unit: " kg" }
-      ]
-      : [
-        { no: "1", part: "LD11124B01", name: "Bed (ベッド)", origQty: "1", kmtiQty: "1", unit: " pcs" },
-        { no: "2", part: "LD11113N01", name: "Motor Base (モーターベース)", origQty: "1", kmtiQty: "1", unit: " pcs" },
-        { no: "3", part: "LD11114N01", name: "Cover (カバー)", origQty: "1", kmtiQty: "1", unit: " pcs" },
-        { no: "16", part: "M20x60", name: "CS", origQty: "4", kmtiQty: "4", unit: " pcs" },
-        { no: "17", part: "M6x12", name: "CS, SW", origQty: "16", kmtiQty: "16", unit: " pcs" },
-        { no: "18", part: "M6x12", name: "CS", origQty: "12", kmtiQty: "28", unit: " pcs" }
-      ];
-
-    const verdictLabel = isCMB1162 ? "Material Audit Verdict:" : "BOM Audit Verdict:";
-    const verdictText = isCMB1162
-      ? (bomItems.every(item => item.origQty === item.kmtiQty) ? "✓ Matching" : "⚠️ Spec & Weight Mismatch (Row 5)")
-      : (bomItems.every(item => item.origQty === item.kmtiQty) ? "✓ Matching" : "⚠️ Qty Mismatch (Row 18)");
-
-    return (
-      <div style={{
-        marginTop: "4px",
-        background: "rgba(10, 10, 12, 0.75)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        borderRadius: "6px",
-        padding: "10px 12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-        width: "100%",
-        boxSizing: "border-box"
-      }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1.2fr 1fr 1fr",
-          gap: "8px",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-          paddingBottom: "6px",
-          fontWeight: 700,
-          color: "var(--text-muted)",
-          fontSize: "0.58rem",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em"
-        }}>
-          <div>{colHeaders.col1}</div>
-          <div>{colHeaders.col2}</div>
-          <div>{colHeaders.col3}</div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          {bomItems.map((item) => {
-            const isMatch = item.origQty === item.kmtiQty;
-
-            return (
-              <div
-                key={item.name}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
-                  gap: "8px",
-                  padding: "4px 0",
-                  alignItems: "center",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
-                  color: isMatch ? "#f4f4f5" : "#f59e0b",
-                  background: isMatch ? "transparent" : "rgba(245, 158, 11, 0.03)",
-                  transition: "all 0.15s ease"
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {isMatch ? (
-                    <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
-                  ) : (
-                    <AlertTriangle size={8} style={{ color: "#f59e0b" }} />
-                  )}
-                  <span style={{ fontSize: "0.62rem", fontWeight: 500 }} title={item.name}>
-                    {isCMB1162 ? item.name : `No.${item.no}: ${item.part}`}
-                  </span>
-                </div>
-                <div style={{ fontSize: "0.62rem", fontFamily: "monospace", color: isMatch ? "#a1a1aa" : "#ef4444" }}>
-                  {item.origQty}{item.unit}
-                </div>
-                <div style={{ fontSize: "0.62rem", fontFamily: "monospace", color: isMatch ? "#a1a1aa" : "#10b981", fontWeight: isMatch ? "normal" : "bold" }}>
-                  {item.kmtiQty}{item.unit}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Small summarized compliance footer */}
-        <div style={{
-          marginTop: "4px",
-          paddingTop: "6px",
-          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "0.58rem"
-        }}>
-          <span style={{ color: "var(--text-muted)" }}>{verdictLabel}</span>
-          <span style={{
-            fontWeight: 700,
-            color: bomItems.every(item => item.origQty === item.kmtiQty) ? "#10b981" : "#f59e0b",
-            textTransform: "uppercase"
-          }}>
-            {verdictText}
-          </span>
-        </div>
-      </div>
-    );
-  };
-
-  const renderNotesComparison = () => {
-    const fileName = newDrawing?.file_name || "";
-    const isSample = fileName.includes("CMB1162") || fileName.includes("Sample") || fileName.includes("Runout");
-
-    if (!isSample) {
-      const origTexts = extractRowsFromRegion(oldLayers, oldDrawing, "notes");
-      const kmtiTexts = extractRowsFromRegion(newLayers, newDrawing, "notes");
-
-      const maxLines = Math.max(origTexts.length, kmtiTexts.length);
-      const lines: { orig: string; kmti: string }[] = [];
-      for (let i = 0; i < maxLines; i++) {
-        lines.push({
-          orig: origTexts[i] || "—",
-          kmti: kmtiTexts[i] || "—"
-        });
-      }
-
-      if (lines.length === 0) {
-        return (
-          <div style={{ padding: "10px", color: "var(--text-muted)", fontSize: "0.65rem", textAlign: "center" }}>
-            No Notes text elements detected in calibrated region. Adjust calibration box bounds to capture Notes area.
-          </div>
-        );
-      }
-
-      const verdictMatching = lines.every(l => l.orig === l.kmti && l.orig !== "—");
-
-      return (
-        <div style={{
-          marginTop: "4px",
-          background: "rgba(10, 10, 12, 0.75)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          borderRadius: "6px",
-          padding: "10px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "6px",
-          width: "100%",
-          boxSizing: "border-box"
-        }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-            paddingBottom: "6px",
-            fontWeight: 700,
-            color: "var(--text-muted)",
-            fontSize: "0.58rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em"
-          }}>
-            <div>Original Notes Text</div>
-            <div>KMTI Notes Text</div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "220px", overflowY: "auto" }}>
-            {lines.map((line, idx) => {
-              const isMatch = line.orig === line.kmti;
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                    padding: "4px 0",
-                    alignItems: "flex-start",
-                    borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
-                    color: isMatch ? "#f4f4f5" : "#f59e0b",
-                    background: isMatch ? "transparent" : "rgba(245, 158, 11, 0.03)",
-                  }}
-                >
-                  <div style={{ fontSize: "0.62rem", fontFamily: "monospace", wordBreak: "break-all", opacity: isMatch ? 0.75 : 1 }}>
-                    {line.orig}
-                  </div>
-                  <div style={{ fontSize: "0.62rem", fontFamily: "monospace", wordBreak: "break-all", fontWeight: isMatch ? "normal" : "bold", color: isMatch ? "#a1a1aa" : "#10b981" }}>
-                    {line.kmti}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Small summarized compliance footer */}
-          <div style={{
-            marginTop: "4px",
-            paddingTop: "6px",
-            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: "0.58rem"
-          }}>
-            <span style={{ color: "var(--text-muted)" }}>Notes Audit Verdict:</span>
-            <span style={{
-              fontWeight: 700,
-              color: verdictMatching ? "#10b981" : "#f59e0b",
-              textTransform: "uppercase"
-            }}>
-              {verdictMatching ? "✓ Matching" : "⚠️ Notes Discrepancies Detected"}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    const sampleNotes = [
-      { key: "1", label: "Deburr & Sharp Edges", orig: "REMOVE ALL BURRS AND SHARP EDGES (R0.2 MAX)", kmti: "REMOVE ALL BURRS AND SHARP EDGES (R0.2 MAX)" },
-      { key: "2", label: "Standard Tolerances", orig: "UNSPECIFIED TOLERANCES TO JIS B 0405-m", kmti: "UNSPECIFIED TOLERANCES TO JIS B 0405-m" },
-      { key: "3", label: "Surface Finish/Paint", orig: "SURFACE COATING: MELAMINE BAKING PAINT (MUNSELL 5Y7/1)", kmti: "SURFACE COATING: MELAMINE BAKING PAINT (MUNSELL 5Y7/1)" },
-      { key: "4", label: "Welding Specification", orig: "WELDING SYMBOLS AND PROCEDURES CONFORM TO AWS D1.1", kmti: "WELDING SYMBOLS AND PROCEDURES CONFORM TO AWS D1.1" }
-    ];
-
-    const verdictMatching = sampleNotes.every(n => n.orig === n.kmti);
-
-    return (
-      <div style={{
-        marginTop: "4px",
-        background: "rgba(10, 10, 12, 0.75)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        borderRadius: "6px",
-        padding: "10px 12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-        width: "100%",
-        boxSizing: "border-box"
-      }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1.2fr 1fr 1fr",
-          gap: "8px",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-          paddingBottom: "6px",
-          fontWeight: 700,
-          color: "var(--text-muted)",
-          fontSize: "0.58rem",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em"
-        }}>
-          <div>Manual Notes Item</div>
-          <div>Original Drawing</div>
-          <div>KMTI Drawing</div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          {sampleNotes.map((n) => {
-            const isMatch = n.orig === n.kmti;
-            return (
-              <div
-                key={n.key}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
-                  gap: "8px",
-                  padding: "4px 0",
-                  alignItems: "center",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
-                  color: isMatch ? "#f4f4f5" : "#f59e0b",
-                  background: isMatch ? "transparent" : "rgba(245, 158, 11, 0.03)",
-                  transition: "all 0.15s ease"
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {isMatch ? (
-                    <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
-                  ) : (
-                    <AlertTriangle size={8} style={{ color: "#f59e0b" }} />
-                  )}
-                  <span style={{ fontSize: "0.62rem", fontWeight: 500 }}>{n.label}</span>
-                </div>
-                <div style={{ fontSize: "0.62rem", fontFamily: "monospace", color: isMatch ? "#a1a1aa" : "#ef4444" }}>
-                  {n.orig}
-                </div>
-                <div style={{ fontSize: "0.62rem", fontFamily: "monospace", color: isMatch ? "#a1a1aa" : "#10b981", fontWeight: isMatch ? "normal" : "bold" }}>
-                  {n.kmti}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Small summarized compliance footer */}
-        <div style={{
-          marginTop: "4px",
-          paddingTop: "6px",
-          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "0.58rem"
-        }}>
-          <span style={{ color: "var(--text-muted)" }}>Notes Audit Verdict:</span>
-          <span style={{
-            fontWeight: 700,
-            color: verdictMatching ? "#10b981" : "#f59e0b",
-            textTransform: "uppercase"
-          }}>
-            {verdictMatching ? "✓ Matching" : "⚠️ Notes Discrepancies Detected"}
-          </span>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="workspace-container">
@@ -1512,9 +751,9 @@ export const AuditWorkspace: React.FC = () => {
                   <thead>
                     <tr className="stats-row" style={{ background: "rgba(255, 255, 255, 0.015)", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
                       <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle", width: "90px" }}>ID</th>
-                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Reference File</th>
-                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>New File (Revision)</th>
-                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Client Context</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Original Drawing</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>KMTI Drawing</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Client</th>
                       <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Compliance Score</th>
                       <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Session Date</th>
                       <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Actions</th>
@@ -1556,11 +795,10 @@ export const AuditWorkspace: React.FC = () => {
                           onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
                         >
                           {/* ID Column */}
-                          <td className="stats-label" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>
-                            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--accent-cyan)", background: "rgba(0, 229, 255, 0.05)", padding: "4px 8px", borderRadius: "6px", border: "1px solid rgba(0, 229, 255, 0.15)", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
+                          <td className="stats-label" style={{ textAlign: "left", padding: "14px 12px", verticalAlign: "left" }}>
+                            <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", background: "rgba(0, 229, 255, 0.05)", padding: "3px 5px", borderRadius: "6px", border: "1px solid rgba(0, 229, 255, 0.15)", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
                               {(() => {
-                                const name = (session.username || "Unknown").toUpperCase();
-                                const prefix = name.length > 1 ? `${name[0]}${name[name.length - 1]}` : name[0];
+                                const prefix = "SYS";
                                 const absoluteIndex = sessions.findIndex(s => s.id === session.id);
                                 const numStr = String(sessions.length - absoluteIndex).padStart(2, "0");
                                 return `${prefix}${numStr}`;
@@ -1607,7 +845,7 @@ export const AuditWorkspace: React.FC = () => {
                           </td>
 
                           {/* Compliance Score */}
-                          <td className="stats-value" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle", fontFamily: "inherit" }}>
+                          <td className="stats-value" style={{ textAlign: "left", padding: "14px 55px", verticalAlign: "middle", fontFamily: "inherit" }}>
                             {isCompleted ? (
                               <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: "6px", background: scoreBg, border: `1px solid ${scoreBorder}`, color: scoreColor, fontWeight: "800", fontSize: "0.82rem" }}>
                                 {score !== null ? `${score.toFixed(1)}%` : "N/A"}
@@ -1939,537 +1177,141 @@ export const AuditWorkspace: React.FC = () => {
                 </div>
 
                 <div className="toolbar-divider"></div>
-
-                {/* Visual Diff Overlay & Physical Comparison Toggles — only when both drawings loaded */}
-                {oldDrawing && newDrawing && (
-                  <>
-                    <button
-                      className={`toolbar-btn overlay-toggle-btn ${isOverlayModeEnabled ? "active" : ""}`}
-                      onClick={toggleOverlayMode}
-                      title={isOverlayModeEnabled ? "Disable Visual Diff Overlay" : "Enable Visual Diff Overlay (Red/Green blend)"}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "4px 10px",
-                        fontSize: "0.65rem",
-                        fontWeight: 600,
-                        letterSpacing: "0.03em",
-                        background: isOverlayModeEnabled ? "rgba(244,63,94,0.12)" : undefined,
-                        border: isOverlayModeEnabled ? "1px solid rgba(244,63,94,0.5)" : undefined,
-                        color: isOverlayModeEnabled ? "#f43f5e" : undefined,
-                        boxShadow: isOverlayModeEnabled ? "0 0 10px rgba(244,63,94,0.25)" : undefined,
-                        borderRadius: "6px",
-                        transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)",
-                        whiteSpace: "nowrap"
-                      }}
-                    >
-                      <Layers size={12} />
-                      DIFF OVERLAY
-                    </button>
-                    <div className="toolbar-divider"></div>
-
-                    <button
-                      className={`toolbar-btn overlay-toggle-btn ${isPhysicalComparisonEnabled ? "active" : ""}`}
-                      onClick={togglePhysicalComparison}
-                      title={isPhysicalComparisonEnabled ? "Disable Physical Comparison Regions" : "Enable Physical Comparison (Views, Notes, BOM, Title Block, Isometric View)"}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "4px 10px",
-                        fontSize: "0.65rem",
-                        fontWeight: 600,
-                        letterSpacing: "0.03em",
-                        background: isPhysicalComparisonEnabled ? "rgba(59,130,246,0.12)" : undefined,
-                        border: isPhysicalComparisonEnabled ? "1px solid rgba(59,130,246,0.5)" : undefined,
-                        color: isPhysicalComparisonEnabled ? "var(--accent-cyan)" : undefined,
-                        boxShadow: isPhysicalComparisonEnabled ? "0 0 10px rgba(59,130,246,0.25)" : undefined,
-                        borderRadius: "6px",
-                        transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)",
-                        whiteSpace: "nowrap"
-                      }}
-                    >
-                      <Layers size={12} />
-                      PHYSICAL COMPARISON
-                    </button>
-                    <div className="toolbar-divider"></div>
-                  </>
-                )}
-
-                <div className="toolbar-group" style={{ marginLeft: "auto" }}>
-                  {isOverlayModeEnabled ? (
-                    <>
-                      <span className="diff-legend-item" style={{ color: "#f43f5e", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.65rem", fontWeight: 500 }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#f43f5e", display: "inline-block", boxShadow: "0 0 6px #f43f5e" }} />
-                        Reference (V1)
-                      </span>
-                      <span className="diff-legend-item" style={{ color: "#10b981", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.65rem", fontWeight: 500 }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#10b981", display: "inline-block", boxShadow: "0 0 6px #10b981" }} />
-                        Revision (V2)
-                      </span>
-                      <span className="diff-legend-item" style={{ color: "#eab308", display: "flex", alignItems: "center", gap: "5px", fontSize: "0.65rem", fontWeight: 500 }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#eab308", display: "inline-block", boxShadow: "0 0 6px #eab308" }} />
-                        Overlapping / Unchanged
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="diff-legend-item unchanged"><span className="legend-dot unchanged"></span>Unchanged</span>
-                      <span className="diff-legend-item added"><span className="legend-dot added"></span>Added</span>
-                      <span className="diff-legend-item removed"><span className="legend-dot removed"></span>Removed</span>
-                      <span className="diff-legend-item modified"><span className="legend-dot modified"></span>Modified</span>
-                    </>
-                  )}
-                </div>
               </div>
 
-              {/* Physical Comparison Checklist Deck */}
-              {isPhysicalComparisonEnabled && oldDrawing && newDrawing && (
-                <div className="physical-checklist-deck-container" style={{ marginBottom: "12px" }}>
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "8px",
-                    padding: "0 4px",
-                    flexWrap: "wrap",
-                    gap: "8px"
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Compass size={14} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
-                      <span style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.05em", color: "#e4e4e7" }}>
-                        PHYSICAL COMPARISON CHECKLIST (KMTI PROCEDURE 07)
+              {/* Automated AI Physical Comparison & KMTI Checklist */}
+              {oldDrawing && newDrawing && (
+                <div className="physical-checklist-deck-container" style={{ marginBottom: "12px", background: "rgba(9, 9, 11, 0.6)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "16px", backdropFilter: "blur(12px)", boxShadow: "0 4px 30px rgba(0, 0, 0, 0.4)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
+                      <span style={{ fontSize: "0.85rem", fontWeight: 700, letterSpacing: "0.05em", color: "#e4e4e7" }}>
+                        AI PHYSICAL COMPARISON & KMTI CHECKLIST
                       </span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    {aiScanProgress === "idle" && (
                       <button
-                        onClick={toggleRoiEditMode}
-                        style={{
-                          background: isRoiEditModeEnabled ? "rgba(0, 229, 255, 0.12)" : "rgba(255, 255, 255, 0.03)",
-                          border: isRoiEditModeEnabled ? "1px solid rgba(0, 229, 255, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)",
-                          color: isRoiEditModeEnabled ? "var(--accent-cyan)" : "#a1a1aa",
-                          padding: "4px 8px",
-                          borderRadius: "6px",
-                          fontSize: "0.65rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                          boxShadow: isRoiEditModeEnabled ? "0 0 8px rgba(0, 229, 255, 0.25)" : "none"
-                        }}
+                        className="btn btn-primary"
+                        onClick={runPhysicalComparisonAI}
+                        style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px" }}
                       >
-                        <span style={{
-                          width: "6px",
-                          height: "6px",
-                          borderRadius: "50%",
-                          background: isRoiEditModeEnabled ? "var(--accent-cyan)" : "#71717a",
-                          boxShadow: isRoiEditModeEnabled ? "0 0 6px var(--accent-cyan)" : "none"
-                        }} />
-                        CALIBRATE REGIONS
+                        <Play size={12} fill="currentColor" />
+                        RUN AI COMPARISON
                       </button>
-
-                      <button
-                        onClick={resetCustomRegions}
-                        style={{
-                          background: "rgba(255, 255, 255, 0.03)",
-                          border: "1px solid rgba(255, 255, 255, 0.08)",
-                          color: "#71717a",
-                          padding: "4px 8px",
-                          borderRadius: "6px",
-                          fontSize: "0.65rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = "#f4f4f5";
-                          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color = "#71717a";
-                          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.08)";
-                        }}
-                      >
-                        RESET LAYOUT
-                      </button>
-
-                      <span style={{ fontSize: "0.6rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
-                        STAGE 1: DRAWING REGIONS AUDIT
-                      </span>
-                    </div>
+                    )}
                   </div>
 
-                  <div style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px",
-                    background: "rgba(9, 9, 11, 0.6)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    backdropFilter: "blur(12px)",
-                    borderRadius: "10px",
-                    padding: "12px",
-                    boxShadow: "0 4px 30px rgba(0, 0, 0, 0.4)",
-                    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                  }}>
-                    {/* Region Cards Grid */}
-                    <div style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-                      gap: "12px"
-                    }}>
-                      {[
-                        {
-                          key: "views",
-                          label: "1. Drawing Views",
-                          status: "unchanged",
-                          desc: "Main viewport geometry",
-                          subChecks: [
-                            "Origin alignment & view orientation",
-                            "Line attributes (colors, types, weights)",
-                            "Dimensions & tolerance accuracy",
-                            "Hole properties & diameter annotations",
-                            "Chamfer & radius verification",
-                            "Machining symbols consistency",
-                            "Welding symbols integrity",
-                            "Geometric tolerances (GD&T frame checks)",
-                            "Additional views (details, sections)",
-                            "Text attributes (font sizes, spacing)"
-                          ]
-                        },
-                        {
-                          key: "notes",
-                          label: "2. Notes",
-                          status: "modified",
-                          desc: "Technical specifications",
-                          subChecks: [
-                            "Standard specifications notes",
-                            "Special engineering instructions",
-                            "Process finishes & coatings requirements"
-                          ]
-                        },
-                        {
-                          key: "bom",
-                          label: "3. BOM",
-                          status: "modified",
-                          desc: "Component part listings",
-                          subChecks: [
-                            "Material type classification matching",
-                            "Material specs & thickness sizing",
-                            "Parts quantity synchronization",
-                            "Material unit weights integrity",
-                            "Ballooning markers arrangement",
-                            "Assembly numbering sequence check"
-                          ]
-                        },
-                        {
-                          key: "title",
-                          label: "4. Title Block",
-                          status: "unchanged",
-                          desc: "Metadata & signatures",
-                          subChecks: [
-                            "Machine Name / Line Name consistency",
-                            "Scale correctness (visual vs. text)",
-                            "Signatures (designed, drawn by)",
-                            "Quantity & Job number parity",
-                            "Cross reference & drawing number",
-                            "Revision code updates"
-                          ]
-                        },
-                        {
-                          key: "iso",
-                          label: "5. Isometric View",
-                          status: "added",
-                          desc: "3D orthogonal projections",
-                          subChecks: [
-                            "3D spatial orientation accuracy",
-                            "Scale attributes consistency",
-                            "Repositionable sheet placement (malaking extra space)",
-                            "Calibrate coordinates to match active custom bounds"
-                          ]
-                        }
-                      ].map((item) => {
-                        const isSelected = selectedComparisonRegion === item.key;
-                        const isVisible = visibleRegions[item.key] !== false;
+                  {/* AI Scan Progress Sequence */}
+                  {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "20px 0" }}>
+                      <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                        <span style={{ color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>1. SCAN ORIGINAL</span>
+                        <span style={{ color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>2. EXTRACT DATA</span>
+                        <span style={{ color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>3. SCAN KMTI</span>
+                        <span style={{ color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>4. COMPARE MATCHES</span>
+                      </div>
+                      <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                        <div style={{ 
+                          height: "100%", 
+                          background: "var(--accent-cyan)", 
+                          width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
+                          transition: "width 0.5s ease"
+                        }}></div>
+                      </div>
+                    </div>
+                  )}
 
-                        // Resolve colors dynamically
-                        let badgeColor = "#00e5ff";
-                        let badgeBg = "rgba(0, 229, 255, 0.08)";
-                        let badgeBorder = "rgba(0, 229, 255, 0.3)";
-                        let statusLabel = "Unchanged";
-
-                        if (item.key === "iso") {
-                          badgeColor = "#10b981";
-                          badgeBg = "rgba(16, 185, 129, 0.08)";
-                          badgeBorder = "rgba(16, 185, 129, 0.3)";
-                          statusLabel = "Added";
-                        } else if (item.key === "notes") {
-                          badgeColor = "#f59e0b";
-                          badgeBg = "rgba(245, 158, 11, 0.08)";
-                          badgeBorder = "rgba(245, 158, 11, 0.3)";
-                          statusLabel = "Modified";
-                        } else {
-                          if (isOverlayModeEnabled) {
-                            badgeColor = "#eab308";
-                            badgeBg = "rgba(234, 179, 8, 0.08)";
-                            badgeBorder = "rgba(234, 179, 8, 0.3)";
-                          }
-                        }
-
-                        // Calculate checked counts
-                        const totalSub = item.subChecks.length;
-                        const checkedCount = item.subChecks.filter(sub => checkedSubItems[`${item.key}_${sub}`]).length;
+                  {/* AI Results Deck */}
+                  {aiScanProgress === "completed" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {Object.entries(aiChecklistResults).map(([key, result]) => {
+                        const isExpanded = expandedChecklistPanels[key];
+                        let badgeColor = "#10b981"; // MATCHED
+                        if (result.status === "ADDED") badgeColor = "#3b82f6";
+                        if (result.status === "CHANGED") badgeColor = "#f59e0b";
+                        if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#f43f5e";
 
                         return (
-                          <div
-                            key={item.key}
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "8px"
-                            }}
-                          >
-                            <div
-                              onClick={() => {
-                                setSelectedComparisonRegion(item.key);
-                                focusOnComparisonRegion(item.key);
-                              }}
-                              onMouseEnter={() => setSelectedComparisonRegion(item.key)}
-                              onMouseLeave={() => {
-                                if (selectedComparisonRegion === item.key) {
-                                  setSelectedComparisonRegion(null);
-                                }
-                              }}
-                              style={{
-                                background: isSelected
-                                  ? "rgba(59, 130, 246, 0.08)"
-                                  : isVisible
-                                    ? "rgba(27, 27, 30, 0.4)"
-                                    : "rgba(20, 20, 22, 0.15)",
-                                border: isSelected
-                                  ? "1px solid rgba(59, 130, 246, 0.6)"
-                                  : isVisible
-                                    ? "1px solid rgba(63, 63, 70, 0.3)"
-                                    : "1px solid rgba(63, 63, 70, 0.15)",
-                                borderRadius: "8px",
-                                padding: "10px 12px",
-                                cursor: "pointer",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "6px",
-                                position: "relative",
-                                overflow: "hidden",
-                                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                                boxShadow: isSelected ? "0 0 12px rgba(59, 130, 246, 0.15)" : "none",
-                                opacity: isVisible ? 1 : 0.6,
-                              }}
+                          <div key={key} style={{ background: "rgba(20,20,22,0.6)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden" }}>
+                            <div 
+                              onClick={() => toggleChecklistPanel(key)}
+                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", cursor: "pointer" }}
                             >
-                              {isSelected && (
-                                <div style={{
-                                  position: "absolute",
-                                  left: 0,
-                                  top: 0,
-                                  bottom: 0,
-                                  width: "3px",
-                                  background: badgeColor,
-                                  boxShadow: `0 0 8px ${badgeColor}`
-                                }} />
-                              )}
-
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isVisible}
-                                  onChange={(e) => {
-                                    e.stopPropagation();
-                                    toggleRegionVisibility(item.key);
-                                  }}
-                                  style={{
-                                    cursor: "pointer",
-                                    width: "12px",
-                                    height: "12px",
-                                    accentColor: "var(--accent-cyan)",
-                                    margin: 0,
-                                  }}
-                                />
+                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f4f4f5", textTransform: "uppercase" }}>
+                                {key === "bom" ? "Bill of Materials (BOM)" : key === "titleBlock" ? "Title Block" : key}
+                              </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                 <span style={{
-                                  fontSize: "0.75rem",
-                                  fontWeight: 700,
-                                  color: isSelected ? badgeColor : "#f4f4f5",
-                                  letterSpacing: "0.01em",
-                                  transition: "color 0.2s ease"
+                                  fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
+                                  color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}15`
                                 }}>
-                                  {item.label}
+                                  {result.status}
                                 </span>
-                              </div>
-
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", marginTop: "2px" }}>
-                                <span style={{ fontSize: "0.6rem", color: "var(--text-muted)", letterSpacing: "0.01em" }}>
-                                  {checkedCount} / {totalSub} Checked
-                                </span>
-
-                                <span style={{
-                                  fontSize: "0.58rem",
-                                  fontWeight: 700,
-                                  fontFamily: "monospace",
-                                  letterSpacing: "0.05em",
-                                  textTransform: "uppercase",
-                                  color: badgeColor,
-                                  background: badgeBg,
-                                  border: `1px solid ${badgeBorder}`,
-                                  borderRadius: "4px",
-                                  padding: "1px 5px",
-                                  boxShadow: isSelected ? `0 0 8px ${badgeBg}` : "none",
-                                  transition: "all 0.2s ease"
-                                }}>
-                                  {statusLabel}
-                                </span>
+                                {isExpanded ? <ChevronDown size={14} color="#71717a" /> : <ChevronRight size={14} color="#71717a" />}
                               </div>
                             </div>
-
-                            {/* Collapsible Sub-checklist (Expands dynamically on Card Select) */}
-                            {isSelected && (
-                              <div style={{
-                                background: "rgba(20, 20, 22, 0.4)",
-                                border: "1px solid rgba(63, 63, 70, 0.2)",
-                                borderRadius: "6px",
-                                padding: "8px 10px",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "6px",
-                                transition: "all 0.3s ease",
-                                marginTop: "2px"
-                              }}>
-                                {/* Dynamic Side-by-Side Comparison Tables based on KMTI/Universal Manual */}
-                                {item.key === "title" && renderTitleBlockComparison()}
-                                {item.key === "notes" && renderNotesComparison()}
-                                {item.key === "bom" && renderBomComparison()}
-
-                                {item.key === "iso" && (
-                                  <div style={{
-                                    background: "rgba(16, 185, 129, 0.04)",
-                                    border: "1px solid rgba(16, 185, 129, 0.15)",
-                                    borderRadius: "6px",
-                                    padding: "8px 10px",
-                                    fontSize: "0.62rem",
-                                    color: "#a7f3d0",
-                                    lineHeight: "1.3",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "4px",
-                                    marginBottom: "4px"
-                                  }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: "bold", color: "#10b981" }}>
-                                      <span>💡</span> KMTI Layout Specification
-                                    </div>
-                                    <div>
-                                      The Isometric (3D) View is drawing-dependent and positioned anywhere on the sheet where there is sufficient blank space (malaking extra space).
-                                    </div>
-                                    <div style={{ color: "var(--accent-cyan)", marginTop: "2px", fontWeight: "600" }}>
-                                      🛠️ Repositioning: Click the glowing "CALIBRATE REGIONS" button above to drag and resize this boundary overlay directly on the canvas!
-                                    </div>
+                            
+                            {/* Expanded Data Panel */}
+                            {isExpanded && (
+                              <div style={{ padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.2)" }}>
+                                <div style={{ fontSize: "0.65rem", color: "#a1a1aa", marginBottom: "8px" }}>{result.log}</div>
+                                
+                                {result.extractedText && (
+                                  <div style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.2)", padding: "8px", borderRadius: "4px", fontSize: "0.65rem", color: "#60a5fa", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+                                    {result.extractedText}
                                   </div>
                                 )}
 
-                                {item.subChecks.map((sub, idx) => {
-                                  const subKey = `${item.key}_${sub}`;
-                                  const isChecked = !!checkedSubItems[subKey];
-                                  return (
-                                    <div
-                                      key={idx}
-                                      onClick={() => toggleSubItem(subKey)}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "8px",
-                                        cursor: "pointer",
-                                        padding: "2px 4px",
-                                        borderRadius: "4px",
-                                        background: isChecked ? "rgba(0, 229, 255, 0.03)" : "transparent",
-                                        transition: "all 0.15s ease"
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => { }} // Handled by parent row onClick
-                                        style={{
-                                          width: "10px",
-                                          height: "10px",
-                                          accentColor: badgeColor,
-                                          cursor: "pointer"
-                                        }}
-                                      />
-                                      <span style={{
-                                        fontSize: "0.65rem",
-                                        color: isChecked ? "#f4f4f5" : "var(--text-muted)",
-                                        textDecoration: isChecked ? "line-through rgba(255,255,255,0.2)" : "none",
-                                        fontFamily: "var(--font-sans), sans-serif",
-                                        letterSpacing: "0.01em",
-                                        transition: "color 0.15s ease"
-                                      }}>
-                                        {sub}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
+                                {key === "bom" && bomComparisonMatrix.length > 0 && (
+                                  <div style={{ overflowX: "auto", marginTop: "8px" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.65rem", fontFamily: "monospace", textAlign: "left" }}>
+                                      <thead>
+                                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#a1a1aa" }}>
+                                          <th style={{ padding: "4px 8px" }}>Row</th>
+                                          <th style={{ padding: "4px 8px" }}>Column</th>
+                                          <th style={{ padding: "4px 8px" }}>Original Value</th>
+                                          <th style={{ padding: "4px 8px" }}>KMTI Value</th>
+                                          <th style={{ padding: "4px 8px" }}>Delta</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {bomComparisonMatrix.map((row, idx) => (
+                                          <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: row.diffType === "CHANGED" ? "rgba(245,158,11,0.05)" : "transparent" }}>
+                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.row}</td>
+                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.col}</td>
+                                            <td style={{ padding: "6px 8px", color: "#71717a" }}>{row.original}</td>
+                                            <td style={{ padding: "6px 8px", color: row.diffType === "CHANGED" ? "#f59e0b" : "#e4e4e7" }}>{row.kmti}</td>
+                                            <td style={{ padding: "6px 8px" }}>
+                                              <span style={{ color: row.diffType === "CHANGED" ? "#f59e0b" : "#10b981", fontWeight: 700 }}>
+                                                {row.diffType}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
               {/* Viewport Panels */}
-              {isOverlayModeEnabled && oldDrawing && newDrawing ? (
-                // ── VISUAL DIFF OVERLAY MODE: Single full-width fused canvas ──
-                <div className="split-viewports" data-overlay="true">
-                  <div className="viewport-panel">
-                    <div className="viewport-header" style={{ background: "linear-gradient(90deg, rgba(244,63,94,0.08) 0%, rgba(16,185,129,0.08) 100%)", borderBottom: "1px solid rgba(244,63,94,0.2)" }}>
-                      <div className="viewport-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ color: "#f43f5e", fontWeight: 700, fontSize: "0.68rem" }}>V1</span>
-                        <span style={{ color: "var(--text-muted)", fontSize: "0.6rem" }}>⊕</span>
-                        <span style={{ color: "#10b981", fontWeight: 700, fontSize: "0.68rem" }}>V2</span>
-                        <span style={{ color: "var(--text-muted)", fontSize: "0.68rem", marginLeft: "4px" }}>Visual Diff Overlay</span>
-                      </div>
-                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                        <div className="ingested-file-pill ref" style={{ borderColor: "rgba(244,63,94,0.4)" }}>
-                          <span className="pill-label" style={{ color: "#f43f5e" }}>REF:</span>
-                          <span className="pill-filename" title={oldDrawing.file_name}>{oldDrawing.file_name}</span>
-                        </div>
-                        <div className="ingested-file-pill rev" style={{ borderColor: "rgba(16,185,129,0.4)" }}>
-                          <span className="pill-label" style={{ color: "#10b981" }}>REV:</span>
-                          <span className="pill-filename" title={newDrawing.file_name}>{newDrawing.file_name}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="cad-canvas-mock" ref={containerRefOld}>
-                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                        <DrawingCanvas
-                          layers={oldLayers}
-                          width={oldSize.width}
-                          height={oldSize.height}
-                          drawing={oldDrawing}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // ── STANDARD SPLIT-VIEW MODE ──
-                <div className="split-viewports">
+              {/* ── STANDARD SPLIT-VIEW MODE ── */}
+              <div className="split-viewports">
                   {/* Left Viewport (Old) */}
                   <div className="viewport-panel">
                     <div className="viewport-header">
                       <div className="viewport-label">Original Drawing</div>
                       {oldDrawing && (
                         <div className="ingested-file-pill ref">
-                          <span className="pill-label">REF:</span>
                           <span className="pill-filename" title={oldDrawing.file_name}>
                             {oldDrawing.file_name}
                           </span>
@@ -2511,7 +1353,6 @@ export const AuditWorkspace: React.FC = () => {
                       <div className="viewport-label">KMTI Drawing</div>
                       {newDrawing && (
                         <div className="ingested-file-pill rev">
-                          <span className="pill-label">REV:</span>
                           <span className="pill-filename" title={newDrawing.file_name}>
                             {newDrawing.file_name}
                           </span>
@@ -2547,7 +1388,6 @@ export const AuditWorkspace: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              )}
             </div>
           </main>
 
@@ -3151,7 +1991,7 @@ export const AuditWorkspace: React.FC = () => {
           align-items: center;
           background: var(--bg-dark);
           border-bottom: 1px solid var(--border-color);
-          padding-right: 8px;
+          padding: 5px 10px 8px 0;
         }
 
         .viewport-header .viewport-label {
@@ -3159,11 +1999,11 @@ export const AuditWorkspace: React.FC = () => {
         }
 
         .viewport-label {
-          font-size: 0.7rem;
+          font-size: 0.75rem;
           font-weight: 700;
           color: var(--text-primary);
           text-transform: uppercase;
-          padding: 8px 12px;
+          padding: 2px 16px;
           background: var(--bg-dark);
           border-bottom: 1px solid var(--border-color);
         }

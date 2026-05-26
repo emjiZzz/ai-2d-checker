@@ -30,7 +30,6 @@ export const AuditHistory: React.FC = () => {
     adminAuditSessionsLoading,
     error: storeError,
     fetchAdminAuditSessions,
-    softDeleteAuditSession,
     restoreAuditSession,
   } = useAdminStore();
 
@@ -97,16 +96,6 @@ export const AuditHistory: React.FC = () => {
   const handleClearFilter = () => {
     setSearchUsername("");
     setAppliedUsername("");
-  };
-
-  const handleSoftDelete = async (id: string, drawingId: string) => {
-    const ok = await softDeleteAuditSession(id);
-    if (ok) {
-      triggerNotification(`Session for drawing ${drawingId} moved to trashbin.`);
-      fetchAdminAuditSessions(viewMode === "trashbin", appliedUsername);
-    } else {
-      triggerError(storeError || "Failed to move session to trashbin.");
-    }
   };
 
   const handleRestore = async (id: string, drawingId: string) => {
@@ -311,9 +300,9 @@ export const AuditHistory: React.FC = () => {
                 <tr className="stats-row" style={{ background: "rgba(255, 255, 255, 0.015)", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
                   <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "left", width: "90px" }}>ID</th>
                   <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>User</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Reference File</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>New File (Revision)</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Client Context</th>
+                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Original Drawing</th>
+                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>KMTI Drawing</th>
+                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Client</th>
                   <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Compliance Score</th>
                   <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Session Date</th>
                   {viewMode === "trashbin" && (

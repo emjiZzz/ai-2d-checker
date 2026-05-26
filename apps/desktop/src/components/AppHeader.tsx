@@ -45,7 +45,7 @@ export const AppHeader: React.FC = () => {
       >
         <Cpu size={18} style={{ color: "var(--accent-cyan)" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <span style={{ fontSize: "0.85rem", fontWeight: 800, lineHeight: 1.2, color: "var(--text-primary)" }}>AI-2D-Checker</span>
+          <span style={{ fontSize: "0.9rem", fontWeight: 700, lineHeight: 1.2, color: "var(--text-primary)" }}>KMTI Checker</span>
         </div>
       </div>
 
