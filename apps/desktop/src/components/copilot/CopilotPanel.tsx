@@ -35,7 +35,6 @@ export const CopilotPanel: React.FC = () => {
         )}
       </div>
 
-      {/* Conversation Input */}
       <div className="copilot-input-container">
         <input
           type="text"

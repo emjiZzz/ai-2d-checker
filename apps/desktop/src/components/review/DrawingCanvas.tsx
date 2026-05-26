@@ -38,20 +38,54 @@ interface DrawingCanvasProps {
 export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, height, drawing }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-  
+
   // Connect stores
-  const { viewport, setViewport, activeLayers, showViolations, hoveredCoords, setHoveredCoords } = useReviewStore();
+  const {
+    viewport,
+    setViewport,
+    activeLayers,
+    showViolations,
+    hoveredCoords,
+    setHoveredCoords,
+    isLaserSyncEnabled,
+    isOverlayModeEnabled,
+    isPhysicalComparisonEnabled,
+    selectedComparisonRegion,
+    visibleRegions,
+    isRoiEditModeEnabled,
+    customRegions,
+    updateCustomRegion
+  } = useReviewStore();
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const selectViolation = useWorkspaceStore((s) => s.selectViolation);
   const violations = useWorkspaceStore((s) => s.violations);
   const theme = useThemeStore((s) => s.theme);
- 
+
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [mouseCoords, setMouseCoords] = useState<{ x: number, y: number } | null>(null);
   const [isNeonCAD, setIsNeonCAD] = useState(false);
   const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
   const [redrawTrigger, setRedrawTrigger] = useState(0);
+
+  // ROI Interactive Drag handles local states
+  const [activeDragHandle, setActiveDragHandle] = useState<{
+    regionKey: string;
+    handleId: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+  } | null>(null);
+  const [hoveredHandleInfo, setHoveredHandleInfo] = useState<{
+    regionKey: string;
+    handleId: string;
+    cursor: string;
+  } | null>(null);
+  const [centerDragStart, setCenterDragStart] = useState<{
+    pctX: number;
+    pctY: number;
+    originalXMin: number;
+    originalXMax: number;
+    originalYMin: number;
+    originalYMax: number;
+  } | null>(null);
 
   // Connect background raster image for high-fidelity rendering parity
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
@@ -79,7 +113,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         }
         const blob = await res.blob();
         if (!active) return;
-        
+
         const img = new Image();
         img.src = URL.createObjectURL(blob);
         img.onload = () => {
@@ -95,13 +129,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
               const imgData = context.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
               for (let i = 0; i < data.length; i += 4) {
-                if (data[i+3] === 0) continue; // Skip fully transparent
-                const r = data[i], g = data[i+1], b = data[i+2];
+                if (data[i + 3] === 0) continue; // Skip fully transparent
+                const r = data[i], g = data[i + 1], b = data[i + 2];
                 // Check if pixel is grayscale (very low saturation)
                 if (Math.max(r, g, b) - Math.min(r, g, b) < 25) {
                   data[i] = 255 - r;
-                  data[i+1] = 255 - g;
-                  data[i+2] = 255 - b;
+                  data[i + 1] = 255 - g;
+                  data[i + 2] = 255 - b;
                 }
               }
               context.putImageData(imgData, 0, 0);
@@ -136,21 +170,21 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
- 
+
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    
+
     // Enable high-quality image smoothing for scaling high-res drawings beautifully!
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
- 
+
     const startTime = performance.now();
 
     // Compute normalization scale and translation offset to unify coordinate bounds
     let normalizationScale = 1;
     let normXMin = 0;
     let normYMin = 0;
-    
+
     if (drawing?.metadata?.render_bounds) {
       const [xmin, ymin, xmax] = drawing.metadata.render_bounds;
       const boundsWidth = xmax - xmin;
@@ -160,74 +194,67 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         normYMin = ymin;
       }
     }
-    
+
     const effectiveScale = viewport.scale * normalizationScale;
-    
+
     // 1. Clear infinite background
-    ctx.fillStyle = theme === 'hc-light' ? '#f4f4f5' : '#09090b'; 
+    ctx.fillStyle = theme === 'hc-light' ? '#f4f4f5' : '#09090b';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Draw Professional World-Space Paper Sheet
-    if (drawing?.metadata?.render_bounds) {
-      ctx.save();
-      // Apply world space transformations to anchor the paper to the CAD coordinates
-      ctx.translate(viewport.x, viewport.y);
-      ctx.scale(effectiveScale, effectiveScale);
-      ctx.translate(-normXMin, -normYMin);
-
-      const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-      const paperWidth = xmax - xmin;
-      const paperHeight = ymax - ymin;
-      const margin = (paperWidth + paperHeight) * 0.025; // 2.5% responsive margin
-      
-      // Drop shadow for the drafting paper
-      ctx.shadowColor = theme === 'hc-light' ? 'rgba(0, 0, 0, 0.15)' : 'rgba(0, 0, 0, 0.6)';
-      ctx.shadowBlur = 40 / effectiveScale;
-      ctx.shadowOffsetX = 10 / effectiveScale;
-      ctx.shadowOffsetY = 15 / effectiveScale;
-
-      // Solid paper background
-      ctx.fillStyle = theme === 'hc-light' ? '#ffffff' : '#121214'; // Brilliant white or elevated dark paper
-      ctx.fillRect(xmin - margin, ymin - margin, paperWidth + margin * 2, paperHeight + margin * 2);
-      
-      // Subtle crisp border outline for the paper edge
-      ctx.shadowColor = 'transparent';
-      ctx.strokeStyle = theme === 'hc-light' ? '#d4d4d8' : '#27272a';
-      ctx.lineWidth = 1.5 / effectiveScale;
-      ctx.strokeRect(xmin - margin, ymin - margin, paperWidth + margin * 2, paperHeight + margin * 2);
-      
-      ctx.restore();
-    }
- 
-    // 3. Draw fine engineering grids over the paper in screen-space
+    // 2. Draw fine engineering grids aligned to raw CAD space (rendered in screen-space for pixel-crisp lines)
     ctx.save();
-    ctx.strokeStyle = theme === 'hc-light' ? 'rgba(9, 9, 11, 0.05)' : 'rgba(63, 63, 70, 0.15)'; 
-    ctx.lineWidth = 0.5;
-    
-    const gridSpacing = 50 * viewport.scale;
-    const offsetX = viewport.x % gridSpacing;
-    const offsetY = viewport.y % gridSpacing;
- 
-    for (let x = offsetX; x < width; x += gridSpacing) {
+
+    // Choose theme-based styling (perfect grey/zinc engineering aesthetics)
+    ctx.strokeStyle = theme === 'hc-light' ? 'rgba(9, 9, 11, 0.08)' : 'rgba(63, 63, 70, 0.25)';
+    ctx.lineWidth = 1; // 1px pixel-crisp lines
+
+    const targetScreenSpacing = 50; // Tighter grid spacing for professional engineering look
+    const rawWorldSpacing = targetScreenSpacing / effectiveScale;
+    const exponent = Math.floor(Math.log10(rawWorldSpacing));
+    const powerOf10 = Math.pow(10, exponent);
+    const ratio = rawWorldSpacing / powerOf10;
+
+    let worldSpacing = powerOf10;
+    if (ratio > 5) {
+      worldSpacing = powerOf10 * 5;
+    } else if (ratio > 2) {
+      worldSpacing = powerOf10 * 2;
+    }
+
+    const screenSpacing = worldSpacing * effectiveScale;
+    const screenOriginX = viewport.x - normXMin * effectiveScale;
+    const screenOriginY = viewport.y - normYMin * effectiveScale;
+
+    // Draw vertical grid lines
+    const kStartX = Math.floor((0 - screenOriginX) / screenSpacing);
+    const kEndX = Math.ceil((width - screenOriginX) / screenSpacing);
+    for (let k = kStartX; k <= kEndX; k++) {
+      const sx = Math.round(screenOriginX + k * screenSpacing);
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, height);
       ctx.stroke();
     }
-    for (let y = offsetY; y < height; y += gridSpacing) {
+
+    // Draw horizontal grid lines
+    const kStartY = Math.floor((0 - screenOriginY) / screenSpacing);
+    const kEndY = Math.ceil((height - screenOriginY) / screenSpacing);
+    for (let k = kStartY; k <= kEndY; k++) {
+      const sy = Math.round(screenOriginY + k * screenSpacing);
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
+      ctx.moveTo(0, sy);
+      ctx.lineTo(width, sy);
       ctx.stroke();
     }
+
     ctx.restore();
- 
+
     // 3. Setup transformations (apply normalization!)
     ctx.save();
     ctx.translate(viewport.x, viewport.y);
     ctx.scale(effectiveScale, effectiveScale);
     ctx.translate(-normXMin, -normYMin);
- 
+
     let currentFilter = "none";
     if (isNeonCAD) {
       currentFilter = "contrast(1.25) brightness(1.15) saturate(1.35) hue-rotate(2deg)";
@@ -240,7 +267,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
       ctx.drawImage(targetImage, xmin, ymin, xmax - xmin, ymax - ymin);
     }
- 
+
     // 4. Viewport bounds in world coordinates (for culling virtualization)
     const minX = normXMin - viewport.x / effectiveScale;
     const minY = normYMin - viewport.y / effectiveScale;
@@ -251,42 +278,91 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     let drawnEntities = 0;
 
     // 5. Draw entity layers
+    // To prevent massive lag when drawing 40,000+ fallback vectors, we BATCH draw calls by stroke style!
+    const pathBatches: Record<string, { stroke: string, width: number, path: Path2D }> = {};
+
     Object.entries(layers).forEach(([layerName, entities]) => {
       // Respect layer controls
       if (activeLayers[layerName] === false) return;
 
       entities.forEach((ent) => {
         totalEntities++;
-        
+
         // If we have successfully drawn the background raster image, we bypass redundant vector drawing!
         if (bgImage && drawing?.metadata?.render_bounds) {
           return;
         }
-        
+
         const geo = ent.geometry;
         if (!geo) return;
+
+        let strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
+        if (theme === 'hc-light') {
+          const lowerColor = strokeColor.toLowerCase();
+          if (lowerColor === '#ffffff' || lowerColor === '#fff') strokeColor = '#18181b';
+          if (lowerColor === '#00e5ff') strokeColor = '#0ea5e9';
+        }
+        const strokeWidth = ent.style?.strokeWidth || ent.properties?.strokeWidth || 1;
+        const batchKey = `${strokeColor}_${strokeWidth}`;
+
+        // Text is drawn directly since it requires complex sub-pixel dpr matrix scaling and cannot use Path2D
+        if (ent.type === 'text' && (geo.location || geo.insert)) {
+          const [tx, ty] = geo.location || geo.insert;
+
+          const screenX = tx * effectiveScale + viewport.x;
+          const screenY = ty * effectiveScale + viewport.y;
+          const baseHeight = ent.properties?.height || ent.style?.fontSize || 12;
+          const screenHeight = baseHeight * effectiveScale * 1.0;
+
+          if (screenHeight < 4) return;
+          if (screenX < -500 || screenX > width + 500 || screenY < -500 || screenY > height + 500) return;
+
+          drawnEntities++;
+
+          ctx.save();
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          let textColor = ent.style?.stroke || ent.style?.fill || '#ffffff';
+          if (theme === 'hc-light') {
+            const lowerColor = textColor.toLowerCase();
+            if (lowerColor === '#ffffff' || lowerColor === '#fff') textColor = '#18181b';
+            if (lowerColor === '#00e5ff') textColor = '#0ea5e9';
+          }
+          ctx.fillStyle = textColor;
+          ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
+
+          const rawText = geo.text || geo.content || ent.properties?.text || '';
+          const textVal = cleanCadText(rawText);
+
+          if (textVal) {
+            ctx.fillText(textVal, screenX, screenY);
+          }
+          ctx.restore();
+          return;
+        }
+
+        // Initialize Path2D batch if needed
+        if (!pathBatches[batchKey]) {
+          pathBatches[batchKey] = { stroke: strokeColor, width: strokeWidth as number, path: new Path2D() };
+        }
+        const p2d = pathBatches[batchKey].path;
 
         // Viewport Virtualization & Culling based on geometry types
         if (ent.type === 'line' && geo.start && geo.end) {
           const [x1, y1] = geo.start;
           const [x2, y2] = geo.end;
-          
+
           const left = Math.min(x1, x2);
           const right = Math.max(x1, x2);
           const top = Math.min(y1, y2);
           const bottom = Math.max(y1, y2);
 
-          // Culling check
           if (right < minX || left > maxX || bottom < minY || top > maxY) return;
 
           drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
-        } 
+          p2d.moveTo(x1, y1);
+          p2d.lineTo(x2, y2);
+        }
         else if (ent.type === 'circle' && (geo.center || geo.location)) {
           const [cx, cy] = geo.center || geo.location;
           const r = geo.radius || ent.properties?.radius || 1;
@@ -294,12 +370,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
 
           drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-          ctx.stroke();
-        } 
+          p2d.moveTo(cx + r, cy);
+          p2d.arc(cx, cy, r, 0, 2 * Math.PI);
+        }
         else if (ent.type === 'arc' && (geo.center || geo.location)) {
           const [cx, cy] = geo.center || geo.location;
           const r = geo.radius || ent.properties?.radius || 1;
@@ -309,53 +382,14 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
 
           drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.arc(cx, cy, r, startAngle, endAngle, false);
-          ctx.stroke();
-        }
-        else if (ent.type === 'text' && (geo.location || geo.insert)) {
-          const [tx, ty] = geo.location || geo.insert;
-          
-          // Calculate exact screen coordinates by applying current viewport translation and scale
-          const screenX = tx * effectiveScale + viewport.x;
-          const screenY = ty * effectiveScale + viewport.y;
-          
-          // Resolve standard CAD text height and scale to screen scale
-          const baseHeight = ent.properties?.height || ent.style?.fontSize || 12;
-          const screenHeight = baseHeight * effectiveScale * 1.0;
-
-          // Font decluttering: if font is too small to be legible on screen, skip rendering it
-          if (screenHeight < 4) return;
-
-          // Perform screen-space culling with safety margins
-          if (screenX < -500 || screenX > width + 500 || screenY < -500 || screenY > height + 500) return;
-
-          drawnEntities++;
-          
-          ctx.save();
-          // Reset transformation matrix to draw text on unscaled canvas context with high-DPI resolution.
-          // This bypasses browser sub-pixel rendering limitations and guarantees 100% crisp, visible labels.
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          
-          // Japanese/CJK capable font stack: Yu Gothic & MS Gothic for Windows, Noto as universal fallback
-          ctx.fillStyle = ent.style?.stroke || ent.style?.fill || '#ffffff';
-          ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
-          
-          const rawText = geo.text || geo.content || ent.properties?.text || '';
-          const textVal = cleanCadText(rawText);
-          
-          if (textVal) {
-            ctx.fillText(textVal, screenX, screenY);
-          }
-          ctx.restore();
+          // Math.cos/sin ensures the path accurately connects to the start of the arc
+          p2d.moveTo(cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
+          p2d.arc(cx, cy, r, startAngle, endAngle, false);
         }
         else if (ent.type === 'polyline' && (geo.vertices || geo.points)) {
           const vertices = geo.vertices || geo.points;
           if (vertices.length < 2) return;
 
-          // Polyline bounding check
           let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
           vertices.forEach(([vx, vy]: [number, number]) => {
             if (vx < pMinX) pMinX = vx;
@@ -367,16 +401,20 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           if (pMaxX < minX || pMinX > maxX || pMaxY < minY || pMinY > maxY) return;
 
           drawnEntities++;
-          ctx.beginPath();
-          ctx.strokeStyle = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-          ctx.lineWidth = (ent.style?.strokeWidth || ent.properties?.strokeWidth || 1) / viewport.scale;
-          ctx.moveTo(vertices[0][0], vertices[0][1]);
+          p2d.moveTo(vertices[0][0], vertices[0][1]);
           for (let i = 1; i < vertices.length; i++) {
-            ctx.lineTo(vertices[i][0], vertices[i][1]);
+            p2d.lineTo(vertices[i][0], vertices[i][1]);
           }
-          ctx.stroke();
         }
       });
+    });
+
+    // Fire a single consolidated stroke call per unique color/thickness batch!
+    Object.values(pathBatches).forEach(batch => {
+      ctx.beginPath();
+      ctx.strokeStyle = batch.stroke;
+      ctx.lineWidth = batch.width / viewport.scale;
+      ctx.stroke(batch.path);
     });
 
     // 6. Draw compliance violations reticles if active
@@ -388,30 +426,30 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         const radius = 24 / effectiveScale;
         const penType = v.pen_type || 'ai_red';
         const isSelected = selectedViolation?.id === v.id;
- 
+
         ctx.save();
-        
+
         if (penType === 'ai_green') {
           // AI Green: Soft semi-transparent green outline / halo
           ctx.beginPath();
           ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
           ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
           ctx.lineWidth = (isSelected ? 2.5 : 1.5) / effectiveScale;
-          
+
           // Inner halo glow shadow
           ctx.shadowBlur = 12;
           ctx.shadowColor = '#10b981';
-          
+
           ctx.arc(vx, vy, radius * 1.5, 0, 2 * Math.PI);
           ctx.fill();
           ctx.stroke();
-          
+
           // Tiny green center checkmark tag or dot
           ctx.beginPath();
           ctx.fillStyle = '#10b981';
           ctx.arc(vx, vy, 4 / effectiveScale, 0, 2 * Math.PI);
           ctx.fill();
-        } 
+        }
         else if (penType === 'ai_red') {
           // AI Red: Crimson Pin comment card
           ctx.beginPath();
@@ -421,7 +459,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.arc(vx, vy, radius, 0, 2 * Math.PI);
           ctx.fill();
           ctx.stroke();
-          
+
           // Draw red teardrop pin pointing to center
           const pinHeight = 24 / effectiveScale;
           const pinWidth = 12 / effectiveScale;
@@ -430,11 +468,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 1 / effectiveScale;
           ctx.moveTo(vx, vy);
-          ctx.bezierCurveTo(vx - pinWidth, vy - pinHeight/2, vx - pinWidth, vy - pinHeight, vx, vy - pinHeight);
-          ctx.bezierCurveTo(vx + pinWidth, vy - pinHeight, vx + pinWidth, vy - pinHeight/2, vx, vy);
+          ctx.bezierCurveTo(vx - pinWidth, vy - pinHeight / 2, vx - pinWidth, vy - pinHeight, vx, vy - pinHeight);
+          ctx.bezierCurveTo(vx + pinWidth, vy - pinHeight, vx + pinWidth, vy - pinHeight / 2, vx, vy);
           ctx.fill();
           ctx.stroke();
-          
+
           // White dot inside pin head
           ctx.beginPath();
           ctx.fillStyle = '#ffffff';
@@ -450,7 +488,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.arc(vx, vy, radius, 0, 2 * Math.PI);
           ctx.fill();
           ctx.stroke();
-          
+
           // Draw blue teardrop pin pointing to center
           const pinHeight = 24 / effectiveScale;
           const pinWidth = 12 / effectiveScale;
@@ -459,11 +497,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 1 / effectiveScale;
           ctx.moveTo(vx, vy);
-          ctx.bezierCurveTo(vx - pinWidth, vy - pinHeight/2, vx - pinWidth, vy - pinHeight, vx, vy - pinHeight);
-          ctx.bezierCurveTo(vx + pinWidth, vy - pinHeight, vx + pinWidth, vy - pinHeight/2, vx, vy);
+          ctx.bezierCurveTo(vx - pinWidth, vy - pinHeight / 2, vx - pinWidth, vy - pinHeight, vx, vy - pinHeight);
+          ctx.bezierCurveTo(vx + pinWidth, vy - pinHeight, vx + pinWidth, vy - pinHeight / 2, vx, vy);
           ctx.fill();
           ctx.stroke();
-          
+
           // White dot inside pin head
           ctx.beginPath();
           ctx.fillStyle = '#ffffff';
@@ -475,7 +513,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           const isGreen = penType === 'resolved_green';
           const primaryColor = isGreen ? '#10b981' : '#ec4899';
           const bgColor = isGreen ? 'rgba(16, 185, 129, 0.2)' : 'rgba(236, 72, 153, 0.2)';
-          
+
           ctx.beginPath();
           ctx.fillStyle = bgColor;
           ctx.strokeStyle = primaryColor;
@@ -483,7 +521,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.arc(vx, vy, radius * 0.8, 0, 2 * Math.PI);
           ctx.fill();
           ctx.stroke();
-          
+
           // Draw stylized checkmark in center
           ctx.beginPath();
           ctx.strokeStyle = '#ffffff';
@@ -496,7 +534,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.lineTo(vx + size, vy - size);
           ctx.stroke();
         }
- 
+
         // Draw selection pulsing tick outline
         if (isSelected) {
           ctx.beginPath();
@@ -507,7 +545,189 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.stroke();
           ctx.setLineDash([]);
         }
- 
+
+        ctx.restore();
+      });
+    }
+
+    // 6.5 Draw Physical Comparison Region Outlines and Fills
+    if (isPhysicalComparisonEnabled && drawing?.metadata?.render_bounds) {
+      const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
+      const w = xmax - xmin;
+      const h = ymax - ymin;
+
+      const regions: Record<string, { xMin: number; yMin: number; xMax: number; yMax: number }> = {
+        views: {
+          xMin: xmin + w * (customRegions.views?.xMin ?? 0.05),
+          xMax: xmin + w * (customRegions.views?.xMax ?? 0.65),
+          yMin: ymin + h * (customRegions.views?.yMin ?? 0.15),
+          yMax: ymin + h * (customRegions.views?.yMax ?? 0.85)
+        },
+        notes: {
+          xMin: xmin + w * (customRegions.notes?.xMin ?? 0.05),
+          xMax: xmin + w * (customRegions.notes?.xMax ?? 0.35),
+          yMin: ymin + h * (customRegions.notes?.yMin ?? 0.20),
+          yMax: ymin + h * (customRegions.notes?.yMax ?? 0.60)
+        },
+        bom: {
+          xMin: xmin + w * (customRegions.bom?.xMin ?? 0.65),
+          xMax: xmin + w * (customRegions.bom?.xMax ?? 0.98),
+          yMin: ymin + h * (customRegions.bom?.yMin ?? 0.05),
+          yMax: ymin + h * (customRegions.bom?.yMax ?? 0.42)
+        },
+        title: {
+          xMin: xmin + w * (customRegions.title?.xMin ?? 0.40),
+          xMax: xmin + w * (customRegions.title?.xMax ?? 0.98),
+          yMin: ymin + h * (customRegions.title?.yMin ?? 0.75),
+          yMax: ymin + h * (customRegions.title?.yMax ?? 0.98)
+        },
+        iso: {
+          xMin: xmin + w * (customRegions.iso?.xMin ?? 0.65),
+          xMax: xmin + w * (customRegions.iso?.xMax ?? 0.98),
+          yMin: ymin + h * (customRegions.iso?.yMin ?? 0.45),
+          yMax: ymin + h * (customRegions.iso?.yMax ?? 0.72)
+        }
+      };
+
+      const getRegionDiffColor = (regionKey: string) => {
+        if (isOverlayModeEnabled) {
+          if (regionKey === "iso") return "#10b981"; // Added -> Revision V2 (Green)
+          return "#eab308"; // Unchanged / Modified -> Overlapping (Yellow)
+        } else {
+          if (regionKey === "iso") return "#10b981"; // Added (Green)
+          if (regionKey === "notes" || regionKey === "bom") return "#f59e0b"; // Modified (Orange)
+          return "#00e5ff"; // Unchanged (Cyan)
+        }
+      };
+
+      const getRegionStatusText = (regionKey: string) => {
+        if (regionKey === "iso") return "Added";
+        if (regionKey === "notes" || regionKey === "bom") return "Modified";
+        return "Unchanged";
+      };
+
+      const getRegionLabel = (regionKey: string) => {
+        if (regionKey === "views") return "Drawing Views";
+        if (regionKey === "notes") return "Notes";
+        if (regionKey === "bom") return "Bill of Material";
+        if (regionKey === "title") return "Title Block";
+        if (regionKey === "iso") return "Isometric View";
+        return regionKey;
+      };
+
+      Object.entries(regions).forEach(([key, bounds]) => {
+        // Respect visibility toggles
+        if (visibleRegions[key] === false) return;
+
+        const isSelected = selectedComparisonRegion === key;
+        const color = getRegionDiffColor(key);
+        const statusText = getRegionStatusText(key);
+        const labelText = getRegionLabel(key);
+
+        ctx.save();
+
+        // Outline border stroke
+        ctx.strokeStyle = color;
+        ctx.lineWidth = (isSelected ? 3.0 : 1.25) / effectiveScale;
+        ctx.setLineDash([6 / effectiveScale, 4 / effectiveScale]);
+
+        // Background transparent fill
+        ctx.fillStyle = isSelected
+          ? `rgba(${color === '#10b981' ? '16, 185, 129' : color === '#f59e0b' ? '245, 158, 11' : color === '#eab308' ? '234, 179, 8' : '0, 229, 255'}, 0.05)`
+          : `rgba(${color === '#10b981' ? '16, 185, 129' : color === '#f59e0b' ? '245, 158, 11' : color === '#eab308' ? '234, 179, 8' : '0, 229, 255'}, 0.015)`;
+
+        // Draw rectangle
+        ctx.beginPath();
+        ctx.rect(bounds.xMin, bounds.yMin, bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw glowing active corners if selected
+        if (isSelected) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 4.0 / effectiveScale;
+          ctx.setLineDash([]);
+          const cornerLen = Math.min(25 / effectiveScale, (bounds.xMax - bounds.xMin) * 0.1);
+
+          // Top-Left
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMin + cornerLen, bounds.yMin);
+          ctx.lineTo(bounds.xMin, bounds.yMin);
+          ctx.lineTo(bounds.xMin, bounds.yMin + cornerLen);
+          ctx.stroke();
+
+          // Top-Right
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMax - cornerLen, bounds.yMin);
+          ctx.lineTo(bounds.xMax, bounds.yMin);
+          ctx.lineTo(bounds.xMax, bounds.yMin + cornerLen);
+          ctx.stroke();
+
+          // Bottom-Left
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMin + cornerLen, bounds.yMax);
+          ctx.lineTo(bounds.xMin, bounds.yMax);
+          ctx.lineTo(bounds.xMin, bounds.yMax - cornerLen);
+          ctx.stroke();
+
+          // Bottom-Right
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMax - cornerLen, bounds.yMax);
+          ctx.lineTo(bounds.xMax, bounds.yMax);
+          ctx.lineTo(bounds.xMax, bounds.yMax - cornerLen);
+          ctx.stroke();
+        }
+
+        // Draw label text anchored at the top-left in screen coordinates for crisp rendering
+        ctx.restore();
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const screenX = (bounds.xMin - normXMin) * effectiveScale + viewport.x;
+        const screenY = (bounds.yMin - normYMin) * effectiveScale + viewport.y;
+        const screenXMax = (bounds.xMax - normXMin) * effectiveScale + viewport.x;
+        const screenYMax = (bounds.yMax - normYMin) * effectiveScale + viewport.y;
+
+        // Draw neat label pill block
+        ctx.fillStyle = "rgba(10, 10, 12, 0.88)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.0;
+        
+        const textToDraw = `[ ${labelText} : ${statusText} ]`;
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        const textWidth = ctx.measureText(textToDraw).width;
+        
+        ctx.beginPath();
+        ctx.roundRect(screenX + 4, screenY + 4, textWidth + 12, 16, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.fillText(textToDraw, screenX + 10, screenY + 15);
+
+        // Render circular interactive drag handles
+        if (isRoiEditModeEnabled && isSelected) {
+          const corners = [
+            { x: screenX, y: screenY, id: 'top-left' },
+            { x: screenXMax, y: screenY, id: 'top-right' },
+            { x: screenX, y: screenYMax, id: 'bottom-left' },
+            { x: screenXMax, y: screenYMax, id: 'bottom-right' }
+          ];
+
+          corners.forEach(corner => {
+            ctx.beginPath();
+            ctx.arc(corner.x, corner.y, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.0;
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0; // reset shadow
+          });
+        }
+
         ctx.restore();
       });
     }
@@ -520,38 +740,38 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       ctx.strokeStyle = 'rgba(161, 161, 170, 0.35)'; // Sleek zinc line
       ctx.setLineDash([4, 4]);
       ctx.lineWidth = 0.8;
-      
+
       // Horizontal
       ctx.beginPath();
       ctx.moveTo(0, mouseCoords.y);
       ctx.lineTo(width, mouseCoords.y);
       ctx.stroke();
-      
+
       // Vertical
       ctx.beginPath();
       ctx.moveTo(mouseCoords.x, 0);
       ctx.lineTo(mouseCoords.x, height);
       ctx.stroke();
-      
+
       // Compute CAD coordinate representation (adjusting for normalization scale and translation)
       const wx = (normXMin + (mouseCoords.x - viewport.x) / effectiveScale).toFixed(2);
       const wy = (normYMin - (mouseCoords.y - viewport.y) / effectiveScale).toFixed(2); // standard engineering inversion
-      
+
       ctx.fillStyle = '#a1a1aa';
       ctx.font = '10px monospace';
       ctx.fillText(`X: ${wx}, Y: ${wy}`, mouseCoords.x + 8, mouseCoords.y - 8);
       ctx.restore();
     }
- 
+
     // 7.5 Draw Synced Laser Crosshair from the other viewport!
-    if (hoveredCoords && !mouseCoords) {
+    if (isLaserSyncEnabled && hoveredCoords && !mouseCoords) {
       const syncedX = viewport.x + effectiveScale * (hoveredCoords.x - normXMin);
       const syncedY = viewport.y - effectiveScale * (hoveredCoords.y - normYMin);
-      
+
       // Perform screen bounds check
       if (syncedX >= 0 && syncedX <= width && syncedY >= 0 && syncedY <= height) {
         ctx.save();
-        
+
         // Laser circle glow ring
         ctx.beginPath();
         ctx.strokeStyle = '#00ffcc'; // Glowing cyan laser
@@ -560,46 +780,46 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         ctx.shadowColor = '#00ffcc';
         ctx.arc(syncedX, syncedY, 16, 0, 2 * Math.PI);
         ctx.stroke();
-        
+
         // Inner center laser dot
         ctx.beginPath();
         ctx.fillStyle = '#00ffcc';
         ctx.arc(syncedX, syncedY, 3, 0, 2 * Math.PI);
         ctx.fill();
-        
+
         // Synced reticle ticks
         ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
         ctx.lineWidth = 1.0;
         ctx.shadowBlur = 0; // Disable shadow for thin lines
-        
+
         // Top tick
         ctx.beginPath();
         ctx.moveTo(syncedX, syncedY - 26);
         ctx.lineTo(syncedX, syncedY - 10);
         ctx.stroke();
-        
+
         // Bottom tick
         ctx.beginPath();
         ctx.moveTo(syncedX, syncedY + 10);
         ctx.lineTo(syncedX, syncedY + 26);
         ctx.stroke();
-        
+
         // Left tick
         ctx.beginPath();
         ctx.moveTo(syncedX - 26, syncedY);
         ctx.lineTo(syncedX - 10, syncedY);
         ctx.stroke();
-        
+
         // Right tick
         ctx.beginPath();
         ctx.moveTo(syncedX + 10, syncedY);
         ctx.lineTo(syncedX + 26, syncedY);
         ctx.stroke();
-        
+
         ctx.restore();
       }
     }
- 
+
     // 8. Track rendering speed diagnostics
     const endTime = performance.now();
     setRenderDiagnostics({
@@ -607,7 +827,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       drawCount: drawnEntities,
       renderTimeMs: Math.round((endTime - startTime) * 100) / 100
     });
-  }, [layers, width, height, viewport, activeLayers, showViolations, violations, selectedViolation, mouseCoords, redrawTrigger, bgImage, drawing, isNeonCAD, hoveredCoords]);
+  }, [layers, width, height, viewport, activeLayers, showViolations, violations, selectedViolation, mouseCoords, redrawTrigger, bgImage, drawing, isNeonCAD, hoveredCoords, isLaserSyncEnabled, isOverlayModeEnabled, isPhysicalComparisonEnabled, selectedComparisonRegion, visibleRegions, isRoiEditModeEnabled, customRegions]);
 
   // Handle redraw when values update
   useEffect(() => {
@@ -620,7 +840,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       // Ensure only the canvas corresponding to the violation owner updates the global viewport!
       if ((selectedViolation as any).drawing_id === drawing.id) {
         const [vx, vy] = selectedViolation.coordinates;
-        
+
         let normScale = 1;
         let xmin = 0;
         let ymin = 0;
@@ -633,10 +853,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             ymin = y0;
           }
         }
-        
+
         const stdX = (vx - xmin) * normScale;
         const stdY = (vy - ymin) * normScale;
-        
+
         const targetScale = 2.2;
         const targetX = width / 2 - stdX * targetScale;
         const targetY = height / 2 - stdY * targetScale;
@@ -653,7 +873,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
         return;
       }
-      
+
       const key = e.key.toLowerCase();
       if (key === 'escape') {
         e.preventDefault();
@@ -662,7 +882,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         e.preventDefault();
         if (selectedViolation && selectedViolation.coordinates && drawing) {
           const [vx, vy] = selectedViolation.coordinates;
-          
+
           let normScale = 1;
           let xmin = 0;
           let ymin = 0;
@@ -675,10 +895,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
               ymin = y0;
             }
           }
-          
+
           const stdX = (vx - xmin) * normScale;
           const stdY = (vy - ymin) * normScale;
-          
+
           const targetScale = 2.2;
           const targetX = width / 2 - stdX * targetScale;
           const targetY = height / 2 - stdY * targetScale;
@@ -692,7 +912,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         setViewport({ ...viewport, scale: Math.max(0.1, viewport.scale / 1.25) });
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -706,7 +926,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
 
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    
+
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
@@ -722,9 +942,58 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
 
   // Mouse pan triggers
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) { // Left click to drag
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+    if (e.button === 0) { // Left click to drag or calibrate
+      if (isRoiEditModeEnabled && hoveredHandleInfo) {
+        setActiveDragHandle({
+          regionKey: hoveredHandleInfo.regionKey,
+          handleId: hoveredHandleInfo.handleId as any
+        });
+
+        if (hoveredHandleInfo.handleId === 'center') {
+          const rect = canvasRef.current?.getBoundingClientRect();
+          if (rect && drawing?.metadata?.render_bounds) {
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            let normScale = 1;
+            let xmin = 0;
+            let ymin = 0;
+            const [x0, y0, x1] = drawing.metadata.render_bounds;
+            const boundsWidth = x1 - x0;
+            if (boundsWidth > 0) {
+              normScale = 1000 / boundsWidth;
+              xmin = x0;
+              ymin = y0;
+            }
+
+            const effectiveScale = viewport.scale * normScale;
+            const worldX = xmin + (mx - viewport.x) / effectiveScale;
+            const worldY = ymin + (my - viewport.y) / effectiveScale;
+
+            const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+            const w = rxMax - rxMin;
+            const h = ryMax - ryMin;
+
+            const pctX = (worldX - rxMin) / w;
+            const pctY = (worldY - ryMin) / h;
+
+            const current = customRegions[hoveredHandleInfo.regionKey];
+            if (current) {
+              setCenterDragStart({
+                pctX,
+                pctY,
+                originalXMin: current.xMin,
+                originalXMax: current.xMax,
+                originalYMin: current.yMin,
+                originalYMax: current.yMax
+              });
+            }
+          }
+        }
+      } else {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+      }
     }
   };
 
@@ -753,9 +1022,121 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     const effectiveScale = viewport.scale * normScale;
     const stdX = xmin + (mx - viewport.x) / effectiveScale;
     const stdY = ymin - (my - viewport.y) / effectiveScale;
-    setHoveredCoords({ x: stdX, y: stdY });
 
-    if (isDragging) {
+    if (isLaserSyncEnabled) {
+      setHoveredCoords({ x: stdX, y: stdY });
+    } else if (hoveredCoords !== null) {
+      setHoveredCoords(null);
+    }
+
+    // ROI Drag Handle interaction
+    if (isRoiEditModeEnabled && selectedComparisonRegion && drawing?.metadata?.render_bounds) {
+      const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+      const w = rxMax - rxMin;
+      const h = ryMax - ryMin;
+      const regionKey = selectedComparisonRegion;
+      const customReg = customRegions[regionKey];
+
+      if (customReg) {
+        const screenXMin = (rxMin + w * customReg.xMin - xmin) * effectiveScale + viewport.x;
+        const screenXMax = (rxMin + w * customReg.xMax - xmin) * effectiveScale + viewport.x;
+        const screenYMin = (ryMin + h * customReg.yMin - ymin) * effectiveScale + viewport.y;
+        const screenYMax = (ryMin + h * customReg.yMax - ymin) * effectiveScale + viewport.y;
+
+        const handles = [
+          { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
+          { id: 'top-right', x: screenXMax, y: screenYMin, cursor: 'nesw-resize' },
+          { id: 'bottom-left', x: screenXMin, y: screenYMax, cursor: 'nesw-resize' },
+          { id: 'bottom-right', x: screenXMax, y: screenYMax, cursor: 'nwse-resize' }
+        ];
+
+        const hovered = handles.find(hd => Math.hypot(mx - hd.x, my - hd.y) <= 12);
+        if (hovered) {
+          setHoveredHandleInfo({
+            regionKey,
+            handleId: hovered.id,
+            cursor: hovered.cursor
+          });
+        } else {
+          // If not hovering corners, check if we are hovering inside the selected region box!
+          if (mx >= screenXMin && mx <= screenXMax && my >= screenYMin && my <= screenYMax) {
+            setHoveredHandleInfo({
+              regionKey,
+              handleId: 'center',
+              cursor: 'move'
+            });
+          } else {
+            setHoveredHandleInfo(null);
+          }
+        }
+      }
+    } else {
+      if (hoveredHandleInfo) setHoveredHandleInfo(null);
+    }
+
+    if (activeDragHandle && drawing?.metadata?.render_bounds) {
+      const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+      const w = rxMax - rxMin;
+      const h = ryMax - ryMin;
+
+      const worldX = xmin + (mx - viewport.x) / effectiveScale;
+      const worldY = ymin + (my - viewport.y) / effectiveScale;
+
+      const pctX = Math.max(0.0, Math.min(1.0, (worldX - rxMin) / w));
+      const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));
+
+      const currentBounds = { ...customRegions[activeDragHandle.regionKey] };
+
+      if (activeDragHandle.handleId === 'center' && centerDragStart) {
+        const deltaPctX = pctX - centerDragStart.pctX;
+        const deltaPctY = pctY - centerDragStart.pctY;
+
+        const boxW = centerDragStart.originalXMax - centerDragStart.originalXMin;
+        const boxH = centerDragStart.originalYMax - centerDragStart.originalYMin;
+
+        // Apply shift with boundaries clamped to [0.0, 1.0]
+        let newXMin = centerDragStart.originalXMin + deltaPctX;
+        let newXMax = centerDragStart.originalXMax + deltaPctX;
+        let newYMin = centerDragStart.originalYMin + deltaPctY;
+        let newYMax = centerDragStart.originalYMax + deltaPctY;
+
+        if (newXMin < 0) {
+          newXMin = 0;
+          newXMax = boxW;
+        } else if (newXMax > 1) {
+          newXMax = 1;
+          newXMin = 1 - boxW;
+        }
+
+        if (newYMin < 0) {
+          newYMin = 0;
+          newYMax = boxH;
+        } else if (newYMax > 1) {
+          newYMax = 1;
+          newYMin = 1 - boxH;
+        }
+
+        currentBounds.xMin = newXMin;
+        currentBounds.xMax = newXMax;
+        currentBounds.yMin = newYMin;
+        currentBounds.yMax = newYMax;
+      } else if (activeDragHandle.handleId === 'top-left') {
+        currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
+        currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
+      } else if (activeDragHandle.handleId === 'top-right') {
+        currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
+        currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
+      } else if (activeDragHandle.handleId === 'bottom-left') {
+        currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
+        currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
+      } else if (activeDragHandle.handleId === 'bottom-right') {
+        currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
+        currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
+      }
+
+      updateCustomRegion(activeDragHandle.regionKey, currentBounds);
+      setRedrawTrigger(prev => prev + 1);
+    } else if (isDragging) {
       const newX = e.clientX - dragStart.x;
       const newY = e.clientY - dragStart.y;
       setViewport({ ...viewport, x: newX, y: newY });
@@ -764,16 +1145,21 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setActiveDragHandle(null);
+    setCenterDragStart(null);
   };
 
   const handleMouseLeave = () => {
     setIsDragging(false);
+    setActiveDragHandle(null);
+    setCenterDragStart(null);
     setMouseCoords(null);
     setHoveredCoords(null);
+    setHoveredHandleInfo(null);
   };
 
   return (
-    <div style={{ position: 'relative', width, height, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <canvas
         ref={canvasRef}
         width={width * dpr}
@@ -783,26 +1169,37 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab', display: 'block', width: `${width}px`, height: `${height}px` }}
+        style={{
+          cursor: activeDragHandle
+            ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
+            : hoveredHandleInfo
+              ? (hoveredHandleInfo.cursor as any)
+              : isDragging
+                ? 'grabbing'
+                : 'grab',
+          display: 'block',
+          width: '100%',
+          height: '100%'
+        }}
       />
- 
+
       {/* Floating CAD Compass & Navigation HUD Overlay (Top Right) */}
-      <div 
+      <div
         style={{
           position: 'absolute',
           top: 12,
           right: 12,
-          background: 'rgba(9, 9, 11, 0.75)',
+          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(63, 63, 70, 0.4)',
+          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
           padding: '10px 14px',
           borderRadius: '10px',
           fontFamily: 'sans-serif',
-          color: '#e4e4e7',
+          color: theme === 'hc-light' ? '#3f3f46' : '#e4e4e7',
           display: 'flex',
           alignItems: 'center',
           gap: '14px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
           pointerEvents: 'none',
           userSelect: 'none',
           transition: 'all 0.3s ease'
@@ -811,64 +1208,64 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         {/* Animated Cyber Dial */}
         <div style={{ position: 'relative', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="36" height="36" viewBox="0 0 36 36" style={{ transform: `rotate(${(viewport.x + viewport.y) * 0.05}deg)`, transition: 'transform 0.1s linear' }}>
-            <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1.5" />
-            <circle cx="18" cy="18" r="16" fill="none" stroke={isNeonCAD ? "#00ffcc" : "#00e5ff"} strokeWidth="1.5" strokeDasharray="8, 6" />
-            <line x1="18" y1="2" x2="18" y2="8" stroke={isNeonCAD ? "#00ffcc" : "#00e5ff"} strokeWidth="1.5" />
-            <line x1="18" y1="28" x2="18" y2="34" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="1.5" />
-            <line x1="2" y1="18" x2="8" y2="18" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="1.5" />
-            <line x1="28" y1="18" x2="34" y2="18" stroke="rgba(255, 255, 255, 0.2)" strokeWidth="1.5" />
+            <circle cx="18" cy="18" r="16" fill="none" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'} strokeWidth="1.5" />
+            <circle cx="18" cy="18" r="16" fill="none" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" strokeDasharray="8, 6" />
+            <line x1="18" y1="2" x2="18" y2="8" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" />
+            <line x1="18" y1="28" x2="18" y2="34" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+            <line x1="2" y1="18" x2="8" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+            <line x1="28" y1="18" x2="34" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
           </svg>
           <div style={{
             position: 'absolute',
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            backgroundColor: isNeonCAD ? '#00ffcc' : '#00e5ff',
-            boxShadow: `0 0 8px ${isNeonCAD ? '#00ffcc' : '#00e5ff'}`
+            backgroundColor: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff'),
+            boxShadow: `0 0 8px ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')}`
           }} />
         </div>
-        
+
         {/* Nav Stats */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
+          <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: theme === 'hc-light' ? '#71717a' : '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
           <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', display: 'flex', gap: '10px' }}>
-            <span>X: <span style={{ color: isNeonCAD ? '#00ffcc' : '#00e5ff' }}>{viewport.x.toFixed(0)}</span></span>
-            <span>Y: <span style={{ color: isNeonCAD ? '#00ffcc' : '#00e5ff' }}>{viewport.y.toFixed(0)}</span></span>
+            <span>X: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.x.toFixed(0)}</span></span>
+            <span>Y: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.y.toFixed(0)}</span></span>
             <span>MAG: <span style={{ color: '#ec4899' }}>{viewport.scale.toFixed(2)}x</span></span>
           </div>
         </div>
       </div>
- 
+
       {/* Floating Visual Quality Controller Panel (Bottom Right) */}
-      <div 
+      <div
         style={{
           position: 'absolute',
           bottom: 12,
           right: 12,
-          background: 'rgba(9, 9, 11, 0.75)',
+          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(63, 63, 70, 0.4)',
+          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
           padding: '8px 12px',
           borderRadius: '10px',
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
           userSelect: 'none',
           zIndex: 10
         }}
       >
         {/* Render Quality Badge */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-          <span style={{ fontSize: '0.55rem', color: '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
+          <span style={{ fontSize: '0.55rem', color: theme === 'hc-light' ? '#a1a1aa' : '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
           <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
             350 DPI High-Res
           </span>
         </div>
- 
-        <div style={{ width: '1px', height: '24px', backgroundColor: 'rgba(63, 63, 70, 0.5)' }} />
- 
+
+        <div style={{ width: '1px', height: '24px', backgroundColor: theme === 'hc-light' ? 'rgba(228, 228, 231, 1)' : 'rgba(63, 63, 70, 0.5)' }} />
+
         {/* Neon CAD Toggle Button */}
         <button
           onClick={() => {
@@ -876,13 +1273,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             setRedrawTrigger(prev => prev + 1);
           }}
           style={{
-            background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-            border: `1px solid ${isNeonCAD ? '#00ffcc' : 'rgba(63, 63, 70, 0.8)'}`,
+            background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : (theme === 'hc-light' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.03)'),
+            border: `1px solid ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)')}`,
             padding: '4px 10px',
             borderRadius: '6px',
             fontSize: '0.68rem',
             fontWeight: 600,
-            color: isNeonCAD ? '#00ffcc' : '#a1a1aa',
+            color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#71717a' : '#a1a1aa'),
             cursor: 'pointer',
             transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
             outline: 'none',
@@ -892,10 +1289,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             boxShadow: isNeonCAD ? '0 0 10px rgba(0, 255, 204, 0.25)' : 'none'
           }}
           onMouseEnter={(e) => {
-            if (!isNeonCAD) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(161, 161, 170, 0.8)' : 'rgba(255, 255, 255, 0.3)';
           }}
           onMouseLeave={(e) => {
-            if (!isNeonCAD) e.currentTarget.style.borderColor = 'rgba(63, 63, 70, 0.8)';
+            if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)';
           }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -904,25 +1301,25 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           NEON GLOW
         </button>
       </div>
- 
+
       {/* High-Fidelity HUD Engineering Diagnostics Overlay (Bottom Left) */}
-      <div 
+      <div
         style={{
           position: 'absolute',
           bottom: 12,
           left: 12,
-          background: 'rgba(9, 9, 11, 0.75)',
+          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(63, 63, 70, 0.4)',
+          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
           padding: '8px 12px',
           borderRadius: '10px',
           fontFamily: 'monospace',
           fontSize: '0.62rem',
-          color: '#a1a1aa',
+          color: theme === 'hc-light' ? '#71717a' : '#a1a1aa',
           display: 'flex',
           gap: '12px',
           pointerEvents: 'none',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
+          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)'
         }}
       >
         <div>ZOOM: <span style={{ color: '#00e5ff', fontWeight: 600 }}>{(viewport.scale * 100).toFixed(0)}%</span></div>

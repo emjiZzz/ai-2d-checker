@@ -4,11 +4,14 @@ from services.backend.infrastructure.cad.pdf_parser import PDFParser
 from services.backend.infrastructure.cad.pdf_diff_engine import PDFDiffEngine
 from services.backend.infrastructure.audit.report_generator import ReportGenerator
 
-def test_pdf_parser_fallback_robustness():
+def test_pdf_parser_fallback_robustness(monkeypatch):
     """
     Validates that PDFParser returns clean structural layers and entity counts 
     even when running under fallback mechanisms.
     """
+    import sys
+    monkeypatch.setitem(sys.modules, "fitz", None)
+    
     parser = PDFParser()
     temp_file = Path("dummy_blueprint.pdf")
     
@@ -20,6 +23,7 @@ def test_pdf_parser_fallback_robustness():
     assert counts["line"] > 0
     assert counts["text"] > 0
     assert metadata["format"] == "pdf"
+
 
 def test_pdf_diff_engine_color_rules():
     """

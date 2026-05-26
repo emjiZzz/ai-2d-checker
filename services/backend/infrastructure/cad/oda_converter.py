@@ -2,6 +2,7 @@ import os
 import asyncio
 import time
 import ctypes
+import subprocess
 from pathlib import Path
 from ...config import settings
 from ...logger import logger
@@ -90,26 +91,39 @@ class ODAConverter:
         
         start_time = time.time()
         try:
-            # Safe process spawn wrapper
-            proc = await asyncio.create_subprocess_exec(
-                short_converter,
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # Safe process spawn wrapper using synchronous subprocess in a worker thread
+            # to prevent asyncio SelectorEventLoop NotImplementedError on Windows.
+            def run_subprocess():
+                try:
+                    kwargs = {
+                        "stdout": subprocess.PIPE,
+                        "stderr": subprocess.PIPE,
+                        "timeout": 60.0
+                    }
+                    if os.name == 'nt':
+                        # Suppress terminal/console window pop-ups on Windows
+                        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-            # Wait for execution with a 60-second limit to avoid process lock leaks
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+                    return subprocess.run(
+                        [short_converter] + args,
+                        **kwargs
+                    )
+                except subprocess.TimeoutExpired as te:
+                    # Reraise as asyncio.TimeoutError to keep consistent exception handling
+                    raise asyncio.TimeoutError() from te
+
+            # Execute blocking process execution safely in a separate thread
+            result = await asyncio.to_thread(run_subprocess)
             
             elapsed = time.time() - start_time
-            logger.info(f"ODA subprocess exited with code {proc.returncode} in {elapsed:.4f}s")
+            logger.info(f"ODA subprocess exited with code {result.returncode} in {elapsed:.4f}s")
 
-            if proc.returncode != 0:
-                err_text = stderr.decode(errors="replace").strip()
-                out_text = stdout.decode(errors="replace").strip()
-                logger.error(f"ODA Converter Error (code {proc.returncode}): {err_text} | Out: {out_text}")
+            if result.returncode != 0:
+                err_text = result.stderr.decode(errors="replace").strip()
+                out_text = result.stdout.decode(errors="replace").strip()
+                logger.error(f"ODA Converter Error (code {result.returncode}): {err_text} | Out: {out_text}")
                 raise RuntimeError(
-                    f"ODA File Converter failed with exit code {proc.returncode}. Error details: {err_text}"
+                    f"ODA File Converter failed with exit code {result.returncode}. Error details: {err_text}"
                 )
 
             # Verify that the converter actually outputted the file

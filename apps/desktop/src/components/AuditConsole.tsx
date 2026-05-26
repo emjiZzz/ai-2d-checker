@@ -220,8 +220,8 @@ export const AuditConsole: React.FC = () => {
           {/* Top Info Bar with resetting action */}
           <div className="results-header">
             <div>
-              <h4 className="results-title">Audited: {getDrawingName(activeSession.drawing_id)}</h4>
-              <span className="results-subtitle">Grounded on: {getStandardName(activeSession.standard_id)}</span>
+              <h4 className="results-title">Audited: {getDrawingName(activeSession.drawing_id || "")}</h4>
+              <span className="results-subtitle">Grounded on: {getStandardName(activeSession.standard_id || "")}</span>
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
               <button 

@@ -98,8 +98,10 @@ class ExtractionPipeline:
                 entities, layers, counts, metadata = self.parser.parse_file(dxf_file_path)
                 parsing_duration = time.time() - parser_start
 
-            # 3. Generate High-Fidelity premium background rendering for DXF/DWG files
-            if dxf_file_path and dxf_file_path.exists():
+            # 3. Generate High-Fidelity premium background rendering
+            if drawing.format.lower() == "pdf":
+                self._render_pdf_background(input_abs_path, drawing_id, metadata)
+            elif dxf_file_path and dxf_file_path.exists():
                 self._render_dxf_background(dxf_file_path, drawing_id, metadata)
 
             # 4. Persist Extracted Geometry Records into MongoDB
@@ -110,13 +112,15 @@ class ExtractionPipeline:
                 """Strip only surrogate escape characters that would corrupt MongoDB,
                 while fully preserving valid Unicode including Japanese (CJK) characters."""
                 if isinstance(data, str):
-                    # Only remove surrogate characters (\ud800-\udfff) which are invalid in UTF-8
-                    # Do NOT use 'replace' here — that would destroy legitimate Japanese/CJK text
-                    return data.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace').replace('\ufffd', '')
+                    # Direct filtration of characters in the UTF-16 surrogate range: [0xD800, 0xDFFF]
+                    # This is extremely robust and does not rely on encoding/decoding cycles
+                    return "".join(c for c in data if not (0xD800 <= ord(c) <= 0xDFFF))
                 elif isinstance(data, dict):
-                    return {k: sanitize_utf8(v) for k, v in data.items()}
+                    return {sanitize_utf8(k): sanitize_utf8(v) for k, v in data.items()}
                 elif isinstance(data, list):
                     return [sanitize_utf8(v) for v in data]
+                elif isinstance(data, tuple):
+                    return tuple(sanitize_utf8(v) for v in data)
                 return data
 
             for item in layers + entities:
@@ -198,6 +202,40 @@ class ExtractionPipeline:
         drawing.updated_at = datetime.utcnow()
         await drawing.save()
 
+    def _render_pdf_background(self, pdf_path: Path, drawing_id: str, metadata: Dict[str, Any]) -> None:
+        try:
+            import fitz
+            logger.info(f"Generating high-fidelity PDF raster background for drawing {drawing_id}...")
+            
+            doc = fitz.open(str(pdf_path))
+            if len(doc) == 0:
+                logger.warning("PDF has no pages. Skipping background rendering.")
+                return
+                
+            page = doc[0]
+            
+            # Save rendering to safe destination path inside storage directory
+            from .path_resolver import get_storage_root
+            render_dir = get_storage_root() / "renderings"
+            render_dir.mkdir(parents=True, exist_ok=True)
+            output_png_path = render_dir / f"{drawing_id}.png"
+            
+            # Generate high-res image (300 DPI roughly) with transparent background
+            matrix = fitz.Matrix(4.0, 4.0)
+            pix = page.get_pixmap(matrix=matrix, alpha=True)
+            pix.save(str(output_png_path))
+            
+            # Extract exactly the page bounds (in points)
+            # PyMuPDF puts origin (0,0) at top-left. xmin, ymin, xmax, ymax
+            # Note: The PDF parser extracts geometry directly using these coordinates.
+            rect = page.rect
+            metadata["render_bounds"] = [rect.x0, rect.y0, rect.x1, rect.y1]
+            
+            logger.info(f"PDF Raster Background generated successfully: {output_png_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to render PDF background: {e}", exc_info=True)
+
     def _render_dxf_background(self, dxf_path: Path, drawing_id: str, metadata: Dict[str, Any]) -> None:
         try:
             import matplotlib
@@ -255,17 +293,22 @@ class ExtractionPipeline:
 
             # --- Step 2: Load DXF with smart encoding detection ---
             # Japanese BigFont SHX DXFs (txt.shx + extfont2) MUST use CP932 to decode correctly.
-            # UTF-8 will produce surrogate escapes (\udc83 etc.) making Japanese text unreadable.
             doc = None
-            used_encoding = None
-            for enc in ["cp932", "utf-8", "latin-1"]:
-                try:
-                    doc = ezdxf.readfile(str(dxf_path), encoding=enc)
-                    used_encoding = enc
-                    logger.info(f"DXF loaded with encoding: {enc}")
-                    break
-                except (ezdxf.DXFError, UnicodeDecodeError):
-                    continue
+            
+            # First try auto-detect (ezdxf uses $DWGCODEPAGE from header)
+            try:
+                doc = ezdxf.readfile(str(dxf_path))
+                logger.info(f"DXF auto-detected encoding: {doc.encoding}")
+            except (ezdxf.DXFError, UnicodeDecodeError):
+                # Fallback chain if auto-detect fails
+                for enc in ["cp932", "utf-8", "latin-1"]:
+                    try:
+                        doc = ezdxf.readfile(str(dxf_path), encoding=enc)
+                        logger.info(f"DXF loaded with fallback encoding: {enc}")
+                        break
+                    except (ezdxf.DXFError, UnicodeDecodeError):
+                        continue
+                        
             if doc is None:
                 raise ValueError(f"Unable to read DXF file with any supported encoding: {dxf_path}")
 
@@ -330,9 +373,7 @@ class ExtractionPipeline:
                 dpi=350,
                 transparent=True,
                 facecolor='none',
-                edgecolor='none',
-                bbox_inches='tight',
-                pad_inches=0
+                edgecolor='none'
             )
             plt.close(fig)
             logger.info(f"High-fidelity CAD background rendering successfully saved to: {output_png_path}")

@@ -21,15 +21,25 @@ interface AdminState {
   vectorDbStatus: any | null;
   aiModelStatus: any | null;
   storageQuotas: any | null;
-  auditHistory: any[] | null;
+
+  // Real audit session management
+  adminAuditSessions: any[];
+  adminAuditSessionsLoading: boolean;
 
   // Actions
   fetchUsers: () => Promise<void>;
   createUser: (username: string, password: string, role: string) => Promise<boolean>;
   deleteUser: (username: string) => Promise<boolean>;
+  updateUser: (username: string, updates: { active?: boolean; role?: string; password?: string }) => Promise<boolean>;
   fetchDiagnostics: () => Promise<void>;
   triggerBackup: () => Promise<string | null>;
   triggerRestore: (backupFile: string) => Promise<boolean>;
+
+  // Audit history actions
+  fetchAdminAuditSessions: (isDeleted?: boolean, username?: string) => Promise<void>;
+  softDeleteAuditSession: (id: string) => Promise<boolean>;
+  restoreAuditSession: (id: string) => Promise<boolean>;
+  emptyTrash: () => Promise<boolean>;
 }
 
 export const useAdminStore = create<AdminState>((set, get) => ({
@@ -40,7 +50,9 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   vectorDbStatus: null,
   aiModelStatus: null,
   storageQuotas: null,
-  auditHistory: null,
+
+  adminAuditSessions: [],
+  adminAuditSessionsLoading: false,
 
   fetchUsers: async () => {
     set({ isLoading: true, error: null });
@@ -139,6 +151,42 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     }
   },
 
+  updateUser: async (username, updates) => {
+    set({ isLoading: true, error: null });
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    const { sessionToken } = useAuthStore.getState();
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Session-Token": sessionToken || "",
+      };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
+
+      const response = await fetch(`${backendUrl}/api/v1/admin/users/${username}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(updates),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        set({ isLoading: false });
+        get().fetchUsers();
+        return true;
+      } else {
+        set({ error: data.error?.message || "Failed to update user.", isLoading: false });
+        return false;
+      }
+    } catch (err) {
+      set({ error: "Network error updating user.", isLoading: false });
+      return false;
+    }
+  },
+
   fetchDiagnostics: async () => {
     const { backendUrl, apiToken } = useConnectionStore.getState();
     const { sessionToken } = useAuthStore.getState();
@@ -179,12 +227,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           gemini_vision: "Online (Active API Key)",
           local_llama_fallback: "Ready (Offline comparative capability)",
           token_quota_remaining: "98.4%",
-        },
-        auditHistory: [
-          { id: "1", user: "engineer", action: "Run Audit", drawing: "hvac_revision_v2.dwg", status: "completed", compliance: 92 },
-          { id: "2", user: "engineer", action: "Run Audit", drawing: "pump_assembly_main.dxf", status: "completed", compliance: 78 },
-          { id: "3", user: "engineer", action: "Ingested", drawing: "foundation_base.dwg", status: "queued", compliance: null },
-        ]
+        }
       });
     } catch (err) {
       console.error("Failed to compile admin diagnostics:", err);
@@ -206,4 +249,96 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     set({ isLoading: false });
     return true;
   },
+
+  fetchAdminAuditSessions: async (isDeleted = false, username = "") => {
+    set({ adminAuditSessionsLoading: true, error: null });
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    const { sessionToken } = useAuthStore.getState();
+
+    try {
+      const headers: Record<string, string> = {
+        "Accept": "application/json",
+        "X-Session-Token": sessionToken || "",
+      };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
+
+      let url = `${backendUrl}/api/v1/audits/sessions?is_deleted=${isDeleted}`;
+      if (username) {
+        url += `&username=${encodeURIComponent(username)}`;
+      }
+
+      const response = await fetch(url, { headers });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        set({ adminAuditSessions: data.data, adminAuditSessionsLoading: false });
+      } else {
+        set({ error: data.error?.message || "Failed to load audit history.", adminAuditSessionsLoading: false });
+      }
+    } catch (err) {
+      set({ error: "Network error loading audit history.", adminAuditSessionsLoading: false });
+    }
+  },
+
+  softDeleteAuditSession: async (id: string) => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    const { sessionToken } = useAuthStore.getState();
+
+    try {
+      const headers: Record<string, string> = {
+        "Accept": "application/json",
+        "X-Session-Token": sessionToken || "",
+      };
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+
+      const res = await fetch(`${backendUrl}/api/v1/audits/sessions/${id}`, { method: "DELETE", headers });
+      if (!res.ok) throw new Error(`Delete failed: HTTP ${res.status}`);
+      return true;
+    } catch (err: any) {
+      console.warn(`Failed to soft-delete session ${id}: ${err.message}`);
+      return false;
+    }
+  },
+
+  restoreAuditSession: async (id: string) => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    const { sessionToken } = useAuthStore.getState();
+
+    try {
+      const headers: Record<string, string> = {
+        "Accept": "application/json",
+        "X-Session-Token": sessionToken || "",
+      };
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+
+      const res = await fetch(`${backendUrl}/api/v1/audits/sessions/${id}/restore`, { method: "POST", headers });
+      if (!res.ok) throw new Error(`Restore failed: HTTP ${res.status}`);
+      return true;
+    } catch (err: any) {
+      console.warn(`Failed to restore session ${id}: ${err.message}`);
+      return false;
+    }
+  },
+
+  emptyTrash: async () => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    const { sessionToken } = useAuthStore.getState();
+
+    try {
+      const headers: Record<string, string> = {
+        "Accept": "application/json",
+        "X-Session-Token": sessionToken || "",
+      };
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+
+      const res = await fetch(`${backendUrl}/api/v1/audits/sessions/trash`, { method: "DELETE", headers });
+      if (!res.ok) throw new Error(`Empty trash failed: HTTP ${res.status}`);
+      return true;
+    } catch (err: any) {
+      console.warn(`Failed to empty trash: ${err.message}`);
+      return false;
+    }
+  }
 }));

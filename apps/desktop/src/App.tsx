@@ -1,22 +1,23 @@
 import { useEffect, useState, useRef } from "react";
-import { 
-  useConnectionStore, 
-  ConnectionStatus 
+import {
+  useConnectionStore,
+  ConnectionStatus
 } from "./stores/connectionStore";
 import { useDrawingStore } from "./stores/drawingStore";
 import { useAuthStore } from "./stores/authStore";
 import { useThemeStore } from "./stores/themeStore";
 import { LoginPage } from "./pages/auth/LoginPage";
+import { AppHeader } from "./components/AppHeader";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AuditWorkspace } from "./pages/workspace/AuditWorkspace";
-import { 
-  Activity, 
-  Settings, 
-  LayoutDashboard, 
-  FileText, 
-  UploadCloud, 
-  AlertCircle, 
-  RefreshCw, 
+import {
+  Activity,
+  Settings,
+  LayoutDashboard,
+  FileText,
+  UploadCloud,
+  AlertCircle,
+  RefreshCw,
   ShieldCheck,
   Server,
   Clock,
@@ -62,12 +63,12 @@ function App() {
   const [isManualChecking, setIsManualChecking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const { theme, toggleTheme, initialize: initializeTheme } = useThemeStore();
-  
+
   useEffect(() => {
     initializeTheme();
-  }, [initializeTheme]);  
+  }, [initializeTheme]);
   const [diagnostics, setDiagnostics] = useState<{
     mongodb: boolean;
     storage_root: boolean;
@@ -139,7 +140,7 @@ function App() {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       await handleFileSelection(file);
@@ -187,20 +188,12 @@ function App() {
     initialize();
   }, [initialize]);
 
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
-  if (user?.role === "admin") {
-    return <AdminDashboard />;
-  }
-
-  if (user?.role === "user") {
-    return <AuditWorkspace />;
-  }
-
-  return (
-    <div className="app-container">
+  const renderContent = () => {
+    if (!isAuthenticated) return <LoginPage />;
+    if (user?.role === "admin") return <AdminDashboard />;
+    if (user?.role === "user") return <AuditWorkspace />;
+    return (
+      <div className="app-container">
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="logo-section">
@@ -211,16 +204,16 @@ function App() {
         </div>
 
         <nav className="nav-links">
-          <button 
-            onClick={() => setActiveTab("dashboard")} 
+          <button
+            onClick={() => setActiveTab("dashboard")}
             className={`nav-item ${activeTab === "dashboard" ? "active" : ""}`}
           >
             <LayoutDashboard size={18} />
             Dashboard
           </button>
-          
-          <button 
-            onClick={() => !isOffline && setActiveTab("standards")} 
+
+          <button
+            onClick={() => !isOffline && setActiveTab("standards")}
             className={`nav-item ${activeTab === "standards" ? "active" : ""} ${isOffline ? "disabled" : ""}`}
             style={{ opacity: isOffline ? 0.4 : 1, cursor: isOffline ? "not-allowed" : "pointer" }}
             disabled={isOffline}
@@ -228,13 +221,13 @@ function App() {
             <FileText size={18} />
             Standards Library
           </button>
-          
-          <button 
+
+          <button
             onClick={() => {
               if (!isOffline) {
                 setActiveTab("upload");
               }
-            }} 
+            }}
             className={`nav-item ${activeTab === "upload" ? "active" : ""} ${isOffline ? "disabled" : ""}`}
             style={{ opacity: isOffline ? 0.4 : 1, cursor: isOffline ? "not-allowed" : "pointer" }}
             disabled={isOffline}
@@ -243,8 +236,8 @@ function App() {
             Drawing Upload
           </button>
 
-          <button 
-            onClick={() => !isOffline && setActiveTab("audit")} 
+          <button
+            onClick={() => !isOffline && setActiveTab("audit")}
             className={`nav-item ${activeTab === "audit" ? "active" : ""} ${isOffline ? "disabled" : ""}`}
             style={{ opacity: isOffline ? 0.4 : 1, cursor: isOffline ? "not-allowed" : "pointer" }}
             disabled={isOffline}
@@ -253,8 +246,8 @@ function App() {
             Compliance Auditor
           </button>
 
-          <button 
-            onClick={() => setActiveTab("settings")} 
+          <button
+            onClick={() => setActiveTab("settings")}
             className={`nav-item ${activeTab === "settings" ? "active" : ""}`}
           >
             <Settings size={18} />
@@ -265,7 +258,7 @@ function App() {
 
       {/* Main Dashboard Section */}
       <main className="main-content">
-        
+
         {/* Top Status Bar */}
         <header className="topbar">
           <div className="tab-title">
@@ -279,13 +272,12 @@ function App() {
               <span className="pulse-dot"></span>
               <span>{getStatusLabel(status)}</span>
             </div>
-            
-            <button 
-              className="theme-toggle-btn" 
+
+            <button
+              className="theme-toggle-btn"
               onClick={toggleTheme}
-              title={`Current Theme: ${
-                theme === 'hc-dark' ? 'High Contrast Dark' : 'High Contrast Light'
-              }. Click to toggle.`}
+              title={`Current Theme: ${theme === 'hc-dark' ? 'High Contrast Dark' : 'High Contrast Light'
+                }. Click to toggle.`}
             >
               {theme === "hc-dark" ? (
                 <Moon size={18} style={{ display: "block" }} />
@@ -294,8 +286,8 @@ function App() {
               )}
             </button>
 
-            <button 
-              className="theme-toggle-btn" 
+            <button
+              className="theme-toggle-btn"
               onClick={handleManualTrigger}
               disabled={isManualChecking}
               title="Force health check"
@@ -307,7 +299,7 @@ function App() {
 
         {/* Dynamic Pages / Tabs */}
         <div className="tab-container">
-          
+
           {/* TAB 1: Service Dashboard */}
           {activeTab === "dashboard" && (
             <div className="dashboard-grid">
@@ -317,7 +309,7 @@ function App() {
                   <Server size={18} className="text-purple" />
                   Service Status Dashboard
                 </h3>
-                
+
                 <table className="stats-table">
                   <tbody>
                     <tr className="stats-row">
@@ -374,7 +366,7 @@ function App() {
                   <Settings size={18} className="text-cyan" />
                   Connection Settings
                 </h3>
-                
+
                 <p className="card-description">
                   Verify or update the standalone local backend binding variables. Ensure the host binds securely to a localhost interface.
                 </p>
@@ -382,8 +374,8 @@ function App() {
                 <form onSubmit={handleUrlSubmit}>
                   <div className="form-group">
                     <label className="form-label">FastAPI Backend Endpoint</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={inputUrl}
                       onChange={(e) => setInputUrl(e.target.value)}
                       className="form-input"
@@ -395,8 +387,8 @@ function App() {
                     <button type="submit" className="btn btn-primary">
                       Apply Configurations
                     </button>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       className="btn btn-secondary"
                       onClick={() => setInputUrl("http://127.0.0.1:8080")}
                     >
@@ -411,33 +403,33 @@ function App() {
           {/* TAB 2: Drawing Ingestion & Processing Monitor */}
           {activeTab === "upload" && (
             <div className="upload-view-layout">
-              
+
               {/* Drag & Drop Panel */}
-               <div className="card" style={{ padding: "30px", marginBottom: "24px" }}>
+              <div className="card" style={{ padding: "30px", marginBottom: "24px" }}>
                 <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <UploadCloud size={18} style={{ color: "var(--accent-cyan)" }} />
                   Ingest Local CAD Drawing
                 </h3>
-                
+
                 <p className="card-description">
                   Upload a 2D engineering drawing in `.dwg` or `.dxf` format. Proprietary DWG drawings are safely converted inside our local sandbox converter.
                 </p>
 
-                <div 
+                <div
                   className={`drag-drop-zone ${isDragging ? "dragging" : ""} ${uploadStatus === "uploading" ? "disabled" : ""}`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => uploadStatus !== "uploading" && triggerFileBrowser()}
                 >
-                  <input 
-                    type="file" 
+                  <input
+                    type="file"
                     ref={fileInputRef}
                     onChange={handleFileSelectChange}
                     style={{ display: "none" }}
                     accept=".dwg,.dxf"
                   />
-                  
+
                   <div className="upload-icon-container">
                     {uploadStatus === "uploading" || processingState === "processing" ? (
                       <Loader2 size={36} className="spin-animation" style={{ color: "var(--accent-cyan)" }} />
@@ -445,13 +437,13 @@ function App() {
                       <FileCode size={36} style={{ color: "var(--accent-cyan)" }} />
                     )}
                   </div>
-                  
+
                   <span className="upload-prompt">
-                    {uploadStatus === "uploading" 
-                      ? "Uploading stream to secure storage..." 
+                    {uploadStatus === "uploading"
+                      ? "Uploading stream to secure storage..."
                       : processingState === "processing"
-                      ? "FastAPI Sidecar is converting & extracting entities..."
-                      : "Drag & Drop drawing here, or click to browse local files"}
+                        ? "FastAPI Sidecar is converting & extracting entities..."
+                        : "Drag & Drop drawing here, or click to browse local files"}
                   </span>
                   <span className="upload-specs">Supports DWG / DXF (Max 500MB)</span>
                 </div>
@@ -460,16 +452,16 @@ function App() {
                 {(uploadStatus === "uploading" || processingState === "processing") && (
                   <div className="progress-container">
                     <div className="progress-bar-bg">
-                      <div 
-                        className="progress-bar-fill" 
+                      <div
+                        className="progress-bar-fill"
                         style={{ width: `${uploadStatus === "uploading" ? uploadProgress : 95}%` }}
                       ></div>
                     </div>
-                    
+
                     <div className="progress-labels">
                       <span className="progress-state-text">
-                        {uploadStatus === "uploading" 
-                          ? `Streaming upload: ${uploadProgress}%` 
+                        {uploadStatus === "uploading"
+                          ? `Streaming upload: ${uploadProgress}%`
                           : "Extracting geometric entities (lines, arcs, layers, dimensions)..."}
                       </span>
                       <span className="loading-dots">Active Background Queue</span>
@@ -494,7 +486,7 @@ function App() {
               {/* SUCCESS STATE: Diagnostics and Geometry Viewer */}
               {processingState === "completed" && activeDrawing && (
                 <div className="diagnostics-dashboard">
-                  
+
                   {/* File Metadata Overview */}
                   <div className="card-row-grid">
                     <div className="card mini-card">
@@ -532,14 +524,14 @@ function App() {
 
                   {/* Detailed Diagnostics grid */}
                   <div className="dashboard-grid">
-                    
+
                     {/* Entity Breakdown Stats */}
                     <div className="card">
                       <h3 className="card-title">
                         <Sparkles size={18} className="text-purple" />
                         Extracted Geometric Entities
                       </h3>
-                      
+
                       <p className="card-description" style={{ marginBottom: "16px" }}>
                         Unified collections mapped from drawing model space blocks.
                       </p>
@@ -575,7 +567,7 @@ function App() {
                         <Cpu size={18} className="text-cyan" />
                         Pipeline Engine Metrics
                       </h3>
-                      
+
                       <table className="stats-table">
                         <tbody>
                           <tr className="stats-row">
@@ -587,16 +579,16 @@ function App() {
                           <tr className="stats-row">
                             <td className="stats-label">DWG Conversion Duration</td>
                             <td className="stats-value">
-                              {activeJob?.conversion_duration_seconds 
-                                ? `${activeJob.conversion_duration_seconds.toFixed(3)}s` 
+                              {activeJob?.conversion_duration_seconds
+                                ? `${activeJob.conversion_duration_seconds.toFixed(3)}s`
                                 : "Bypassed (DXF direct)"}
                             </td>
                           </tr>
                           <tr className="stats-row">
                             <td className="stats-label">ezdxf Parse Duration</td>
                             <td className="stats-value">
-                              {activeJob?.parsing_duration_seconds 
-                                ? `${activeJob.parsing_duration_seconds.toFixed(3)}s` 
+                              {activeJob?.parsing_duration_seconds
+                                ? `${activeJob.parsing_duration_seconds.toFixed(3)}s`
                                 : "N/A"}
                             </td>
                           </tr>
@@ -654,36 +646,36 @@ function App() {
                   <Settings size={18} style={{ color: "var(--accent-cyan)" }} />
                   Global Platform Settings & Hardware Info
                 </h3>
-              <p className="card-description">
-                Configure local application environment boundaries and security parameters.
-              </p>
+                <p className="card-description">
+                  Configure local application environment boundaries and security parameters.
+                </p>
 
-              <div style={{ marginTop: "24px" }}>
-                <table className="stats-table">
-                  <tbody>
-                    <tr className="stats-row">
-                      <td className="stats-label">Secure Sandbox Path</td>
-                      <td className="stats-value" style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
-                        storage/standards
-                      </td>
-                    </tr>
-                    <tr className="stats-row">
-                      <td className="stats-label">Gemini Vision Auditing</td>
-                      <td className="stats-value" style={{ color: "#10b981" }}>
-                        Offline Comparative Fallback Mode Enabled
-                      </td>
-                    </tr>
-                    <tr className="stats-row">
-                      <td className="stats-label">CAD Vector Core</td>
-                      <td className="stats-value">ezdxf 1.1 + custom geometry rules</td>
-                    </tr>
-                    <tr className="stats-row">
-                      <td className="stats-label">Data Sync Frequency</td>
-                      <td className="stats-value">Local first (0ms latency, pure offline)</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                <div style={{ marginTop: "24px" }}>
+                  <table className="stats-table">
+                    <tbody>
+                      <tr className="stats-row">
+                        <td className="stats-label">Secure Sandbox Path</td>
+                        <td className="stats-value" style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                          storage/standards
+                        </td>
+                      </tr>
+                      <tr className="stats-row">
+                        <td className="stats-label">Gemini Vision Auditing</td>
+                        <td className="stats-value" style={{ color: "#10b981" }}>
+                          Offline Comparative Fallback Mode Enabled
+                        </td>
+                      </tr>
+                      <tr className="stats-row">
+                        <td className="stats-label">CAD Vector Core</td>
+                        <td className="stats-value">ezdxf 1.1 + custom geometry rules</td>
+                      </tr>
+                      <tr className="stats-row">
+                        <td className="stats-label">Data Sync Frequency</td>
+                        <td className="stats-value">Local first (0ms latency, pure offline)</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -701,14 +693,14 @@ function App() {
               <p className="card-description" style={{ marginBottom: "16px" }}>
                 The AI-2D-Checker desktop app communicates with a standalone localhost-only backend. The service at <strong style={{ color: "#a855f7" }}>{backendUrl}</strong> is currently unreachable.
               </p>
-              
+
               <div className="code-box">
                 powershell -ExecutionPolicy Bypass -File .\services\backend\start.ps1
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <button 
-                  onClick={handleManualTrigger} 
+                <button
+                  onClick={handleManualTrigger}
                   className="btn btn-primary"
                   style={{ width: "100%", padding: "12px" }}
                   disabled={isManualChecking}
@@ -716,9 +708,9 @@ function App() {
                   <RefreshCw size={16} className={isManualChecking ? "spin-animation" : ""} />
                   {isManualChecking ? "Connecting..." : "Trigger Manual Diagnostic Check"}
                 </button>
-                
-                <button 
-                  onClick={() => setActiveTab("dashboard")} 
+
+                <button
+                  onClick={() => setActiveTab("dashboard")}
                   className="btn btn-secondary"
                   style={{ width: "100%" }}
                 >
@@ -728,10 +720,10 @@ function App() {
               </div>
 
               {error && (
-                <div style={{ 
-                  marginTop: "20px", 
-                  padding: "10px", 
-                  background: "rgba(220, 38, 38, 0.1)", 
+                <div style={{
+                  marginTop: "20px",
+                  padding: "10px",
+                  background: "rgba(220, 38, 38, 0.1)",
                   border: "1px solid rgba(220, 38, 38, 0.2)",
                   borderRadius: "8px",
                   fontSize: "0.8rem",
@@ -745,6 +737,16 @@ function App() {
         )}
 
       </main>
+      </div>
+    );
+  };
+
+  return (
+    <div className="app-root" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <AppHeader />
+      <div className="app-main-view" style={{ flexGrow: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
+        {renderContent()}
+      </div>
 
       {/* Embedded Spin Animations Stylesheet */}
       <style>{`

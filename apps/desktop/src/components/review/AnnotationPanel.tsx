@@ -9,6 +9,13 @@ interface Annotation {
   timestamp: string;
 }
 
+// Helper utility to parse ISO datetime strings from backend reliably as UTC
+const parseUtcDate = (dateStr: string | null | undefined): Date => {
+  if (!dateStr) return new Date();
+  const utcStr = dateStr.includes("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z";
+  return new Date(utcStr);
+};
+
 export const AnnotationPanel: React.FC = () => {
   const { selectedViolationId } = useReviewStore();
   const [newAnnotation, setNewAnnotation] = useState('');
@@ -40,7 +47,7 @@ export const AnnotationPanel: React.FC = () => {
             <div key={ann.id} className="bg-gray-800 p-3 rounded text-sm">
               <div className="flex justify-between items-center mb-1">
                 <span className="font-semibold text-blue-400">{ann.author}</span>
-                <span className="text-xs text-gray-500">{new Date(ann.timestamp).toLocaleDateString()}</span>
+                <span className="text-xs text-gray-500">{parseUtcDate(ann.timestamp).toLocaleDateString()}</span>
               </div>
               <p className="text-gray-300">{ann.content}</p>
             </div>

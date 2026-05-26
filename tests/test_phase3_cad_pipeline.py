@@ -287,3 +287,61 @@ async def test_oda_converter_graceful_missing_handling():
             dwg_path=get_storage_root() / "uploads/test.dwg",
             dxf_output_dir=get_storage_root() / "temp"
         )
+
+
+async def test_oda_converter_subprocess_execution(monkeypatch):
+    """
+    Verifies that ODAConverter correctly invokes subprocess.run via asyncio.to_thread,
+    and returns the expected output path upon successful execution.
+    """
+    from unittest.mock import patch, MagicMock
+    
+    storage_root = get_storage_root()
+    uploads_dir = storage_root / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    
+    dummy_dwg = uploads_dir / "drawing_test.dwg"
+    dummy_dwg.touch()
+    
+    dxf_output_dir = storage_root / "temp" / "output_test"
+    dxf_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    dummy_dxf = dxf_output_dir / "drawing_test.dxf"
+    
+    converter = ODAConverter(converter_path=str(storage_root / "temp" / "mock_converter.exe"))
+    
+    # Mock files & executable checks
+    original_exists = Path.exists
+    original_is_file = Path.is_file
+    
+    def mock_exists(self):
+        if "mock_converter.exe" in str(self) or "drawing_test.dwg" in str(self) or "drawing_test.dxf" in str(self):
+            return True
+        return original_exists(self)
+        
+    def mock_is_file(self):
+        if "mock_converter.exe" in str(self) or "drawing_test.dwg" in str(self) or "drawing_test.dxf" in str(self):
+            return True
+        return original_is_file(self)
+        
+    monkeypatch.setattr(Path, "exists", mock_exists)
+    monkeypatch.setattr(Path, "is_file", mock_is_file)
+    
+    # Create the dummy DXF when run is invoked (simulating converter behavior)
+    def mock_run(*args, **kwargs):
+        dummy_dxf.touch()
+        return MagicMock(returncode=0, stdout=b"Success", stderr=b"")
+        
+    try:
+        with patch("subprocess.run", side_effect=mock_run) as mock_subprocess_run:
+            actual_path = await converter.convert_dwg_to_dxf(dummy_dwg, dxf_output_dir)
+            assert actual_path.name == "drawing_test.dxf"
+            mock_subprocess_run.assert_called_once()
+    finally:
+        # Cleanup
+        if dummy_dwg.exists():
+            dummy_dwg.unlink()
+        if dummy_dxf.exists():
+            dummy_dxf.unlink()
+
+

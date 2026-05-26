@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useWorkspaceStore, DrawingItem } from "../../stores/workspaceStore";
-import { useAuthStore } from "../../stores/authStore";
 import { useConnectionStore } from "../../stores/connectionStore";
 import { DrawingCanvas } from "../../components/review/DrawingCanvas";
+import { useReviewStore } from "../../stores/reviewStore";
+import { useAuthStore } from "../../stores/authStore";
+import { useAuditStore } from "../../stores/auditStore";
 import {
   CheckCircle2,
   Play,
@@ -11,24 +13,36 @@ import {
   ZoomOut,
   Maximize,
   Compass,
-  LogOut,
-  Cpu,
-  Bookmark,
-  History,
-  Settings as SettingsIcon,
-  ShieldCheck,
-  Moon,
-  Sun,
+  Loader,
   Upload,
   Trash2,
   AlertTriangle,
-  Check,
-  Loader,
+  Bookmark,
+  History,
+  Settings as SettingsIcon,
+  ChevronRight,
   ChevronLeft,
-  ChevronRight
+  FolderOpen,
+  Edit,
+  Search,
+  Filter,
+  Clock,
+  Database,
+  TrendingUp,
+  BarChart2,
+  Briefcase,
+  FileText,
+  ChevronDown
 } from "lucide-react";
-import { useThemeStore } from "../../stores/themeStore";
+
 import { StandardsManager } from "../../components/StandardsManager";
+
+// Helper utility to parse ISO datetime strings from backend reliably as UTC
+const parseUtcDate = (dateStr: string | null | undefined): Date => {
+  if (!dateStr) return new Date();
+  const utcStr = dateStr.includes("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z";
+  return new Date(utcStr);
+};
 
 // ─── UPLOAD ZONE ─────────────────────────────────────────────────────────────
 // Defined OUTSIDE AuditWorkspace to prevent remounting on every parent render.
@@ -46,8 +60,8 @@ interface UploadZoneProps {
 }
 
 const UploadZone: React.FC<UploadZoneProps> = ({
-  side, uploadState, progress, fileName, fileSize, error, activeDrawing,
-  uploadDrawingFile, clearUpload,
+  side, uploadState, progress, fileName, error,
+  uploadDrawingFile,
 }) => {
   const [isDragActive, setIsDragActive] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -69,171 +83,91 @@ const UploadZone: React.FC<UploadZoneProps> = ({
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       await uploadDrawingFile(e.target.files[0], side);
-      // Reset the input value so the same file can be re-selected after a clear
       e.target.value = "";
     }
   };
 
   const triggerFileInput = () => fileInputRef.current?.click();
-
-  const formatBytes = (bytes: number | null) => {
-    if (bytes === null) return "";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1048576).toFixed(1)} MB`;
-  };
-
-  const getExtBadgeClass = (name: string) => {
-    const ext = name.split(".").pop()?.toLowerCase();
-    if (ext === "dwg") return "badge-dwg";
-    if (ext === "dxf") return "badge-dxf";
-    if (ext === "pdf") return "badge-pdf";
-    return "badge-default";
-  };
-
-  const isOld = side === "old";
-  const labelText = isOld ? "REFERENCE DRAWING (OLD VERSION)" : "REVISION DRAWING (NEW VERSION)";
-  const labelDesc = isOld ? "Serves as compliance baseline anchor" : "Target containing modification revisions";
   const canInteract = uploadState === "idle" || uploadState === "failed";
 
   return (
-    <div className={`form-group upload-zone-group ${side}`}>
-      <label className="form-label upload-zone-title-label">
-        <span>{labelText}</span>
-        <span className="upload-zone-subtitle-desc">{labelDesc}</span>
-      </label>
+    <div
+      className={`upload-dropzone-container ${side} ${uploadState} ${isDragActive ? "dragging" : ""}`}
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+      onClick={canInteract ? triggerFileInput : undefined}
+      style={{ cursor: canInteract ? "pointer" : "default" }}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.dwg,.dxf"
+        onChange={handleFileInput}
+        style={{ display: "none" }}
+      />
 
-      <div
-        className={`upload-dropzone-container ${uploadState} ${isDragActive ? "dragging" : ""}`}
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}
-        onClick={canInteract ? triggerFileInput : undefined}
-        style={{ cursor: canInteract ? "pointer" : "default" }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.dwg,.dxf"
-          onChange={handleFileInput}
-          style={{ display: "none" }}
-        />
-
-        {uploadState === "idle" && (
-          <div className="dropzone-idle-view" style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center', width: '100%' }}>
-            <div className="dropzone-icon-circle" style={{ margin: 0, flexShrink: 0 }}>
-              <Upload size={14} className="dropzone-upload-icon" />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}>
-              <p className="dropzone-main-text" style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600 }}>
-                Drag & drop or <span className="browse-link" style={{ color: 'var(--accent-cyan)' }}>browse</span>
-              </p>
-              <p className="dropzone-sub-text" style={{ margin: '1px 0 0 0', fontSize: '0.72rem' }}>
-                DWG, DXF, PDF (max. 50MB)
-              </p>
-            </div>
-            <div className="supported-formats-badges" style={{ margin: 0, display: 'flex', gap: '4px', marginLeft: 'auto', flexShrink: 0 }}>
-              <span className="format-badge dwg" style={{ fontSize: '0.65rem', padding: '3px 6px' }}>DWG</span>
-              <span className="format-badge dxf" style={{ fontSize: '0.65rem', padding: '3px 6px' }}>DXF</span>
-              <span className="format-badge pdf" style={{ fontSize: '0.65rem', padding: '3px 6px' }}>PDF</span>
-            </div>
+      {uploadState === "idle" && (
+        <div className="dropzone-idle-view">
+          <div className="dropzone-icon-circle">
+            <Upload size={14} className="dropzone-upload-icon" />
           </div>
-        )}
-
-        {(uploadState === "validating" || uploadState === "uploading" || uploadState === "processing") && (
-          <div className="dropzone-active-view" style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '0 8px' }}>
-            <div className="pulsing-loader-wrapper" style={{ margin: 0, flexShrink: 0, width: '26px', height: '26px' }}>
-              <Loader size={14} className="loader-spin-icon spin-animation" />
-            </div>
-            <div className="active-details-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', flexGrow: 1, margin: 0 }}>
-              <span className="active-status-title" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                {uploadState === "validating" && "Scanning signature..."}
-                {uploadState === "uploading" && `Uploading... ${progress}%`}
-                {uploadState === "processing" && "Ingesting CAD layout..."}
-              </span>
-              <span className="active-filename-sub" style={{ margin: 0, fontSize: '0.72rem' }}>{fileName}</span>
-            </div>
-            <div className="dropzone-progress-bar-bg" style={{ width: '80px', flexShrink: 0, margin: 0 }}>
-              <div className="dropzone-progress-bar-fill" style={{ width: `${progress}%` }}></div>
-            </div>
+          <div className="dropzone-text-group">
+            <p className="dropzone-main-text">
+              Drag & drop or <span className="browse-link">browse</span>
+            </p>
+            <p className="dropzone-sub-text">
+              DWG, DXF, PDF (max. 50MB)
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {uploadState === "completed" && activeDrawing && (
-          <div className="dropzone-completed-view" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-            <div className="completed-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="file-info-col" style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                <span className={`file-format-badge ${getExtBadgeClass(activeDrawing.file_name)}`} style={{ padding: '4px 6px', fontSize: '0.7rem' }}>
-                  {activeDrawing.format.toUpperCase()}
-                </span>
-                <div className="completed-metadata" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <span className="completed-filename" title={activeDrawing.file_name} style={{ fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
-                    {activeDrawing.file_name}
-                  </span>
-                  <span className="completed-filesize" style={{ fontSize: '0.72rem' }}>
-                    {formatBytes(activeDrawing.file_size_bytes ?? fileSize)}
-                  </span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div className="completed-status-badge" style={{ margin: 0, padding: '2px 6px', fontSize: '0.7rem' }}>
-                  <Check size={8} style={{ marginRight: "3px" }} />
-                  <span>Ingested</span>
-                </div>
-                <button className="btn-clear-upload" onClick={() => clearUpload(side)} title="Remove drawing" style={{ padding: '4px' }}>
-                  <Trash2 size={10} />
-                </button>
-              </div>
-            </div>
-            <div className="drawing-entities-stats-grid" style={{ margin: 0, padding: '4px 6px' }}>
-              {([
-                { val: activeDrawing.entity_counts?.line ?? activeDrawing.entity_counts?.LINE ?? 0, lbl: 'Lines' },
-                { val: activeDrawing.entity_counts?.circle ?? activeDrawing.entity_counts?.CIRCLE ?? 0, lbl: 'Circles' },
-                { val: activeDrawing.entity_counts?.text ?? activeDrawing.entity_counts?.TEXT ?? 0, lbl: 'Text' },
-                { val: activeDrawing.entity_counts?.dimension ?? activeDrawing.entity_counts?.DIMENSION ?? 0, lbl: 'Dims' },
-              ]).map(({ val, lbl }) => (
-                <div key={lbl} className="stat-unit">
-                  <span className="stat-unit-val" style={{ fontSize: '0.75rem' }}>{val}</span>
-                  <span className="stat-unit-lbl" style={{ fontSize: '0.62rem' }}>{lbl}</span>
-                </div>
-              ))}
-            </div>
+      {(uploadState === "validating" || uploadState === "uploading" || uploadState === "processing") && (
+        <div className="dropzone-active-view">
+          <div className="pulsing-loader-wrapper">
+            <Loader size={14} className="loader-spin-icon spin-animation" />
           </div>
-        )}
+          <div className="active-details-wrapper">
+            <span className="active-status-title">
+              {uploadState === "validating" && "Scanning signature..."}
+              {uploadState === "uploading" && `Uploading... ${progress}%`}
+              {uploadState === "processing" && "Ingesting CAD layout..."}
+            </span>
+            <span className="active-filename-sub">{fileName}</span>
+          </div>
+          <div className="dropzone-progress-bar-bg">
+            <div className="dropzone-progress-bar-fill" style={{ width: `${progress}%` }}></div>
+          </div>
+        </div>
+      )}
 
-        {uploadState === "failed" && (
-          <div className="dropzone-failed-view" onClick={(e) => { e.stopPropagation(); triggerFileInput(); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '0 8px', cursor: 'pointer' }}>
-            <div className="failed-icon-circle" style={{ margin: 0, flexShrink: 0, width: '26px', height: '26px' }}>
-              <AlertTriangle size={14} className="dropzone-error-icon" />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', flexGrow: 1 }}>
-              <span className="failed-status-title" style={{ fontSize: '0.85rem', fontWeight: 700 }}>Ingestion Failure</span>
-              <p className="failed-error-desc" style={{ margin: 0, fontSize: '0.72rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>{error || "Security/validation rejection."}</p>
-            </div>
-            <span className="retry-link-label" style={{ fontSize: '0.72rem', marginLeft: 'auto', flexShrink: 0 }}>Retry</span>
+      {uploadState === "failed" && (
+        <div className="dropzone-failed-view" onClick={(e) => { e.stopPropagation(); triggerFileInput(); }}>
+          <div className="failed-icon-circle">
+            <AlertTriangle size={14} className="dropzone-error-icon" />
           </div>
-        )}
-      </div>
+          <div className="failed-text-group">
+            <span className="failed-status-title">Ingestion Failure</span>
+            <p className="failed-error-desc">{error || "Security/validation rejection."}</p>
+          </div>
+          <span className="retry-link-label">Retry browse</span>
+        </div>
+      )}
     </div>
   );
 };
 
 export const AuditWorkspace: React.FC = () => {
-  const { user, logout } = useAuthStore();
   const backendUrl = useConnectionStore((s) => s.backendUrl);
   const apiToken = useConnectionStore((s) => s.apiToken);
-  const { theme, toggleTheme } = useThemeStore();
 
   // Selected workspace navigation sub-view
   const [currentNav, setCurrentNav] = useState<"workspace" | "standards" | "history" | "settings">("workspace");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
-
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   // Local drawing catalog for selections
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
-  const [selectedStandard, setSelectedStandard] = useState("");
-  const [standards, setStandards] = useState<any[]>([]);
 
   // Canvas size and container references
   const containerRefOld = React.useRef<HTMLDivElement>(null);
@@ -251,7 +185,7 @@ export const AuditWorkspace: React.FC = () => {
         if (apiToken) {
           headers["Authorization"] = `Bearer ${apiToken}`;
         }
-        
+
         // Load drawings
         const dwgRes = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
         const dwgData = await dwgRes.json();
@@ -287,15 +221,9 @@ export const AuditWorkspace: React.FC = () => {
         const stdRes = await fetch(`${backendUrl}/api/v1/standards`, { headers });
         const stdData = await stdRes.json();
         if (stdRes.ok && stdData.success && stdData.data.length > 0) {
-          setStandards(stdData.data);
-          setSelectedStandard(stdData.data[0].id);
+          // No longer assigning standards here
         } else {
-          const mockStd = [
-            { id: "std_01", name: "ISO-1101 Geometrical Tolerances", category: "Standard Manual" },
-            { id: "std_02", name: "ASME Y14.5 Dimensioning & Tolerancing", category: "Inspection Guideline" }
-          ];
-          setStandards(mockStd);
-          setSelectedStandard(mockStd[0].id);
+          // No longer assigning mock standards here
         }
       } catch (err) {
         console.error("Failed to load metadata in auditor workspace:", err);
@@ -310,16 +238,10 @@ export const AuditWorkspace: React.FC = () => {
     newDrawing,
     oldLayers,
     newLayers,
-    panX,
-    panY,
-    zoom,
-    activeLayers,
     auditStatus,
     complianceScore,
     violations,
     selectedViolation,
-    setViewport,
-    toggleLayer,
     runAudit,
     selectViolation,
     // Stage 1 upload state machine values
@@ -343,6 +265,192 @@ export const AuditWorkspace: React.FC = () => {
     fetchClients
   } = useWorkspaceStore();
 
+  // Connect to reviewStore for synchronized viewport control
+  const {
+    viewport: reviewViewport,
+    setViewport: setReviewViewport,
+    isLaserSyncEnabled,
+    toggleLaserSync
+  } = useReviewStore();
+
+  // Auth: read current user role to enforce access gates
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
+
+  const {
+    sessions,
+    fetchSessions,
+    deleteSession,
+    updateSession
+  } = useAuditStore();
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any>(null);
+  const [selectedSessionForDelete, setSelectedSessionForDelete] = useState<any>(null);
+  const [remarksText, setRemarksText] = useState("");
+
+  // Automated AI Physical Comparison State
+  const [aiScanProgress, setAiScanProgress] = useState<"idle" | "scanning_ref" | "extracting" | "scanning_rev" | "comparing" | "completed">("idle");
+  const [aiChecklistResults, setAiChecklistResults] = useState<Record<string, any>>({});
+  const [bomComparisonMatrix, setBomComparisonMatrix] = useState<any[]>([]);
+  const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({});
+
+  const toggleChecklistPanel = (key: string) => {
+    setExpandedChecklistPanels(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const runPhysicalComparisonAI = async () => {
+    setAiScanProgress("scanning_ref");
+    await new Promise(r => setTimeout(r, 1200));
+    setAiScanProgress("extracting");
+    await new Promise(r => setTimeout(r, 1200));
+    setAiScanProgress("scanning_rev");
+    await new Promise(r => setTimeout(r, 1200));
+    setAiScanProgress("comparing");
+    await new Promise(r => setTimeout(r, 1800));
+    
+    // Set Mock Data
+    setAiChecklistResults({
+      views: { status: "MATCHED", log: "No topological differences detected." },
+      notes: { status: "ADDED", log: "Notes detected in KMTI drawing but absent in Original.", extractedText: "1. ALL DIMENSIONS ARE IN INCHES.\n2. TOLERANCES: X.XX ± 0.01\n3. MATERIAL: ALUMINUM 6061-T6." },
+      bom: { status: "CHANGED", log: "Discrepancy detected in row data precision." },
+      titleBlock: { status: "MATCHED", log: "Administrative metadata aligns." },
+      isometric: { status: "MATCHED", log: "Isometric view projection verified." }
+    });
+
+    setBomComparisonMatrix([
+      { row: 1, col: "Part No", original: "1001-A", kmti: "1001-A", diffType: "MATCHED" },
+      { row: 1, col: "Finished Weight", original: "2.6", kmti: "2.60", diffType: "CHANGED" },
+      { row: 2, col: "Part No", original: "1002-B", kmti: "1002-B", diffType: "MATCHED" },
+      { row: 2, col: "Finished Weight", original: "1.8", kmti: "1.8", diffType: "MATCHED" },
+    ]);
+
+    setAiScanProgress("completed");
+    setExpandedChecklistPanels({ notes: true, bom: true }); // auto-expand issues
+  };
+
+  // Interactive search & filter controls for premium History Archive
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "completed" | "failed" | "auditing">("all");
+  const [historyScoreFilter, setHistoryScoreFilter] = useState<"all" | "excellent" | "warning">("all");
+
+  useEffect(() => {
+    if (currentNav === "history") {
+      fetchSessions();
+    }
+  }, [currentNav, fetchSessions]);
+
+  const handleOpenSession = async (session: any) => {
+    try {
+      const headers: Record<string, string> = { "Accept": "application/json" };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
+
+      // Fetch active drawing details (New drawing)
+      const drawingRes = await fetch(`${backendUrl}/api/v1/drawings/${session.drawing_id}`, { headers });
+      if (!drawingRes.ok) {
+        throw new Error(`Drawing details could not be retrieved. The file may have been purged.`);
+      }
+      const drawingData = await drawingRes.json();
+      if (!drawingData.success || !drawingData.data) {
+        throw new Error("Failed to load drawing record.");
+      }
+
+      // Fetch reference drawing details (Old drawing, if present)
+      let referenceDrawingData = null;
+      if (session.reference_drawing_id) {
+        try {
+          const refRes = await fetch(`${backendUrl}/api/v1/drawings/${session.reference_drawing_id}`, { headers });
+          if (refRes.ok) {
+            const parsedRef = await refRes.json();
+            if (parsedRef.success && parsedRef.data) {
+              referenceDrawingData = parsedRef.data;
+            }
+          }
+        } catch (refErr) {
+          console.warn("Reference drawing failed to fetch or was deleted:", refErr);
+        }
+      }
+
+      // Fetch violations
+      const violationsRes = await fetch(`${backendUrl}/api/v1/audits/sessions/${session.id}/violations`, { headers });
+      if (!violationsRes.ok) {
+        throw new Error("Failed to retrieve violations logs.");
+      }
+      const violationsData = await violationsRes.json();
+      if (!violationsData.success || !violationsData.data) {
+        throw new Error("Failed to parse violations payload.");
+      }
+
+      // Load into workspaceStore
+      const workspaceStore = useWorkspaceStore.getState();
+      workspaceStore.setNewDrawing(drawingData.data);
+      if (referenceDrawingData) {
+        workspaceStore.setOldDrawing(referenceDrawingData);
+      } else {
+        workspaceStore.clearUpload("old");
+      }
+
+      useWorkspaceStore.setState({
+        violations: violationsData.data.map((v: any) => ({
+          id: v.id,
+          severity: v.severity,
+          category: v.category,
+          description: v.description,
+          recommendation: v.recommendation,
+          affected_entities: v.affected_entities,
+          confidence: v.confidence,
+          coordinates: v.coordinates ? [v.coordinates[0], v.coordinates[1]] : undefined,
+          standard_reference: v.standard_reference || undefined,
+          pen_type: v.pen_type,
+          is_resolved: v.is_resolved,
+          resolved_at: v.resolved_at,
+          checker_remarks: v.checker_remarks
+        })),
+        complianceScore: session.compliance_score,
+        auditStatus: "completed",
+        selectedClient: session.client_name || null
+      });
+
+      // Jump back to workspace view
+      setCurrentNav("workspace");
+    } catch (err: any) {
+      alert(`Ingestion Warning: ${err.message}`);
+    }
+  };
+
+  const handleSaveRemarks = async () => {
+    if (!selectedSessionForEdit) return;
+    const success = await updateSession(selectedSessionForEdit.id, remarksText);
+    if (success) {
+      setIsEditModalOpen(false);
+      setSelectedSessionForEdit(null);
+      setRemarksText("");
+      fetchSessions();
+    } else {
+      alert("Failed to update remarks. Standalone API may be offline.");
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedSessionForDelete) return;
+    const success = await deleteSession(selectedSessionForDelete.id);
+    if (success) {
+      setIsDeleteModalOpen(false);
+      setSelectedSessionForDelete(null);
+      fetchSessions();
+    } else {
+      alert("Failed to delete session. Standalone API may be offline.");
+    }
+  };
+
+  const getDrawingName = (drawingId: string) => {
+    const drawing = drawings.find((d) => d.id === drawingId);
+    return drawing ? drawing.file_name : `Drawing #${drawingId.substring(0, 6)}`;
+  };
+
   useEffect(() => {
     fetchClients();
   }, [fetchClients]);
@@ -363,15 +471,30 @@ export const AuditWorkspace: React.FC = () => {
       }
     };
 
-    window.addEventListener("resize", handleResize);
-    // Initial call after DOM elements rendering
-    const timer = setTimeout(handleResize, 300);
+    // Use ResizeObserver for instant container-driven size updates
+    const observer = new ResizeObserver(() => {
+      // Use requestAnimationFrame to avoid "ResizeObserver loop limit exceeded" warnings
+      window.requestAnimationFrame(() => {
+        handleResize();
+      });
+    });
+
+    if (containerRefOld.current) {
+      observer.observe(containerRefOld.current);
+    }
+    if (containerRefNew.current) {
+      observer.observe(containerRefNew.current);
+    }
+
+    // Call initially to ensure correct dimensions are set immediately
+    handleResize();
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      clearTimeout(timer);
+      observer.disconnect();
     };
-  }, [oldDrawing, newDrawing, currentNav]);
+  }, [oldDrawing, newDrawing, currentNav, isRightPanelCollapsed]);
+
+
 
   const handleAuditTrigger = async () => {
     if (!newDrawing || !selectedClient) return;
@@ -383,148 +506,533 @@ export const AuditWorkspace: React.FC = () => {
   const medCount = violations.filter((v) => v.severity === "medium").length;
   const lowCount = violations.filter((v) => v.severity === "low").length;
 
-  // UploadZone is now a standalone component above — just pass props:
-  const uploadZoneProps = {
-    uploadDrawingFile,
-    clearUpload,
+  // Calculate entity counts for delta scanner
+  const getEntitySum = (drawing: any) => {
+    if (!drawing || !drawing.entity_counts) return 0;
+    return Object.values(drawing.entity_counts).reduce((sum: number, count: any) => sum + (Number(count) || 0), 0);
   };
+
+  const oldEntityCount = getEntitySum(oldDrawing);
+  const newEntityCount = getEntitySum(newDrawing);
+  const entityDelta = newEntityCount - oldEntityCount;
+
+  // Coordinate Shift / Scale Mismatch Diagnostics
+  let hasAlignmentDisparity = false;
+  if (oldDrawing?.metadata?.render_bounds && newDrawing?.metadata?.render_bounds) {
+    const [oldXmin, oldYmin, oldXmax, oldYmax] = oldDrawing.metadata.render_bounds;
+    const [newXmin, newYmin, newXmax, newYmax] = newDrawing.metadata.render_bounds;
+
+    const oldW = oldXmax - oldXmin;
+    const oldH = oldYmax - oldYmin;
+    const newW = newXmax - newXmin;
+    const newH = newYmax - newYmin;
+
+    const oldCx = (oldXmin + oldXmax) / 2;
+    const oldCy = (oldYmin + oldYmax) / 2;
+    const newCx = (newXmin + newXmax) / 2;
+    const newCy = (newYmin + newYmax) / 2;
+
+    const dimMismatch = Math.abs(oldW - newW) / Math.max(oldW, 1) > 0.1 || Math.abs(oldH - newH) / Math.max(oldH, 1) > 0.1;
+    const centerMismatch = Math.abs(oldCx - newCx) / Math.max(oldW, 1) > 0.1 || Math.abs(oldCy - newCy) / Math.max(oldH, 1) > 0.1;
+
+    if (dimMismatch || centerMismatch) {
+      hasAlignmentDisparity = true;
+    }
+  }
 
   return (
     <div className="workspace-container">
       {/* 1. LEFT SIDEBAR (ENGINEERING NAVIGATION) */}
-      {(() => {
-        const isExpanded = !sidebarCollapsed || sidebarHovered;
-        const sidebarWidth = isExpanded ? '240px' : '60px';
-        return (
-          <aside
-            className={`workspace-sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarHovered ? 'hover-expanded' : ''}`}
-            style={{ width: sidebarWidth, transition: 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden', flexShrink: 0 }}
-            onMouseEnter={() => setSidebarHovered(true)}
-            onMouseLeave={() => setSidebarHovered(false)}
-          >
-            {/* ── BRANDING ── */}
-            <div className="sidebar-branding" style={{ padding: '16px 12px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-color)', minHeight: '60px' }}>
-              <div className="brand-logo" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--primary-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(37,99,235,0.25)' }}>
-                <Cpu size={18} style={{ color: '#fff' }} />
-              </div>
-              <div style={{ overflow: 'hidden', opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-8px)', transition: 'opacity 0.2s ease, transform 0.2s ease', whiteSpace: 'nowrap', flexGrow: 1 }}>
-                <h1 className="brand-title" style={{ fontSize: '0.92rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>AI-2D-Checker</h1>
-                <span className="brand-badge" style={{ fontSize: '0.58rem' }}>COMPLIANCE ENGINE</span>
-              </div>
-              {isExpanded && (
-                <button
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-cyan)'; e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                  title={sidebarCollapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
-                >
-                  {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-                </button>
-              )}
-            </div>
-
-            {/* ── NAV ITEMS ── */}
-            <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '4px', flexGrow: 1 }}>
-              {([
-                { key: 'workspace', icon: <Compass size={17} />, label: 'Audit Workspace' },
-                { key: 'standards', icon: <Bookmark size={17} />, label: 'Standards Manuals' },
-                { key: 'history',   icon: <History size={17} />,  label: 'Drawing History'  },
-                { key: 'settings', icon: <SettingsIcon size={17} />, label: 'Audit Settings' },
-              ] as const).map(({ key, icon, label }) => (
-                <button
-                  key={key}
-                  className={`nav-item ${currentNav === key ? 'active' : ''}`}
-                  onClick={() => setCurrentNav(key)}
-                  title={!isExpanded ? label : undefined}
-                  style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '8px', justifyContent: 'flex-start', width: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}
-                >
-                  <span style={{ flexShrink: 0, display: 'flex' }}>{icon}</span>
-                  <span style={{ opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-6px)', transition: 'opacity 0.18s ease, transform 0.18s ease', fontSize: '0.85rem', fontWeight: 550 }}>
-                    {label}
-                  </span>
-                </button>
-              ))}
-            </nav>
-
-            {/* ── FOOTER ── */}
-            <div className="sidebar-footer" style={{ padding: '12px 8px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {/* User Profile Row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'var(--bg-dark)', borderRadius: '8px', border: '1px solid var(--border-color)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                <ShieldCheck size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
-                <div style={{ overflow: 'hidden', opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-6px)', transition: 'opacity 0.18s ease, transform 0.18s ease' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{user?.username || 'Engineer'}</div>
-                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>Compliance Auditor</div>
-                </div>
-              </div>
-
-              {/* Theme + Logout */}
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  onClick={toggleTheme}
-                  title="Toggle Theme"
-                  style={{ background: 'transparent', border: '1px solid var(--border-color)', padding: '9px', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-cyan)'; e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                >
-                  {theme === 'hc-dark' ? <Moon size={15} /> : <Sun size={15} />}
-                </button>
-                <button
-                  onClick={() => logout()}
-                  title="Logout Portal"
-                  className="btn-logout"
-                  style={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', overflow: 'hidden', whiteSpace: 'nowrap', justifyContent: 'flex-start' }}
-                >
-                  <LogOut size={15} style={{ flexShrink: 0 }} />
-                  <span style={{ opacity: isExpanded ? 1 : 0, transform: isExpanded ? 'translateX(0)' : 'translateX(-6px)', transition: 'opacity 0.18s ease, transform 0.18s ease', fontSize: '0.8rem', fontWeight: 600 }}>Logout</span>
-                </button>
-              </div>
-            </div>
-          </aside>
-        );
-      })()}
+      <aside
+        className="workspace-sidebar"
+        style={{ width: '60px', flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', borderRight: '1px solid var(--border-color)', zIndex: 10 }}
+      >
+        {/* ── NAV ITEMS ── */}
+        <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
+          {([
+            { key: 'workspace', icon: <Compass size={22} />, label: 'Audit Workspace' },
+            // Standards Manuals: admin-only — completely hidden from regular users
+            ...(isAdmin ? [{ key: 'standards' as const, icon: <Bookmark size={22} />, label: 'Standards Manuals' }] : []),
+            { key: 'history', icon: <History size={22} />, label: 'Drawing History' },
+            { key: 'settings', icon: <SettingsIcon size={22} />, label: 'Audit Settings' },
+          ] as const).map(({ key, icon, label }) => (
+            <button
+              key={key}
+              className={`nav-item ${currentNav === key ? 'active' : ''}`}
+              onClick={() => setCurrentNav(key)}
+              data-tooltip={label}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '44px',
+                height: '44px',
+                margin: '0 auto',
+                borderRadius: '8px',
+                border: 'none',
+                background: currentNav === key ? 'rgba(128, 128, 128, 0.15)' : 'transparent',
+                color: currentNav === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (currentNav !== key) {
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                  e.currentTarget.style.background = 'rgba(128, 128, 128, 0.08)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentNav !== key) {
+                  e.currentTarget.style.color = 'var(--text-muted)';
+                  e.currentTarget.style.background = 'transparent';
+                }
+              }}
+            >
+              {icon}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
-      {currentNav === "standards" && (
+      {/* Standards Manuals — admin-only panel */}
+      {currentNav === "standards" && isAdmin && (
         <div className="viewport-standards-manager">
           <StandardsManager />
         </div>
       )}
 
-      {currentNav === "history" && (
-        <main className="workspace-main-viewport padded">
-          <div className="subpage-header">
-            <h2 className="section-title">Audit History Archive</h2>
-            <p className="section-desc">View historically logged revision comparison sessions and compliance reports.</p>
-          </div>
-          <div className="card settings-card" style={{ marginTop: "24px" }}>
-            <table className="stats-table">
-              <thead>
-                <tr className="stats-row">
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "left" }}>Target File</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "left" }}>Reference File</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center" }}>Compliance Score</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "right" }}>Session Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="stats-row">
-                  <td className="stats-label">floor_layout_v2_revision.dwg</td>
-                  <td className="stats-value">floor_layout_v1_reference.dwg</td>
-                  <td className="stats-value" style={{ textAlign: "center", color: "#10b981", fontWeight: "bold" }}>92.5%</td>
-                  <td className="stats-value" style={{ textAlign: "right" }}>Just Now</td>
-                </tr>
-                <tr className="stats-row">
-                  <td className="stats-label">pump_housing_b.dxf</td>
-                  <td className="stats-value">pump_housing_a.dxf</td>
-                  <td className="stats-value" style={{ textAlign: "center", color: "#f59e0b", fontWeight: "bold" }}>78.0%</td>
-                  <td className="stats-value" style={{ textAlign: "right" }}>2 hours ago</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </main>
-      )}
+      {currentNav === "history" && (() => {
+        const completedSessionsCount = sessions ? sessions.filter(s => s.status === "completed" && s.compliance_score !== null).length : 0;
+        const avgCompliance = completedSessionsCount > 0
+          ? (sessions.filter(s => s.status === "completed" && s.compliance_score !== null).reduce((sum, s) => sum + s.compliance_score!, 0) / completedSessionsCount).toFixed(1) + "%"
+          : "N/A";
+
+        const completedCount = sessions ? sessions.filter(s => s.status === "completed").length : 0;
+        const failedCount = sessions ? sessions.filter(s => s.status === "failed").length : 0;
+        const successRate = (completedCount + failedCount) > 0
+          ? ((completedCount / (completedCount + failedCount)) * 100).toFixed(0) + "%"
+          : "100%";
+
+        const filteredSessions = (sessions || []).filter((session) => {
+          const refName = session.reference_drawing_id ? getDrawingName(session.reference_drawing_id) : "";
+          const newName = getDrawingName(session.drawing_id);
+          const client = session.client_name || "";
+          const remarks = session.remarks || "";
+          const matchesSearch =
+            refName.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+            newName.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+            client.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+            remarks.toLowerCase().includes(historySearchQuery.toLowerCase());
+
+          const matchesStatus =
+            historyStatusFilter === "all" ||
+            (historyStatusFilter === "completed" && session.status === "completed") ||
+            (historyStatusFilter === "failed" && session.status === "failed") ||
+            (historyStatusFilter === "auditing" && session.status !== "completed" && session.status !== "failed");
+
+          const matchesScore =
+            historyScoreFilter === "all" ||
+            (historyScoreFilter === "excellent" && session.status === "completed" && session.compliance_score !== null && session.compliance_score >= 85) ||
+            (historyScoreFilter === "warning" && session.status === "completed" && session.compliance_score !== null && session.compliance_score < 85);
+
+          return matchesSearch && matchesStatus && matchesScore;
+        });
+
+        return (
+          <main className="workspace-main-viewport padded" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div className="subpage-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
+              <div>
+                <h2 className="section-title">Audit History Archive</h2>
+                <p className="section-desc">View historically logged revision comparison sessions and compliance reports.</p>
+              </div>
+              {sessions && sessions.length > 0 && (
+                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.03)", padding: "4px 10px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  Total sessions loaded: <strong style={{ color: "var(--text-primary)" }}>{sessions.length}</strong>
+                </span>
+              )}
+            </div>
+
+            {/* DYNAMIC STATISTICS SUMMARY DECK */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+              {/* Card 1: Total Runs */}
+              <div className="card" style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 20px", background: "linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-cyan)", boxShadow: "0 0 12px rgba(59, 130, 246, 0.05)" }}>
+                  <Database size={18} />
+                </div>
+                <div>
+                  <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: "600" }}>Total Audit Runs</span>
+                  <h3 style={{ fontSize: "1.4rem", fontWeight: "700", marginTop: "2px", color: "var(--text-primary)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {sessions ? sessions.length : 0}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Card 2: Average Compliance */}
+              <div className="card" style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 20px", background: "linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", boxShadow: "0 0 12px rgba(16, 185, 129, 0.05)" }}>
+                  <BarChart2 size={18} />
+                </div>
+                <div>
+                  <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: "600" }}>Avg Compliance</span>
+                  <h3 style={{ fontSize: "1.4rem", fontWeight: "700", marginTop: "2px", color: "#10b981", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {avgCompliance}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Card 3: Success Rate */}
+              <div className="card" style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 20px", background: "linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#a855f7", boxShadow: "0 0 12px rgba(168, 85, 247, 0.05)" }}>
+                  <TrendingUp size={18} />
+                </div>
+                <div>
+                  <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: "600" }}>Pipeline Success</span>
+                  <h3 style={{ fontSize: "1.4rem", fontWeight: "700", marginTop: "2px", color: "#a855f7", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {successRate}
+                  </h3>
+                </div>
+              </div>
+            </div>
+
+            {/* INTERACTIVE CONTROLS BAR: SEARCH & MULTI-CRITERIA FILTERS */}
+            <div className="card" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px", padding: "14px 20px", background: "rgba(255, 255, 255, 0.01)", border: "1px solid rgba(255, 255, 255, 0.04)", borderRadius: "12px" }}>
+              <div style={{ display: "flex", flex: 1, gap: "12px", alignItems: "center", minWidth: "290px" }}>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                  <input
+                    type="text"
+                    placeholder="Search drawing name, remarks, or client context..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    className="form-input"
+                    style={{ paddingLeft: "36px", height: "38px", background: "rgba(0, 0, 0, 0.25)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", fontSize: "0.85rem", width: "100%", transition: "all 0.2s ease" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Filter size={13} style={{ color: "var(--text-muted)" }} />
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "500" }}>Status:</span>
+                  <select
+                    value={historyStatusFilter}
+                    onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
+                    className="form-input"
+                    style={{ height: "38px", padding: "0 10px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", fontSize: "0.85rem", color: "var(--text-primary)", width: "140px", cursor: "pointer", outline: "none" }}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="auditing">Active Auditing</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "500" }}>Compliance:</span>
+                  <select
+                    value={historyScoreFilter}
+                    onChange={(e) => setHistoryScoreFilter(e.target.value as any)}
+                    className="form-input"
+                    style={{ height: "38px", padding: "0 10px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", fontSize: "0.85rem", color: "var(--text-primary)", width: "155px", cursor: "pointer", outline: "none" }}
+                  >
+                    <option value="all">All Scores</option>
+                    <option value="excellent">Excellent (≥ 85%)</option>
+                    <option value="warning">Warning (&lt; 85%)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* ARCHIVE GRID / RESULTS TABLE */}
+            {filteredSessions.length > 0 ? (
+              <div className="card settings-card" style={{ padding: "0px", overflow: "hidden", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: "12px", background: "var(--bg-card)" }}>
+                <table className="stats-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr className="stats-row" style={{ background: "rgba(255, 255, 255, 0.015)", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle", width: "90px" }}>ID</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Original Drawing</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>KMTI Drawing</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Client</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Compliance Score</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Session Date</th>
+                      <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSessions.map((session) => {
+                      const isCompleted = session.status === "completed";
+                      const isFailed = session.status === "failed";
+                      const score = session.compliance_score;
+                      let scoreColor = "var(--text-muted)";
+                      let scoreBg = "rgba(255, 255, 255, 0.03)";
+                      let scoreBorder = "rgba(255, 255, 255, 0.05)";
+                      if (isCompleted && score !== null) {
+                        if (score >= 85) {
+                          scoreColor = "#10b981";
+                          scoreBg = "rgba(16, 185, 129, 0.08)";
+                          scoreBorder = "rgba(16, 185, 129, 0.15)";
+                        } else if (score >= 70) {
+                          scoreColor = "#f59e0b";
+                          scoreBg = "rgba(245, 158, 11, 0.08)";
+                          scoreBorder = "rgba(245, 158, 11, 0.15)";
+                        } else {
+                          scoreColor = "#ef4444";
+                          scoreBg = "rgba(239, 68, 68, 0.08)";
+                          scoreBorder = "rgba(239, 68, 68, 0.15)";
+                        }
+                      }
+
+                      return (
+                        <tr
+                          key={session.id}
+                          className="stats-row"
+                          style={{
+                            borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
+                            transition: "background-color 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.01)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                        >
+                          {/* ID Column */}
+                          <td className="stats-label" style={{ textAlign: "left", padding: "14px 12px", verticalAlign: "left" }}>
+                            <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", background: "rgba(0, 229, 255, 0.05)", padding: "3px 5px", borderRadius: "6px", border: "1px solid rgba(0, 229, 255, 0.15)", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {(() => {
+                                const prefix = "SYS";
+                                const absoluteIndex = sessions.findIndex(s => s.id === session.id);
+                                const numStr = String(sessions.length - absoluteIndex).padStart(2, "0");
+                                return `${prefix}${numStr}`;
+                              })()}
+                            </span>
+                          </td>
+
+                          {/* Reference File */}
+                          <td className="stats-label" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <FileText size={14} style={{ color: session.reference_drawing_id ? "var(--text-muted)" : "rgba(255,255,255,0.15)" }} />
+                              <span style={{ color: session.reference_drawing_id ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.85rem" }}>
+                                {session.reference_drawing_id ? getDrawingName(session.reference_drawing_id) : "—"}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* New File */}
+                          <td className="stats-label" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle", fontWeight: "600" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <FileText size={14} style={{ color: "var(--accent-cyan)" }} />
+                                <span style={{ color: "var(--text-primary)", fontSize: "0.85rem" }}>
+                                  {getDrawingName(session.drawing_id)}
+                                </span>
+                              </div>
+                              {session.remarks && (
+                                <span style={{ fontSize: "0.72rem", color: "var(--accent-cyan)", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(0, 229, 255, 0.05)", border: "1px solid rgba(0, 229, 255, 0.1)", padding: "2px 8px", borderRadius: "4px", width: "fit-content", fontWeight: "normal" }}>
+                                  <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "var(--accent-cyan)", display: "inline-block" }}></span>
+                                  {session.remarks}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Client Context */}
+                          <td className="stats-value" style={{ padding: "14px 16px", color: "var(--text-primary)", verticalAlign: "middle", textAlign: "left", fontFamily: "inherit" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <Briefcase size={14} style={{ color: "var(--text-muted)", opacity: 0.6 }} />
+                              <span style={{ fontSize: "0.85rem", color: session.client_name ? "var(--text-primary)" : "var(--text-muted)" }}>
+                                {session.client_name || "Universal Standard"}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Compliance Score */}
+                          <td className="stats-value" style={{ textAlign: "left", padding: "14px 55px", verticalAlign: "middle", fontFamily: "inherit" }}>
+                            {isCompleted ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: "6px", background: scoreBg, border: `1px solid ${scoreBorder}`, color: scoreColor, fontWeight: "800", fontSize: "0.82rem" }}>
+                                {score !== null ? `${score.toFixed(1)}%` : "N/A"}
+                              </span>
+                            ) : isFailed ? (
+                              <span style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.15)", color: "#ef4444", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px", borderRadius: "6px" }} title={session.error_message || "Audit pipeline failed"}>
+                                <AlertTriangle size={12} /> Failed
+                              </span>
+                            ) : (
+                              <span style={{ background: "rgba(0, 229, 255, 0.05)", border: "1px solid rgba(0, 229, 255, 0.12)", color: "var(--accent-cyan)", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px", borderRadius: "6px" }}>
+                                <Loader size={12} className="spin-animation" /> Auditing...
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Session Date */}
+                          <td className="stats-value" style={{ textAlign: "left", padding: "14px 16px", color: "var(--text-muted)", fontSize: "0.82rem", verticalAlign: "middle", fontFamily: "'JetBrains Mono', monospace" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <Clock size={12} style={{ opacity: 0.6 }} />
+                              <span>
+                                {parseUtcDate(session.created_at).toLocaleString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit"
+                                })}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="stats-value" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>
+                            <div style={{ display: "flex", justifyContent: "flex-start", gap: "8px" }}>
+                              <button
+                                onClick={() => handleOpenSession(session)}
+                                disabled={session.status !== "completed"}
+                                title="Open visual canvas review"
+                                className="action-icon-btn"
+                                style={{
+                                  background: "rgba(128, 128, 128, 0.08)",
+                                  border: "1px solid rgba(255, 255, 255, 0.05)",
+                                  color: session.status === "completed" ? "var(--accent-cyan)" : "var(--text-muted)",
+                                  padding: "7px",
+                                  borderRadius: "6px",
+                                  cursor: session.status === "completed" ? "pointer" : "not-allowed",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (session.status === "completed") {
+                                    e.currentTarget.style.background = "rgba(0, 229, 255, 0.15)";
+                                    e.currentTarget.style.borderColor = "var(--accent-cyan)";
+                                    e.currentTarget.style.color = "var(--bg-dark)";
+                                    e.currentTarget.style.transform = "scale(1.05)";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (session.status === "completed") {
+                                    e.currentTarget.style.background = "rgba(128, 128, 128, 0.08)";
+                                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.05)";
+                                    e.currentTarget.style.color = "var(--accent-cyan)";
+                                    e.currentTarget.style.transform = "scale(1)";
+                                  }
+                                }}
+                              >
+                                <FolderOpen size={14} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedSessionForEdit(session);
+                                  setRemarksText(session.remarks || "");
+                                  setIsEditModalOpen(true);
+                                }}
+                                title="Edit custom remarks"
+                                className="action-icon-btn"
+                                style={{
+                                  background: "rgba(128, 128, 128, 0.08)",
+                                  border: "1px solid rgba(255, 255, 255, 0.05)",
+                                  color: "var(--text-primary)",
+                                  padding: "7px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "rgba(245, 158, 11, 0.15)";
+                                  e.currentTarget.style.borderColor = "#f59e0b";
+                                  e.currentTarget.style.color = "var(--bg-dark)";
+                                  e.currentTarget.style.transform = "scale(1.05)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "rgba(128, 128, 128, 0.08)";
+                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.05)";
+                                  e.currentTarget.style.color = "var(--text-primary)";
+                                  e.currentTarget.style.transform = "scale(1)";
+                                }}
+                              >
+                                <Edit size={14} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedSessionForDelete(session);
+                                  setIsDeleteModalOpen(true);
+                                }}
+                                title="Purge session record"
+                                className="action-icon-btn destructive"
+                                style={{
+                                  background: "rgba(239, 68, 68, 0.05)",
+                                  border: "1px solid rgba(239, 68, 68, 0.1)",
+                                  color: "#ef4444",
+                                  padding: "7px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+                                  e.currentTarget.style.borderColor = "#ef4444";
+                                  e.currentTarget.style.transform = "scale(1.05)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)";
+                                  e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.1)";
+                                  e.currentTarget.style.transform = "scale(1)";
+                                }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                              {session.is_restored && (
+                                <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "4px 8px", borderRadius: "6px", background: "rgba(16, 185, 129, 0.1)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.25)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", marginLeft: "4px", boxShadow: "0 2px 4px rgba(16, 185, 129, 0.1)" }}>
+                                  Restored
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* GLASSMORPHIC EMPTY STATE FALLBACK */
+              <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 24px", textAlign: "center", background: "rgba(255, 255, 255, 0.015)", border: "1px dashed rgba(255, 255, 255, 0.08)", borderRadius: "12px", marginTop: "12px", boxShadow: "inset 0 1px 3px rgba(255,255,255,0.02)" }}>
+                <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(128, 128, 128, 0.08)", border: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", marginBottom: "18px" }}>
+                  <Database size={24} />
+                </div>
+                <h4 style={{ fontWeight: "700", color: "var(--text-primary)", fontSize: "1.1rem", marginBottom: "8px" }}>No matching archives found</h4>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: "420px", marginBottom: "22px", lineHeight: "1.6" }}>
+                  {sessions && sessions.length > 0
+                    ? "No historical runs match your current query or filter selectors. Reset filters to view all sessions."
+                    : "No CAD compliance runs have been archived yet. Go to the review workspace to launch your first compliance check!"}
+                </p>
+                {sessions && sessions.length > 0 ? (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setHistorySearchQuery("");
+                      setHistoryStatusFilter("all");
+                      setHistoryScoreFilter("all");
+                    }}
+                    style={{ padding: "8px 24px", borderRadius: "8px", fontSize: "0.85rem", cursor: "pointer" }}
+                  >
+                    Clear all filters
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setCurrentNav("workspace")}
+                    style={{ padding: "10px 24px", borderRadius: "8px", fontSize: "0.85rem", cursor: "pointer", display: "inline-flex", gap: "8px", alignItems: "center" }}
+                  >
+                    <Play size={12} /> Launch Compliance Check
+                  </button>
+                )}
+              </div>
+            )}
+          </main>
+        );
+      })()}
 
       {currentNav === "settings" && (
         <main className="workspace-main-viewport padded">
@@ -554,294 +1062,563 @@ export const AuditWorkspace: React.FC = () => {
           <main className="stage1-center-panel">
             {/* Top Drawing Selection and Upload Box */}
             {/* Split Screen Upload Ingestion Station */}
-            <div className="card settings-card upload-station-card" style={{ marginBottom: "20px" }}>
-              <div className="upload-station-header">
-                <div>
-                  <h3 className="card-title" style={{ margin: 0, fontSize: "0.95rem" }}>
-                    Stage 1: Version Ingestion Station
-                  </h3>
-                  <p className="card-subtitle" style={{ margin: "2px 0 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                    Drag & drop or browse matching formats (.dwg, .dxf, .pdf) for revision comparisons.
-                  </p>
-                </div>
-                
-                {/* Global Compatibility Badge */}
-                <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`}>
-                  <span className="compatibility-indicator-dot"></span>
-                  <span className="compatibility-text">
-                    {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
-                    {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
-                    {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
-                    {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
-                  </span>
-                </div>
-              </div>
+            <div className="card settings-card upload-station-card" style={{ marginBottom: "12px", padding: "10px 16px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                    <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
+                      Stage 1: Version Ingestion
+                    </h3>
+                    <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
+                      <span className="compatibility-indicator-dot"></span>
+                      <span className="compatibility-text">
+                        {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
+                        {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
+                        {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
+                        {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
+                      </span>
+                    </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                {/* Left Card: Old Version Reference */}
-                <UploadZone
-                  side="old"
-                  uploadState={oldUploadState}
-                  progress={oldUploadProgress}
-                  fileName={oldFileName}
-                  fileSize={oldFileSize}
-                  error={oldError}
-                  activeDrawing={oldDrawing}
-                  uploadDrawingFile={uploadDrawingFile}
-                  clearUpload={clearUpload}
-                />
+                    {/* File Format Badges */}
+                    {oldDrawing && (
+                      <span className="format-badge-pill ref-format">
+                        REF: {oldDrawing.file_name.split(".").pop()?.toUpperCase()}
+                      </span>
+                    )}
+                    {newDrawing && (
+                      <span className="format-badge-pill rev-format">
+                        REV: {newDrawing.file_name.split(".").pop()?.toUpperCase()}
+                      </span>
+                    )}
 
-                {/* Right Card: New Version Revision */}
-                <UploadZone
-                  side="new"
-                  uploadState={newUploadState}
-                  progress={newUploadProgress}
-                  fileName={newFileName}
-                  fileSize={newFileSize}
-                  error={newError}
-                  activeDrawing={newDrawing}
-                  uploadDrawingFile={uploadDrawingFile}
-                  clearUpload={clearUpload}
-                />
+                    {/* Delta Complexity Pill */}
+                    {oldDrawing && newDrawing && (
+                      <span className="complexity-delta-pill">
+                        REF: {oldEntityCount.toLocaleString()} ↔ REV: {newEntityCount.toLocaleString()} Entities ({entityDelta >= 0 ? `+${entityDelta.toLocaleString()}` : entityDelta.toLocaleString()})
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Laser Sync Controller Switch */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500" }}>Laser Sync:</span>
+                    <button
+                      onClick={toggleLaserSync}
+                      className={`laser-sync-toggle-switch ${isLaserSyncEnabled ? "active" : "inactive"}`}
+                      title={isLaserSyncEnabled ? "Disable Synchronized Crosshairs" : "Enable Synchronized Crosshairs"}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        position: "relative",
+                        width: "36px",
+                        height: "18px",
+                        borderRadius: "10px",
+                        background: isLaserSyncEnabled ? "rgba(0, 255, 204, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                        border: isLaserSyncEnabled ? "1px solid rgba(0, 255, 204, 0.4)" : "1px solid rgba(255, 255, 255, 0.1)",
+                        cursor: "pointer",
+                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                        padding: 0,
+                        outline: "none"
+                      }}
+                    >
+                      <span
+                        className="laser-sync-dot"
+                        style={{
+                          display: "block",
+                          width: "10px",
+                          height: "10px",
+                          borderRadius: "50%",
+                          background: isLaserSyncEnabled ? "#00ffcc" : "#a1a1aa",
+                          boxShadow: isLaserSyncEnabled ? "0 0 8px #00ffcc" : "none",
+                          position: "absolute",
+                          left: isLaserSyncEnabled ? "22px" : "4px",
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                        }}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bounds Scanner Warning */}
+                {hasAlignmentDisparity && (
+                  <div className="alignment-mismatch-banner">
+                    <span className="warning-icon">⚠️</span>
+                    <span className="warning-text">Alignment warning: Scale or coordinate shift detected between viewports (bounds mismatch &gt; 10%). Direct alignment mapping may require offset adjustment.</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Split Screen CAD Viewer */}
             <div className="cad-viewer-container">
               {/* Toolbar */}
               <div className="viewer-toolbar">
                 <div className="toolbar-group">
-                  <button className="toolbar-btn" onClick={() => setViewport(panX, panY, zoom + 0.1)} title="Zoom In">
+                  <button
+                    className="toolbar-btn"
+                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.min(25, reviewViewport.scale * 1.25) })}
+                    title="Zoom In"
+                  >
                     <ZoomIn size={14} />
                   </button>
-                  <button className="toolbar-btn" onClick={() => setViewport(panX, panY, Math.max(0.2, zoom - 0.1))} title="Zoom Out">
+                  <button
+                    className="toolbar-btn"
+                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.max(0.1, reviewViewport.scale / 1.25) })}
+                    title="Zoom Out"
+                  >
                     <ZoomOut size={14} />
                   </button>
-                  <button className="toolbar-btn" onClick={() => setViewport(0, 0, 1)} title="Reset Viewport">
+                  <button
+                    className="toolbar-btn"
+                    onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
+                    title="Reset Viewport"
+                  >
                     <Maximize size={14} />
                   </button>
                 </div>
 
                 <div className="toolbar-divider"></div>
-
-                <div className="toolbar-group">
-                  <span className="toolbar-label">Layers:</span>
-                  {Object.keys(activeLayers).map((layer) => (
-                    <button
-                      key={layer}
-                      className={`toolbar-toggle-btn ${activeLayers[layer] ? "active" : ""}`}
-                      onClick={() => toggleLayer(layer)}
-                    >
-                      {layer}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="toolbar-divider"></div>
-
-                <div className="toolbar-group" style={{ marginLeft: "auto" }}>
-                  <span className="diff-legend-item unchanged"><span className="legend-dot unchanged"></span>Unchanged</span>
-                  <span className="diff-legend-item added"><span className="legend-dot added"></span>Added</span>
-                  <span className="diff-legend-item removed"><span className="legend-dot removed"></span>Removed</span>
-                  <span className="diff-legend-item modified"><span className="legend-dot modified"></span>Modified</span>
-                </div>
               </div>
+
+              {/* Automated AI Physical Comparison & KMTI Checklist */}
+              {oldDrawing && newDrawing && (
+                <div className="physical-checklist-deck-container" style={{ marginBottom: "12px", background: "rgba(9, 9, 11, 0.6)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "16px", backdropFilter: "blur(12px)", boxShadow: "0 4px 30px rgba(0, 0, 0, 0.4)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
+                      <span style={{ fontSize: "0.85rem", fontWeight: 700, letterSpacing: "0.05em", color: "#e4e4e7" }}>
+                        AI PHYSICAL COMPARISON & KMTI CHECKLIST
+                      </span>
+                    </div>
+                    {aiScanProgress === "idle" && (
+                      <button
+                        className="btn btn-primary"
+                        onClick={runPhysicalComparisonAI}
+                        style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px" }}
+                      >
+                        <Play size={12} fill="currentColor" />
+                        RUN AI COMPARISON
+                      </button>
+                    )}
+                  </div>
+
+                  {/* AI Scan Progress Sequence */}
+                  {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "20px 0" }}>
+                      <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                        <span style={{ color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>1. SCAN ORIGINAL</span>
+                        <span style={{ color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>2. EXTRACT DATA</span>
+                        <span style={{ color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>3. SCAN KMTI</span>
+                        <span style={{ color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>4. COMPARE MATCHES</span>
+                      </div>
+                      <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                        <div style={{ 
+                          height: "100%", 
+                          background: "var(--accent-cyan)", 
+                          width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
+                          transition: "width 0.5s ease"
+                        }}></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI Results Deck */}
+                  {aiScanProgress === "completed" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {Object.entries(aiChecklistResults).map(([key, result]) => {
+                        const isExpanded = expandedChecklistPanels[key];
+                        let badgeColor = "#10b981"; // MATCHED
+                        if (result.status === "ADDED") badgeColor = "#3b82f6";
+                        if (result.status === "CHANGED") badgeColor = "#f59e0b";
+                        if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#f43f5e";
+
+                        return (
+                          <div key={key} style={{ background: "rgba(20,20,22,0.6)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden" }}>
+                            <div 
+                              onClick={() => toggleChecklistPanel(key)}
+                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", cursor: "pointer" }}
+                            >
+                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f4f4f5", textTransform: "uppercase" }}>
+                                {key === "bom" ? "Bill of Materials (BOM)" : key === "titleBlock" ? "Title Block" : key}
+                              </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                <span style={{
+                                  fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
+                                  color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}15`
+                                }}>
+                                  {result.status}
+                                </span>
+                                {isExpanded ? <ChevronDown size={14} color="#71717a" /> : <ChevronRight size={14} color="#71717a" />}
+                              </div>
+                            </div>
+                            
+                            {/* Expanded Data Panel */}
+                            {isExpanded && (
+                              <div style={{ padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.2)" }}>
+                                <div style={{ fontSize: "0.65rem", color: "#a1a1aa", marginBottom: "8px" }}>{result.log}</div>
+                                
+                                {result.extractedText && (
+                                  <div style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.2)", padding: "8px", borderRadius: "4px", fontSize: "0.65rem", color: "#60a5fa", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+                                    {result.extractedText}
+                                  </div>
+                                )}
+
+                                {key === "bom" && bomComparisonMatrix.length > 0 && (
+                                  <div style={{ overflowX: "auto", marginTop: "8px" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.65rem", fontFamily: "monospace", textAlign: "left" }}>
+                                      <thead>
+                                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#a1a1aa" }}>
+                                          <th style={{ padding: "4px 8px" }}>Row</th>
+                                          <th style={{ padding: "4px 8px" }}>Column</th>
+                                          <th style={{ padding: "4px 8px" }}>Original Value</th>
+                                          <th style={{ padding: "4px 8px" }}>KMTI Value</th>
+                                          <th style={{ padding: "4px 8px" }}>Delta</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {bomComparisonMatrix.map((row, idx) => (
+                                          <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: row.diffType === "CHANGED" ? "rgba(245,158,11,0.05)" : "transparent" }}>
+                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.row}</td>
+                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.col}</td>
+                                            <td style={{ padding: "6px 8px", color: "#71717a" }}>{row.original}</td>
+                                            <td style={{ padding: "6px 8px", color: row.diffType === "CHANGED" ? "#f59e0b" : "#e4e4e7" }}>{row.kmti}</td>
+                                            <td style={{ padding: "6px 8px" }}>
+                                              <span style={{ color: row.diffType === "CHANGED" ? "#f59e0b" : "#10b981", fontWeight: 700 }}>
+                                                {row.diffType}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Viewport Panels */}
+              {/* ── STANDARD SPLIT-VIEW MODE ── */}
               <div className="split-viewports">
-                {/* Left Viewport (Old) */}
-                <div className="viewport-panel">
-                  <div className="viewport-label">Reference CAD (Old)</div>
-                  <div className="cad-canvas-mock" ref={containerRefOld}>
-                    {oldDrawing ? (
-                      <DrawingCanvas 
-                        layers={oldLayers} 
-                        width={oldSize.width} 
-                        height={oldSize.height} 
-                        drawing={oldDrawing}
-                      />
-                    ) : (
-                      <div className="canvas-empty" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {oldUploadState !== "idle" && oldUploadState !== "failed" ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                            <Loader size={24} className="loader-spin-icon spin-animation" style={{ color: "var(--accent-cyan)" }} />
-                            <span style={{ fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.05em", color: "var(--accent-cyan)", textTransform: "uppercase" }}>
-                              Ingesting Reference Layout...
-                            </span>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", padding: "30px" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "52px", height: "52px", borderRadius: "50%", background: "rgba(37, 99, 235, 0.05)", border: "1px solid rgba(37, 99, 235, 0.15)", color: "var(--accent-cyan)" }}>
-                              <Compass size={24} style={{ opacity: 0.85 }} />
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", textAlign: "center" }}>
-                              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>Reference CAD Awaiting Ingestion</span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", maxWidth: "260px", lineHeight: 1.4 }}>
-                                Upload the historical drawing (OLD version) in the station deck above to initialize vector rendering.
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  {/* Left Viewport (Old) */}
+                  <div className="viewport-panel">
+                    <div className="viewport-header">
+                      <div className="viewport-label">Original Drawing</div>
+                      {oldDrawing && (
+                        <div className="ingested-file-pill ref">
+                          <span className="pill-filename" title={oldDrawing.file_name}>
+                            {oldDrawing.file_name}
+                          </span>
+                          <button className="pill-clear-btn" onClick={() => clearUpload("old")} title="Remove reference drawing">
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="cad-canvas-mock" ref={containerRefOld}>
+                      {oldDrawing ? (
+                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                          <DrawingCanvas
+                            layers={oldLayers}
+                            width={oldSize.width}
+                            height={oldSize.height}
+                            drawing={oldDrawing}
+                          />
+                        </div>
+                      ) : (
+                        <UploadZone
+                          side="old"
+                          uploadState={oldUploadState}
+                          progress={oldUploadProgress}
+                          fileName={oldFileName}
+                          fileSize={oldFileSize}
+                          error={oldError}
+                          activeDrawing={oldDrawing}
+                          uploadDrawingFile={uploadDrawingFile}
+                          clearUpload={clearUpload}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Right Viewport (New) */}
-                <div className="viewport-panel">
-                  <div className="viewport-label">Revision CAD (New)</div>
-                  <div className="cad-canvas-mock" ref={containerRefNew}>
-                    {newDrawing ? (
-                      <DrawingCanvas 
-                        layers={newLayers} 
-                        width={newSize.width} 
-                        height={newSize.height} 
-                        drawing={newDrawing}
-                      />
-                    ) : (
-                      <div className="canvas-empty" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {newUploadState !== "idle" && newUploadState !== "failed" ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                            <Loader size={24} className="loader-spin-icon spin-animation" style={{ color: "var(--accent-cyan)" }} />
-                            <span style={{ fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.05em", color: "var(--accent-cyan)", textTransform: "uppercase" }}>
-                              Ingesting Revision Layout...
-                            </span>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", padding: "30px" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "52px", height: "52px", borderRadius: "50%", background: "rgba(37, 99, 235, 0.05)", border: "1px solid rgba(37, 99, 235, 0.15)", color: "var(--accent-cyan)" }}>
-                              <Cpu size={24} style={{ opacity: 0.85 }} />
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", textAlign: "center" }}>
-                              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>Revision CAD Awaiting Ingestion</span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", maxWidth: "260px", lineHeight: 1.4 }}>
-                                Upload the revised drawing (NEW version) in the station deck above to prepare compliance auditing.
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  {/* Right Viewport (New) */}
+                  <div className="viewport-panel">
+                    <div className="viewport-header">
+                      <div className="viewport-label">KMTI Drawing</div>
+                      {newDrawing && (
+                        <div className="ingested-file-pill rev">
+                          <span className="pill-filename" title={newDrawing.file_name}>
+                            {newDrawing.file_name}
+                          </span>
+                          <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="cad-canvas-mock" ref={containerRefNew}>
+                      {newDrawing ? (
+                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                          <DrawingCanvas
+                            layers={newLayers}
+                            width={newSize.width}
+                            height={newSize.height}
+                            drawing={newDrawing}
+                          />
+                        </div>
+                      ) : (
+                        <UploadZone
+                          side="new"
+                          uploadState={newUploadState}
+                          progress={newUploadProgress}
+                          fileName={newFileName}
+                          fileSize={newFileSize}
+                          error={newError}
+                          activeDrawing={newDrawing}
+                          uploadDrawingFile={uploadDrawingFile}
+                          clearUpload={clearUpload}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
             </div>
           </main>
 
           {/* RIGHT VIEWPORT (STAGE 2: AI COMPLIANCE AUDITOR) */}
-          <aside className="stage2-right-panel">
-            {/* Top Auditor Launch controller */}
-            <div className="card settings-card" style={{ marginBottom: "20px" }}>
-              <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
-                Stage 2 AI compliance Auditer
-              </h3>
+          <aside className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}>
+            <button
+              className="panel-collapse-btn"
+              onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
+              title={isRightPanelCollapsed ? "Expand Stage 2 Panel" : "Collapse Stage 2 Panel"}
+            >
+              {isRightPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+            <div className="panel-content-wrapper">
+              {/* Top Auditor Launch controller */}
+              <div className="card settings-card" style={{ marginBottom: "20px" }}>
+                <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
+                  Stage 2 AI Compliance Auditor
+                </h3>
 
-              <div className="form-group" style={{ marginTop: "12px" }}>
-                <label className="form-label">Grounding Client Profile</label>
-                <select
-                  className="form-input select-input"
-                  value={selectedClient || ""}
-                  onChange={(e) => setSelectedClient(e.target.value)}
-                >
-                  <option value="" disabled>Select Target Client</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                className="btn btn-primary"
-                onClick={handleAuditTrigger}
-                disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
-                style={{ width: "100%", marginTop: "16px", display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}
-              >
-                <Play size={14} />
-                {auditStatus === "queued" || auditStatus === "auditing" ? "Running AI Auditing Pipeline..." : "Execute compliance Audit"}
-              </button>
-            </div>
-
-            {/* Compliance gauge & status */}
-            {auditStatus === "completed" && (
-              <div className="card settings-card" style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                <div className="compliance-circle" style={{ borderColor: complianceScore && complianceScore >= 80 ? "#10b981" : "#f59e0b" }}>
-                  <span className="compliance-val">{complianceScore}%</span>
-                  <span className="compliance-lbl">Compliance</span>
-                </div>
-
-                <div className="severity-bar-grid">
-                  <div className="bar-card critical">
-                    <span className="bar-val">{criticalCount}</span>
-                    <span className="bar-lbl">Critical</span>
-                  </div>
-                  <div className="bar-card high">
-                    <span className="bar-val">{highCount}</span>
-                    <span className="bar-lbl">High</span>
-                  </div>
-                  <div className="bar-card medium">
-                    <span className="bar-val">{medCount}</span>
-                    <span className="bar-lbl">Med</span>
-                  </div>
-                  <div className="bar-card low">
-                    <span className="bar-val">{lowCount}</span>
-                    <span className="bar-lbl">Low</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Violations feed container */}
-            <div className="violations-feed-card card settings-card" style={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <h4 className="card-title">Infractions & Grounding Explanations</h4>
-
-              <div className="violations-list" style={{ overflowY: "auto", flexGrow: 1, marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                {auditStatus === "idle" && (
-                  <div className="empty-state">Trigger compliance run to scan revision drawing against engineering manuals.</div>
-                )}
-                {auditStatus === "queued" || auditStatus === "auditing" ? (
-                  <div className="empty-state">
-                    <div className="loader spin-animation"></div>
-                    <span style={{ marginTop: "12px" }}>Reasoning over draft dimensions...</span>
-                  </div>
-                ) : null}
-
-                {auditStatus === "completed" && violations.length === 0 ? (
-                  <div className="empty-state success">
-                    <CheckCircle2 size={36} style={{ color: "#10b981" }} />
-                    <span style={{ marginTop: "12px", color: "#10b981" }}>No compliance infractions found! Drawing is perfectly grounded.</span>
-                  </div>
-                ) : null}
-
-                {auditStatus === "completed" && violations.map((v) => (
-                  <div
-                    key={v.id}
-                    className={`violation-card-item ${v.severity} ${selectedViolation?.id === v.id ? "selected" : ""}`}
-                    onClick={() => selectViolation(v)}
+                <div className="form-group" style={{ marginTop: "12px" }}>
+                  <label className="form-label">Grounding Client Profile</label>
+                  <select
+                    className="form-input select-input"
+                    value={selectedClient || ""}
+                    onChange={(e) => setSelectedClient(e.target.value)}
                   >
-                    <div className="card-header-row">
-                      <span className={`sev-badge ${v.severity}`}>{v.severity.toUpperCase()}</span>
-                      <span className="clause-lbl">{v.standard_reference || "General"}</span>
+                    <option value="" disabled>Select Target Client</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAuditTrigger}
+                  disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
+                  style={{
+                    width: "100%",
+                    marginTop: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    justifyContent: "center",
+                    padding: "10px 16px",
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  <Play size={14} fill="currentColor" />
+                  <span>
+                    {auditStatus === "queued" || auditStatus === "auditing" ? "Running AI Auditing Pipeline..." : "Execute Compliance Audit"}
+                  </span>
+                </button>
+              </div>
+
+              {/* Compliance gauge & status */}
+              {auditStatus === "completed" && (
+                <div className="card settings-card" style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                  <div className="compliance-circle" style={{ borderColor: complianceScore && complianceScore >= 80 ? "#10b981" : "#f59e0b" }}>
+                    <span className="compliance-val">{complianceScore}%</span>
+                    <span className="compliance-lbl">Compliance</span>
+                  </div>
+
+                  <div className="severity-bar-grid">
+                    <div className="bar-card critical">
+                      <span className="bar-val">{criticalCount}</span>
+                      <span className="bar-lbl">Critical</span>
                     </div>
-
-                    <h5 className="violation-title">{v.category}</h5>
-                    <p className="violation-desc">{v.description}</p>
-
-                    <div className="recommendation-box">
-                      <strong>AI Suggestion:</strong> {v.recommendation}
+                    <div className="bar-card high">
+                      <span className="bar-val">{highCount}</span>
+                      <span className="bar-lbl">High</span>
                     </div>
-
-                    <div className="card-footer-row">
-                      <span className="confidence-badge">Confidence: {(v.confidence * 100).toFixed(0)}%</span>
-                      <span className="focus-action-btn">Focus on Drawing →</span>
+                    <div className="bar-card medium">
+                      <span className="bar-val">{medCount}</span>
+                      <span className="bar-lbl">Med</span>
+                    </div>
+                    <div className="bar-card low">
+                      <span className="bar-val">{lowCount}</span>
+                      <span className="bar-lbl">Low</span>
                     </div>
                   </div>
-                ))}
+                </div>
+              )}
+
+              {/* Violations feed container */}
+              <div className="violations-feed-card card settings-card" style={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <h4 className="card-title">Infractions & Grounding Explanations</h4>
+
+                <div className="violations-list" style={{ overflowY: "auto", flexGrow: 1, marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {auditStatus === "idle" && (
+                    <div className="empty-state">Trigger compliance run to scan revision drawing against engineering manuals.</div>
+                  )}
+                  {auditStatus === "queued" || auditStatus === "auditing" ? (
+                    <div className="empty-state">
+                      <div className="loader spin-animation"></div>
+                      <span style={{ marginTop: "12px" }}>Reasoning over draft dimensions...</span>
+                    </div>
+                  ) : null}
+
+                  {auditStatus === "completed" && violations.length === 0 ? (
+                    <div className="empty-state success">
+                      <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                      <span style={{ marginTop: "12px", color: "#10b981" }}>No compliance infractions found! Drawing is perfectly grounded.</span>
+                    </div>
+                  ) : null}
+
+                  {auditStatus === "completed" && violations.map((v) => (
+                    <div
+                      key={v.id}
+                      className={`violation-card-item ${v.severity} ${selectedViolation?.id === v.id ? "selected" : ""}`}
+                      onClick={() => selectViolation(v)}
+                    >
+                      <div className="card-header-row">
+                        <span className={`sev-badge ${v.severity}`}>{v.severity.toUpperCase()}</span>
+                        <span className="clause-lbl">{v.standard_reference || "General"}</span>
+                      </div>
+
+                      <h5 className="violation-title">{v.category}</h5>
+                      <p className="violation-desc">{v.description}</p>
+
+                      <div className="recommendation-box">
+                        <strong>AI Suggestion:</strong> {v.recommendation}
+                      </div>
+
+                      <div className="card-footer-row">
+                        <span className="confidence-badge">Confidence: {(v.confidence * 100).toFixed(0)}%</span>
+                        <span className="focus-action-btn">Focus on Drawing →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </aside>
+        </div>
+      )}
+
+      {isEditModalOpen && selectedSessionForEdit && (
+        <div className="frosted-glass-modal-overlay">
+          <div className="frosted-modal-card">
+            <div className="modal-header">
+              <h3 className="modal-title">Edit Session Remarks</h3>
+              <p className="modal-subtitle">Add custom notes or checker logs for this revision audit.</p>
+            </div>
+            <div className="modal-body" style={{ marginTop: "16px" }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ marginBottom: "8px", display: "block", fontSize: "0.8rem", color: "var(--text-muted)" }}>Remarks / Notes</label>
+                <textarea
+                  className="form-input"
+                  style={{
+                    width: "100%",
+                    height: "120px",
+                    resize: "none",
+                    padding: "10px",
+                    fontSize: "0.85rem",
+                    lineHeight: "1.4",
+                    background: "rgba(0, 0, 0, 0.2)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "6px",
+                    color: "var(--text-primary)"
+                  }}
+                  value={remarksText}
+                  onChange={(e) => setRemarksText(e.target.value)}
+                  placeholder="Enter custom remarks for this session..."
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+              <button
+                className="btn-neutral-outline"
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setSelectedSessionForEdit(null);
+                  setRemarksText("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-gradient-submit"
+                onClick={handleSaveRemarks}
+              >
+                Save Remarks
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && selectedSessionForDelete && (
+        <div className="frosted-glass-modal-overlay">
+          <div className="frosted-modal-card destructive-card">
+            <div className="modal-header">
+              <div className="warning-icon-wrapper">
+                <AlertTriangle size={24} className="destructive-warning-icon" />
+              </div>
+              <h3 className="modal-title destructive-title" style={{ marginTop: "12px" }}>Purge Session Record?</h3>
+              <p className="modal-subtitle destructive-desc">
+                You are about to permanently delete this audit session log and all associated violations from MongoDB. This action is irreversible.
+              </p>
+            </div>
+            <div className="modal-body" style={{ marginTop: "16px", padding: "12px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.15)", borderRadius: "6px" }}>
+              <div style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <span style={{ color: "var(--text-muted)" }}>Target File: <strong style={{ color: "var(--text-primary)" }}>{getDrawingName(selectedSessionForDelete.drawing_id)}</strong></span>
+                {selectedSessionForDelete.reference_drawing_id && (
+                  <span style={{ color: "var(--text-muted)" }}>Reference File: <strong style={{ color: "var(--text-primary)" }}>{getDrawingName(selectedSessionForDelete.reference_drawing_id)}</strong></span>
+                )}
+                <span style={{ color: "var(--text-muted)" }}>Session Date: <strong style={{ color: "var(--text-primary)" }}>{parseUtcDate(selectedSessionForDelete.created_at).toLocaleString()}</strong></span>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "24px" }}>
+              <button
+                className="btn-neutral-outline"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setSelectedSessionForDelete(null);
+                }}
+              >
+                Keep Record
+              </button>
+              <button
+                className="btn-destructive-submit"
+                onClick={handleDeleteConfirm}
+              >
+                Purge Record
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -849,7 +1626,7 @@ export const AuditWorkspace: React.FC = () => {
         .workspace-container {
           display: flex;
           width: 100vw;
-          height: 100vh;
+          height: calc(100vh - 44px); /* Account for AppHeader height */
           background: var(--bg-dark);
           overflow: hidden;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -864,7 +1641,7 @@ export const AuditWorkspace: React.FC = () => {
           flex-direction: column;
           flex-shrink: 0;
           transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.28s ease;
-          overflow: hidden;
+          overflow: visible;
           position: relative;
           z-index: 10;
         }
@@ -938,6 +1715,35 @@ export const AuditWorkspace: React.FC = () => {
           cursor: pointer;
           border-radius: 6px;
           transition: all 0.2s ease;
+          position: relative;
+        }
+
+        .nav-item::after {
+          content: attr(data-tooltip);
+          position: absolute;
+          left: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          margin-left: 8px;
+          padding: 6px 10px;
+          background: rgba(24, 24, 27, 0.95);
+          border: 1px solid var(--border-color);
+          color: var(--text-primary);
+          font-size: 0.75rem;
+          white-space: nowrap;
+          border-radius: 6px;
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.15s ease, margin-left 0.15s ease;
+          pointer-events: none;
+          z-index: 1000;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .nav-item:hover::after {
+          opacity: 1;
+          visibility: visible;
+          margin-left: 12px;
         }
 
         .nav-item:hover {
@@ -1031,9 +1837,11 @@ export const AuditWorkspace: React.FC = () => {
         .workspace-main-viewport.padded {
           flex-grow: 1;
           height: 100%;
+          min-height: 0;
           overflow-y: auto;
           background: var(--bg-dark);
           padding: 30px 32px;
+          box-sizing: border-box;
         }
 
         .dual-stage-layout {
@@ -1046,11 +1854,14 @@ export const AuditWorkspace: React.FC = () => {
         .stage1-center-panel {
           flex-grow: 1;
           height: 100%;
+          min-height: 0;
+          min-width: 0;
           display: flex;
           flex-direction: column;
           padding: 20px;
           overflow: hidden;
           border-right: 1px solid var(--border-color);
+          box-sizing: border-box;
         }
 
         .cad-viewer-container {
@@ -1062,6 +1873,7 @@ export const AuditWorkspace: React.FC = () => {
           flex-direction: column;
           overflow: hidden;
           min-height: 0;
+          min-width: 0;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
         }
         [data-theme="hc-dark"] .cad-viewer-container {
@@ -1154,14 +1966,18 @@ export const AuditWorkspace: React.FC = () => {
 
         .split-viewports {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
           flex-grow: 1;
+          min-height: 0;
+          min-width: 0;
           overflow: hidden;
         }
 
         .viewport-panel {
           display: flex;
           flex-direction: column;
+          min-height: 0;
+          min-width: 0;
           border-right: 1px solid var(--border-color);
         }
 
@@ -1169,23 +1985,39 @@ export const AuditWorkspace: React.FC = () => {
           border-right: none;
         }
 
+        .viewport-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: var(--bg-dark);
+          border-bottom: 1px solid var(--border-color);
+          padding: 5px 10px 8px 0;
+        }
+
+        .viewport-header .viewport-label {
+          border-bottom: none;
+        }
+
         .viewport-label {
-          font-size: 0.7rem;
+          font-size: 0.75rem;
           font-weight: 700;
           color: var(--text-primary);
           text-transform: uppercase;
-          padding: 8px 12px;
+          padding: 2px 16px;
           background: var(--bg-dark);
           border-bottom: 1px solid var(--border-color);
         }
 
         .cad-canvas-mock {
           flex-grow: 1;
+          min-height: 0;
+          min-width: 0;
           background: var(--bg-dark);
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
+          overflow: hidden;
         }
 
         .blueprint-overlay {
@@ -1269,13 +2101,66 @@ export const AuditWorkspace: React.FC = () => {
           display: flex;
           flex-direction: column;
           flex-shrink: 0;
-          padding: 20px;
-          overflow-y: auto;
           border-left: 1px solid var(--border-color);
           box-shadow: -4px 0 20px rgba(0, 0, 0, 0.04);
+          position: relative;
+          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         [data-theme="hc-dark"] .stage2-right-panel {
           box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .stage2-right-panel.collapsed {
+          width: 0px;
+          overflow: visible;
+        }
+
+        .panel-content-wrapper {
+          display: flex;
+          flex-direction: column;
+          width: 400px;
+          flex: 1;
+          min-height: 0;
+          padding: 20px;
+          opacity: 1;
+          transition: opacity 0.2s ease;
+          overflow-y: auto;
+          box-sizing: border-box;
+        }
+
+        .stage2-right-panel.collapsed .panel-content-wrapper {
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .panel-collapse-btn {
+          position: absolute;
+          top: 50%;
+          left: -18px;
+          transform: translateY(-50%);
+          width: 18px;
+          height: 48px;
+          background: rgba(24, 24, 27, 0.85);
+          backdrop-filter: blur(6px);
+          border: 1px solid var(--border-color);
+          border-right: none;
+          border-radius: 8px 0 0 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: var(--text-muted);
+          z-index: 50;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: -3px 0 8px rgba(0,0,0,0.2);
+        }
+        .panel-collapse-btn:hover {
+          color: var(--accent-cyan);
+          background: rgba(37, 99, 235, 0.15);
+          width: 24px;
+          left: -24px;
+          border-color: var(--accent-cyan);
+          box-shadow: -3px 0 15px rgba(0, 229, 255, 0.25);
         }
 
         .compliance-circle {
@@ -1386,6 +2271,11 @@ export const AuditWorkspace: React.FC = () => {
         .sev-badge.medium { background: rgba(234, 179, 8, 0.15); color: #fef08a; }
         .sev-badge.low { background: rgba(59, 130, 246, 0.15); color: #bfdbfe; }
 
+        [data-theme="hc-light"] .sev-badge.critical { color: #b91c1c; background: rgba(239, 68, 68, 0.1); }
+        [data-theme="hc-light"] .sev-badge.high { color: #c2410c; background: rgba(249, 115, 22, 0.1); }
+        [data-theme="hc-light"] .sev-badge.medium { color: #a16207; background: rgba(234, 179, 8, 0.1); }
+        [data-theme="hc-light"] .sev-badge.low { color: #1d4ed8; background: rgba(59, 130, 246, 0.1); }
+
         .clause-lbl {
           font-size: 0.7rem;
           font-family: monospace;
@@ -1452,25 +2342,76 @@ export const AuditWorkspace: React.FC = () => {
         .upload-station-card {
           border: 1px solid var(--border-color);
           background: var(--bg-card);
-          padding: 12px 18px !important;
+          padding: 10px 16px !important;
           margin-bottom: 12px !important;
         }
 
-        .upload-station-header {
-          display: flex;
-          justify-content: space-between;
+        .format-badge-pill {
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.62rem;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: var(--text-muted);
+        }
+        .format-badge-pill.ref-format {
+          color: var(--accent-cyan);
+          background: rgba(0, 255, 204, 0.05);
+          border-color: rgba(0, 255, 204, 0.15);
+        }
+        .format-badge-pill.rev-format {
+          color: #a78bfa;
+          background: rgba(139, 92, 246, 0.05);
+          border-color: rgba(139, 92, 246, 0.15);
+        }
+        .complexity-delta-pill {
+          padding: 3px 8px;
+          border-radius: 20px;
+          font-size: 0.65rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          display: inline-flex;
           align-items: center;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 6px;
+          gap: 6px;
+          letter-spacing: 0.01em;
+        }
+        .alignment-mismatch-banner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 6px;
+          background: rgba(245, 158, 11, 0.06);
+          border: 1px solid rgba(245, 158, 11, 0.2);
+          margin-top: 4px;
+          animation: banner-fade-in 0.3s ease;
+        }
+        .alignment-mismatch-banner .warning-icon {
+          font-size: 0.85rem;
+          filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4));
+        }
+        .alignment-mismatch-banner .warning-text {
+          font-size: 0.68rem;
+          color: #f59e0b;
+          font-weight: 500;
+          line-height: 1.3;
+        }
+        @keyframes banner-fade-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         .compatibility-badge-status {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 6px 12px;
+          gap: 6px;
+          padding: 3px 8px;
           border-radius: 20px;
-          font-size: 0.68rem;
+          font-size: 0.62rem;
           font-weight: 800;
           letter-spacing: 0.05em;
           text-transform: uppercase;
@@ -1505,8 +2446,8 @@ export const AuditWorkspace: React.FC = () => {
         }
 
         .compatibility-indicator-dot {
-          width: 6px;
-          height: 6px;
+          width: 5px;
+          height: 5px;
           border-radius: 50%;
           background: currentColor;
         }
@@ -1517,83 +2458,125 @@ export const AuditWorkspace: React.FC = () => {
           100% { opacity: 0.85; }
         }
 
-        .upload-zone-group {
+        .ingested-files-pills {
           display: flex;
-          flex-direction: column;
           gap: 8px;
+          align-items: center;
         }
 
-        .upload-zone-title-label {
+        .ingested-file-pill {
           display: flex;
-          justify-content: space-between;
-          align-items: baseline;
+          align-items: center;
+          gap: 6px;
+          padding: 3px 8px;
+          border-radius: 6px;
+          background: var(--bg-dark);
+          border: 1px solid var(--border-color);
+          font-size: 0.68rem;
+          color: var(--text-primary);
+          transition: all 0.2s ease;
         }
 
-        .upload-zone-subtitle-desc {
+        .ingested-file-pill.ref {
+          border-left: 3px solid var(--accent-cyan);
+        }
+
+        .ingested-file-pill.rev {
+          border-left: 3px solid #8b5cf6;
+        }
+
+        .ingested-file-pill .pill-label {
+          font-weight: 800;
           font-size: 0.65rem;
-          color: var(--text-muted, #71717a);
-          font-weight: normal;
-        }        .upload-dropzone-container {
+          letter-spacing: 0.03em;
+        }
+
+        .ingested-file-pill.ref .pill-label {
+          color: var(--accent-cyan);
+        }
+
+        .ingested-file-pill.rev .pill-label {
+          color: #a78bfa;
+        }
+
+        .ingested-file-pill .pill-filename {
+          font-weight: 500;
+          max-width: 180px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .pill-clear-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .pill-clear-btn:hover {
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.1);
+          transform: scale(1.1);
+        }
+
+        .upload-dropzone-container {
           position: relative;
-          min-height: 85px;
-          border: 1.5px dashed var(--border-color);
-          background: var(--bg-dark);
-          border-radius: 10px;
+          width: 100%;
+          height: 100%;
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 14px 16px;
+          padding: 20px;
           box-sizing: border-box;
           overflow: hidden;
+          background: transparent;
+          border: 1px dashed rgba(255, 255, 255, 0.05);
         }
 
-        .upload-zone-group.old .upload-dropzone-container.idle:hover,
-        .upload-zone-group.old .upload-dropzone-container.failed:hover {
-          border-color: var(--accent-cyan);
-          background: rgba(37, 99, 235, 0.02);
-          box-shadow: 0 4px 15px rgba(37, 99, 235, 0.04);
-        }
-        [data-theme="hc-dark"] .upload-zone-group.old .upload-dropzone-container.idle:hover,
-        [data-theme="hc-dark"] .upload-zone-group.old .upload-dropzone-container.failed:hover {
-          border-color: var(--accent-cyan);
-          background: rgba(0, 229, 255, 0.03);
-          box-shadow: 0 4px 15px rgba(0, 229, 255, 0.08);
+        .upload-dropzone-container * {
+          pointer-events: none;
         }
 
-        .upload-zone-group.new .upload-dropzone-container.idle:hover,
-        .upload-zone-group.new .upload-dropzone-container.failed:hover {
-          border-color: #8b5cf6;
-          background: rgba(139, 92, 246, 0.02);
-          box-shadow: 0 4px 15px rgba(139, 92, 246, 0.04);
-        }
-        [data-theme="hc-dark"] .upload-zone-group.new .upload-dropzone-container.idle:hover,
-        [data-theme="hc-dark"] .upload-zone-group.new .upload-dropzone-container.failed:hover {
-          border-color: #a78bfa;
-          background: rgba(167, 139, 250, 0.03);
-          box-shadow: 0 4px 15px rgba(167, 139, 250, 0.08);
+        [data-theme="hc-light"] .upload-dropzone-container {
+          border-color: rgba(0, 0, 0, 0.05);
         }
 
-        .upload-zone-group.old .upload-dropzone-container.dragging {
+        .upload-dropzone-container.old:hover {
+          background: rgba(37, 99, 235, 0.01);
+          border-color: rgba(37, 99, 235, 0.15);
+        }
+
+        .upload-dropzone-container.new:hover {
+          background: rgba(139, 92, 246, 0.01);
+          border-color: rgba(139, 92, 246, 0.15);
+        }
+
+        .upload-dropzone-container.old.dragging {
           border-color: var(--accent-cyan) !important;
-          background: rgba(37, 99, 235, 0.06) !important;
-          box-shadow: 0 0 15px rgba(37, 99, 235, 0.12) !important;
+          background: rgba(37, 99, 235, 0.05) !important;
+          box-shadow: inset 0 0 10px rgba(37, 99, 235, 0.1) !important;
         }
-        [data-theme="hc-dark"] .upload-zone-group.old .upload-dropzone-container.dragging {
-          background: rgba(0, 229, 255, 0.08) !important;
-          box-shadow: 0 0 15px rgba(0, 229, 255, 0.2) !important;
+        [data-theme="hc-dark"] .upload-dropzone-container.old.dragging {
+          background: rgba(0, 229, 255, 0.06) !important;
         }
 
-        .upload-zone-group.new .upload-dropzone-container.dragging {
+        .upload-dropzone-container.new.dragging {
           border-color: #8b5cf6 !important;
-          background: rgba(139, 92, 246, 0.06) !important;
-          box-shadow: 0 0 15px rgba(139, 92, 246, 0.12) !important;
+          background: rgba(139, 92, 246, 0.05) !important;
+          box-shadow: inset 0 0 10px rgba(139, 92, 246, 0.1) !important;
         }
-        [data-theme="hc-dark"] .upload-zone-group.new .upload-dropzone-container.dragging {
+        [data-theme="hc-dark"] .upload-dropzone-container.new.dragging {
           border-color: #a78bfa !important;
-          background: rgba(167, 139, 250, 0.08) !important;
-          box-shadow: 0 0 15px rgba(167, 139, 250, 0.2) !important;
+          background: rgba(167, 139, 250, 0.06) !important;
         }
 
         .dropzone-idle-view {
@@ -1601,13 +2584,14 @@ export const AuditWorkspace: React.FC = () => {
           flex-direction: column;
           align-items: center;
           text-align: center;
+          gap: 12px;
         }
 
         .dropzone-icon-circle {
-          width: 26px;
-          height: 26px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
-          background: var(--bg-dark);
+          background: rgba(255, 255, 255, 0.02);
           border: 1px solid var(--border-color);
           display: flex;
           align-items: center;
@@ -1616,21 +2600,25 @@ export const AuditWorkspace: React.FC = () => {
           transition: all 0.25s ease;
         }
 
-        .upload-dropzone-container:hover .dropzone-icon-circle {
+        .upload-dropzone-container.old:hover .dropzone-icon-circle {
           transform: translateY(-2px);
           border-color: var(--accent-cyan);
           color: var(--accent-cyan);
           background: rgba(37, 99, 235, 0.06);
         }
-        [data-theme="hc-dark"] .upload-dropzone-container:hover .dropzone-icon-circle {
-          background: rgba(0, 229, 255, 0.08);
+
+        .upload-dropzone-container.new:hover .dropzone-icon-circle {
+          transform: translateY(-2px);
+          border-color: #8b5cf6;
+          color: #a78bfa;
+          background: rgba(139, 92, 246, 0.06);
         }
 
         .dropzone-main-text {
-          font-size: 0.8rem;
-          font-weight: 550;
-          color: var(--text-primary, #f4f4f5);
-          margin: 0 0 2px 0;
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
         }
 
         .browse-link {
@@ -1639,29 +2627,15 @@ export const AuditWorkspace: React.FC = () => {
           font-weight: 700;
         }
 
+        .upload-dropzone-container.new .browse-link {
+          color: #a78bfa;
+        }
+
         .dropzone-sub-text {
-          font-size: 0.68rem;
-          color: var(--text-muted, #71717a);
-          margin: 0;
+          font-size: 0.72rem;
+          color: var(--text-muted);
+          margin: 4px 0 0 0;
         }
-
-        .supported-formats-badges {
-          display: flex;
-          gap: 6px;
-          margin-top: 4px;
-        }
-
-        .format-badge {
-          font-size: 0.58rem;
-          font-weight: 800;
-          padding: 2px 6px;
-          border-radius: 4px;
-          letter-spacing: 0.03em;
-        }
-
-        .format-badge.dwg { background: rgba(249, 115, 22, 0.1); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.2); }
-        .format-badge.dxf { background: rgba(20, 184, 166, 0.1); color: #99f6e4; border: 1px solid rgba(20, 184, 166, 0.2); }
-        .format-badge.pdf { background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.2); }
 
         /* Active Processing View */
         .dropzone-active-view {
@@ -1906,6 +2880,141 @@ export const AuditWorkspace: React.FC = () => {
         }
         .retry-link-label:hover {
           opacity: 0.75;
+        }
+
+        /* Frosted Glass Modals */
+        .frosted-glass-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(10, 10, 12, 0.6);
+          backdrop-filter: blur(12px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          animation: modal-fade-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes modal-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .frosted-modal-card {
+          width: 100%;
+          max-width: 460px;
+          background: rgba(24, 24, 27, 0.75);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(20px);
+          border-radius: 12px;
+          padding: 24px;
+          animation: card-slide-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .frosted-modal-card.destructive-card {
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          background: rgba(24, 20, 20, 0.85);
+        }
+
+        @keyframes card-slide-up {
+          from { transform: translateY(20px) scale(0.95); opacity: 0; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .modal-title {
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .modal-title.destructive-title {
+          color: #ef4444;
+          text-align: center;
+        }
+
+        .modal-subtitle {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin: 4px 0 0 0;
+        }
+
+        .modal-subtitle.destructive-desc {
+          text-align: center;
+          line-height: 1.4;
+          margin-top: 8px;
+        }
+
+        .warning-icon-wrapper {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 8px;
+        }
+
+        .destructive-warning-icon {
+          color: #ef4444;
+          animation: pulse-alert 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-alert {
+          0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); }
+          50% { transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4)); }
+        }
+
+        /* Buttons styles inside modals */
+        .btn-neutral-outline {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: var(--text-muted);
+          padding: 8px 16px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: all 0.2s ease;
+        }
+        .btn-neutral-outline:hover {
+          background: rgba(255, 255, 255, 0.05);
+          color: var(--text-primary);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-gradient-submit {
+          background: linear-gradient(90deg, var(--accent-cyan), #818cf8);
+          border: none;
+          color: #0b0f19;
+          padding: 8px 16px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          font-weight: 600;
+          transition: all 0.2s ease;
+        }
+        .btn-gradient-submit:hover {
+          filter: brightness(1.15);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 255, 204, 0.35);
+        }
+
+        .btn-destructive-submit {
+          background: #ef4444;
+          border: none;
+          color: #fff;
+          padding: 8px 16px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          font-weight: 600;
+          transition: all 0.2s ease;
+        }
+        .btn-destructive-submit:hover {
+          background: #dc2626;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
         }
 
         .spin-animation {

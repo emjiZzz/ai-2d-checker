@@ -91,12 +91,14 @@ class CreateClientRequest(BaseModel):
 
 class LaunchAuditRequest(BaseModel):
     drawing_id: str
+    reference_drawing_id: Optional[str] = None
     standard_id: Optional[str] = None
     client_name: Optional[str] = None
 
 class AuditSessionResponse(BaseModel):
     id: str
     drawing_id: str
+    reference_drawing_id: Optional[str] = None
     standard_id: Optional[str] = None
     client_name: Optional[str] = None
     status: str
@@ -108,6 +110,15 @@ class AuditSessionResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    remarks: Optional[str] = None
+    username: Optional[str] = None
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[str] = None
+    is_restored: bool = False
+
+class UpdateAuditSessionRequest(BaseModel):
+    remarks: str
 
 class AuditViolationResponse(BaseModel):
     id: str
@@ -149,4 +160,9 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     role: str
+
+class UpdateUserRequest(BaseModel):
+    active: Optional[bool] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
 
