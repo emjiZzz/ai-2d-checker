@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { useConnectionStore } from "./connectionStore";
 import { useAuthStore } from "./authStore";
+import { useReviewStore } from "./reviewStore";
+import { useAuditStore } from "./auditStore";
 
 export interface DrawingItem {
   id: string;
@@ -156,6 +158,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ oldDrawing: drawing });
     get().recalculateCompatibility();
     if (drawing) {
+      if (!get().newDrawing) {
+        useReviewStore.getState().loadCustomRegions(drawing.id);
+      }
       get().fetchLayers(drawing.id, "old");
     } else {
       set({ oldLayers: {} });
@@ -166,8 +171,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ newDrawing: drawing });
     get().recalculateCompatibility();
     if (drawing) {
+      useReviewStore.getState().loadCustomRegions(drawing.id);
       get().fetchLayers(drawing.id, "new");
     } else {
+      useReviewStore.getState().loadCustomRegions(null);
       set({ newLayers: {} });
     }
   },
@@ -535,12 +542,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         headers["Authorization"] = `Bearer ${apiToken}`;
       }
 
+      const { oldDrawing } = get();
+
       // Launch background audit session using client_name
       const launchRes = await fetch(`${backendUrl}/api/v1/audits/launch`, {
         method: "POST",
         headers,
         body: JSON.stringify({
           drawing_id: newDrawing.id,
+          reference_drawing_id: oldDrawing?.id || null,
           client_name: clientName,
         }),
       });
@@ -591,6 +601,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 auditStatus: "completed",
               });
             }
+            await useAuditStore.getState().fetchSessions();
             return true;
           } else if (session.status === "failed") {
             finished = true;
@@ -598,6 +609,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               auditStatus: "failed",
               auditError: session.error_message || "AI grounding analysis loop timed out.",
             });
+            await useAuditStore.getState().fetchSessions();
             return false;
           }
         }
@@ -694,6 +706,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     // Clear uploads
     get().clearUpload("old");
     get().clearUpload("new");
+    useReviewStore.getState().resetCustomRegions();
     set({
       oldDrawing: null,
       newDrawing: null,

@@ -20,6 +20,13 @@ import {
   Edit2
 } from "lucide-react";
 
+// Helper utility to parse ISO datetime strings from backend reliably as UTC
+const parseUtcDate = (dateStr: string | null | undefined): Date => {
+  if (!dateStr) return new Date();
+  const utcStr = dateStr.includes("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z";
+  return new Date(utcStr);
+};
+
 export const UserManagement: React.FC = () => {
   const {
     users,
@@ -407,7 +414,7 @@ export const UserManagement: React.FC = () => {
         </div>
 
         {/* Directory Listings Card */}
-        <div className="card settings-card directory-listings-card" style={{ position: "relative", display: "flex", flexDirection: "column" }}>
+        <div className="card settings-card directory-listings-card" style={{ position: "relative", display: "flex", flexDirection: "column", marginTop: "24px" }}>
           {/* Frosted Glass Overlay for Editing User Details */}
           {editingUser && (
             <div className="frosted-glass-overlay">
@@ -616,7 +623,7 @@ export const UserManagement: React.FC = () => {
                           </div>
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <span className="user-table-username">{userDoc.username}</span>
-                            <span className="user-table-date">Added {new Date(userDoc.created_at || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            <span className="user-table-date">Added {parseUtcDate(userDoc.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                           </div>
                         </div>
                       </td>
@@ -633,7 +640,7 @@ export const UserManagement: React.FC = () => {
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
                           {/* Pulse glowing dot */}
                           <span className={`status-pulse-dot ${userDoc.active ? "active" : "inactive"}`} />
-                          
+
                           {/* Suspend / Resume Button Switch */}
                           <button
                             className={`account-switch-btn ${userDoc.active ? "active" : "inactive"}`}

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useConnectionStore } from "./connectionStore";
+import { useAuthStore } from "./authStore";
 import { logger } from "../services/logger";
 
 export interface StandardDocument {
@@ -20,6 +21,7 @@ export interface StandardDocument {
 export interface AuditSession {
   id: string;
   drawing_id: string;
+  reference_drawing_id?: string | null;
   standard_id?: string | null;
   client_name?: string | null;
   status: string;
@@ -31,6 +33,8 @@ export interface AuditSession {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  remarks?: string | null;
+  is_restored?: boolean;
 }
 
 export interface AuditViolation {
@@ -54,6 +58,7 @@ export interface AuditViolation {
 
 interface AuditState {
   standards: StandardDocument[];
+  sessions: AuditSession[];
   activeStandard: StandardDocument | null;
   activeSession: AuditSession | null;
   activeViolations: AuditViolation[];
@@ -66,6 +71,9 @@ interface AuditState {
 
   // Actions
   fetchStandards: () => Promise<void>;
+  fetchSessions: () => Promise<void>;
+  deleteSession: (id: string) => Promise<boolean>;
+  updateSession: (id: string, remarks: string) => Promise<boolean>;
   uploadStandard: (file: File, name: string, category?: string, description?: string, scope?: string, clientName?: string) => Promise<boolean>;
   deleteStandard: (id: string) => Promise<boolean>;
   updateStandard: (id: string, name: string, category: string, description: string) => Promise<boolean>;
@@ -79,6 +87,7 @@ interface AuditState {
 
 export const useAuditStore = create<AuditState>((set, get) => ({
   standards: [],
+  sessions: [],
   activeStandard: null,
   activeSession: null,
   activeViolations: [],
@@ -276,6 +285,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
       if (result.success && result.data) {
         const session: AuditSession = result.data;
         set({ activeSession: session });
+        await get().fetchSessions();
         get().pollAuditStatus(session.id);
         return true;
       } else {
@@ -326,6 +336,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
             });
             await get().fetchViolations(sessionId);
             await get().fetchDiagnostics(sessionId);
+            await get().fetchSessions();
           } else if (session.status === "failed") {
             const err = session.error_message || "Audit session pipeline crashed.";
             logger.error(`Audit session ${sessionId} failed: ${err}`);
@@ -335,6 +346,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
               auditState: "failed",
               errorMessage: err
             });
+            await get().fetchSessions();
           }
         }
       } catch (err: any) {
@@ -402,6 +414,85 @@ export const useAuditStore = create<AuditState>((set, get) => ({
       }
     } catch (err: any) {
       logger.warn(`Failed to fetch session diagnostics: ${err.message}`);
+    }
+  },
+
+  fetchSessions: async () => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    try {
+      const headers: Record<string, string> = { "Accept": "application/json" };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
+      
+      // Filter sessions for the current logged-in user dynamically to prevent data leakage
+      const currentUser = useAuthStore.getState().user?.username;
+      let url = `${backendUrl}/api/v1/audits/sessions`;
+      if (currentUser) {
+        url += `?username=${encodeURIComponent(currentUser)}`;
+      }
+
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new Error(`Fetch sessions failed: HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        set({ sessions: result.data });
+      }
+    } catch (err: any) {
+      logger.warn(`Failed to fetch audit sessions archive: ${err.message}`);
+    }
+  },
+
+  deleteSession: async (id: string) => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    try {
+      const headers: Record<string, string> = {};
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+      const res = await fetch(`${backendUrl}/api/v1/audits/sessions/${id}`, { method: "DELETE", headers });
+      if (!res.ok) throw new Error(`Delete failed: HTTP ${res.status}`);
+      
+      // Update local sessions array
+      set((state) => ({
+        sessions: state.sessions.filter((s) => s.id !== id),
+        activeSession: state.activeSession?.id === id ? null : state.activeSession,
+        activeViolations: state.activeSession?.id === id ? [] : state.activeViolations,
+        activeDiagnostics: state.activeSession?.id === id ? null : state.activeDiagnostics,
+      }));
+      return true;
+    } catch (err: any) {
+      logger.warn(`Failed to delete session ${id}: ${err.message}`);
+      return false;
+    }
+  },
+
+  updateSession: async (id: string, remarks: string) => {
+    const { backendUrl, apiToken } = useConnectionStore.getState();
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+      const res = await fetch(`${backendUrl}/api/v1/audits/sessions/${id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ remarks }),
+      });
+      if (!res.ok) throw new Error(`Update failed: HTTP ${res.status}`);
+      
+      const result = await res.json();
+      if (result.success && result.data) {
+        const updatedSession = result.data;
+        set((state) => ({
+          sessions: state.sessions.map((s) => s.id === id ? updatedSession : s),
+          activeSession: state.activeSession?.id === id ? updatedSession : state.activeSession,
+        }));
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      logger.warn(`Failed to update session remarks for ${id}: ${err.message}`);
+      return false;
     }
   },
 

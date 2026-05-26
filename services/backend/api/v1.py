@@ -4,7 +4,7 @@ import uuid
 import hashlib
 import aiofiles
 from pathlib import Path
-from fastapi import APIRouter, Depends, status, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, status, HTTPException, File, UploadFile, Form, Header
 from fastapi.responses import FileResponse
 from typing import List, Optional
 from .dependencies import get_auth_token
@@ -20,6 +20,7 @@ from .schemas import (
     StandardDocumentResponse,
     LaunchAuditRequest,
     AuditSessionResponse,
+    UpdateAuditSessionRequest,
     AuditViolationResponse,
     ClientResponse,
     CreateClientRequest
@@ -834,11 +835,24 @@ async def delete_client(name: str):
     summary="Initialize and enqueue drawing audit process session",
     dependencies=[Depends(get_auth_token)]
 )
-async def launch_audit(request: LaunchAuditRequest):
+async def launch_audit(
+    request: LaunchAuditRequest, 
+    token: str = Depends(get_auth_token),
+    x_session_token: Optional[str] = Header(None, alias="X-Session-Token")
+):
     """
     Registers a new AuditSession document in database in 'queued' state and pushes the task to
     the background processing queue, returning immediately to the client.
     """
+    # Decode token to get username
+    username = None
+    try:
+        if x_session_token:
+            from ..core.auth import verify_jwt_token
+            payload = verify_jwt_token(x_session_token)
+            username = payload.get("username")
+    except Exception:
+        pass
     # Verify drawing document exists
     drawing = await DrawingDocument.get(request.drawing_id)
     if not drawing:
@@ -870,9 +884,11 @@ async def launch_audit(request: LaunchAuditRequest):
     # Build and register AuditSession in MongoDB
     session = AuditSession(
         drawing_id=request.drawing_id,
+        reference_drawing_id=request.reference_drawing_id,
         standard_id=request.standard_id,
         client_name=request.client_name.upper() if request.client_name else None,
-        status="queued"
+        status="queued",
+        username=username
     )
     await session.save()
 
@@ -889,6 +905,7 @@ async def launch_audit(request: LaunchAuditRequest):
         data=AuditSessionResponse(
             id=str(session.id),
             drawing_id=session.drawing_id,
+            reference_drawing_id=session.reference_drawing_id,
             standard_id=session.standard_id,
             client_name=session.client_name,
             status=session.status,
@@ -899,7 +916,13 @@ async def launch_audit(request: LaunchAuditRequest):
             diagnostics=session.diagnostics,
             created_at=session.created_at,
             started_at=session.started_at,
-            completed_at=session.completed_at
+            completed_at=session.completed_at,
+            remarks=session.remarks,
+            username=session.username,
+            is_deleted=session.is_deleted,
+            deleted_at=session.deleted_at,
+            deleted_by=session.deleted_by,
+            is_restored=session.is_restored
         )
     )
 
@@ -924,6 +947,7 @@ async def get_audit_session(id: str):
         data=AuditSessionResponse(
             id=str(session.id),
             drawing_id=session.drawing_id,
+            reference_drawing_id=session.reference_drawing_id,
             standard_id=session.standard_id,
             client_name=session.client_name,
             status=session.status,
@@ -934,7 +958,13 @@ async def get_audit_session(id: str):
             diagnostics=session.diagnostics,
             created_at=session.created_at,
             started_at=session.started_at,
-            completed_at=session.completed_at
+            completed_at=session.completed_at,
+            remarks=session.remarks,
+            username=session.username,
+            is_deleted=session.is_deleted,
+            deleted_at=session.deleted_at,
+            deleted_by=session.deleted_by,
+            is_restored=session.is_restored
         )
     )
 
@@ -1049,6 +1079,175 @@ async def get_audit_diagnostics(id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Diagnostics aggregation failed: {str(e)}"
         )
+
+@router.get(
+    "/audits/sessions",
+    response_model=StandardResponse[List[AuditSessionResponse]],
+    summary="List all audit sessions",
+    dependencies=[Depends(get_auth_token)]
+)
+async def list_audit_sessions(is_deleted: bool = False, username: Optional[str] = None):
+    """
+    Fetches all AuditSession documents from MongoDB matching filters sorted by created_at descending.
+    """
+    query = AuditSession.find(AuditSession.is_deleted == is_deleted)
+    if username:
+        query = query.find(AuditSession.username == username)
+        
+    sessions = await query.sort("-created_at").to_list()
+    res = [
+        AuditSessionResponse(
+            id=str(s.id),
+            drawing_id=s.drawing_id,
+            reference_drawing_id=s.reference_drawing_id,
+            standard_id=s.standard_id,
+            client_name=s.client_name,
+            status=s.status,
+            compliance_score=s.compliance_score,
+            confidence_score=s.confidence_score,
+            error_message=s.error_message,
+            timings=s.timings,
+            diagnostics=s.diagnostics,
+            created_at=s.created_at,
+            started_at=s.started_at,
+            completed_at=s.completed_at,
+            remarks=s.remarks,
+            username=s.username,
+            is_deleted=s.is_deleted,
+            deleted_at=s.deleted_at,
+            deleted_by=s.deleted_by,
+            is_restored=s.is_restored
+        )
+        for s in sessions
+    ]
+    return StandardResponse(success=True, data=res)
+
+@router.delete(
+    "/audits/sessions/trash",
+    response_model=StandardResponse[dict],
+    summary="Permanently delete all soft-deleted audit sessions",
+    dependencies=[Depends(get_auth_token)]
+)
+async def empty_trash_sessions():
+    """
+    Permanently deletes all audit sessions from MongoDB that are marked as is_deleted=True.
+    """
+    trashed_sessions = await AuditSession.find(AuditSession.is_deleted == True).to_list()
+    count = len(trashed_sessions)
+    for session in trashed_sessions:
+        await session.delete()
+        
+    return StandardResponse(
+        success=True,
+        data={"message": f"Successfully purged {count} sessions from trashbin.", "deleted_count": count}
+    )
+
+@router.delete(
+    "/audits/sessions/{id}",
+    response_model=StandardResponse[dict],
+    summary="Delete an audit session and associated violations",
+    dependencies=[Depends(get_auth_token)]
+)
+async def delete_audit_session(id: str, token: str = Depends(get_auth_token)):
+    """
+    Soft deletes the specified audit session from MongoDB.
+    """
+    session = await AuditSession.get(id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audit session not found: {id}"
+        )
+    
+    username = None
+    try:
+        from ..core.auth import verify_jwt_token
+        payload = verify_jwt_token(token)
+        username = payload.get("username")
+    except Exception:
+        pass
+    
+    from datetime import datetime
+    session.is_deleted = True
+    session.deleted_at = datetime.utcnow()
+    session.deleted_by = username
+    await session.save()
+    
+    return StandardResponse(
+        success=True,
+        data={"message": f"Audit session {id} successfully moved to trashbin."}
+    )
+
+@router.post(
+    "/audits/sessions/{id}/restore",
+    response_model=StandardResponse[dict],
+    summary="Restore a soft-deleted audit session",
+    dependencies=[Depends(get_auth_token)]
+)
+async def restore_audit_session(id: str):
+    session = await AuditSession.get(id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audit session not found: {id}"
+        )
+    
+    session.is_deleted = False
+    session.deleted_at = None
+    session.deleted_by = None
+    session.is_restored = True
+    await session.save()
+    
+    return StandardResponse(
+        success=True,
+        data={"message": f"Audit session {id} successfully restored."}
+    )
+
+@router.patch(
+    "/audits/sessions/{id}",
+    response_model=StandardResponse[AuditSessionResponse],
+    summary="Update remarks for an audit session",
+    dependencies=[Depends(get_auth_token)]
+)
+async def update_audit_session_remarks(id: str, request: UpdateAuditSessionRequest):
+    """
+    Updates the remarks field for the specified audit session.
+    """
+    session = await AuditSession.get(id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audit session not found: {id}"
+        )
+    
+    session.remarks = request.remarks
+    await session.save()
+    
+    return StandardResponse(
+        success=True,
+        data=AuditSessionResponse(
+            id=str(session.id),
+            drawing_id=session.drawing_id,
+            reference_drawing_id=session.reference_drawing_id,
+            standard_id=session.standard_id,
+            client_name=session.client_name,
+            status=session.status,
+            compliance_score=session.compliance_score,
+            confidence_score=session.confidence_score,
+            error_message=session.error_message,
+            timings=session.timings,
+            diagnostics=session.diagnostics,
+            created_at=session.created_at,
+            started_at=session.started_at,
+            completed_at=session.completed_at,
+            remarks=session.remarks,
+            username=session.username,
+            is_deleted=session.is_deleted,
+            deleted_at=session.deleted_at,
+            deleted_by=session.deleted_by,
+            is_restored=session.is_restored
+        )
+    )
 
 # ====================================================
 # PHASE 11 — AUTH & USER ADMINISTRATION ROUTERS

@@ -373,9 +373,7 @@ class ExtractionPipeline:
                 dpi=350,
                 transparent=True,
                 facecolor='none',
-                edgecolor='none',
-                bbox_inches='tight',
-                pad_inches=0
+                edgecolor='none'
             )
             plt.close(fig)
             logger.info(f"High-fidelity CAD background rendering successfully saved to: {output_png_path}")

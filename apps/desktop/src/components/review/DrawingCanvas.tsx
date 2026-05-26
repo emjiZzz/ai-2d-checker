@@ -40,7 +40,22 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
   // Connect stores
-  const { viewport, setViewport, activeLayers, showViolations, hoveredCoords, setHoveredCoords, isLaserSyncEnabled } = useReviewStore();
+  const {
+    viewport,
+    setViewport,
+    activeLayers,
+    showViolations,
+    hoveredCoords,
+    setHoveredCoords,
+    isLaserSyncEnabled,
+    isOverlayModeEnabled,
+    isPhysicalComparisonEnabled,
+    selectedComparisonRegion,
+    visibleRegions,
+    isRoiEditModeEnabled,
+    customRegions,
+    updateCustomRegion
+  } = useReviewStore();
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const selectViolation = useWorkspaceStore((s) => s.selectViolation);
   const violations = useWorkspaceStore((s) => s.violations);
@@ -52,6 +67,25 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
   const [isNeonCAD, setIsNeonCAD] = useState(false);
   const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
   const [redrawTrigger, setRedrawTrigger] = useState(0);
+
+  // ROI Interactive Drag handles local states
+  const [activeDragHandle, setActiveDragHandle] = useState<{
+    regionKey: string;
+    handleId: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+  } | null>(null);
+  const [hoveredHandleInfo, setHoveredHandleInfo] = useState<{
+    regionKey: string;
+    handleId: string;
+    cursor: string;
+  } | null>(null);
+  const [centerDragStart, setCenterDragStart] = useState<{
+    pctX: number;
+    pctY: number;
+    originalXMin: number;
+    originalXMax: number;
+    originalYMin: number;
+    originalYMax: number;
+  } | null>(null);
 
   // Connect background raster image for high-fidelity rendering parity
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
@@ -516,6 +550,188 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       });
     }
 
+    // 6.5 Draw Physical Comparison Region Outlines and Fills
+    if (isPhysicalComparisonEnabled && drawing?.metadata?.render_bounds) {
+      const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
+      const w = xmax - xmin;
+      const h = ymax - ymin;
+
+      const regions: Record<string, { xMin: number; yMin: number; xMax: number; yMax: number }> = {
+        views: {
+          xMin: xmin + w * (customRegions.views?.xMin ?? 0.05),
+          xMax: xmin + w * (customRegions.views?.xMax ?? 0.65),
+          yMin: ymin + h * (customRegions.views?.yMin ?? 0.15),
+          yMax: ymin + h * (customRegions.views?.yMax ?? 0.85)
+        },
+        notes: {
+          xMin: xmin + w * (customRegions.notes?.xMin ?? 0.05),
+          xMax: xmin + w * (customRegions.notes?.xMax ?? 0.35),
+          yMin: ymin + h * (customRegions.notes?.yMin ?? 0.20),
+          yMax: ymin + h * (customRegions.notes?.yMax ?? 0.60)
+        },
+        bom: {
+          xMin: xmin + w * (customRegions.bom?.xMin ?? 0.65),
+          xMax: xmin + w * (customRegions.bom?.xMax ?? 0.98),
+          yMin: ymin + h * (customRegions.bom?.yMin ?? 0.05),
+          yMax: ymin + h * (customRegions.bom?.yMax ?? 0.42)
+        },
+        title: {
+          xMin: xmin + w * (customRegions.title?.xMin ?? 0.40),
+          xMax: xmin + w * (customRegions.title?.xMax ?? 0.98),
+          yMin: ymin + h * (customRegions.title?.yMin ?? 0.75),
+          yMax: ymin + h * (customRegions.title?.yMax ?? 0.98)
+        },
+        iso: {
+          xMin: xmin + w * (customRegions.iso?.xMin ?? 0.65),
+          xMax: xmin + w * (customRegions.iso?.xMax ?? 0.98),
+          yMin: ymin + h * (customRegions.iso?.yMin ?? 0.45),
+          yMax: ymin + h * (customRegions.iso?.yMax ?? 0.72)
+        }
+      };
+
+      const getRegionDiffColor = (regionKey: string) => {
+        if (isOverlayModeEnabled) {
+          if (regionKey === "iso") return "#10b981"; // Added -> Revision V2 (Green)
+          return "#eab308"; // Unchanged / Modified -> Overlapping (Yellow)
+        } else {
+          if (regionKey === "iso") return "#10b981"; // Added (Green)
+          if (regionKey === "notes" || regionKey === "bom") return "#f59e0b"; // Modified (Orange)
+          return "#00e5ff"; // Unchanged (Cyan)
+        }
+      };
+
+      const getRegionStatusText = (regionKey: string) => {
+        if (regionKey === "iso") return "Added";
+        if (regionKey === "notes" || regionKey === "bom") return "Modified";
+        return "Unchanged";
+      };
+
+      const getRegionLabel = (regionKey: string) => {
+        if (regionKey === "views") return "Drawing Views";
+        if (regionKey === "notes") return "Notes";
+        if (regionKey === "bom") return "Bill of Material";
+        if (regionKey === "title") return "Title Block";
+        if (regionKey === "iso") return "Isometric View";
+        return regionKey;
+      };
+
+      Object.entries(regions).forEach(([key, bounds]) => {
+        // Respect visibility toggles
+        if (visibleRegions[key] === false) return;
+
+        const isSelected = selectedComparisonRegion === key;
+        const color = getRegionDiffColor(key);
+        const statusText = getRegionStatusText(key);
+        const labelText = getRegionLabel(key);
+
+        ctx.save();
+
+        // Outline border stroke
+        ctx.strokeStyle = color;
+        ctx.lineWidth = (isSelected ? 3.0 : 1.25) / effectiveScale;
+        ctx.setLineDash([6 / effectiveScale, 4 / effectiveScale]);
+
+        // Background transparent fill
+        ctx.fillStyle = isSelected
+          ? `rgba(${color === '#10b981' ? '16, 185, 129' : color === '#f59e0b' ? '245, 158, 11' : color === '#eab308' ? '234, 179, 8' : '0, 229, 255'}, 0.05)`
+          : `rgba(${color === '#10b981' ? '16, 185, 129' : color === '#f59e0b' ? '245, 158, 11' : color === '#eab308' ? '234, 179, 8' : '0, 229, 255'}, 0.015)`;
+
+        // Draw rectangle
+        ctx.beginPath();
+        ctx.rect(bounds.xMin, bounds.yMin, bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw glowing active corners if selected
+        if (isSelected) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 4.0 / effectiveScale;
+          ctx.setLineDash([]);
+          const cornerLen = Math.min(25 / effectiveScale, (bounds.xMax - bounds.xMin) * 0.1);
+
+          // Top-Left
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMin + cornerLen, bounds.yMin);
+          ctx.lineTo(bounds.xMin, bounds.yMin);
+          ctx.lineTo(bounds.xMin, bounds.yMin + cornerLen);
+          ctx.stroke();
+
+          // Top-Right
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMax - cornerLen, bounds.yMin);
+          ctx.lineTo(bounds.xMax, bounds.yMin);
+          ctx.lineTo(bounds.xMax, bounds.yMin + cornerLen);
+          ctx.stroke();
+
+          // Bottom-Left
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMin + cornerLen, bounds.yMax);
+          ctx.lineTo(bounds.xMin, bounds.yMax);
+          ctx.lineTo(bounds.xMin, bounds.yMax - cornerLen);
+          ctx.stroke();
+
+          // Bottom-Right
+          ctx.beginPath();
+          ctx.moveTo(bounds.xMax - cornerLen, bounds.yMax);
+          ctx.lineTo(bounds.xMax, bounds.yMax);
+          ctx.lineTo(bounds.xMax, bounds.yMax - cornerLen);
+          ctx.stroke();
+        }
+
+        // Draw label text anchored at the top-left in screen coordinates for crisp rendering
+        ctx.restore();
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const screenX = (bounds.xMin - normXMin) * effectiveScale + viewport.x;
+        const screenY = (bounds.yMin - normYMin) * effectiveScale + viewport.y;
+        const screenXMax = (bounds.xMax - normXMin) * effectiveScale + viewport.x;
+        const screenYMax = (bounds.yMax - normYMin) * effectiveScale + viewport.y;
+
+        // Draw neat label pill block
+        ctx.fillStyle = "rgba(10, 10, 12, 0.88)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.0;
+        
+        const textToDraw = `[ ${labelText} : ${statusText} ]`;
+        ctx.font = 'bold 9px "JetBrains Mono", monospace';
+        const textWidth = ctx.measureText(textToDraw).width;
+        
+        ctx.beginPath();
+        ctx.roundRect(screenX + 4, screenY + 4, textWidth + 12, 16, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.fillText(textToDraw, screenX + 10, screenY + 15);
+
+        // Render circular interactive drag handles
+        if (isRoiEditModeEnabled && isSelected) {
+          const corners = [
+            { x: screenX, y: screenY, id: 'top-left' },
+            { x: screenXMax, y: screenY, id: 'top-right' },
+            { x: screenX, y: screenYMax, id: 'bottom-left' },
+            { x: screenXMax, y: screenYMax, id: 'bottom-right' }
+          ];
+
+          corners.forEach(corner => {
+            ctx.beginPath();
+            ctx.arc(corner.x, corner.y, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.0;
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0; // reset shadow
+          });
+        }
+
+        ctx.restore();
+      });
+    }
+
     ctx.restore();
 
     // 7. Dynamic Crosshair Inspector overlay
@@ -611,7 +827,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       drawCount: drawnEntities,
       renderTimeMs: Math.round((endTime - startTime) * 100) / 100
     });
-  }, [layers, width, height, viewport, activeLayers, showViolations, violations, selectedViolation, mouseCoords, redrawTrigger, bgImage, drawing, isNeonCAD, hoveredCoords, isLaserSyncEnabled]);
+  }, [layers, width, height, viewport, activeLayers, showViolations, violations, selectedViolation, mouseCoords, redrawTrigger, bgImage, drawing, isNeonCAD, hoveredCoords, isLaserSyncEnabled, isOverlayModeEnabled, isPhysicalComparisonEnabled, selectedComparisonRegion, visibleRegions, isRoiEditModeEnabled, customRegions]);
 
   // Handle redraw when values update
   useEffect(() => {
@@ -726,9 +942,58 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
 
   // Mouse pan triggers
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) { // Left click to drag
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+    if (e.button === 0) { // Left click to drag or calibrate
+      if (isRoiEditModeEnabled && hoveredHandleInfo) {
+        setActiveDragHandle({
+          regionKey: hoveredHandleInfo.regionKey,
+          handleId: hoveredHandleInfo.handleId as any
+        });
+
+        if (hoveredHandleInfo.handleId === 'center') {
+          const rect = canvasRef.current?.getBoundingClientRect();
+          if (rect && drawing?.metadata?.render_bounds) {
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            let normScale = 1;
+            let xmin = 0;
+            let ymin = 0;
+            const [x0, y0, x1] = drawing.metadata.render_bounds;
+            const boundsWidth = x1 - x0;
+            if (boundsWidth > 0) {
+              normScale = 1000 / boundsWidth;
+              xmin = x0;
+              ymin = y0;
+            }
+
+            const effectiveScale = viewport.scale * normScale;
+            const worldX = xmin + (mx - viewport.x) / effectiveScale;
+            const worldY = ymin + (my - viewport.y) / effectiveScale;
+
+            const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+            const w = rxMax - rxMin;
+            const h = ryMax - ryMin;
+
+            const pctX = (worldX - rxMin) / w;
+            const pctY = (worldY - ryMin) / h;
+
+            const current = customRegions[hoveredHandleInfo.regionKey];
+            if (current) {
+              setCenterDragStart({
+                pctX,
+                pctY,
+                originalXMin: current.xMin,
+                originalXMax: current.xMax,
+                originalYMin: current.yMin,
+                originalYMax: current.yMax
+              });
+            }
+          }
+        }
+      } else {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+      }
     }
   };
 
@@ -764,7 +1029,114 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       setHoveredCoords(null);
     }
 
-    if (isDragging) {
+    // ROI Drag Handle interaction
+    if (isRoiEditModeEnabled && selectedComparisonRegion && drawing?.metadata?.render_bounds) {
+      const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+      const w = rxMax - rxMin;
+      const h = ryMax - ryMin;
+      const regionKey = selectedComparisonRegion;
+      const customReg = customRegions[regionKey];
+
+      if (customReg) {
+        const screenXMin = (rxMin + w * customReg.xMin - xmin) * effectiveScale + viewport.x;
+        const screenXMax = (rxMin + w * customReg.xMax - xmin) * effectiveScale + viewport.x;
+        const screenYMin = (ryMin + h * customReg.yMin - ymin) * effectiveScale + viewport.y;
+        const screenYMax = (ryMin + h * customReg.yMax - ymin) * effectiveScale + viewport.y;
+
+        const handles = [
+          { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
+          { id: 'top-right', x: screenXMax, y: screenYMin, cursor: 'nesw-resize' },
+          { id: 'bottom-left', x: screenXMin, y: screenYMax, cursor: 'nesw-resize' },
+          { id: 'bottom-right', x: screenXMax, y: screenYMax, cursor: 'nwse-resize' }
+        ];
+
+        const hovered = handles.find(hd => Math.hypot(mx - hd.x, my - hd.y) <= 12);
+        if (hovered) {
+          setHoveredHandleInfo({
+            regionKey,
+            handleId: hovered.id,
+            cursor: hovered.cursor
+          });
+        } else {
+          // If not hovering corners, check if we are hovering inside the selected region box!
+          if (mx >= screenXMin && mx <= screenXMax && my >= screenYMin && my <= screenYMax) {
+            setHoveredHandleInfo({
+              regionKey,
+              handleId: 'center',
+              cursor: 'move'
+            });
+          } else {
+            setHoveredHandleInfo(null);
+          }
+        }
+      }
+    } else {
+      if (hoveredHandleInfo) setHoveredHandleInfo(null);
+    }
+
+    if (activeDragHandle && drawing?.metadata?.render_bounds) {
+      const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+      const w = rxMax - rxMin;
+      const h = ryMax - ryMin;
+
+      const worldX = xmin + (mx - viewport.x) / effectiveScale;
+      const worldY = ymin + (my - viewport.y) / effectiveScale;
+
+      const pctX = Math.max(0.0, Math.min(1.0, (worldX - rxMin) / w));
+      const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));
+
+      const currentBounds = { ...customRegions[activeDragHandle.regionKey] };
+
+      if (activeDragHandle.handleId === 'center' && centerDragStart) {
+        const deltaPctX = pctX - centerDragStart.pctX;
+        const deltaPctY = pctY - centerDragStart.pctY;
+
+        const boxW = centerDragStart.originalXMax - centerDragStart.originalXMin;
+        const boxH = centerDragStart.originalYMax - centerDragStart.originalYMin;
+
+        // Apply shift with boundaries clamped to [0.0, 1.0]
+        let newXMin = centerDragStart.originalXMin + deltaPctX;
+        let newXMax = centerDragStart.originalXMax + deltaPctX;
+        let newYMin = centerDragStart.originalYMin + deltaPctY;
+        let newYMax = centerDragStart.originalYMax + deltaPctY;
+
+        if (newXMin < 0) {
+          newXMin = 0;
+          newXMax = boxW;
+        } else if (newXMax > 1) {
+          newXMax = 1;
+          newXMin = 1 - boxW;
+        }
+
+        if (newYMin < 0) {
+          newYMin = 0;
+          newYMax = boxH;
+        } else if (newYMax > 1) {
+          newYMax = 1;
+          newYMin = 1 - boxH;
+        }
+
+        currentBounds.xMin = newXMin;
+        currentBounds.xMax = newXMax;
+        currentBounds.yMin = newYMin;
+        currentBounds.yMax = newYMax;
+      } else if (activeDragHandle.handleId === 'top-left') {
+        currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
+        currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
+      } else if (activeDragHandle.handleId === 'top-right') {
+        currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
+        currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
+      } else if (activeDragHandle.handleId === 'bottom-left') {
+        currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
+        currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
+      } else if (activeDragHandle.handleId === 'bottom-right') {
+        currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
+        currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
+      }
+
+      updateCustomRegion(activeDragHandle.regionKey, currentBounds);
+      setRedrawTrigger(prev => prev + 1);
+    } else if (isDragging) {
       const newX = e.clientX - dragStart.x;
       const newY = e.clientY - dragStart.y;
       setViewport({ ...viewport, x: newX, y: newY });
@@ -773,12 +1145,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setActiveDragHandle(null);
+    setCenterDragStart(null);
   };
 
   const handleMouseLeave = () => {
     setIsDragging(false);
+    setActiveDragHandle(null);
+    setCenterDragStart(null);
     setMouseCoords(null);
     setHoveredCoords(null);
+    setHoveredHandleInfo(null);
   };
 
   return (
@@ -792,7 +1169,18 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab', display: 'block', width: '100%', height: '100%' }}
+        style={{
+          cursor: activeDragHandle
+            ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
+            : hoveredHandleInfo
+              ? (hoveredHandleInfo.cursor as any)
+              : isDragging
+                ? 'grabbing'
+                : 'grab',
+          display: 'block',
+          width: '100%',
+          height: '100%'
+        }}
       />
 
       {/* Floating CAD Compass & Navigation HUD Overlay (Top Right) */}

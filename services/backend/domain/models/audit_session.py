@@ -6,6 +6,7 @@ from pymongo import IndexModel, ASCENDING, DESCENDING
 
 class AuditSession(Document):
     drawing_id: str = Field(..., description="Reference ID of the audited DrawingDocument")
+    reference_drawing_id: Optional[str] = Field(None, description="Optional baseline reference Drawing ID")
     standard_id: Optional[str] = Field(None, description="Reference ID of the grounding StandardDocument")
     client_name: Optional[str] = Field(None, description="Name of the audited Client")
     status: str = Field("queued", description="Active pipeline status: queued, processing, completed, failed")
@@ -17,6 +18,12 @@ class AuditSession(Document):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = Field(None, description="Timestamp when worker popped the job")
     completed_at: Optional[datetime] = Field(None, description="Timestamp when pipeline completed or failed")
+    remarks: Optional[str] = Field(None, description="Custom auditor remarks or remarks log")
+    username: Optional[str] = Field(None, description="User who initiated the audit")
+    is_deleted: bool = Field(False, description="Soft deletion flag")
+    deleted_at: Optional[datetime] = Field(None, description="Timestamp of deletion")
+    deleted_by: Optional[str] = Field(None, description="Username who deleted it")
+    is_restored: bool = Field(False, description="Flag indicating if the session was restored from the trash")
 
     class Settings:
         name = "audit_sessions"

@@ -7,6 +7,13 @@ import {
   Pencil, Save, X, AlertTriangle, CheckCircle2
 } from "lucide-react";
 
+// Helper utility to parse ISO datetime strings from backend reliably as UTC
+const parseUtcDate = (dateStr: string | null | undefined): Date => {
+  if (!dateStr) return new Date();
+  const utcStr = dateStr.includes("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z";
+  return new Date(utcStr);
+};
+
 export const StandardsManager: React.FC = () => {
   const {
     standards,
@@ -190,7 +197,7 @@ export const StandardsManager: React.FC = () => {
         <div className="std-meta-item"><Tag size={12} /><span>{std.category || "General"}</span></div>
         <div className="std-meta-item"><HardDrive size={12} /><span>{formatBytes(std.file_size_bytes)}</span></div>
         <div className="std-meta-item"><Layers size={12} /><span>{std.metadata.page_count || 1} sections</span></div>
-        <div className="std-meta-item"><Calendar size={12} /><span>{new Date(std.created_at).toLocaleDateString()}</span></div>
+        <div className="std-meta-item"><Calendar size={12} /><span>{parseUtcDate(std.created_at).toLocaleDateString()}</span></div>
       </div>
       {/* Admin action bar */}
       <div className="std-actions-bar">
@@ -230,7 +237,7 @@ export const StandardsManager: React.FC = () => {
           <p className="section-desc">Global internal standards and checksheets applied universally across all drawing audits.</p>
         </div>
         <button className="btn btn-primary" onClick={() => triggerUploadModal("universal")} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-          <Plus size={16} /> Add Universal Manual
+          <Plus size={16} /> Add Universal Checklist Manual
         </button>
       </div>
 

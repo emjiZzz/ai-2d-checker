@@ -1,43 +1,32 @@
 import React, { useState } from "react";
-import { useAuthStore } from "../../stores/authStore";
 import { UserManagement } from "./UserManagement";
 import { SystemDiagnostics } from "./SystemDiagnostics";
 import { AIConfiguration } from "./AIConfiguration";
 import { BackupRecovery } from "./BackupRecovery";
 import { StandardsAdministration } from "./StandardsAdministration";
+import { AuditHistory } from "./AuditHistory";
 import {
-  Cpu,
   Users,
   Database,
   Sliders,
   Archive,
   BookOpen,
-  LogOut,
-  Moon,
-  Sun
+  FileText
 } from "lucide-react";
-import { useThemeStore } from "../../stores/themeStore";
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"diagnostics" | "users" | "standards" | "ai" | "backups">("diagnostics");
-  const { logout } = useAuthStore();
-  const { theme, toggleTheme } = useThemeStore();
+  const [activeTab, setActiveTab] = useState<"diagnostics" | "users" | "standards" | "audits" | "ai" | "backups">("diagnostics");
 
   return (
     <div className="admin-dashboard-container">
       {/* 1. LEFT SIDEBAR (ADMIN CONTROL PANEL) */}
       <aside className="admin-sidebar">
-        <div className="sidebar-branding">
-          <div className="brand-logo">
-            <Cpu size={22} />
-          </div>
-        </div>
-
         <nav className="sidebar-nav">
           {([
             { key: "diagnostics", icon: <Database size={22} />, label: "System Analytics" },
             { key: "users", icon: <Users size={22} />, label: "User Directory" },
             { key: "standards", icon: <BookOpen size={22} />, label: "Standards Library" },
+            { key: "audits", icon: <FileText size={22} />, label: "Audit History" },
             { key: "ai", icon: <Sliders size={22} />, label: "AI Configurations" },
             { key: "backups", icon: <Archive size={22} />, label: "Snapshots & Backups" },
           ] as const).map(({ key, icon, label }) => (
@@ -51,32 +40,16 @@ export const AdminDashboard: React.FC = () => {
             </button>
           ))}
         </nav>
-
-        <div className="sidebar-footer">
-          <button
-            className="theme-toggle-btn nav-item"
-            onClick={toggleTheme}
-            data-tooltip="Toggle Theme"
-          >
-            {theme === "hc-dark" ? <Moon size={22} /> : <Sun size={22} />}
-          </button>
-          <button
-            className="btn-logout nav-item"
-            onClick={() => logout()}
-            data-tooltip="Logout Session"
-          >
-            <LogOut size={22} />
-          </button>
-        </div>
       </aside>
 
       {/* 2. MAIN CENTER CONTENT */}
       <main className={`admin-main-viewport ${activeTab !== "standards" ? "padded" : ""}`}>
-        {activeTab === "diagnostics" && <SystemDiagnostics />}
-        {activeTab === "users" && <UserManagement />}
-        {activeTab === "standards" && <StandardsAdministration />}
-        {activeTab === "ai" && <AIConfiguration />}
-        {activeTab === "backups" && <BackupRecovery />}
+        { activeTab === "diagnostics" && <SystemDiagnostics /> }
+        { activeTab === "users" && <UserManagement /> }
+        { activeTab === "standards" && <StandardsAdministration /> }
+        { activeTab === "audits" && <AuditHistory /> }
+        { activeTab === "ai" && <AIConfiguration /> }
+        { activeTab === "backups" && <BackupRecovery /> }
       </main>
 
       <style>{`
@@ -103,30 +76,8 @@ export const AdminDashboard: React.FC = () => {
           z-index: 10;
         }
 
-        .sidebar-branding {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px 8px;
-          border-bottom: 1px solid var(--border-color);
-          min-height: 60px;
-        }
-
-        .brand-logo {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 44px;
-          height: 44px;
-          border-radius: 8px;
-          background: rgba(0, 229, 255, 0.1);
-          border: 1px solid rgba(0, 229, 255, 0.25);
-          box-shadow: 0 2px 10px rgba(0, 229, 255, 0.2);
-          color: #00e5ff;
-        }
-
         .sidebar-nav {
-          padding: 12px 8px;
+          padding: 16px 8px 12px 8px;
           display: flex;
           flex-direction: column;
           gap: 8px;
@@ -179,34 +130,15 @@ export const AdminDashboard: React.FC = () => {
 
         .nav-item:hover {
           color: var(--text-primary);
-          background: var(--sidebar-item-hover, rgba(255, 255, 255, 0.08));
+          background: rgba(128, 128, 128, 0.08);
         }
 
         .nav-item.active {
-          color: #00e5ff;
-          background: rgba(0, 229, 255, 0.1);
-          border: 1px solid rgba(0, 229, 255, 0.15);
-          border-left: 3px solid #00e5ff;
-          padding-left: 13px; /* adjusted to account for border-left */
+          color: var(--text-primary);
+          background: rgba(128, 128, 128, 0.15);
         }
 
-        .sidebar-footer {
-          padding: 20px 8px;
-          border-top: 1px solid var(--border-color);
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          align-items: center;
-        }
 
-        .btn-logout.nav-item {
-          color: #ef4444;
-        }
-
-        .btn-logout.nav-item:hover {
-          background: rgba(239, 68, 68, 0.1);
-          color: #fca5a5;
-        }
 
         .admin-main-viewport {
           flex-grow: 1;
@@ -220,6 +152,31 @@ export const AdminDashboard: React.FC = () => {
 
         .admin-main-viewport.padded {
           padding: 30px 32px;
+        }
+
+        /* Cohesive Global Header Styles across all Admin Subpages */
+        .subpage-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+          padding-bottom: 18px;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title {
+          font-size: 1.45rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          line-height: 1.2;
+          letter-spacing: -0.01em;
+        }
+
+        .section-desc {
+          font-size: 0.82rem;
+          color: var(--text-muted);
+          margin-top: 5px;
+          font-weight: 400;
         }
 
         /* Override dashed borders on admin dashboard subpages to match standard solid cards */
