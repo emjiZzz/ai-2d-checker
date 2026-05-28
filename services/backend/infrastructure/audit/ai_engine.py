@@ -95,8 +95,10 @@ class AIEngine:
         try:
             # Configure and launch Gemini client
             genai.configure(api_key=api_key)
+            model_name = getattr(settings, "GEMINI_MODEL", "gemini-1.5-pro")
+            logger.info(f"Targeting active Gemini model: {model_name}")
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name=model_name,
                 generation_config={"response_mime_type": "application/json"}
             )
 

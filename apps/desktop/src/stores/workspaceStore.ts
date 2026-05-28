@@ -24,6 +24,7 @@ export interface ViolationItem {
   affected_entities: string[];
   confidence: number;
   coordinates?: [number, number];
+  ref_coordinates?: [number, number];
   standard_reference?: string;
   pen_type?: string;
   is_resolved?: boolean;
@@ -111,6 +112,10 @@ interface WorkspaceState {
   deleteClient: (name: string) => Promise<boolean>;
   setSelectedClient: (name: string | null) => void;
   
+  // Navigation State
+  currentNav: "workspace" | "standards" | "history" | "settings";
+  setCurrentNav: (nav: "workspace" | "standards" | "history" | "settings") => void;
+  
   resetWorkspace: () => void;
 }
 
@@ -153,6 +158,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   // Client States
   clients: [],
   selectedClient: null,
+
+  // Navigation State
+  currentNav: "workspace",
+  setCurrentNav: (nav) => set({ currentNav: nav }),
 
   setOldDrawing: (drawing) => {
     set({ oldDrawing: drawing });

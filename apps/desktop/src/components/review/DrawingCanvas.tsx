@@ -59,6 +59,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const selectViolation = useWorkspaceStore((s) => s.selectViolation);
   const violations = useWorkspaceStore((s) => s.violations);
+  const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
   const theme = useThemeStore((s) => s.theme);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -90,6 +91,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
   // Connect background raster image for high-fidelity rendering parity
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [lightBgImage, setLightBgImage] = useState<HTMLImageElement | null>(null);
+
+  const [isHoveringMarkerState, setIsHoveringMarkerState] = useState(false);
 
   useEffect(() => {
     if (!drawing?.id) {
@@ -420,9 +423,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     // 6. Draw compliance violations reticles if active
     ctx.filter = 'none'; // Ensure UI/overlay elements are never inverted or contrast-altered
     if (showViolations) {
+      const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
       violations.forEach((v) => {
-        if (!v.coordinates) return;
-        const [vx, vy] = v.coordinates;
+        const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+        if (!coords) return;
+        const [vx, vy] = coords;
         const radius = 24 / effectiveScale;
         const penType = v.pen_type || 'ai_red';
         const isSelected = selectedViolation?.id === v.id;
@@ -509,10 +514,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.fill();
         }
         else if (penType === 'resolved_green' || penType === 'resolved_pink') {
-          // Resolved checks tags (green or pink)
+          // Resolved checks tags (yellow highlighter or pink)
           const isGreen = penType === 'resolved_green';
-          const primaryColor = isGreen ? '#10b981' : '#ec4899';
-          const bgColor = isGreen ? 'rgba(16, 185, 129, 0.2)' : 'rgba(236, 72, 153, 0.2)';
+          const primaryColor = isGreen ? '#eab308' : '#ec4899';
+          const bgColor = isGreen ? 'rgba(234, 179, 8, 0.25)' : 'rgba(236, 72, 153, 0.2)';
+
+          ctx.save();
+          if (isGreen) {
+            // Apply HSL-tailored glowing shadow blur for premium yellow highlighter look
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#eab308';
+          }
 
           ctx.beginPath();
           ctx.fillStyle = bgColor;
@@ -521,11 +533,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.arc(vx, vy, radius * 0.8, 0, 2 * Math.PI);
           ctx.fill();
           ctx.stroke();
+          ctx.restore();
 
           // Draw stylized checkmark in center
+          ctx.save();
           ctx.beginPath();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2.5 / effectiveScale;
+          ctx.strokeStyle = isGreen ? '#09090b' : '#ffffff';
+          ctx.lineWidth = 3 / effectiveScale;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           const size = radius * 0.3;
@@ -533,6 +547,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           ctx.lineTo(vx - size * 0.2, vy + size);
           ctx.lineTo(vx + size, vy - size);
           ctx.stroke();
+          ctx.restore();
         }
 
         // Draw selection pulsing tick outline
@@ -550,187 +565,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       });
     }
 
-    // 6.5 Draw Physical Comparison Region Outlines and Fills
-    if (isPhysicalComparisonEnabled && drawing?.metadata?.render_bounds) {
-      const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-      const w = xmax - xmin;
-      const h = ymax - ymin;
-
-      const regions: Record<string, { xMin: number; yMin: number; xMax: number; yMax: number }> = {
-        views: {
-          xMin: xmin + w * (customRegions.views?.xMin ?? 0.05),
-          xMax: xmin + w * (customRegions.views?.xMax ?? 0.65),
-          yMin: ymin + h * (customRegions.views?.yMin ?? 0.15),
-          yMax: ymin + h * (customRegions.views?.yMax ?? 0.85)
-        },
-        notes: {
-          xMin: xmin + w * (customRegions.notes?.xMin ?? 0.05),
-          xMax: xmin + w * (customRegions.notes?.xMax ?? 0.35),
-          yMin: ymin + h * (customRegions.notes?.yMin ?? 0.20),
-          yMax: ymin + h * (customRegions.notes?.yMax ?? 0.60)
-        },
-        bom: {
-          xMin: xmin + w * (customRegions.bom?.xMin ?? 0.65),
-          xMax: xmin + w * (customRegions.bom?.xMax ?? 0.98),
-          yMin: ymin + h * (customRegions.bom?.yMin ?? 0.05),
-          yMax: ymin + h * (customRegions.bom?.yMax ?? 0.42)
-        },
-        title: {
-          xMin: xmin + w * (customRegions.title?.xMin ?? 0.40),
-          xMax: xmin + w * (customRegions.title?.xMax ?? 0.98),
-          yMin: ymin + h * (customRegions.title?.yMin ?? 0.75),
-          yMax: ymin + h * (customRegions.title?.yMax ?? 0.98)
-        },
-        iso: {
-          xMin: xmin + w * (customRegions.iso?.xMin ?? 0.65),
-          xMax: xmin + w * (customRegions.iso?.xMax ?? 0.98),
-          yMin: ymin + h * (customRegions.iso?.yMin ?? 0.45),
-          yMax: ymin + h * (customRegions.iso?.yMax ?? 0.72)
-        }
-      };
-
-      const getRegionDiffColor = (regionKey: string) => {
-        if (isOverlayModeEnabled) {
-          if (regionKey === "iso") return "#10b981"; // Added -> Revision V2 (Green)
-          return "#eab308"; // Unchanged / Modified -> Overlapping (Yellow)
-        } else {
-          if (regionKey === "iso") return "#10b981"; // Added (Green)
-          if (regionKey === "notes" || regionKey === "bom") return "#f59e0b"; // Modified (Orange)
-          return "#00e5ff"; // Unchanged (Cyan)
-        }
-      };
-
-      const getRegionStatusText = (regionKey: string) => {
-        if (regionKey === "iso") return "Added";
-        if (regionKey === "notes" || regionKey === "bom") return "Modified";
-        return "Unchanged";
-      };
-
-      const getRegionLabel = (regionKey: string) => {
-        if (regionKey === "views") return "Drawing Views";
-        if (regionKey === "notes") return "Notes";
-        if (regionKey === "bom") return "Bill of Material";
-        if (regionKey === "title") return "Title Block";
-        if (regionKey === "iso") return "Isometric View";
-        return regionKey;
-      };
-
-      Object.entries(regions).forEach(([key, bounds]) => {
-        // Respect visibility toggles
-        if (visibleRegions[key] === false) return;
-
-        const isSelected = selectedComparisonRegion === key;
-        const color = getRegionDiffColor(key);
-        const statusText = getRegionStatusText(key);
-        const labelText = getRegionLabel(key);
-
-        ctx.save();
-
-        // Outline border stroke
-        ctx.strokeStyle = color;
-        ctx.lineWidth = (isSelected ? 3.0 : 1.25) / effectiveScale;
-        ctx.setLineDash([6 / effectiveScale, 4 / effectiveScale]);
-
-        // Background transparent fill
-        ctx.fillStyle = isSelected
-          ? `rgba(${color === '#10b981' ? '16, 185, 129' : color === '#f59e0b' ? '245, 158, 11' : color === '#eab308' ? '234, 179, 8' : '0, 229, 255'}, 0.05)`
-          : `rgba(${color === '#10b981' ? '16, 185, 129' : color === '#f59e0b' ? '245, 158, 11' : color === '#eab308' ? '234, 179, 8' : '0, 229, 255'}, 0.015)`;
-
-        // Draw rectangle
-        ctx.beginPath();
-        ctx.rect(bounds.xMin, bounds.yMin, bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin);
-        ctx.fill();
-        ctx.stroke();
-
-        // Draw glowing active corners if selected
-        if (isSelected) {
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 4.0 / effectiveScale;
-          ctx.setLineDash([]);
-          const cornerLen = Math.min(25 / effectiveScale, (bounds.xMax - bounds.xMin) * 0.1);
-
-          // Top-Left
-          ctx.beginPath();
-          ctx.moveTo(bounds.xMin + cornerLen, bounds.yMin);
-          ctx.lineTo(bounds.xMin, bounds.yMin);
-          ctx.lineTo(bounds.xMin, bounds.yMin + cornerLen);
-          ctx.stroke();
-
-          // Top-Right
-          ctx.beginPath();
-          ctx.moveTo(bounds.xMax - cornerLen, bounds.yMin);
-          ctx.lineTo(bounds.xMax, bounds.yMin);
-          ctx.lineTo(bounds.xMax, bounds.yMin + cornerLen);
-          ctx.stroke();
-
-          // Bottom-Left
-          ctx.beginPath();
-          ctx.moveTo(bounds.xMin + cornerLen, bounds.yMax);
-          ctx.lineTo(bounds.xMin, bounds.yMax);
-          ctx.lineTo(bounds.xMin, bounds.yMax - cornerLen);
-          ctx.stroke();
-
-          // Bottom-Right
-          ctx.beginPath();
-          ctx.moveTo(bounds.xMax - cornerLen, bounds.yMax);
-          ctx.lineTo(bounds.xMax, bounds.yMax);
-          ctx.lineTo(bounds.xMax, bounds.yMax - cornerLen);
-          ctx.stroke();
-        }
-
-        // Draw label text anchored at the top-left in screen coordinates for crisp rendering
-        ctx.restore();
-        ctx.save();
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-        const screenX = (bounds.xMin - normXMin) * effectiveScale + viewport.x;
-        const screenY = (bounds.yMin - normYMin) * effectiveScale + viewport.y;
-        const screenXMax = (bounds.xMax - normXMin) * effectiveScale + viewport.x;
-        const screenYMax = (bounds.yMax - normYMin) * effectiveScale + viewport.y;
-
-        // Draw neat label pill block
-        ctx.fillStyle = "rgba(10, 10, 12, 0.88)";
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.0;
-        
-        const textToDraw = `[ ${labelText} : ${statusText} ]`;
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        const textWidth = ctx.measureText(textToDraw).width;
-        
-        ctx.beginPath();
-        ctx.roundRect(screenX + 4, screenY + 4, textWidth + 12, 16, 4);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = color;
-        ctx.fillText(textToDraw, screenX + 10, screenY + 15);
-
-        // Render circular interactive drag handles
-        if (isRoiEditModeEnabled && isSelected) {
-          const corners = [
-            { x: screenX, y: screenY, id: 'top-left' },
-            { x: screenXMax, y: screenY, id: 'top-right' },
-            { x: screenX, y: screenYMax, id: 'bottom-left' },
-            { x: screenXMax, y: screenYMax, id: 'bottom-right' }
-          ];
-
-          corners.forEach(corner => {
-            ctx.beginPath();
-            ctx.arc(corner.x, corner.y, 6, 0, 2 * Math.PI);
-            ctx.fillStyle = "#ffffff";
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = color;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2.0;
-            ctx.fill();
-            ctx.stroke();
-            ctx.shadowBlur = 0; // reset shadow
-          });
-        }
-
-        ctx.restore();
-      });
-    }
+    // 6.5 Draw Physical Comparison Region Outlines and Fills (Removed to prevent visual clutter and keep canvas clean)
 
     ctx.restore();
 
@@ -757,9 +592,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
       const wx = (normXMin + (mouseCoords.x - viewport.x) / effectiveScale).toFixed(2);
       const wy = (normYMin - (mouseCoords.y - viewport.y) / effectiveScale).toFixed(2); // standard engineering inversion
 
-      ctx.fillStyle = '#a1a1aa';
+      ctx.fillStyle = isHoveringMarkerState ? '#ef4444' : '#a1a1aa';
       ctx.font = '10px monospace';
-      ctx.fillText(`X: ${wx}, Y: ${wy}`, mouseCoords.x + 8, mouseCoords.y - 8);
+      const tooltipText = isHoveringMarkerState ? `X: ${wx}, Y: ${wy} (Alt + Click to Delete)` : `X: ${wx}, Y: ${wy}`;
+      ctx.fillText(tooltipText, mouseCoords.x + 8, mouseCoords.y - 8);
       ctx.restore();
     }
 
@@ -904,6 +740,15 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
           const targetY = height / 2 - stdY * targetScale;
           setViewport({ x: targetX, y: targetY, scale: targetScale });
         }
+      } else if (e.key === 'delete' || e.key === 'backspace') {
+        if (selectedViolation) {
+          e.preventDefault();
+          const currentViolations = useWorkspaceStore.getState().violations;
+          useWorkspaceStore.setState({
+            violations: currentViolations.filter(v => v.id !== selectedViolation.id),
+            selectedViolation: null
+          });
+        }
       } else if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         setViewport({ ...viewport, scale: Math.min(25, viewport.scale * 1.25) });
@@ -943,6 +788,53 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
   // Mouse pan triggers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) { // Left click to drag or calibrate
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        
+        let normScale = 1;
+        let xmin = 0;
+        let ymin = 0;
+        if (drawing?.metadata?.render_bounds) {
+          const [x0, y0, x1] = drawing.metadata.render_bounds;
+          const boundsWidth = x1 - x0;
+          if (boundsWidth > 0) {
+            normScale = 1000 / boundsWidth;
+            xmin = x0;
+            ymin = y0;
+          }
+        }
+        const effectiveScale = viewport.scale * normScale;
+        const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
+        
+        let clickedViolationId: string | null = null;
+        if (showViolations) {
+          for (const v of violations) {
+            const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+            if (!coords) continue;
+            const [vx, vy] = coords;
+            const sx = (vx - xmin) * effectiveScale + viewport.x;
+            const sy = (vy - ymin) * effectiveScale + viewport.y;
+            
+            if (Math.hypot(mx - sx, my - sy) <= 24) {
+              clickedViolationId = v.id;
+              break;
+            }
+          }
+        }
+        
+        if (clickedViolationId) {
+          // Left Click instantly deletes the marker from both drawings!
+          const currentViolations = useWorkspaceStore.getState().violations;
+          useWorkspaceStore.setState({
+            violations: currentViolations.filter(v => v.id !== clickedViolationId),
+            selectedViolation: selectedViolation?.id === clickedViolationId ? null : selectedViolation
+          });
+          return;
+        }
+      }
+
       if (isRoiEditModeEnabled && hoveredHandleInfo) {
         setActiveDragHandle({
           regionKey: hoveredHandleInfo.regionKey,
@@ -1022,6 +914,26 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     const effectiveScale = viewport.scale * normScale;
     const stdX = xmin + (mx - viewport.x) / effectiveScale;
     const stdY = ymin - (my - viewport.y) / effectiveScale;
+
+
+
+    let isHoveringMarker = false;
+    if (showViolations) {
+      const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
+      for (const v of violations) {
+        const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+        if (!coords) continue;
+        const [vx, vy] = coords;
+        const sx = (vx - xmin) * effectiveScale + viewport.x;
+        const sy = (vy - ymin) * effectiveScale + viewport.y;
+        
+        if (Math.hypot(mx - sx, my - sy) <= 24) {
+          isHoveringMarker = true;
+          break;
+        }
+      }
+    }
+    setIsHoveringMarkerState(isHoveringMarker);
 
     if (isLaserSyncEnabled) {
       setHoveredCoords({ x: stdX, y: stdY });
@@ -1156,6 +1068,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
     setMouseCoords(null);
     setHoveredCoords(null);
     setHoveredHandleInfo(null);
+    setIsHoveringMarkerState(false);
   };
 
   return (
@@ -1174,9 +1087,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ layers, width, hei
             ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
             : hoveredHandleInfo
               ? (hoveredHandleInfo.cursor as any)
-              : isDragging
-                ? 'grabbing'
-                : 'grab',
+              : isHoveringMarkerState
+                ? 'pointer'
+                : isDragging
+                  ? 'grabbing'
+                  : 'grab',
           display: 'block',
           width: '100%',
           height: '100%'

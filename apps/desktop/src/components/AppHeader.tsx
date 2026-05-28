@@ -1,12 +1,16 @@
 import React from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Moon, Sun, LogOut, Minus, Square, X, Cpu } from "lucide-react";
+import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useThemeStore } from "../stores/themeStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 export const AppHeader: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
+  const currentNav = useWorkspaceStore((s) => s.currentNav);
+  const setCurrentNav = useWorkspaceStore((s) => s.setCurrentNav);
+  const isAdmin = user?.role === "admin";
 
   const handleMinimize = () => getCurrentWindow().minimize();
   const handleToggleMaximize = async () => {
@@ -49,7 +53,44 @@ export const AppHeader: React.FC = () => {
         </div>
       </div>
 
-      {/* CENTER: Draggable space */}
+      {/* CENTER: Draggable padding */}
+      <div data-tauri-drag-region style={{ flexGrow: 1, height: "100%" }}></div>
+
+      {/* CENTER: Horizontal Navigation Menu */}
+      <div style={{ display: "flex", alignItems: "center", gap: "4px", height: "100%", justifyContent: "center" }}>
+        {isAuthenticated && ([
+          { key: 'workspace', icon: <Compass size={13} />, label: 'Audit Workspace' },
+          ...(isAdmin ? [{ key: 'standards' as const, icon: <Bookmark size={13} />, label: 'Standards' }] : []),
+          { key: 'history', icon: <History size={13} />, label: 'History Archive' },
+          { key: 'settings', icon: <Settings size={13} />, label: 'Settings' },
+        ] as const).map(({ key, icon, label }) => (
+          <button
+            key={key}
+            onClick={() => setCurrentNav(key)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              height: "28px",
+              padding: "0 12px",
+              borderRadius: "6px",
+              border: "none",
+              background: currentNav === key ? "rgba(0, 229, 255, 0.08)" : "transparent",
+              color: currentNav === key ? "var(--accent-cyan)" : "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              transition: "all 0.15s ease",
+            }}
+            className="nav-header-btn"
+          >
+            {icon}
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* CENTER RIGHT: Draggable padding */}
       <div data-tauri-drag-region style={{ flexGrow: 1, height: "100%" }}></div>
 
       {/* RIGHT: User Info & Actions */}
@@ -136,6 +177,16 @@ export const AppHeader: React.FC = () => {
         .window-control-btn.close-btn:hover {
           background: #e81123 !important;
           color: white !important;
+        }
+        .nav-header-btn {
+          border: 1px solid transparent !important;
+        }
+        .nav-header-btn:hover {
+          color: var(--text-primary) !important;
+          background: rgba(255, 255, 255, 0.04) !important;
+        }
+        .nav-header-btn:active {
+          transform: scale(0.97);
         }
       `}</style>
     </div>

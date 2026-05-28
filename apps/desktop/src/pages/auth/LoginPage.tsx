@@ -5,12 +5,15 @@ import { KeyRound, ShieldAlert, User, Cpu } from "lucide-react";
 export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const { login, error, isLoading } = useAuthStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login, error } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
+    setIsSubmitting(true);
     await login(username.trim(), password);
+    setIsSubmitting(false);
   };
 
   return (
@@ -47,7 +50,8 @@ export const LoginPage: React.FC = () => {
                 placeholder="e.g. engineer"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                disabled={isLoading}
+                disabled={isSubmitting}
+                autoFocus
                 required
               />
             </div>
@@ -66,7 +70,7 @@ export const LoginPage: React.FC = () => {
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
+                disabled={isSubmitting}
                 required
               />
             </div>
@@ -75,9 +79,9 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             className="btn btn-primary login-btn"
-            disabled={isLoading}
+            disabled={isSubmitting}
           >
-            {isLoading ? "Authenticating session..." : "Initialize Portal Access"}
+            {isSubmitting ? "Authenticating session..." : "Initialize Portal Access"}
           </button>
         </form>
 
