@@ -12,14 +12,10 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
-  Compass,
   Loader,
   Upload,
   Trash2,
   AlertTriangle,
-  Bookmark,
-  History,
-  Settings as SettingsIcon,
   ChevronRight,
   ChevronLeft,
   FolderOpen,
@@ -163,8 +159,9 @@ export const AuditWorkspace: React.FC = () => {
   const backendUrl = useConnectionStore((s) => s.backendUrl);
   const apiToken = useConnectionStore((s) => s.apiToken);
 
-  // Selected workspace navigation sub-view
-  const [currentNav, setCurrentNav] = useState<"workspace" | "standards" | "history" | "settings">("workspace");
+  // Selected workspace navigation sub-view from global workspaceStore
+  const currentNav = useWorkspaceStore((s) => s.currentNav);
+  const setCurrentNav = useWorkspaceStore((s) => s.setCurrentNav);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   // Local drawing catalog for selections
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
@@ -268,9 +265,7 @@ export const AuditWorkspace: React.FC = () => {
   // Connect to reviewStore for synchronized viewport control
   const {
     viewport: reviewViewport,
-    setViewport: setReviewViewport,
-    isLaserSyncEnabled,
-    toggleLaserSync
+    setViewport: setReviewViewport
   } = useReviewStore();
 
   // Auth: read current user role to enforce access gates
@@ -293,42 +288,295 @@ export const AuditWorkspace: React.FC = () => {
   // Automated AI Physical Comparison State
   const [aiScanProgress, setAiScanProgress] = useState<"idle" | "scanning_ref" | "extracting" | "scanning_rev" | "comparing" | "completed">("idle");
   const [aiChecklistResults, setAiChecklistResults] = useState<Record<string, any>>({});
-  const [bomComparisonMatrix, setBomComparisonMatrix] = useState<any[]>([]);
   const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({});
+  const [activeComparisonTabs, setActiveComparisonTabs] = useState<Record<string, 'ref' | 'rev'>>({});
 
   const toggleChecklistPanel = (key: string) => {
     setExpandedChecklistPanels(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const runPhysicalComparisonAI = async () => {
-    setAiScanProgress("scanning_ref");
-    await new Promise(r => setTimeout(r, 1200));
-    setAiScanProgress("extracting");
-    await new Promise(r => setTimeout(r, 1200));
-    setAiScanProgress("scanning_rev");
-    await new Promise(r => setTimeout(r, 1200));
-    setAiScanProgress("comparing");
-    await new Promise(r => setTimeout(r, 1800));
-    
-    // Set Mock Data
-    setAiChecklistResults({
-      views: { status: "MATCHED", log: "No topological differences detected." },
-      notes: { status: "ADDED", log: "Notes detected in KMTI drawing but absent in Original.", extractedText: "1. ALL DIMENSIONS ARE IN INCHES.\n2. TOLERANCES: X.XX ± 0.01\n3. MATERIAL: ALUMINUM 6061-T6." },
-      bom: { status: "CHANGED", log: "Discrepancy detected in row data precision." },
-      titleBlock: { status: "MATCHED", log: "Administrative metadata aligns." },
-      isometric: { status: "MATCHED", log: "Isometric view projection verified." }
-    });
-
-    setBomComparisonMatrix([
-      { row: 1, col: "Part No", original: "1001-A", kmti: "1001-A", diffType: "MATCHED" },
-      { row: 1, col: "Finished Weight", original: "2.6", kmti: "2.60", diffType: "CHANGED" },
-      { row: 2, col: "Part No", original: "1002-B", kmti: "1002-B", diffType: "MATCHED" },
-      { row: 2, col: "Finished Weight", original: "1.8", kmti: "1.8", diffType: "MATCHED" },
-    ]);
-
-    setAiScanProgress("completed");
-    setExpandedChecklistPanels({ notes: true, bom: true }); // auto-expand issues
+  const setComparisonTab = (key: string, tab: 'ref' | 'rev') => {
+    setActiveComparisonTabs(prev => ({ ...prev, [key]: tab }));
   };
+
+  const runPhysicalComparisonAI = async () => {
+    if (!oldDrawing || !newDrawing) return;
+
+    setAiScanProgress("comparing");
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
+
+      const res = await fetch(`${backendUrl}/api/v1/audits/physical-comparison`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          reference_drawing_id: oldDrawing.id,
+          drawing_id: newDrawing.id
+        })
+      });
+
+      if (!res.ok) {
+        let errMsg = `Comparison API returned status ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.detail) {
+            errMsg = errData.detail;
+          } else if (errData && errData.error && errData.error.message) {
+            errMsg = errData.error.message;
+          }
+        } catch (_) { }
+        throw new Error(errMsg);
+      }
+
+      const data = await res.json();
+      if (!data.success || !data.data) {
+        throw new Error(data.error?.message || "Comparison failed");
+      }
+
+      setAiChecklistResults(data.data);
+      setAiScanProgress("completed");
+
+      // Auto-expand all panels by default to show rich, visually appealing discrepancy metrics
+      setExpandedChecklistPanels({
+        drawing_views: true,
+        notes_section: true,
+        bill_of_materials: true,
+        title_block: true,
+        isometric_view: true,
+        other_engineering_references: true
+      });
+
+      // DYNAMIC VISUAL MARKINGS DIRECTLY ON THE CANVAS!
+      try {
+        const cleanCadText = (text: string): string => {
+          if (!text) return "";
+          let clean = text;
+          clean = clean.replace(/[{}]/g, "");
+          clean = clean.replace(/\\[A-Za-z][^;]*;/g, "");
+          clean = clean.replace(/\\P/g, " ");
+          return clean.trim();
+        };
+
+        const normalizeStr = (str: string) => {
+          return str
+            .toLowerCase()
+            .replace(/[\s\(\)\[\]\{\}\:\;\,\-\_\.\/\引\（\）]/g, "")
+            .trim();
+        };
+
+        const findFuzzyMatch = (
+          searchTerm: string,
+          entities: { text: string; x: number; y: number }[]
+        ): { text: string; x: number; y: number } | null => {
+          if (!searchTerm) return null;
+          const normSearch = normalizeStr(searchTerm);
+          if (!normSearch) return null;
+
+          let bestMatch: { text: string; x: number; y: number } | null = null;
+          let bestScore = 0;
+
+          // Helper to extract numeric digits from a string
+          const extractNumbers = (s: string) => {
+            const m = s.match(/\d+/g);
+            return m ? m.join("") : "";
+          };
+
+          const searchNumbers = extractNumbers(normSearch);
+
+          for (const ent of entities) {
+            const normEnt = normalizeStr(ent.text);
+            if (!normEnt) continue;
+
+            let score = 0;
+
+            // 1. Exact match
+            if (normEnt === normSearch) {
+              score = 100;
+            }
+            // 2. Exact match when removing standard prefixes/suffixes (like 2-C1, R10, M24)
+            else if (
+              normEnt.replace(/^[0-9]+-/, "") === normSearch ||
+              normSearch.replace(/^[0-9]+-/, "") === normEnt ||
+              normEnt.replace(/^[rmøø]/i, "") === normSearch ||
+              normSearch.replace(/^[rmøø]/i, "") === normEnt
+            ) {
+              score = 90;
+            }
+            // 3. Substring match with strict length-ratio guards
+            else if (normSearch.includes(normEnt) || normEnt.includes(normSearch)) {
+              const minLen = Math.min(normEnt.length, normSearch.length);
+              const maxLen = Math.max(normEnt.length, normSearch.length);
+              const ratio = minLen / maxLen;
+
+              if (minLen >= 2) {
+                score = 50 + ratio * 30; // Score range: 50 to 80
+              }
+            }
+            // 4. Character Jaccard overlap similarity
+            else {
+              const searchChars = new Set(normSearch.split(""));
+              const entChars = new Set(normEnt.split(""));
+              let intersection = 0;
+              searchChars.forEach(c => { if (entChars.has(c)) intersection++; });
+              const jaccard = intersection / Math.max(searchChars.size, entChars.size);
+              if (jaccard > 0.60) {
+                score = jaccard * 70; // Score range: 42 to 70
+              }
+            }
+
+            // Strict numeric value validation: search string digits must match the entity digits exactly
+            if (searchNumbers) {
+              const entNumbers = extractNumbers(normEnt);
+              if (entNumbers && entNumbers !== searchNumbers) {
+                score = 0; // Block wrong snapping on dimensions/numbers
+              }
+            }
+
+            if (score > bestScore && score > 40) {
+              bestScore = score;
+              bestMatch = ent;
+            }
+          }
+
+          return bestMatch;
+        };
+
+        const getRoiFallbackCoordinates = (
+          regionKey: string,
+          drawing: any,
+          index: number
+        ): [number, number] => {
+          const extmin = drawing?.metadata?.extmin || [0, 0];
+          const extmax = drawing?.metadata?.extmax || [400, 300];
+          const width = extmax[0] - extmin[0];
+          const height = extmax[1] - extmin[1];
+
+          const regions: Record<string, { x: number; y: number }> = {
+            notes_section: { x: 0.20, y: 0.40 },
+            bill_of_materials: { x: 0.82, y: 0.25 },
+            title_block: { x: 0.70, y: 0.85 },
+            isometric_view: { x: 0.82, y: 0.60 },
+            drawing_views: { x: 0.35, y: 0.50 }
+          };
+
+          const center = regions[regionKey] || { x: 0.5, y: 0.5 };
+          const staggerX = ((index % 5) - 2) * (width * 0.03);
+          const staggerY = ((index % 3) - 1) * (height * 0.03);
+
+          return [
+            extmin[0] + (width * center.x) + staggerX,
+            extmin[1] + (height * center.y) + staggerY
+          ];
+        };
+
+        const textEntities: { text: string; x: number; y: number }[] = [];
+        if (newLayers) {
+          Object.values(newLayers).forEach((entities: any) => {
+            if (Array.isArray(entities)) {
+              entities.forEach((ent: any) => {
+                if (ent.type === 'text') {
+                  const geo = ent.geometry || {};
+                  const rawText = geo.text || geo.content || ent.properties?.text || '';
+                  const textVal = cleanCadText(rawText);
+                  if (textVal && (geo.location || geo.insert)) {
+                    const [tx, ty] = geo.location || geo.insert;
+                    textEntities.push({ text: textVal.trim(), x: tx, y: ty });
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        const refTextEntities: { text: string; x: number; y: number }[] = [];
+        if (oldLayers) {
+          Object.values(oldLayers).forEach((entities: any) => {
+            if (Array.isArray(entities)) {
+              entities.forEach((ent: any) => {
+                if (ent.type === 'text') {
+                  const geo = ent.geometry || {};
+                  const rawText = geo.text || geo.content || ent.properties?.text || '';
+                  const textVal = cleanCadText(rawText);
+                  if (textVal && (geo.location || geo.insert)) {
+                    const [tx, ty] = geo.location || geo.insert;
+                    refTextEntities.push({ text: textVal.trim(), x: tx, y: ty });
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        const rawMarkings = data.data.canvas_markings || [];
+        const mappedMarkings = rawMarkings.map((marking: any, index: number) => {
+          let coordinates: [number, number] | undefined = undefined;
+          if (marking.coordinates && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
+            coordinates = [marking.coordinates[0], marking.coordinates[1]] as [number, number];
+          } else {
+            const match = findFuzzyMatch(marking.text_content, textEntities);
+            coordinates = match ? [match.x, match.y] as [number, number] : undefined;
+          }
+
+          if (!coordinates && newDrawing) {
+            coordinates = getRoiFallbackCoordinates(marking.category || "drawing_views", newDrawing, index);
+          }
+
+          let ref_coordinates: [number, number] | undefined = undefined;
+          if (marking.ref_coordinates && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
+            ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
+          } else {
+            const match = findFuzzyMatch(marking.text_content, refTextEntities);
+            ref_coordinates = match ? [match.x, match.y] as [number, number] : undefined;
+          }
+
+          if (!ref_coordinates && oldDrawing) {
+            ref_coordinates = getRoiFallbackCoordinates(marking.category || "drawing_views", oldDrawing, index);
+          }
+
+          let penType = "resolved_green";
+          if (marking.status === "CHANGED" || marking.status === "REMOVED") {
+            penType = "ai_red";
+          } else if (marking.status === "ADDED") {
+            penType = "checker_blue";
+          }
+
+          return {
+            id: `phys_chk_${index}_${Date.now()}`,
+            severity: marking.status === "MATCHED" ? "low" : "high",
+            category: marking.category || "Physical Checklist",
+            description: marking.text_content,
+            recommendation: marking.details,
+            affected_entities: [],
+            confidence: 1.0,
+            coordinates,
+            ref_coordinates,
+            pen_type: penType,
+            is_resolved: marking.status === "MATCHED"
+          };
+        });
+
+        // Set visual markings directly in useWorkspaceStore
+        useWorkspaceStore.setState({ violations: mappedMarkings });
+        // Enable violations layer visible on DrawingCanvas
+        useReviewStore.setState({ showViolations: true, isPhysicalComparisonEnabled: true });
+
+      } catch (err) {
+        console.warn("Visual checklist canvas overlay loading failed:", err);
+      }
+    } catch (err: any) {
+      console.error("AI Physical Comparison failed:", err);
+      alert(`AI Physical Comparison error: ${err.message}`);
+      setAiScanProgress("idle");
+    }
+  };
+
 
   // Interactive search & filter controls for premium History Archive
   const [historySearchQuery, setHistorySearchQuery] = useState("");
@@ -506,92 +754,369 @@ export const AuditWorkspace: React.FC = () => {
   const medCount = violations.filter((v) => v.severity === "medium").length;
   const lowCount = violations.filter((v) => v.severity === "low").length;
 
-  // Calculate entity counts for delta scanner
-  const getEntitySum = (drawing: any) => {
-    if (!drawing || !drawing.entity_counts) return 0;
-    return Object.values(drawing.entity_counts).reduce((sum: number, count: any) => sum + (Number(count) || 0), 0);
-  };
-
-  const oldEntityCount = getEntitySum(oldDrawing);
-  const newEntityCount = getEntitySum(newDrawing);
-  const entityDelta = newEntityCount - oldEntityCount;
-
-  // Coordinate Shift / Scale Mismatch Diagnostics
-  let hasAlignmentDisparity = false;
-  if (oldDrawing?.metadata?.render_bounds && newDrawing?.metadata?.render_bounds) {
-    const [oldXmin, oldYmin, oldXmax, oldYmax] = oldDrawing.metadata.render_bounds;
-    const [newXmin, newYmin, newXmax, newYmax] = newDrawing.metadata.render_bounds;
-
-    const oldW = oldXmax - oldXmin;
-    const oldH = oldYmax - oldYmin;
-    const newW = newXmax - newXmin;
-    const newH = newYmax - newYmin;
-
-    const oldCx = (oldXmin + oldXmax) / 2;
-    const oldCy = (oldYmin + oldYmax) / 2;
-    const newCx = (newXmin + newXmax) / 2;
-    const newCy = (newYmin + newYmax) / 2;
-
-    const dimMismatch = Math.abs(oldW - newW) / Math.max(oldW, 1) > 0.1 || Math.abs(oldH - newH) / Math.max(oldH, 1) > 0.1;
-    const centerMismatch = Math.abs(oldCx - newCx) / Math.max(oldW, 1) > 0.1 || Math.abs(oldCy - newCy) / Math.max(oldH, 1) > 0.1;
-
-    if (dimMismatch || centerMismatch) {
-      hasAlignmentDisparity = true;
-    }
-  }
 
   return (
     <div className="workspace-container">
-      {/* 1. LEFT SIDEBAR (ENGINEERING NAVIGATION) */}
+      {/* 1. LEFT SIDEBAR: DOCKED PHYSICAL CHECKLIST DECK (Only when currentNav === "workspace" and drawing pair is uploaded) */}
+      <style>{`
+        .checklist-dock::-webkit-scrollbar {
+          display: none !important;
+        }
+        .checklist-dock {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+      `}</style>
       <aside
-        className="workspace-sidebar"
-        style={{ width: '60px', flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', borderRight: '1px solid var(--border-color)', zIndex: 10 }}
+        className="workspace-sidebar checklist-dock"
+        style={{
+          width: currentNav === "workspace" && oldDrawing && newDrawing ? '400px' : '0px',
+          minWidth: currentNav === "workspace" && oldDrawing && newDrawing ? '400px' : '0px',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'rgba(9, 9, 11, 0.7)',
+          borderRight: currentNav === "workspace" && oldDrawing && newDrawing ? '1px solid var(--border-color)' : 'none',
+          zIndex: 10,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '4px 0 24px rgba(0, 0, 0, 0.3)'
+        }}
       >
-        {/* ── NAV ITEMS ── */}
-        <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
-          {([
-            { key: 'workspace', icon: <Compass size={22} />, label: 'Audit Workspace' },
-            // Standards Manuals: admin-only — completely hidden from regular users
-            ...(isAdmin ? [{ key: 'standards' as const, icon: <Bookmark size={22} />, label: 'Standards Manuals' }] : []),
-            { key: 'history', icon: <History size={22} />, label: 'Drawing History' },
-            { key: 'settings', icon: <SettingsIcon size={22} />, label: 'Audit Settings' },
-          ] as const).map(({ key, icon, label }) => (
-            <button
-              key={key}
-              className={`nav-item ${currentNav === key ? 'active' : ''}`}
-              onClick={() => setCurrentNav(key)}
-              data-tooltip={label}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '44px',
-                height: '44px',
-                margin: '0 auto',
-                borderRadius: '8px',
-                border: 'none',
-                background: currentNav === key ? 'rgba(128, 128, 128, 0.15)' : 'transparent',
-                color: currentNav === key ? 'var(--text-primary)' : 'var(--text-muted)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (currentNav !== key) {
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                  e.currentTarget.style.background = 'rgba(128, 128, 128, 0.08)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (currentNav !== key) {
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                  e.currentTarget.style.background = 'transparent';
-                }
-              }}
-            >
-              {icon}
-            </button>
-          ))}
-        </nav>
+        {currentNav === "workspace" && oldDrawing && newDrawing && (
+          <div style={{ padding: "16px", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box" }}>
+            {/* Checklist header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
+                <span style={{ fontSize: "0.85rem", fontWeight: 500, letterSpacing: "0.05em", color: "#e4e4e7" }}>
+                  DRAWINGS COMPARISON RESULTS
+                </span>
+              </div>
+              {aiScanProgress === "idle" && (
+                <button
+                  className="btn btn-primary"
+                  onClick={runPhysicalComparisonAI}
+                  style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px", borderRadius: "6px" }}
+                >
+                  <Play size={12} fill="currentColor" />
+                  RUN AI
+                </button>
+              )}
+            </div>
+
+            {/* AI Scan Progress Sequence */}
+            {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "16px 0" }}>
+                <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)", background: "rgba(255,255,255,0.02)", padding: "10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                    <span>1. SCAN ORIGINAL</span>
+                    {aiScanProgress === "scanning_ref" && <span style={{ fontSize: "0.6rem" }}>SCANNING...</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                    <span>2. EXTRACT DATA</span>
+                    {aiScanProgress === "extracting" && <span style={{ fontSize: "0.6rem" }}>EXTRACTING...</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                    <span>3. SCAN KMTI</span>
+                    {aiScanProgress === "scanning_rev" && <span style={{ fontSize: "0.6rem" }}>SCANNING...</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                    <span>4. COMPARE MATCHES</span>
+                    {aiScanProgress === "comparing" && <span style={{ fontSize: "0.6rem" }}>COMPARING...</span>}
+                  </div>
+                </div>
+                <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%",
+                    background: "var(--accent-cyan)",
+                    width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
+                    transition: "width 0.5s ease"
+                  }}></div>
+                </div>
+              </div>
+            )}
+
+            {/* AI Results Deck */}
+            {aiScanProgress === "completed" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexGrow: 1, paddingBottom: "24px" }}>
+
+                {/* 1. SUMMARY REPORT */}
+                <div style={{
+                  background: "linear-gradient(135deg, rgba(30,30,40,0.5) 0%, rgba(15,15,20,0.5) 100%)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "8px",
+                  padding: "14px",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                  backdropFilter: "blur(15px)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px"
+                }}>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                    INSPECTION SUMMARY REPORT
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    {[
+                      { key: "drawing_views", label: "Drawing Views" },
+                      { key: "notes_section", label: "Notes" },
+                      { key: "bill_of_materials", label: "BOM" },
+                      { key: "title_block", label: "Title Block" },
+                      { key: "isometric_view", label: "Isometric View" }
+                    ].map(({ key, label }) => {
+                      const res = aiChecklistResults[key];
+                      if (!res) return null;
+                      let color = "#10b981"; // MATCHED
+                      if (res.status === "CHANGED") color = "#f59e0b";
+                      else if (res.status === "ADDED") color = "#3b82f6";
+                      else if (res.status === "REMOVED" || res.status === "MISSING") color = "#ef4444";
+                      return (
+                        <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.02)", padding: "5px 8px", borderRadius: "5px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                          <span style={{ fontSize: "0.72rem", color: "#a1a1aa", fontWeight: 400 }}>{label}</span>
+                          <span style={{ fontSize: "0.68rem", fontWeight: 600, color, letterSpacing: "0.02em" }}>{res.status}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const keys = ["drawing_views", "notes_section", "bill_of_materials", "title_block", "isometric_view"];
+                    const total = keys.filter(k => aiChecklistResults[k]).length;
+                    const matched = keys.filter(k => aiChecklistResults[k]?.status === "MATCHED").length;
+                    const pct = total > 0 ? Math.round((matched / total) * 100) : 0;
+                    return (
+                      <div style={{ marginTop: "4px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "#e4e4e7", marginBottom: "5px", fontWeight: 500 }}>
+                          <span>Completion Parity</span>
+                          <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{pct}% MATCHED</span>
+                        </div>
+                        <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{ height: "100%", background: "var(--accent-cyan)", width: `${pct}%`, transition: "width 0.5s ease" }}></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {[
+                  { key: "drawing_views", label: "Drawing Views" },
+                  { key: "notes_section", label: "Notes Section" },
+                  { key: "bill_of_materials", label: "Bill of Materials" },
+                  { key: "title_block", label: "Title Block" },
+                  { key: "isometric_view", label: "Isometric View" },
+                  { key: "other_engineering_references", label: "Other Engineering References" }
+                ].map(({ key, label }) => {
+                  const result = aiChecklistResults[key];
+                  if (!result) return null;
+
+                  const isExpanded = expandedChecklistPanels[key];
+                  const activeTab = activeComparisonTabs[key] || (result.revision_content ? 'rev' : 'ref');
+
+                  let badgeColor = "#10b981"; // MATCHED
+                  if (result.status === "ADDED") badgeColor = "#3b82f6";
+                  else if (result.status === "CHANGED") badgeColor = "#f59e0b";
+                  else if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#ef4444";
+
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        background: "rgba(22,22,26,0.7)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "8px",
+                        overflow: "hidden",
+                        transition: "all 0.2s ease-in-out",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                      }}
+                    >
+                      <div
+                        onClick={() => toggleChecklistPanel(key)}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "12px 14px",
+                          cursor: "pointer",
+                          userSelect: "none",
+                          background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent",
+                          borderBottom: isExpanded ? "1px solid rgba(255,255,255,0.05)" : "none",
+                          transition: "background 0.2s ease"
+                        }}
+                      >
+                        <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "#ffffff", letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                          {label}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{
+                            fontSize: "0.72rem", fontWeight: 500, padding: "3px 8px", borderRadius: "5px",
+                            color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}12`,
+                            letterSpacing: "0.04em"
+                          }}>
+                            {result.status}
+                          </span>
+                          {isExpanded ? <ChevronDown size={14} color="#a1a1aa" /> : <ChevronRight size={14} color="#a1a1aa" />}
+                        </div>
+                      </div>
+
+                      {/* Expanded Data Panel */}
+                      {isExpanded && (
+                        <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", gap: "14px" }}>
+
+                          {/* Difference Summary */}
+                          {result.difference_summary && (
+                            <div>
+                              <div style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>DIFFERENCE SUMMARY</div>
+                              <div style={{ fontSize: "0.85rem", color: "#e4e4e7", lineHeight: "1.5", fontWeight: 100 }}>{result.difference_summary}</div>
+                            </div>
+                          )}
+
+                          {/* Comparative Contents Box */}
+                          {(result.reference_content || result.revision_content) && (
+                            <div>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", letterSpacing: "0.05em" }}>COMPARATIVE CONTENTS</div>
+                                <div style={{ display: "flex", background: "rgba(255,255,255,0.03)", padding: "2px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                                  {result.reference_content && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setComparisonTab(key, 'ref'); }}
+                                      style={{
+                                        fontSize: "0.68rem", fontWeight: 600, border: "none", borderRadius: "4px", padding: "4px 10px", cursor: "pointer",
+                                        background: activeTab === 'ref' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                        color: activeTab === 'ref' ? '#ffffff' : '#71717a',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      Original
+                                    </button>
+                                  )}
+                                  {result.revision_content && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setComparisonTab(key, 'rev'); }}
+                                      style={{
+                                        fontSize: "0.68rem", fontWeight: 600, border: "none", borderRadius: "4px", padding: "4px 10px", cursor: "pointer",
+                                        background: activeTab === 'rev' ? 'rgba(0,229,255,0.1)' : 'transparent',
+                                        color: activeTab === 'rev' ? 'var(--accent-cyan)' : '#71717a',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      KMTI
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                {activeTab === 'ref' && result.reference_content && (
+                                  <div style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", padding: "8px 10px", borderRadius: "6px" }}>
+                                    {key === 'title_block' ? (() => {
+                                      const lines = result.reference_content.split('\n').filter((l: string) => l.trim());
+                                      const headerLine = lines.find((l: string) => l.includes('FIELD') || l.includes('ORIGINAL'));
+                                      const dataLines = lines.filter((l: string) => l.includes('|') && !l.match(/^-+$/) && l !== headerLine);
+                                      return (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', fontFamily: "'JetBrains Mono', monospace" }}>
+                                          <thead>
+                                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                              {['FIELD', 'ORIGINAL', 'KMTI', 'MARKED'].map(h => (
+                                                <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.04em', fontSize: '0.72rem' }}>{h}</th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {dataLines.map((line: string, i: number) => {
+                                              const parts = line.split('|').map((p: string) => p.trim());
+                                              const marked = parts[3] || '';
+                                              const isMatch = marked.toUpperCase().includes('MATCHED') && !marked.toUpperCase().includes('MIS');
+                                              return (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                  <td style={{ padding: '4px 8px', color: '#94a3b8' }}>{parts[0] || '-'}</td>
+                                                  <td style={{ padding: '4px 8px', color: '#e2e8f0' }}>{parts[1] || '-'}</td>
+                                                  <td style={{ padding: '4px 8px', color: '#e2e8f0' }}>{parts[2] || '-'}</td>
+                                                  <td style={{ padding: '4px 8px', fontWeight: 600, color: isMatch ? '#10b981' : '#f59e0b', fontSize: '0.7rem' }}>{marked || '-'}</td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })() : (
+                                      <pre style={{ margin: 0, padding: 0, background: "transparent", border: "none", fontSize: "0.82rem", color: "#94a3b8", whiteSpace: "pre-wrap", fontFamily: "'JetBrains Mono', monospace", lineHeight: "1.4" }}>
+                                        {result.reference_content}
+                                      </pre>
+                                    )}
+                                  </div>
+                                )}
+                                {activeTab === 'rev' && result.revision_content && (
+                                  <div style={{ background: "rgba(0,229,255,0.02)", border: "1px solid rgba(0,229,255,0.12)", padding: "8px 10px", borderRadius: "6px" }}>
+                                    {key === 'title_block' ? (() => {
+                                      const lines = result.revision_content.split('\n').filter((l: string) => l.trim());
+                                      const dataLines = lines.filter((l: string) => l.includes('|') && !l.match(/^-+$/) && !(l.includes('FIELD') && l.includes('ORIGINAL')));
+                                      return (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', fontFamily: "'JetBrains Mono', monospace" }}>
+                                          <thead>
+                                            <tr style={{ borderBottom: '1px solid rgba(0,229,255,0.15)' }}>
+                                              {['FIELD', 'ORIGINAL', 'KMTI', 'MARKED'].map(h => (
+                                                <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.04em', fontSize: '0.72rem' }}>{h}</th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {dataLines.map((line: string, i: number) => {
+                                              const parts = line.split('|').map((p: string) => p.trim());
+                                              const marked = parts[3] || '';
+                                              const isMatch = marked.toUpperCase().includes('MATCHED') && !marked.toUpperCase().includes('MIS');
+                                              return (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(0,229,255,0.05)' }}>
+                                                  <td style={{ padding: '4px 8px', color: '#94a3b8' }}>{parts[0] || '-'}</td>
+                                                  <td style={{ padding: '4px 8px', color: '#e2e8f0' }}>{parts[1] || '-'}</td>
+                                                  <td style={{ padding: '4px 8px', color: '#e2e8f0' }}>{parts[2] || '-'}</td>
+                                                  <td style={{ padding: '4px 8px', fontWeight: 600, color: isMatch ? '#10b981' : '#f59e0b', fontSize: '0.7rem' }}>{marked || '-'}</td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })() : (
+                                      <pre style={{ margin: 0, padding: 0, background: "transparent", border: "none", fontSize: "0.82rem", color: "#e2e8f0", whiteSpace: "pre-wrap", fontFamily: "'JetBrains Mono', monospace", lineHeight: "1.4" }}>
+                                        {result.revision_content}
+                                      </pre>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          )}
+
+                          {/* Engineering Discrepancy Details */}
+                          {result.engineering_discrepancy_details && (
+                            <div>
+                              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>ENGINEERING DISCREPANCY DETAILS</div>
+                              <div style={{
+                                fontSize: "0.85rem",
+                                color: result.status === "MATCHED" ? "#a7f3d0" : "#fecaca",
+                                background: result.status === "MATCHED" ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+                                borderLeft: `4px solid ${badgeColor}`,
+                                padding: "8px 12px",
+                                borderRadius: "0 6px 6px 0",
+                                lineHeight: "1.5",
+                                fontWeight: 400
+                              }}>
+                                {result.engineering_discrepancy_details}
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </aside>
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
@@ -1061,333 +1586,142 @@ export const AuditWorkspace: React.FC = () => {
           {/* CENTER VIEWPORT (STAGE 1: COPY-TRACE COMPARISON ENGINE) */}
           <main className="stage1-center-panel">
             {/* Top Drawing Selection and Upload Box */}
-            {/* Split Screen Upload Ingestion Station */}
-            <div className="card settings-card upload-station-card" style={{ marginBottom: "12px", padding: "10px 16px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                    <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
-                      Stage 1: Version Ingestion
-                    </h3>
-                    <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
-                      <span className="compatibility-indicator-dot"></span>
-                      <span className="compatibility-text">
-                        {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
-                        {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
-                        {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
-                        {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
-                      </span>
-                    </div>
 
-                    {/* File Format Badges */}
-                    {oldDrawing && (
-                      <span className="format-badge-pill ref-format">
-                        REF: {oldDrawing.file_name.split(".").pop()?.toUpperCase()}
-                      </span>
-                    )}
-                    {newDrawing && (
-                      <span className="format-badge-pill rev-format">
-                        REV: {newDrawing.file_name.split(".").pop()?.toUpperCase()}
-                      </span>
-                    )}
-
-                    {/* Delta Complexity Pill */}
-                    {oldDrawing && newDrawing && (
-                      <span className="complexity-delta-pill">
-                        REF: {oldEntityCount.toLocaleString()} ↔ REV: {newEntityCount.toLocaleString()} Entities ({entityDelta >= 0 ? `+${entityDelta.toLocaleString()}` : entityDelta.toLocaleString()})
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Laser Sync Controller Switch */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500" }}>Laser Sync:</span>
-                    <button
-                      onClick={toggleLaserSync}
-                      className={`laser-sync-toggle-switch ${isLaserSyncEnabled ? "active" : "inactive"}`}
-                      title={isLaserSyncEnabled ? "Disable Synchronized Crosshairs" : "Enable Synchronized Crosshairs"}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        position: "relative",
-                        width: "36px",
-                        height: "18px",
-                        borderRadius: "10px",
-                        background: isLaserSyncEnabled ? "rgba(0, 255, 204, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                        border: isLaserSyncEnabled ? "1px solid rgba(0, 255, 204, 0.4)" : "1px solid rgba(255, 255, 255, 0.1)",
-                        cursor: "pointer",
-                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                        padding: 0,
-                        outline: "none"
-                      }}
-                    >
-                      <span
-                        className="laser-sync-dot"
-                        style={{
-                          display: "block",
-                          width: "10px",
-                          height: "10px",
-                          borderRadius: "50%",
-                          background: isLaserSyncEnabled ? "#00ffcc" : "#a1a1aa",
-                          boxShadow: isLaserSyncEnabled ? "0 0 8px #00ffcc" : "none",
-                          position: "absolute",
-                          left: isLaserSyncEnabled ? "22px" : "4px",
-                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                        }}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Bounds Scanner Warning */}
-                {hasAlignmentDisparity && (
-                  <div className="alignment-mismatch-banner">
-                    <span className="warning-icon">⚠️</span>
-                    <span className="warning-text">Alignment warning: Scale or coordinate shift detected between viewports (bounds mismatch &gt; 10%). Direct alignment mapping may require offset adjustment.</span>
-                  </div>
-                )}
-              </div>
-            </div>
 
             <div className="cad-viewer-container">
               {/* Toolbar */}
-              <div className="viewer-toolbar">
-                <div className="toolbar-group">
-                  <button
-                    className="toolbar-btn"
-                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.min(25, reviewViewport.scale * 1.25) })}
-                    title="Zoom In"
-                  >
-                    <ZoomIn size={14} />
-                  </button>
-                  <button
-                    className="toolbar-btn"
-                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.max(0.1, reviewViewport.scale / 1.25) })}
-                    title="Zoom Out"
-                  >
-                    <ZoomOut size={14} />
-                  </button>
-                  <button
-                    className="toolbar-btn"
-                    onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
-                    title="Reset Viewport"
-                  >
-                    <Maximize size={14} />
-                  </button>
+              <div className="viewer-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "8px 16px" }}>
+                {/* LEFT: Card Title */}
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", color: "var(--accent-cyan)", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
+                    Stage 1: Drawing Pair Ingestion
+                  </h3>
                 </div>
 
-                <div className="toolbar-divider"></div>
-              </div>
-
-              {/* Automated AI Physical Comparison & KMTI Checklist */}
-              {oldDrawing && newDrawing && (
-                <div className="physical-checklist-deck-container" style={{ marginBottom: "12px", background: "rgba(9, 9, 11, 0.6)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "16px", backdropFilter: "blur(12px)", boxShadow: "0 4px 30px rgba(0, 0, 0, 0.4)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
-                      <span style={{ fontSize: "0.85rem", fontWeight: 700, letterSpacing: "0.05em", color: "#e4e4e7" }}>
-                        AI PHYSICAL COMPARISON & KMTI CHECKLIST
-                      </span>
-                    </div>
-                    {aiScanProgress === "idle" && (
-                      <button
-                        className="btn btn-primary"
-                        onClick={runPhysicalComparisonAI}
-                        style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px" }}
-                      >
-                        <Play size={12} fill="currentColor" />
-                        RUN AI COMPARISON
-                      </button>
-                    )}
+                {/* RIGHT: Compatibility Badge & Zoom Controls side-by-side */}
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
+                    <span className="compatibility-indicator-dot"></span>
+                    <span className="compatibility-text">
+                      {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
+                      {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
+                      {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
+                      {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
+                    </span>
                   </div>
 
-                  {/* AI Scan Progress Sequence */}
-                  {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "20px 0" }}>
-                      <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)" }}>
-                        <span style={{ color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>1. SCAN ORIGINAL</span>
-                        <span style={{ color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>2. EXTRACT DATA</span>
-                        <span style={{ color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>3. SCAN KMTI</span>
-                        <span style={{ color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>4. COMPARE MATCHES</span>
-                      </div>
-                      <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                        <div style={{ 
-                          height: "100%", 
-                          background: "var(--accent-cyan)", 
-                          width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
-                          transition: "width 0.5s ease"
-                        }}></div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* AI Results Deck */}
-                  {aiScanProgress === "completed" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {Object.entries(aiChecklistResults).map(([key, result]) => {
-                        const isExpanded = expandedChecklistPanels[key];
-                        let badgeColor = "#10b981"; // MATCHED
-                        if (result.status === "ADDED") badgeColor = "#3b82f6";
-                        if (result.status === "CHANGED") badgeColor = "#f59e0b";
-                        if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#f43f5e";
-
-                        return (
-                          <div key={key} style={{ background: "rgba(20,20,22,0.6)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden" }}>
-                            <div 
-                              onClick={() => toggleChecklistPanel(key)}
-                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", cursor: "pointer" }}
-                            >
-                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f4f4f5", textTransform: "uppercase" }}>
-                                {key === "bom" ? "Bill of Materials (BOM)" : key === "titleBlock" ? "Title Block" : key}
-                              </span>
-                              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                                <span style={{
-                                  fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
-                                  color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}15`
-                                }}>
-                                  {result.status}
-                                </span>
-                                {isExpanded ? <ChevronDown size={14} color="#71717a" /> : <ChevronRight size={14} color="#71717a" />}
-                              </div>
-                            </div>
-                            
-                            {/* Expanded Data Panel */}
-                            {isExpanded && (
-                              <div style={{ padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.2)" }}>
-                                <div style={{ fontSize: "0.65rem", color: "#a1a1aa", marginBottom: "8px" }}>{result.log}</div>
-                                
-                                {result.extractedText && (
-                                  <div style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.2)", padding: "8px", borderRadius: "4px", fontSize: "0.65rem", color: "#60a5fa", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
-                                    {result.extractedText}
-                                  </div>
-                                )}
-
-                                {key === "bom" && bomComparisonMatrix.length > 0 && (
-                                  <div style={{ overflowX: "auto", marginTop: "8px" }}>
-                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.65rem", fontFamily: "monospace", textAlign: "left" }}>
-                                      <thead>
-                                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#a1a1aa" }}>
-                                          <th style={{ padding: "4px 8px" }}>Row</th>
-                                          <th style={{ padding: "4px 8px" }}>Column</th>
-                                          <th style={{ padding: "4px 8px" }}>Original Value</th>
-                                          <th style={{ padding: "4px 8px" }}>KMTI Value</th>
-                                          <th style={{ padding: "4px 8px" }}>Delta</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {bomComparisonMatrix.map((row, idx) => (
-                                          <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: row.diffType === "CHANGED" ? "rgba(245,158,11,0.05)" : "transparent" }}>
-                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.row}</td>
-                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.col}</td>
-                                            <td style={{ padding: "6px 8px", color: "#71717a" }}>{row.original}</td>
-                                            <td style={{ padding: "6px 8px", color: row.diffType === "CHANGED" ? "#f59e0b" : "#e4e4e7" }}>{row.kmti}</td>
-                                            <td style={{ padding: "6px 8px" }}>
-                                              <span style={{ color: row.diffType === "CHANGED" ? "#f59e0b" : "#10b981", fontWeight: 700 }}>
-                                                {row.diffType}
-                                              </span>
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <div className="toolbar-group">
+                    <button
+                      className="toolbar-btn"
+                      onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.min(25, reviewViewport.scale * 1.25) })}
+                      title="Zoom In"
+                    >
+                      <ZoomIn size={14} />
+                    </button>
+                    <button
+                      className="toolbar-btn"
+                      onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.max(0.1, reviewViewport.scale / 1.25) })}
+                      title="Zoom Out"
+                    >
+                      <ZoomOut size={14} />
+                    </button>
+                    <button
+                      className="toolbar-btn"
+                      onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
+                      title="Reset Viewport"
+                    >
+                      <Maximize size={14} />
+                    </button>
+                  </div>
                 </div>
-              )}
+              </div>
+
 
               {/* Viewport Panels */}
               {/* ── STANDARD SPLIT-VIEW MODE ── */}
               <div className="split-viewports">
-                  {/* Left Viewport (Old) */}
-                  <div className="viewport-panel">
-                    <div className="viewport-header">
-                      <div className="viewport-label">Original Drawing</div>
-                      {oldDrawing && (
-                        <div className="ingested-file-pill ref">
-                          <span className="pill-filename" title={oldDrawing.file_name}>
-                            {oldDrawing.file_name}
-                          </span>
-                          <button className="pill-clear-btn" onClick={() => clearUpload("old")} title="Remove reference drawing">
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="cad-canvas-mock" ref={containerRefOld}>
-                      {oldDrawing ? (
-                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                          <DrawingCanvas
-                            layers={oldLayers}
-                            width={oldSize.width}
-                            height={oldSize.height}
-                            drawing={oldDrawing}
-                          />
-                        </div>
-                      ) : (
-                        <UploadZone
-                          side="old"
-                          uploadState={oldUploadState}
-                          progress={oldUploadProgress}
-                          fileName={oldFileName}
-                          fileSize={oldFileSize}
-                          error={oldError}
-                          activeDrawing={oldDrawing}
-                          uploadDrawingFile={uploadDrawingFile}
-                          clearUpload={clearUpload}
-                        />
-                      )}
-                    </div>
+                {/* Left Viewport (Old) */}
+                <div className="viewport-panel">
+                  <div className="viewport-header">
+                    <div className="viewport-label">Original Drawing</div>
+                    {oldDrawing && (
+                      <div className="ingested-file-pill ref">
+                        <span className="pill-filename" title={oldDrawing.file_name}>
+                          {oldDrawing.file_name}
+                        </span>
+                        <button className="pill-clear-btn" onClick={() => clearUpload("old")} title="Remove reference drawing">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Right Viewport (New) */}
-                  <div className="viewport-panel">
-                    <div className="viewport-header">
-                      <div className="viewport-label">KMTI Drawing</div>
-                      {newDrawing && (
-                        <div className="ingested-file-pill rev">
-                          <span className="pill-filename" title={newDrawing.file_name}>
-                            {newDrawing.file_name}
-                          </span>
-                          <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="cad-canvas-mock" ref={containerRefNew}>
-                      {newDrawing ? (
-                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                          <DrawingCanvas
-                            layers={newLayers}
-                            width={newSize.width}
-                            height={newSize.height}
-                            drawing={newDrawing}
-                          />
-                        </div>
-                      ) : (
-                        <UploadZone
-                          side="new"
-                          uploadState={newUploadState}
-                          progress={newUploadProgress}
-                          fileName={newFileName}
-                          fileSize={newFileSize}
-                          error={newError}
-                          activeDrawing={newDrawing}
-                          uploadDrawingFile={uploadDrawingFile}
-                          clearUpload={clearUpload}
+                  <div className="cad-canvas-mock" ref={containerRefOld}>
+                    {oldDrawing ? (
+                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                        <DrawingCanvas
+                          layers={oldLayers}
+                          width={oldSize.width}
+                          height={oldSize.height}
+                          drawing={oldDrawing}
                         />
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <UploadZone
+                        side="old"
+                        uploadState={oldUploadState}
+                        progress={oldUploadProgress}
+                        fileName={oldFileName}
+                        fileSize={oldFileSize}
+                        error={oldError}
+                        activeDrawing={oldDrawing}
+                        uploadDrawingFile={uploadDrawingFile}
+                        clearUpload={clearUpload}
+                      />
+                    )}
                   </div>
                 </div>
+
+                {/* Right Viewport (New) */}
+                <div className="viewport-panel">
+                  <div className="viewport-header">
+                    <div className="viewport-label">KMTI Drawing</div>
+                    {newDrawing && (
+                      <div className="ingested-file-pill rev">
+                        <span className="pill-filename" title={newDrawing.file_name}>
+                          {newDrawing.file_name}
+                        </span>
+                        <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="cad-canvas-mock" ref={containerRefNew}>
+                    {newDrawing ? (
+                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                        <DrawingCanvas
+                          layers={newLayers}
+                          width={newSize.width}
+                          height={newSize.height}
+                          drawing={newDrawing}
+                        />
+                      </div>
+                    ) : (
+                      <UploadZone
+                        side="new"
+                        uploadState={newUploadState}
+                        progress={newUploadProgress}
+                        fileName={newFileName}
+                        fileSize={newFileSize}
+                        error={newError}
+                        activeDrawing={newDrawing}
+                        uploadDrawingFile={uploadDrawingFile}
+                        clearUpload={clearUpload}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </main>
 
