@@ -1180,6 +1180,295 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             lines.append(f"{label:<28}| {orig:<18}| {kmti:<18}| {s}")
         return '\n'.join(lines)
 
+    # -----------------------------------------------------------------------
+    # BOM TABLE EXTRACTION (Parts Drawing & Assembly Drawing)
+    # -----------------------------------------------------------------------
+    def extract_bom_fields(entities: list) -> tuple:
+        """Auto-detect drawing type (Parts vs Assembly) and extract all BOM rows.
+        Returns (extracted_rows, is_assembly) where extracted_rows is a list of dicts,
+        each dict mapping column_key -> {'value': str, 'coordinates': [x, y] | None}.
+        """
+        import math
+
+        bom_coord_scale = 1.0
+        for e in entities:
+            if e.entity_type == "text" and e.geometry:
+                ins = e.geometry.get("insert") or [0, 0, 0]
+                if ins[0] > 1000:
+                    bom_coord_scale = 2.0
+                    break
+
+        def bom_norm(text: str) -> str:
+            return text.strip().replace(" ", "").lower()
+
+        # ---- STEP 1: LOCATE BOM REGION ----
+        anchor_kws = [
+            "no.", "remark", "\u5099\u8003", "material", "\u7d20\u6750", "\u4ed5\u4e0a",
+            "dimension", "code", "\u6750\u8cea", "dwg no", "dwg.no", "\u56f3\u9762\u756a\u53f7",
+            "title", "\u540d\u79f0", "/type",
+        ]
+        candidate_ys = []
+        for e in entities:
+            if e.entity_type != "text" or not e.geometry:
+                continue
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            vy = ins[1]
+            raw = e.properties.get("text", "").strip()
+            decoded = safe_decode(raw).strip()
+            n = bom_norm(decoded)
+            for kw in anchor_kws:
+                if bom_norm(kw) in n and len(n) < 45:
+                    candidate_ys.append(vy)
+                    break
+
+        bom_y_min = 0.0
+        bom_header_band_min_y = None
+        if candidate_ys:
+            max_y = max(candidate_ys)
+            all_ys = [(e.geometry or {}).get("insert", [0, 0, 0])[1]
+                      for e in entities if e.entity_type == "text" and e.geometry]
+            drawing_height = max(all_ys) - min(all_ys) if all_ys else 1000
+            bom_y_min = max_y - (drawing_height * 0.15)
+            ys_in_bom = [y for y in candidate_ys if y >= bom_y_min]
+            bom_header_band_min_y = min(ys_in_bom) if ys_in_bom else None
+
+        row1_max_y = (bom_header_band_min_y - (0.5 * bom_coord_scale)) if bom_header_band_min_y is not None else None
+
+        def find_col_header(patterns: list):
+            for pat_group in patterns:
+                group_matches = []
+                for e in entities:
+                    if e.entity_type != "text" or not e.geometry:
+                        continue
+                    ins = e.geometry.get("insert") or [0, 0, 0]
+                    if ins[1] < bom_y_min:
+                        continue
+                    raw = e.properties.get("text", "").strip()
+                    decoded = safe_decode(raw).strip()
+                    for p in pat_group:
+                        if bom_norm(p) == bom_norm(raw) or bom_norm(p) == bom_norm(decoded):
+                            group_matches.append((ins[1], e))
+                            break
+                if group_matches:
+                    group_matches.sort(key=lambda m: m[0], reverse=True)
+                    return group_matches[0][1]
+            for pat_group in patterns:
+                group_matches = []
+                for e in entities:
+                    if e.entity_type != "text" or not e.geometry:
+                        continue
+                    ins = e.geometry.get("insert") or [0, 0, 0]
+                    if ins[1] < bom_y_min:
+                        continue
+                    raw = e.properties.get("text", "").strip()
+                    decoded = safe_decode(raw).strip()
+                    for p in pat_group:
+                        np = bom_norm(p)
+                        if len(np) > 2 and (np in bom_norm(raw) or np in bom_norm(decoded)):
+                            group_matches.append((ins[1], e))
+                            break
+                if group_matches:
+                    group_matches.sort(key=lambda m: m[0], reverse=True)
+                    return group_matches[0][1]
+            return None
+
+        # ---- STEP 2: AUTO-DETECT DRAWING TYPE ----
+        asm_signals = ["\u56f3\u9762\u756a\u53f7", "dwgno.", "dwg.no."]
+        is_assembly = False
+        for e in entities:
+            if e.entity_type != "text" or not e.geometry:
+                continue
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            if ins[1] < bom_y_min:
+                continue
+            raw = e.properties.get("text", "").strip()
+            decoded = safe_decode(raw).strip()
+            n = bom_norm(decoded)
+            for sig in asm_signals:
+                if bom_norm(sig) in n:
+                    is_assembly = True
+                    break
+            if is_assembly:
+                break
+        if not is_assembly:
+            for e in entities:
+                if e.entity_type != "text" or not e.geometry:
+                    continue
+                ins = e.geometry.get("insert") or [0, 0, 0]
+                if ins[1] < bom_y_min:
+                    continue
+                raw = e.properties.get("text", "").strip()
+                decoded = safe_decode(raw).strip()
+                if bom_norm("DWG No.") in bom_norm(decoded) or bom_norm("DWG No.") in bom_norm(raw):
+                    is_assembly = True
+                    break
+
+        # ---- STEP 3: COLUMN SCHEMAS ----
+        if is_assembly:
+            col_defs = [
+                ("NO",     [["No."]], 15.0),
+                ("DWG_NO", [["\u56f3\u9762\u756a\u53f7"], ["DWG No.", "DWG.No.", "DWGNo."]], 50.0),
+                ("TITLE",  [["\u540d\u79f0"], ["TITLE"]], 50.0),
+                ("QTY",    [["Q'ty", "\u500b\u6570", "Q\u2019ty"]], 20.0),
+                ("REMARK", [["\u5099\u8003", "Remark"]], 20.0),
+            ]
+        else:
+            col_defs = [
+                ("NO",              [["No."]], 12.0),
+                ("CODE",            [["Code", "\u6750\u8cea"]], 15.0),
+                ("DIMENSION",       [["Dimension/Model No.", "\u6750\u6599\u5bf8\u6cd5/\u578b\u5f0f", "Dimension/Model"]], 25.0),
+                ("QTY",             [["Q'ty", "\u6750\u6599\u500b\u6570", "\u500b\u6570"]], 15.0),
+                ("MATERIAL_WEIGHT", [["Material Weight(kg)", "Materjal Weight (kg)", "\u7d20\u6750\u91cd\u91cfKg", "MaterialWeight"]], 25.0),
+                ("FINISHED_WEIGHT", [["Finished Weight(kg)", "\u4ed5\u4e0a\u91cd\u91cfkg", "\u4ed5\u4e0a\u91cd\u91cf", "FinishedWeight"]], 25.0),
+                ("REMARK",          [["Remark", "\u5099\u8003"]], 20.0),
+            ]
+
+        # Find headers
+        headers = {}
+        for col_key, pat_groups, dx_tol in col_defs:
+            h_ent = find_col_header(pat_groups)
+            if h_ent and h_ent.geometry:
+                h_ins = h_ent.geometry.get("insert") or [0, 0, 0]
+                headers[col_key] = {"hx": h_ins[0], "hy": h_ins[1], "dx_tol": dx_tol}
+
+        if not headers:
+            return [], is_assembly
+
+        # Gather data entities below headers
+        h_xs = [h["hx"] for h in headers.values()]
+        x_min = min(h_xs) - 30.0 * bom_coord_scale
+        x_max = max(h_xs) + 40.0 * bom_coord_scale
+
+        data_ents = []
+        circled_digits = set(chr(c) for c in range(0x2460, 0x2474))
+        for e in entities:
+            if e.entity_type != "text" or not e.geometry:
+                continue
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            vx, vy = ins[0], ins[1]
+            if row1_max_y is not None and vy >= row1_max_y:
+                continue
+            if vy < bom_y_min:
+                continue
+            if not (x_min <= vx <= x_max):
+                continue
+            raw = e.properties.get("text", "").strip()
+            decoded = safe_decode(raw).strip()
+            if not decoded:
+                continue
+            if len(decoded) == 1 and decoded in circled_digits:
+                continue
+            data_ents.append(e)
+
+        # Group data entities by Y-coordinate
+        data_ents.sort(key=lambda e: e.geometry.get("insert", [0, 0, 0])[1], reverse=True)
+        
+        rows_grouped = []
+        y_group_tol = 6.0 * bom_coord_scale
+        
+        for e in data_ents:
+            ey = e.geometry.get("insert", [0, 0, 0])[1]
+            added = False
+            for group in rows_grouped:
+                avg_y = sum(g.geometry.get("insert", [0, 0, 0])[1] for g in group) / len(group)
+                if abs(ey - avg_y) <= y_group_tol:
+                    group.append(e)
+                    added = True
+                    break
+            if not added:
+                rows_grouped.append([e])
+
+        # Sort row groups by average Y descending
+        rows_grouped.sort(key=lambda group: sum(g.geometry.get("insert", [0, 0, 0])[1] for g in group) / len(group), reverse=True)
+
+        extracted_rows = []
+        for group in rows_grouped:
+            avg_y = sum(g.geometry.get("insert", [0, 0, 0])[1] for g in group) / len(group)
+            row_fields = {}
+            for col_key, col_def in headers.items():
+                hx = col_def["hx"]
+                dx_tol = col_def["dx_tol"]
+                sdx_tol = dx_tol * bom_coord_scale
+                
+                col_candidates = []
+                for e in group:
+                    ins = e.geometry.get("insert") or [0, 0, 0]
+                    vx, vy = ins[0], ins[1]
+                    dx = abs(vx - hx)
+                    if dx <= sdx_tol:
+                        dist = math.sqrt((4.0 * (vx - hx)) ** 2 + (vy - avg_y) ** 2)
+                        height = e.properties.get("height", 3.0)
+                        adj_vx = vx - (height * 1.5)
+                        adj_vy = vy + (height / 2.0)
+                        col_candidates.append((dist, e.properties.get("text", "").strip(), [adj_vx, adj_vy]))
+                
+                if col_candidates:
+                    col_candidates.sort(key=lambda c: c[0])
+                    val = col_candidates[0][1]
+                    coords = col_candidates[0][2]
+                else:
+                    val = "NONE"
+                    coords = [hx, avg_y]
+                
+                row_fields[col_key] = {"value": map_signature_value(val), "coordinates": coords}
+            extracted_rows.append(row_fields)
+
+        return extracted_rows, is_assembly
+
+    def build_bom_table(ref_rows: list, rev_rows: list, is_assembly: bool) -> str:
+        """Build dynamic ASCII BOM comparison table for all rows (Parts or Assembly format)."""
+        def get_val(row_dict, key):
+            obj = row_dict.get(key, {})
+            if isinstance(obj, dict):
+                return obj.get("value", "NONE") or "NONE"
+            return obj or "NONE"
+
+        def cmp_status(orig, kmti):
+            o = (orig or "NONE").strip()
+            k = (kmti or "NONE").strip()
+            return "MATCHED" if o.lower() == k.lower() else "MISMATCHED"
+
+        header = f"{'COLUMN':<32}| {'ORIGINAL':<20}| {'KMTI':<20}| MARKED"
+        sep = '-' * len(header)
+        lines = [header, sep]
+
+        num_rows = max(len(ref_rows), len(rev_rows))
+        if num_rows == 0:
+            num_rows = 1
+
+        for r_idx in range(num_rows):
+            ref_row = ref_rows[r_idx] if r_idx < len(ref_rows) else {}
+            rev_row = rev_rows[r_idx] if r_idx < len(rev_rows) else {}
+
+            if is_assembly:
+                cols = [
+                    ("No.",                  "NO"),
+                    ("図面番号 / DWG No.",   "DWG_NO"),
+                    ("名称 / TITLE",         "TITLE"),
+                    ("Q'ty",                "QTY"),
+                    ("備考 / Remark",        "REMARK"),
+                ]
+            else:
+                cols = [
+                    ("No.",                          "NO"),
+                    ("材質 / Code",                  "CODE"),
+                    ("材料寸法/型式 / Dimension",     "DIMENSION"),
+                    ("材料個数 / Q'ty",              "QTY"),
+                    ("素材重量Kg / Material Wt(kg)", "MATERIAL_WEIGHT"),
+                    ("仕上重量Kg / Finished Wt(kg)", "FINISHED_WEIGHT"),
+                    ("備考 / Remark",                "REMARK"),
+                ]
+
+            for label, key in cols:
+                orig = get_val(ref_row, key)
+                kmti = get_val(rev_row, key)
+                s = cmp_status(orig, kmti)
+                full_label = f"[Row {r_idx + 1}] {label}"
+                lines.append(f"{full_label:<32}| {orig:<20}| {kmti:<20}| {s}")
+
+        return '\n'.join(lines)
+
+
     def extract_title_fields(entities: list, all_text_list: list) -> dict:
         """Dynamically search the drawing text tokens for each of the 11 title block fields.
         Returns a dict mapping field name -> extracted value (or 'NONE').
@@ -1583,7 +1872,13 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     rev_title_fields = extract_title_fields(rev_entities, rev_all_text_list)
     title_block_table = build_title_block_table(ref_title_fields, rev_title_fields)
 
-
+    # Build pre-computed BOM table (Python-side, using actual drawing vector text)
+    ref_bom_rows, ref_is_assembly = extract_bom_fields(ref_entities)
+    rev_bom_rows, rev_is_assembly = extract_bom_fields(rev_entities)
+    # Assembly if either drawing is classified as assembly
+    is_assembly_drawing = ref_is_assembly or rev_is_assembly
+    bom_comparison_table = build_bom_table(ref_bom_rows, rev_bom_rows, is_assembly_drawing)
+    logger.info(f"BOM extraction complete — is_assembly={is_assembly_drawing}, ref_bom_rows={ref_bom_rows}, rev_bom_rows={rev_bom_rows}")
     # Isometric View dynamic detection
     ref_has_iso = any("iso" in e.layer.lower() or "isometric" in e.layer.lower() for e in ref_entities)
     rev_has_iso = any("iso" in e.layer.lower() or "isometric" in e.layer.lower() for e in rev_entities)
@@ -1779,11 +2074,17 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         parsed = json.loads(response.text)
         logger.info("Successfully parsed structured Gemini 2.5 Pro comparison results.")
 
-        # Override title_block comparative contents with Python-pre-built table
+        # Override title_block and bill_of_materials comparative contents with Python-pre-built tables
         # (Gemini's free-form table output is unreliable — we guarantee real values here)
-        if "title_block" in parsed:
-            parsed["title_block"]["reference_content"] = title_block_table
-            parsed["title_block"]["revision_content"] = title_block_table
+        if "bill_of_materials" not in parsed or parsed["bill_of_materials"] is None:
+            parsed["bill_of_materials"] = {"status": "CHANGED", "difference_summary": "BOM checked", "engineering_discrepancy_details": "Real BOM data used", "reference_content": "", "revision_content": ""}
+        parsed["bill_of_materials"]["reference_content"] = bom_comparison_table
+        parsed["bill_of_materials"]["revision_content"] = bom_comparison_table
+
+        if "title_block" not in parsed or parsed["title_block"] is None:
+            parsed["title_block"] = {"status": "CHANGED", "difference_summary": "Title Block checked", "engineering_discrepancy_details": "Real Title Block data used", "reference_content": "", "revision_content": ""}
+        parsed["title_block"]["reference_content"] = title_block_table
+        parsed["title_block"]["revision_content"] = title_block_table
 
         # Ensure all 11 Title Block fields are present in canvas_markings with real values for glowing checkmarks
         existing_markings = parsed.get("canvas_markings", [])
@@ -1893,6 +2194,54 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 if orig_coords is not None:
                     marking_entry["ref_coordinates"] = orig_coords
                 clean_markings.append(marking_entry)
+
+        # 3. Inject BOM row cell markings for all rows
+        for r_idx, rev_row in enumerate(rev_bom_rows):
+            ref_row = ref_bom_rows[r_idx] if r_idx < len(ref_bom_rows) else {}
+            
+            if is_assembly_drawing:
+                bom_cols = [
+                    ("NO", "No."),
+                    ("DWG_NO", "図面番号 / DWG No."),
+                    ("TITLE", "名称 / TITLE"),
+                    ("QTY", "Q'ty"),
+                    ("REMARK", "備考 / Remark")
+                ]
+            else:
+                bom_cols = [
+                    ("NO", "No."),
+                    ("CODE", "材質 / Code"),
+                    ("DIMENSION", "材料寸法/型式 / Dimension"),
+                    ("QTY", "材料個数 / Q'ty"),
+                    ("MATERIAL_WEIGHT", "素材重量Kg / Material Wt(kg)"),
+                    ("FINISHED_WEIGHT", "仕上重量Kg / Finished Wt(kg)"),
+                    ("REMARK", "備考 / Remark")
+                ]
+                
+            for col_key, display_label in bom_cols:
+                rev_cell = rev_row.get(col_key, {"value": "NONE", "coordinates": None})
+                orig_cell = ref_row.get(col_key, {"value": "NONE", "coordinates": None})
+                
+                orig_val = orig_cell.get("value", "NONE") if isinstance(orig_cell, dict) else orig_cell
+                kmti_val = rev_cell.get("value", "NONE") if isinstance(rev_cell, dict) else rev_cell
+                kmti_coords = rev_cell.get("coordinates", None) if isinstance(rev_cell, dict) else None
+                orig_coords = orig_cell.get("coordinates", None) if isinstance(orig_cell, dict) else None
+                
+                is_matched = orig_val.strip().lower() == kmti_val.strip().lower()
+                status_val = "MATCHED" if is_matched else "CHANGED"
+                
+                if kmti_val and kmti_val != "NONE":
+                    marking_entry = {
+                        "text_content": kmti_val,
+                        "status": status_val,
+                        "details": f"BOM [Row {r_idx + 1}] {display_label} checked: {orig_val} vs {kmti_val}",
+                        "category": "bill_of_materials"
+                    }
+                    if kmti_coords is not None:
+                        marking_entry["coordinates"] = kmti_coords
+                    if orig_coords is not None:
+                        marking_entry["ref_coordinates"] = orig_coords
+                    clean_markings.append(marking_entry)
         
         parsed["canvas_markings"] = clean_markings
 
