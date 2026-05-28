@@ -1009,15 +1009,16 @@ export const AuditWorkspace: React.FC = () => {
                               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                 {activeTab === 'ref' && result.reference_content && (
                                   <div style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", padding: "8px 10px", borderRadius: "6px" }}>
-                                    {key === 'title_block' ? (() => {
+                                    {(key === 'title_block' || key === 'bill_of_materials') ? (() => {
                                       const lines = result.reference_content.split('\n').filter((l: string) => l.trim());
-                                      const headerLine = lines.find((l: string) => l.includes('FIELD') || l.includes('ORIGINAL'));
+                                      const headerLine = lines.find((l: string) => l.includes('|') && (l.includes('FIELD') || l.includes('COLUMN') || l.includes('ORIGINAL')));
                                       const dataLines = lines.filter((l: string) => l.includes('|') && !l.match(/^-+$/) && l !== headerLine);
+                                      const hParts = headerLine ? headerLine.split('|').map((p: string) => p.trim()).filter(Boolean) : ['COLUMN', 'ORIGINAL', 'KMTI', 'STATUS'];
                                       return (
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', fontFamily: "'JetBrains Mono', monospace" }}>
                                           <thead>
                                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                              {['FIELD', 'ORIGINAL', 'KMTI', 'MARKED'].map(h => (
+                                              {hParts.map((h: string) => (
                                                 <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.04em', fontSize: '0.72rem' }}>{h}</th>
                                               ))}
                                             </tr>
@@ -1048,14 +1049,16 @@ export const AuditWorkspace: React.FC = () => {
                                 )}
                                 {activeTab === 'rev' && result.revision_content && (
                                   <div style={{ background: "rgba(0,229,255,0.02)", border: "1px solid rgba(0,229,255,0.12)", padding: "8px 10px", borderRadius: "6px" }}>
-                                    {key === 'title_block' ? (() => {
+                                    {(key === 'title_block' || key === 'bill_of_materials') ? (() => {
                                       const lines = result.revision_content.split('\n').filter((l: string) => l.trim());
-                                      const dataLines = lines.filter((l: string) => l.includes('|') && !l.match(/^-+$/) && !(l.includes('FIELD') && l.includes('ORIGINAL')));
+                                      const headerLine = lines.find((l: string) => l.includes('|') && (l.includes('FIELD') || l.includes('COLUMN') || l.includes('ORIGINAL')));
+                                      const dataLines = lines.filter((l: string) => l.includes('|') && !l.match(/^-+$/) && l !== headerLine);
+                                      const hParts = headerLine ? headerLine.split('|').map((p: string) => p.trim()).filter(Boolean) : ['COLUMN', 'ORIGINAL', 'KMTI', 'STATUS'];
                                       return (
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', fontFamily: "'JetBrains Mono', monospace" }}>
                                           <thead>
                                             <tr style={{ borderBottom: '1px solid rgba(0,229,255,0.15)' }}>
-                                              {['FIELD', 'ORIGINAL', 'KMTI', 'MARKED'].map(h => (
+                                              {hParts.map((h: string) => (
                                                 <th key={h} style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.04em', fontSize: '0.72rem' }}>{h}</th>
                                               ))}
                                             </tr>
