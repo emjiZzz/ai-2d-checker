@@ -80,6 +80,7 @@ interface WorkspaceState {
   auditStatus: "idle" | "queued" | "auditing" | "completed" | "failed";
   complianceScore: number | null;
   violations: ViolationItem[];
+  deletedViolationsStack: ViolationItem[];
   selectedViolation: ViolationItem | null;
   auditError: string | null;
   
@@ -111,6 +112,10 @@ interface WorkspaceState {
   createClient: (name: string) => Promise<boolean>;
   deleteClient: (name: string) => Promise<boolean>;
   setSelectedClient: (name: string | null) => void;
+
+  // Undo Actions
+  pushDeletedViolation: (violation: ViolationItem) => void;
+  popAndRestoreViolation: () => void;
   
   // Navigation State
   currentNav: "workspace" | "standards" | "history" | "settings";
@@ -152,6 +157,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   auditStatus: "idle",
   complianceScore: null,
   violations: [],
+  deletedViolationsStack: [],
   selectedViolation: null,
   auditError: null,
 
@@ -711,6 +717,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setSelectedClient: (name) => set({ selectedClient: name }),
 
+  pushDeletedViolation: (v) => set((state) => ({
+    deletedViolationsStack: [...state.deletedViolationsStack, v]
+  })),
+
+  popAndRestoreViolation: () => {
+    const stack = get().deletedViolationsStack;
+    if (stack.length === 0) return;
+    const last = stack[stack.length - 1];
+    set({
+      deletedViolationsStack: stack.slice(0, -1),
+      violations: [...get().violations, last]
+    });
+  },
+
   resetWorkspace: () => {
     // Clear uploads
     get().clearUpload("old");
@@ -723,6 +743,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       auditStatus: "idle",
       complianceScore: null,
       violations: [],
+      deletedViolationsStack: [],
       selectedViolation: null,
       auditError: null,
     });

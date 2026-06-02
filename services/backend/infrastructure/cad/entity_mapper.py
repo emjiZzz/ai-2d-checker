@@ -168,9 +168,27 @@ class EntityMapper:
         raw_content = entity.text if dxftype == "MTEXT" else entity.dxf.text
         insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0,0,0]
         height = entity.dxf.height if hasattr(entity.dxf, "height") else 2.5
+        rotation = entity.dxf.rotation if hasattr(entity.dxf, "rotation") else 0.0
 
         # Clean MTEXT control codes and decode bytes if necessary
         text_content = EntityMapper._clean_mtext_content(raw_content) if raw_content else ""
+
+        # Compute exact bounding box bounds in model space coordinates
+        bbox_coords = None
+        try:
+            from ezdxf import bbox
+            box = bbox.extents([entity])
+            bbox_coords = [
+                [float(box.extmin.x), float(box.extmin.y)],
+                [float(box.extmax.x), float(box.extmax.y)]
+            ]
+        except Exception:
+            pass
+
+        # Alignments & attachment points
+        halign = entity.dxf.halign if hasattr(entity.dxf, "halign") else 0
+        valign = entity.dxf.valign if hasattr(entity.dxf, "valign") else 0
+        attachment_point = entity.dxf.attachment_point if hasattr(entity.dxf, "attachment_point") else 0
         
         return {
             "entity_type": "text",
@@ -180,7 +198,12 @@ class EntityMapper:
                 "color": entity.dxf.color,
                 "text": text_content,
                 "height": height,
-                "is_multiline": dxftype == "MTEXT"
+                "is_multiline": dxftype == "MTEXT",
+                "rotation": rotation,
+                "halign": halign,
+                "valign": valign,
+                "attachment_point": attachment_point,
+                "bbox": bbox_coords
             },
             "geometry": {
                 "insert": [insert[0], insert[1], insert[2]]

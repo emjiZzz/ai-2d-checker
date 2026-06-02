@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useWorkspaceStore, DrawingItem } from "../../stores/workspaceStore";
 import { useConnectionStore } from "../../stores/connectionStore";
-import { DrawingCanvas } from "../../components/review/DrawingCanvas";
+import { DrawingCanvas, DrawingCanvasRef } from "../../components/review/DrawingCanvas";
 import { useReviewStore } from "../../stores/reviewStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useAuditStore } from "../../stores/auditStore";
@@ -28,9 +28,13 @@ import {
   BarChart2,
   Briefcase,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Download
 } from "lucide-react";
 
+import { jsPDF } from "jspdf";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import { StandardsManager } from "../../components/StandardsManager";
 
 // Helper utility to parse ISO datetime strings from backend reliably as UTC
@@ -166,9 +170,46 @@ export const AuditWorkspace: React.FC = () => {
   // Local drawing catalog for selections
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
 
+  // Sidebar drag-to-resize states
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(400);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(400);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  // Draggable Sidebar Panels resizing logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        const newWidth = Math.max(250, Math.min(600, e.clientX));
+        setLeftSidebarWidth(newWidth);
+      }
+      if (isResizingRight) {
+        const newWidth = Math.max(250, Math.min(600, window.innerWidth - e.clientX));
+        setRightSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingLeft, isResizingRight]);
+
   // Canvas size and container references
   const containerRefOld = React.useRef<HTMLDivElement>(null);
   const containerRefNew = React.useRef<HTMLDivElement>(null);
+  const drawingCanvasRefOld = React.useRef<DrawingCanvasRef>(null);
+  const drawingCanvasRefNew = React.useRef<DrawingCanvasRef>(null);
   const [oldSize, setOldSize] = useState({ width: 480, height: 400 });
   const [newSize, setNewSize] = useState({ width: 480, height: 400 });
 
@@ -262,7 +303,6 @@ export const AuditWorkspace: React.FC = () => {
     fetchClients
   } = useWorkspaceStore();
 
-  // Connect to reviewStore for synchronized viewport control
   const {
     viewport: reviewViewport,
     setViewport: setReviewViewport
@@ -290,6 +330,7 @@ export const AuditWorkspace: React.FC = () => {
   const [aiChecklistResults, setAiChecklistResults] = useState<Record<string, any>>({});
   const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({});
   const [activeComparisonTabs, setActiveComparisonTabs] = useState<Record<string, 'ref' | 'rev'>>({});
+  const [aiScanError, setAiScanError] = useState<string | null>(null);
 
   const toggleChecklistPanel = (key: string) => {
     setExpandedChecklistPanels(prev => ({ ...prev, [key]: !prev[key] }));
@@ -303,6 +344,7 @@ export const AuditWorkspace: React.FC = () => {
     if (!oldDrawing || !newDrawing) return;
 
     setAiScanProgress("comparing");
+    setAiScanError(null); // Clear any previous error on new scan
 
     try {
       const headers: Record<string, string> = {
@@ -373,13 +415,14 @@ export const AuditWorkspace: React.FC = () => {
 
         const findFuzzyMatch = (
           searchTerm: string,
-          entities: { text: string; x: number; y: number }[]
-        ): { text: string; x: number; y: number } | null => {
+          entities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string }[],
+          preferModelSpace: boolean = false
+        ): { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string } | null => {
           if (!searchTerm) return null;
           const normSearch = normalizeStr(searchTerm);
           if (!normSearch) return null;
 
-          let bestMatch: { text: string; x: number; y: number } | null = null;
+          let bestMatch: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string } | null = null;
           let bestScore = 0;
 
           // Helper to extract numeric digits from a string
@@ -396,8 +439,13 @@ export const AuditWorkspace: React.FC = () => {
 
             let score = 0;
 
-            // 1. Exact match
-            if (normEnt === normSearch) {
+            // 0. Exact raw text match (before normalization) — highest priority
+            //    Prevents '25' from matching '(25)' when a plain '25' entity exists
+            if (ent.text.trim() === searchTerm.trim()) {
+              score = 105; // Beats normalized exact match (100)
+            }
+            // 1. Exact normalized match
+            else if (normEnt === normSearch) {
               score = 100;
             }
             // 2. Exact match when removing standard prefixes/suffixes (like 2-C1, R10, M24)
@@ -409,25 +457,35 @@ export const AuditWorkspace: React.FC = () => {
             ) {
               score = 90;
             }
-            // 3. Substring match with strict length-ratio guards
-            else if (normSearch.includes(normEnt) || normEnt.includes(normSearch)) {
-              const minLen = Math.min(normEnt.length, normSearch.length);
-              const maxLen = Math.max(normEnt.length, normSearch.length);
-              const ratio = minLen / maxLen;
-
-              if (minLen >= 2) {
-                score = 50 + ratio * 30; // Score range: 50 to 80
-              }
-            }
-            // 4. Character Jaccard overlap similarity
+            // 2b. Leading-digit stripped code match (e.g. '4-C1' ~ '2-C1' both strip to 'C1')
+            //     Handles bolt/hole codes where quantity prefix differs
             else {
-              const searchChars = new Set(normSearch.split(""));
-              const entChars = new Set(normEnt.split(""));
-              let intersection = 0;
-              searchChars.forEach(c => { if (entChars.has(c)) intersection++; });
-              const jaccard = intersection / Math.max(searchChars.size, entChars.size);
-              if (jaccard > 0.60) {
-                score = jaccard * 70; // Score range: 42 to 70
+              const stripLeadDigits = (s: string) => s.replace(/^\d+/, "");
+              const strippedSearch = stripLeadDigits(normSearch);
+              const strippedEnt = stripLeadDigits(normEnt);
+              if (strippedSearch.length >= 2 && strippedSearch === strippedEnt) {
+                score = 85;
+              }
+              // 3. Substring match with strict length-ratio guards
+              else if (normSearch.includes(normEnt) || normEnt.includes(normSearch)) {
+                const minLen = Math.min(normEnt.length, normSearch.length);
+                const maxLen = Math.max(normEnt.length, normSearch.length);
+                const ratio = minLen / maxLen;
+
+                if (minLen >= 2) {
+                  score = 50 + ratio * 30; // Score range: 50 to 80
+                }
+              }
+              // 4. Character Jaccard overlap similarity
+              else {
+                const searchChars = new Set(normSearch.split(""));
+                const entChars = new Set(normEnt.split(""));
+                let intersection = 0;
+                searchChars.forEach(c => { if (entChars.has(c)) intersection++; });
+                const jaccard = intersection / Math.max(searchChars.size, entChars.size);
+                if (jaccard > 0.60) {
+                  score = jaccard * 70; // Score range: 42 to 70
+                }
               }
             }
 
@@ -439,8 +497,12 @@ export const AuditWorkspace: React.FC = () => {
               }
             }
 
-            if (score > bestScore && score > 40) {
-              bestScore = score;
+            // When preferring Model space, boost Model entities so they beat equal-scoring Paper Space ones
+            const spaceBonus = (preferModelSpace && ent.layoutSpace === 'Model') ? 5 : 0;
+            const effectiveScore = score + spaceBonus;
+
+            if (effectiveScore > bestScore && score > 40) {
+              bestScore = effectiveScore;
               bestMatch = ent;
             }
           }
@@ -453,10 +515,19 @@ export const AuditWorkspace: React.FC = () => {
           drawing: any,
           index: number
         ): [number, number] => {
-          const extmin = drawing?.metadata?.extmin || [0, 0];
-          const extmax = drawing?.metadata?.extmax || [400, 300];
-          const width = extmax[0] - extmin[0];
-          const height = extmax[1] - extmin[1];
+          let xmin = 0, ymin = 0, xmax = 400, ymax = 300;
+          if (drawing?.metadata?.render_bounds && Array.isArray(drawing.metadata.render_bounds) && drawing.metadata.render_bounds.length >= 4) {
+            [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
+          } else {
+            const extmin = drawing?.metadata?.extmin || [0, 0];
+            const extmax = drawing?.metadata?.extmax || [400, 300];
+            xmin = extmin[0];
+            ymin = extmin[1];
+            xmax = extmax[0];
+            ymax = extmax[1];
+          }
+          const width = xmax - xmin;
+          const height = ymax - ymin;
 
           const regions: Record<string, { x: number; y: number }> = {
             notes_section: { x: 0.20, y: 0.40 },
@@ -471,12 +542,12 @@ export const AuditWorkspace: React.FC = () => {
           const staggerY = ((index % 3) - 1) * (height * 0.03);
 
           return [
-            extmin[0] + (width * center.x) + staggerX,
-            extmin[1] + (height * center.y) + staggerY
+            xmin + (width * center.x) + staggerX,
+            ymin + (height * center.y) + staggerY
           ];
         };
 
-        const textEntities: { text: string; x: number; y: number }[] = [];
+        const textEntities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string }[] = [];
         if (newLayers) {
           Object.values(newLayers).forEach((entities: any) => {
             if (Array.isArray(entities)) {
@@ -487,7 +558,14 @@ export const AuditWorkspace: React.FC = () => {
                   const textVal = cleanCadText(rawText);
                   if (textVal && (geo.location || geo.insert)) {
                     const [tx, ty] = geo.location || geo.insert;
-                    textEntities.push({ text: textVal.trim(), x: tx, y: ty });
+                    textEntities.push({ 
+                      text: textVal.trim(), 
+                      x: tx, 
+                      y: ty,
+                      bbox: ent.properties?.bbox,
+                      height: ent.properties?.height,
+                      layoutSpace: ent.properties?.layout_space || 'Model'
+                    });
                   }
                 }
               });
@@ -495,7 +573,7 @@ export const AuditWorkspace: React.FC = () => {
           });
         }
 
-        const refTextEntities: { text: string; x: number; y: number }[] = [];
+        const refTextEntities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string }[] = [];
         if (oldLayers) {
           Object.values(oldLayers).forEach((entities: any) => {
             if (Array.isArray(entities)) {
@@ -506,7 +584,14 @@ export const AuditWorkspace: React.FC = () => {
                   const textVal = cleanCadText(rawText);
                   if (textVal && (geo.location || geo.insert)) {
                     const [tx, ty] = geo.location || geo.insert;
-                    refTextEntities.push({ text: textVal.trim(), x: tx, y: ty });
+                    refTextEntities.push({ 
+                      text: textVal.trim(), 
+                      x: tx, 
+                      y: ty,
+                      bbox: ent.properties?.bbox,
+                      height: ent.properties?.height,
+                      layoutSpace: ent.properties?.layout_space || 'Model'
+                    });
                   }
                 }
               });
@@ -520,8 +605,23 @@ export const AuditWorkspace: React.FC = () => {
           if (marking.coordinates && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
             coordinates = [marking.coordinates[0], marking.coordinates[1]] as [number, number];
           } else {
-            const match = findFuzzyMatch(marking.text_content, textEntities);
-            coordinates = match ? [match.x, match.y] as [number, number] : undefined;
+            // For drawing_views category, prefer Model Space entities (dimension text in drawing body)
+            // to avoid snapping to identically-named title block text in Paper Space
+            const preferModelForCoords = (marking.category === 'drawing_views' || !marking.category);
+            const match = findFuzzyMatch(marking.text_content, textEntities, preferModelForCoords);
+            if (match) {
+              if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) {
+                try {
+                  const [[xmin, ymin], [, ymax]] = match.bbox;
+                  const h = match.height || (ymax - ymin);
+                  coordinates = [xmin - (h * 0.5), ymin + ((ymax - ymin) / 2.0)] as [number, number];
+                } catch (err) {
+                  coordinates = [match.x, match.y] as [number, number];
+                }
+              } else {
+                coordinates = [match.x, match.y] as [number, number];
+              }
+            }
           }
 
           if (!coordinates && newDrawing) {
@@ -532,8 +632,21 @@ export const AuditWorkspace: React.FC = () => {
           if (marking.ref_coordinates && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
             ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
           } else {
-            const match = findFuzzyMatch(marking.text_content, refTextEntities);
-            ref_coordinates = match ? [match.x, match.y] as [number, number] : undefined;
+            const preferModelForRef = (marking.category === 'drawing_views' || !marking.category);
+            const match = findFuzzyMatch(marking.text_content, refTextEntities, preferModelForRef);
+            if (match) {
+              if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) {
+                try {
+                  const [[xmin, ymin], [, ymax]] = match.bbox;
+                  const h = match.height || (ymax - ymin);
+                  ref_coordinates = [xmin - (h * 0.5), ymin + ((ymax - ymin) / 2.0)] as [number, number];
+                } catch (err) {
+                  ref_coordinates = [match.x, match.y] as [number, number];
+                }
+              } else {
+                ref_coordinates = [match.x, match.y] as [number, number];
+              }
+            }
           }
 
           if (!ref_coordinates && oldDrawing) {
@@ -572,7 +685,13 @@ export const AuditWorkspace: React.FC = () => {
       }
     } catch (err: any) {
       console.error("AI Physical Comparison failed:", err);
-      alert(`AI Physical Comparison error: ${err.message}`);
+      const rawMsg: string = err?.message || String(err);
+      // Extract the human-readable part — strip JSON blobs and redundant tech noise
+      const isOverload = rawMsg.includes('503') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('high demand') || rawMsg.includes('overloaded');
+      const friendlyMsg = isOverload
+        ? 'The Gemini AI service is temporarily overloaded (503). All model fallbacks were exhausted. Please wait 30–60 seconds and try again.'
+        : rawMsg.replace(/\. Please verify.*$/i, '').trim();
+      setAiScanError(friendlyMsg);
       setAiScanProgress("idle");
     }
   };
@@ -749,6 +868,59 @@ export const AuditWorkspace: React.FC = () => {
     await runAudit(selectedClient);
   };
 
+  const exportToPDF = async () => {
+    try {
+      const imgDataNew = drawingCanvasRefNew.current?.exportImage(7016, 4960);
+      if (!imgDataNew) {
+        alert("Drawing canvas elements not found or failed to render.");
+        return;
+      }
+
+      const imgDataOld = oldDrawing ? drawingCanvasRefOld.current?.exportImage(7016, 4960) : null;
+
+      // Create PDF in standard A4 landscape format
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4"
+      });
+
+      let pageAdded = false;
+
+      if (imgDataOld) {
+        pdf.addImage(imgDataOld, "PNG", 0, 0, 297, 210);
+        pageAdded = true;
+      }
+
+      if (imgDataNew) {
+        if (pageAdded) {
+          pdf.addPage("a4", "landscape");
+        }
+        pdf.addImage(imgDataNew, "PNG", 0, 0, 297, 210);
+      }
+
+      const filename = `${newDrawing?.file_name.replace(/\.[^/.]+$/, "") || "drawing"}_compliance_report.pdf`;
+
+      // Request user file target path using native save dialog
+      const filePath = await save({
+        filters: [{
+          name: "PDF Document",
+          extensions: ["pdf"]
+        }],
+        defaultPath: filename
+      });
+
+      if (filePath) {
+        const pdfBuffer = pdf.output("arraybuffer");
+        const uint8Array = new Uint8Array(pdfBuffer);
+        await writeFile(filePath, uint8Array);
+      }
+    } catch (err: any) {
+      console.error("PDF generation failed:", err);
+      alert(`Export Failed: ${err.message || err}`);
+    }
+  };
+
   const criticalCount = violations.filter((v) => v.severity === "critical").length;
   const highCount = violations.filter((v) => v.severity === "high").length;
   const medCount = violations.filter((v) => v.severity === "medium").length;
@@ -768,10 +940,10 @@ export const AuditWorkspace: React.FC = () => {
         }
       `}</style>
       <aside
-        className="workspace-sidebar checklist-dock"
+        className={`workspace-sidebar checklist-dock ${isResizingLeft ? 'resizing' : ''}`}
         style={{
-          width: currentNav === "workspace" && oldDrawing && newDrawing ? '400px' : '0px',
-          minWidth: currentNav === "workspace" && oldDrawing && newDrawing ? '400px' : '0px',
+          width: currentNav === "workspace" && oldDrawing && newDrawing ? `${leftSidebarWidth}px` : '0px',
+          minWidth: currentNav === "workspace" && oldDrawing && newDrawing ? `${leftSidebarWidth}px` : '0px',
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -780,7 +952,7 @@ export const AuditWorkspace: React.FC = () => {
           zIndex: 10,
           overflowY: 'auto',
           overflowX: 'hidden',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: isResizingLeft ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           backdropFilter: 'blur(20px)',
           boxShadow: '4px 0 24px rgba(0, 0, 0, 0.3)'
         }}
@@ -796,14 +968,16 @@ export const AuditWorkspace: React.FC = () => {
                 </span>
               </div>
               {aiScanProgress === "idle" && (
-                <button
-                  className="btn btn-primary"
-                  onClick={runPhysicalComparisonAI}
-                  style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px", borderRadius: "6px" }}
-                >
-                  <Play size={12} fill="currentColor" />
-                  RUN AI
-                </button>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={runPhysicalComparisonAI}
+                    style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px", borderRadius: "6px" }}
+                  >
+                    <Play size={12} fill="currentColor" />
+                    RUN AI
+                  </button>
+                </div>
               )}
             </div>
 
@@ -837,6 +1011,43 @@ export const AuditWorkspace: React.FC = () => {
                     transition: "width 0.5s ease"
                   }}></div>
                 </div>
+              </div>
+            )}
+
+            {/* AI Error Banner — shown when comparison fails (e.g. 503 overload) */}
+            {aiScanError && aiScanProgress === "idle" && (
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: "10px",
+                background: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                borderRadius: "8px", padding: "10px 12px", margin: "8px 0",
+                animation: "fadeIn 0.25s ease"
+              }}>
+                <span style={{ fontSize: "1rem", flexShrink: 0, marginTop: "1px" }}>⚠️</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em", marginBottom: "4px" }}>
+                    AI COMPARISON FAILED
+                  </div>
+                  <div style={{ fontSize: "0.65rem", color: "#a1a1aa", lineHeight: 1.5 }}>
+                    {aiScanError}
+                  </div>
+                  <button
+                    onClick={() => { setAiScanError(null); runPhysicalComparisonAI(); }}
+                    style={{
+                      marginTop: "8px", padding: "4px 10px", fontSize: "0.6rem", fontWeight: 700,
+                      letterSpacing: "0.06em", background: "rgba(245,158,11,0.15)",
+                      border: "1px solid rgba(245,158,11,0.4)", borderRadius: "4px",
+                      color: "#f59e0b", cursor: "pointer"
+                    }}
+                  >
+                    ↺ RETRY
+                  </button>
+                </div>
+                <button
+                  onClick={() => setAiScanError(null)}
+                  style={{ background: "none", border: "none", color: "#71717a", cursor: "pointer", fontSize: "1rem", padding: "0", flexShrink: 0 }}
+                  title="Dismiss"
+                >×</button>
               </div>
             )}
 
@@ -1121,6 +1332,26 @@ export const AuditWorkspace: React.FC = () => {
           </div>
         )}
       </aside>
+
+      {currentNav === "workspace" && oldDrawing && newDrawing && (
+        <div
+          className={`left-resize-divider ${isResizingLeft ? 'active' : ''}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizingLeft(true);
+          }}
+          style={{
+            width: '6px',
+            cursor: 'ew-resize',
+            background: isResizingLeft ? 'rgba(0, 229, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+            borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+            zIndex: 30,
+            transition: 'background 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      )}
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
       {/* Standards Manuals — admin-only panel */}
@@ -1662,6 +1893,7 @@ export const AuditWorkspace: React.FC = () => {
                     {oldDrawing ? (
                       <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
                         <DrawingCanvas
+                          ref={drawingCanvasRefOld}
                           layers={oldLayers}
                           width={oldSize.width}
                           height={oldSize.height}
@@ -1689,12 +1921,43 @@ export const AuditWorkspace: React.FC = () => {
                   <div className="viewport-header">
                     <div className="viewport-label">KMTI Drawing</div>
                     {newDrawing && (
-                      <div className="ingested-file-pill rev">
-                        <span className="pill-filename" title={newDrawing.file_name}>
-                          {newDrawing.file_name}
-                        </span>
-                        <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
-                          <Trash2 size={10} />
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <div className="ingested-file-pill rev">
+                          <span className="pill-filename" title={newDrawing.file_name}>
+                            {newDrawing.file_name}
+                          </span>
+                          <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                        <button
+                          className="btn btn-primary"
+                          onClick={exportToPDF}
+                          title="Export drawing pair as PDF"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontSize: "0.68rem",
+                            padding: "3px 10px",
+                            borderRadius: "6px",
+                            background: "rgba(0, 229, 255, 0.1)",
+                            border: "1px solid rgba(0, 229, 255, 0.3)",
+                            color: "var(--accent-cyan)",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "var(--accent-cyan)";
+                            e.currentTarget.style.color = "#09090b";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(0, 229, 255, 0.1)";
+                            e.currentTarget.style.color = "var(--accent-cyan)";
+                          }}
+                        >
+                          <Download size={10} />
+                          <span>PDF</span>
                         </button>
                       </div>
                     )}
@@ -1703,6 +1966,7 @@ export const AuditWorkspace: React.FC = () => {
                     {newDrawing ? (
                       <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
                         <DrawingCanvas
+                          ref={drawingCanvasRefNew}
                           layers={newLayers}
                           width={newSize.width}
                           height={newSize.height}
@@ -1728,8 +1992,36 @@ export const AuditWorkspace: React.FC = () => {
             </div>
           </main>
 
+          {/* Right divider */}
+          {!isRightPanelCollapsed && (
+            <div
+              className={`right-resize-divider ${isResizingRight ? 'active' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingRight(true);
+              }}
+              style={{
+                width: '6px',
+                cursor: 'ew-resize',
+                background: isResizingRight ? 'rgba(0, 229, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+                borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+                borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+                zIndex: 30,
+                transition: 'background 0.2s ease',
+                flexShrink: 0
+              }}
+            />
+          )}
+
           {/* RIGHT VIEWPORT (STAGE 2: AI COMPLIANCE AUDITOR) */}
-          <aside className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}>
+          <aside
+            className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""} ${isResizingRight ? "resizing" : ""}`}
+            style={{
+              width: isRightPanelCollapsed ? '0px' : `${rightSidebarWidth}px`,
+              minWidth: isRightPanelCollapsed ? '0px' : `${rightSidebarWidth}px`,
+              transition: isResizingRight ? 'none' : 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+          >
             <button
               className="panel-collapse-btn"
               onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
@@ -2455,7 +2747,7 @@ export const AuditWorkspace: React.FC = () => {
         .panel-content-wrapper {
           display: flex;
           flex-direction: column;
-          width: 400px;
+          width: 100%;
           flex: 1;
           min-height: 0;
           padding: 20px;
@@ -3361,6 +3653,14 @@ export const AuditWorkspace: React.FC = () => {
         @keyframes spin-icon-anim {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+
+        .left-resize-divider:hover,
+        .left-resize-divider.active,
+        .right-resize-divider:hover,
+        .right-resize-divider.active {
+          background: rgba(0, 229, 255, 0.4) !important;
+          box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
         }
       `}</style>
     </div>

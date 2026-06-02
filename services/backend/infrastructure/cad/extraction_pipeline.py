@@ -291,26 +291,64 @@ class ExtractionPipeline:
 
             matplotlib.rcParams['axes.unicode_minus'] = False
 
-            # --- Step 2: Load DXF with smart encoding detection ---
-            # Japanese BigFont SHX DXFs (txt.shx + extfont2) MUST use CP932 to decode correctly.
+            # --- Step 2: Load DXF with byte-preserving encoding and CJK transcoding ---
             doc = None
-            
-            # First try auto-detect (ezdxf uses $DWGCODEPAGE from header)
             try:
-                doc = ezdxf.readfile(str(dxf_path))
-                logger.info(f"DXF auto-detected encoding: {doc.encoding}")
-            except (ezdxf.DXFError, UnicodeDecodeError):
-                # Fallback chain if auto-detect fails
-                for enc in ["cp932", "utf-8", "latin-1"]:
-                    try:
-                        doc = ezdxf.readfile(str(dxf_path), encoding=enc)
-                        logger.info(f"DXF loaded with fallback encoding: {enc}")
-                        break
-                    except (ezdxf.DXFError, UnicodeDecodeError):
+                doc = ezdxf.readfile(str(dxf_path), encoding="latin-1")
+                logger.info(f"DXF loaded for background rendering with latin-1. Header codepage: {doc.header.get('$DWGCODEPAGE')}")
+            except Exception as read_err:
+                logger.warning(f"Latin-1 rendering load failed: {str(read_err)}")
+                try:
+                    doc = ezdxf.readfile(str(dxf_path))
+                except Exception as e:
+                    raise ValueError(f"Unable to read DXF file for rendering: {str(e)}")
+
+            # Deep CJK transcoding of entities inside doc before rendering
+            doc_encoding = getattr(doc, "encoding", "cp932") or "cp932"
+            if doc_encoding.lower() in ("ansi_932", "cp932", "ms932", "shift_jis", "sjis"):
+                doc_encoding = "cp932"
+                
+            def transcode_str(s: str) -> str:
+                if not s:
+                    return ""
+                try:
+                    b = s.encode('latin1')
+                except Exception:
+                    return s
+                for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
+                    if not enc:
                         continue
-                        
-            if doc is None:
-                raise ValueError(f"Unable to read DXF file with any supported encoding: {dxf_path}")
+                    try:
+                        return b.decode(enc)
+                    except Exception:
+                        continue
+                return b.decode('utf-8', errors='replace')
+                
+            # Transcode all layouts (Model & Paper Space)
+            for layout in doc.layouts:
+                for entity in layout:
+                    dxftype = entity.dxftype()
+                    if dxftype in ("TEXT", "MTEXT"):
+                        if hasattr(entity, "text"):
+                            entity.text = transcode_str(entity.text)
+                        if hasattr(entity.dxf, "text"):
+                            entity.dxf.text = transcode_str(entity.dxf.text)
+                    elif dxftype == "DIMENSION":
+                        if hasattr(entity.dxf, "text"):
+                            entity.dxf.text = transcode_str(entity.dxf.text)
+                    elif dxftype == "INSERT":
+                        if hasattr(entity.dxf, "name"):
+                            entity.dxf.name = transcode_str(entity.dxf.name)
+
+            # Transcode all blocks definitions
+            for block in doc.blocks:
+                for entity in block:
+                    dxftype = entity.dxftype()
+                    if dxftype in ("TEXT", "MTEXT"):
+                        if hasattr(entity, "text"):
+                            entity.text = transcode_str(entity.text)
+                        if hasattr(entity.dxf, "text"):
+                            entity.dxf.text = transcode_str(entity.dxf.text)
 
             # --- Step 3: Override text styles in the document to use MS Gothic TTF ---
             # This forces ezdxf to render text using the TTF font instead of the missing SHX bigfont files
@@ -362,6 +400,12 @@ class ExtractionPipeline:
             ymin, ymax = ax.get_ylim()
             
             metadata["render_bounds"] = [float(xmin), float(ymin), float(xmax), float(ymax)]
+            
+            # Adjust figure size dynamically to match rendering aspect ratio exactly with zero padding
+            dx = xmax - xmin
+            dy = ymax - ymin
+            aspect = dx / dy if dy > 0 else 1.333
+            fig.set_size_inches(24.0, 24.0 / aspect)
             
             # Save rendering to safe destination path inside storage directory
             render_dir = get_storage_root() / "renderings"

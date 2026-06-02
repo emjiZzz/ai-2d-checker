@@ -24,6 +24,8 @@ interface ReviewState {
   // Overlays & Annotations
   showViolations: boolean;
   toggleViolations: () => void;
+  showMarkerLabels: boolean;
+  toggleMarkerLabels: () => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
 
@@ -83,6 +85,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
 
   showViolations: true,
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
+  showMarkerLabels: true,
+  toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
 
