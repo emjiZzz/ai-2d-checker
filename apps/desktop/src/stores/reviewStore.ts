@@ -24,6 +24,8 @@ interface ReviewState {
   // Overlays & Annotations
   showViolations: boolean;
   toggleViolations: () => void;
+  showMarkerLabels: boolean;
+  toggleMarkerLabels: () => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
 
@@ -56,6 +58,10 @@ interface ReviewState {
   updateCustomRegion: (key: string, bounds: { xMin: number; xMax: number; yMin: number; yMax: number }) => void;
   resetCustomRegions: () => void;
   loadCustomRegions: (drawingId: string | null) => void;
+
+  // Context Menu Marker Filters
+  visibleMarkerTypes: Record<string, boolean>;
+  toggleMarkerTypeVisibility: (type: string) => void;
 }
 
 export const useReviewStore = create<ReviewState>((set) => ({
@@ -83,6 +89,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
 
   showViolations: true,
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
+  showMarkerLabels: true,
+  toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
 
@@ -184,5 +192,18 @@ export const useReviewStore = create<ReviewState>((set) => ({
         }
       });
     }
-  }
+  },
+
+  visibleMarkerTypes: {
+    MISMATCHED: true,
+    CHANGED: true,
+    ADDED: true,
+    MATCHED: false
+  },
+  toggleMarkerTypeVisibility: (type) => set((state) => ({
+    visibleMarkerTypes: {
+      ...state.visibleMarkerTypes,
+      [type]: !state.visibleMarkerTypes[type]
+    }
+  }))
 }));

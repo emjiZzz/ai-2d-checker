@@ -1059,16 +1059,30 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         import re
         if not text:
             return ""
+        # Replace CP932 decoded multiplication sign formats with standard lowercase "x"
+        text = text.replace('\uff97', 'x')
+        text = text.replace('\u30e9', 'x')
+        text = text.replace('×', 'x')
+        text = text.replace('ラ', 'x')
         # If text already contains valid Japanese, return as-is to avoid Mojibake
         if re.search(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]', text):
             return text
         try:
             b = text.encode('latin1')
-            return b.decode('cp932')
+            dec = b.decode('cp932')
+            dec = dec.replace('\uff97', 'x')
+            dec = dec.replace('\u30e9', 'x')
+            dec = dec.replace('×', 'x')
+            dec = dec.replace('ラ', 'x')
+            return dec
         except Exception:
             try:
                 b = text.encode('utf-8')
                 dec = b.decode('cp932')
+                dec = dec.replace('\uff97', 'x')
+                dec = dec.replace('\u30e9', 'x')
+                dec = dec.replace('×', 'x')
+                dec = dec.replace('ラ', 'x')
                 if re.search(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]', dec):
                     return dec
                 return text
@@ -1086,6 +1100,149 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         if any(x in t for x in ["KCh", "Ch-g", "g}", "ガイド"]):
             return "ガイドプレート"
         return t
+
+    def compare_values(orig_val: str, kmti_val: str) -> str:
+        """Compare two cell or block values and classify: MATCHED, ADDED, CHANGED, or REMOVED."""
+        import re
+        o = (orig_val or "NONE").strip()
+        k = (kmti_val or "NONE").strip()
+        
+        if o == k:
+            return "MATCHED"
+            
+        def normalize(val: str) -> str:
+            if not val or val == "NONE":
+                return ""
+            v = val.lower().strip()
+            # Replace CP932 decoded multiplication sign "ラ" with standard lowercase "x"
+            v = v.replace('ラ', 'x')
+            # Treat lowercase x, uppercase X, and × multiplication symbol identically
+            v = re.sub(r'[xX×]', 'x', v)
+            # Treat colons : and slashes / identically
+            v = re.sub(r':', '/', v)
+            return v
+            
+        norm_o = normalize(o)
+        norm_k = normalize(k)
+        
+        if norm_o == norm_k:
+            return "MATCHED"
+            
+        # ADDED Marker rule
+        if (not norm_o or norm_o == "") and (norm_k and norm_k != ""):
+            return "ADDED"
+            
+        # REMOVED Marker rule
+        if (norm_o and norm_o != "") and (not norm_k or norm_k == ""):
+            return "REMOVED"
+            
+        # CHANGED / REMOVED Marker rule when both values exist but they are different:
+        if norm_o and norm_k:
+            if norm_o in norm_k:
+                return "CHANGED"
+            else:
+                return "REMOVED"
+            
+        return "REMOVED"
+
+    def find_drawing_text_coordinates(
+            entities: list,
+            target_text: str,
+            category: Optional[str] = None,
+            region_bbox: Optional[tuple] = None
+    ) -> Optional[list[float]]:
+        """Locate the screen anchor coordinate for a given text value.
+
+        Search passes:
+          1. Exact match within the spatial region bbox AND category-layer entities.
+          2. Exact match across all entities (global).
+          3. Containment substring match (target appears inside the drawing text).
+             The reverse clause ``dec_norm in target_norm`` is removed to prevent
+             short primitives ("0", "1") from matching longer targets ("SS400", "800").
+
+        Args:
+            region_bbox: Optional (xmin, ymin, xmax, ymax) in model-space. When
+                         provided, entities whose insertion point falls inside this
+                         box are searched first; other entities are searched as a
+                         global fallback.  This is the primary mechanism for drawings
+                         where all entities share a generic layer name.
+        """
+        if not target_text or target_text == "NONE":
+            return None
+        target_norm = target_text.strip().replace(" ", "").lower()
+
+        def get_anchor(e) -> list[float]:
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            height = e.properties.get("height", 3.0)
+            bbox = e.properties.get("bbox", None)
+            if bbox:
+                try:
+                    xmin, ymin = bbox[0]
+                    xmax, ymax = bbox[1]
+                    box_height = ymax - ymin
+                    return [xmin - (height * 0.5), ymin + (box_height / 2.0)]
+                except Exception:
+                    pass
+            return [ins[0] - (height * 1.5), ins[1] + (height / 2.0)]
+
+        def in_region(e) -> bool:
+            """True if the entity's insertion point is inside region_bbox."""
+            if not region_bbox:
+                return False
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            rx0, ry0, rx1, ry1 = region_bbox
+            return rx0 <= ins[0] <= rx1 and ry0 <= ins[1] <= ry1
+
+        def layer_matches_category(layer_str: str, cat: Optional[str]) -> bool:
+            if not cat:
+                return False
+            l = (layer_str or "").lower()
+            if cat == "title_block":
+                return any(x in l for x in ("title", "border", "stamp", "attr", "admin", "block", "header", "logo", "dwg", "rev", "approved", "checked", "designed", "drawn", "scale"))
+            if cat == "bill_of_materials":
+                return any(x in l for x in ("bom", "parts", "material", "partslist", "materials"))
+            if cat == "notes_section":
+                return any(x in l for x in ("note", "anno", "comment", "annotation", "text"))
+            return False
+
+        # Partition entities: region-bbox match > layer match > everything else
+        inside_region = []
+        layer_priority = []
+        elsewhere = []
+        for e in entities:
+            if e.entity_type != "text" or not e.geometry:
+                continue
+            layer = getattr(e, "layer", "") or ""
+            if region_bbox and in_region(e):
+                inside_region.append(e)
+            elif layer_matches_category(layer, category):
+                layer_priority.append(e)
+            else:
+                elsewhere.append(e)
+
+        # Search order: spatially-correct region first, then named-layer match, then global
+        if region_bbox:
+            search_order = inside_region
+        else:
+            search_order = layer_priority + elsewhere
+
+        # Pass 1 – Exact match
+        for e in search_order:
+            raw_txt = e.properties.get("text", "")
+            if raw_txt:
+                decoded = safe_decode(raw_txt).strip()
+                if decoded.replace(" ", "").lower() == target_norm:
+                    return get_anchor(e)
+
+        # Pass 2 – Containment substring match (target inside drawing text only)
+        for e in search_order:
+            raw_txt = e.properties.get("text", "")
+            if raw_txt:
+                decoded = safe_decode(raw_txt).strip()
+                dec_norm = decoded.replace(" ", "").lower()
+                if len(target_norm) > 2 and target_norm in dec_norm:
+                    return get_anchor(e)
+        return None
 
     # --- DYNAMIC 100% ACCURATE REAL PARSING ---
     ref_has_real_entities = len(ref_entities) > 0 or (ref_drawing.entity_counts and sum(ref_drawing.entity_counts.values()) > 0)
@@ -1144,14 +1301,9 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     rev_title_data = f"Title: {rev_title} | Rev: {rev_rev} | {rev_groups['title_block_data']}"
 
     def build_title_block_table(ref_fields, rev_fields):
-        def norm_scale(v):
-            return re.sub(r':', '/', v.strip()) if v and v != 'NONE' else v
         def status(orig, kmti, field_name=''):
-            o = orig.strip() if orig else 'NONE'
-            k = kmti.strip() if kmti else 'NONE'
-            if field_name == 'SCALE':
-                return 'MATCHED' if norm_scale(o) == norm_scale(k) else 'MISMATCHED'
-            return 'MATCHED' if o.lower() == k.lower() else 'MISMATCHED'
+            s = compare_values(orig, kmti)
+            return 'MATCHED' if s == 'MATCHED' else 'MISMATCHED'
 
         def get_val(fields, key):
             val_obj = fields.get(key, "NONE")
@@ -1159,31 +1311,35 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 return val_obj.get("value", "NONE")
             return val_obj
 
+        ref_des = get_val(ref_fields, 'DESIGNED')
+        ref_drw = get_val(ref_fields, 'DRAWN')
+        rev_des = get_val(rev_fields, 'DESIGNED')
+        rev_drw = get_val(rev_fields, 'DRAWN')
+
         rows = [
-            ('QTY',                     get_val(ref_fields, 'QTY'),            get_val(rev_fields, 'QTY'),            'QTY'),
-            ('CROSS REF NO.',           get_val(ref_fields, 'CROSS REF NO'),   get_val(rev_fields, 'CROSS REF NO'),   ''),
-            ('- PREVIOUS DWG NO',       get_val(ref_fields, 'PREVIOUS DWG NO'),get_val(rev_fields, 'PREVIOUS DWG NO'),''),
-            ('- DESIGNED',              get_val(ref_fields, 'DESIGNED'),        get_val(rev_fields, 'DESIGNED'),        ''),
-            ('- DRAWN',                 get_val(ref_fields, 'DRAWN'),           get_val(rev_fields, 'DRAWN'),           ''),
-            ('- SCALE',                 get_val(ref_fields, 'SCALE'),           get_val(rev_fields, 'SCALE'),           'SCALE'),
-            ('- NAME',                  get_val(ref_fields, 'NAME'),            get_val(rev_fields, 'NAME'),            ''),
-            ('- TITLE',                 get_val(ref_fields, 'TITLE'),           get_val(rev_fields, 'TITLE'),           ''),
-            ('- JOB NO.',               get_val(ref_fields, 'JOB NO'),          get_val(rev_fields, 'JOB NO'),          ''),
-            ('- MACHINE CODE/UNIT CODE', get_val(ref_fields, 'MACHINE CODE'),   get_val(rev_fields, 'MACHINE CODE'),   ''),
-            ('- DWG NO.',               get_val(ref_fields, 'DWG NO'),          get_val(rev_fields, 'DWG NO'),          'DWG NO'),
+            ('総製作個数 T. Q\'ty (Total Quantity)', get_val(ref_fields, 'QTY'),             get_val(rev_fields, 'QTY'),             'QTY'),
+            ('共通番号 Cross ref No.',             get_val(ref_fields, 'CROSS REF NO'),     get_val(rev_fields, 'CROSS REF NO'),     ''),
+            ('旧図面番号 Previous Dwg. No.',       get_val(ref_fields, 'PREVIOUS DWG NO'),  get_val(rev_fields, 'PREVIOUS DWG NO'),  ''),
+            ('設計 DESIGNED / 作成 DRAWN',          f"{ref_des} / {ref_drw}",                f"{rev_des} / {rev_drw}",                ''),
+            ('尺度 SCALE',                          get_val(ref_fields, 'SCALE'),            get_val(rev_fields, 'SCALE'),            'SCALE'),
+            ('工事番号 Job No.',                    get_val(ref_fields, 'JOB NO'),           get_val(rev_fields, 'JOB NO'),           ''),
+            ('標準図番号 Std. No.',                  get_val(ref_fields, 'STD NO'),           get_val(rev_fields, 'STD NO'),           ''),
+            ('機器記号 Mach. code / ユニット記号 Unit Code', get_val(ref_fields, 'MACHINE CODE'), get_val(rev_fields, 'MACHINE CODE'), ''),
+            ('図面番号 DWG. No. / 機種 Machine Type / ユニット Unit No. / 部品 Part No. / 特性 派生 Branch', get_val(ref_fields, 'DWG NO'), get_val(rev_fields, 'DWG NO'), 'DWG NO'),
+            ('名称 TITLE',                          get_val(ref_fields, 'TITLE'),            get_val(rev_fields, 'TITLE'),            ''),
         ]
-        header = f"{'FIELD':<28}| {'ORIGINAL':<18}| {'KMTI':<18}| MARKED"
+        header = f"{'FIELD':<96}| {'ORIGINAL':<28}| {'KMTI':<28}| MARKED"
         sep    = '-' * len(header)
         lines  = [header, sep]
         for label, orig, kmti, fn in rows:
             s = status(orig, kmti, fn)
-            lines.append(f"{label:<28}| {orig:<18}| {kmti:<18}| {s}")
+            lines.append(f"{label:<96}| {orig:<28}| {kmti:<28}| {s}")
         return '\n'.join(lines)
 
     # -----------------------------------------------------------------------
     # BOM TABLE EXTRACTION (Parts Drawing & Assembly Drawing)
     # -----------------------------------------------------------------------
-    def extract_bom_fields(entities: list) -> tuple:
+    def extract_bom_fields(entities: list, render_bounds: Optional[list] = None) -> tuple:
         """Auto-detect drawing type (Parts vs Assembly) and extract all BOM rows.
         Returns (extracted_rows, is_assembly) where extracted_rows is a list of dicts,
         each dict mapping column_key -> {'value': str, 'coordinates': [x, y] | None}.
@@ -1191,15 +1347,38 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         import math
 
         bom_coord_scale = 1.0
-        for e in entities:
-            if e.entity_type == "text" and e.geometry:
-                ins = e.geometry.get("insert") or [0, 0, 0]
-                if ins[0] > 1000:
-                    bom_coord_scale = 2.0
-                    break
+        if render_bounds and len(render_bounds) >= 4:
+            if render_bounds[2] - render_bounds[0] > 1200:
+                bom_coord_scale = 2.0
+        else:
+            for e in entities:
+                if e.entity_type == "text" and e.geometry:
+                    ins = e.geometry.get("insert") or [0, 0, 0]
+                    if 1000 < ins[0] < 5000:
+                        bom_coord_scale = 2.0
+                        break
 
         def bom_norm(text: str) -> str:
             return text.strip().replace(" ", "").lower()
+
+        # Compute drawing sheet height and max Y limit to filter out out-of-bounds Mojibake text
+        all_ys = [(e.geometry or {}).get("insert", [0, 0, 0])[1]
+                  for e in entities if e.entity_type == "text" and e.geometry]
+        
+        if render_bounds and len(render_bounds) >= 4:
+            drawing_height = render_bounds[3] - render_bounds[1]
+            max_y_limit = render_bounds[3]
+        else:
+            # Fallback outlier-robust Y calculations
+            sorted_ys = sorted(all_ys)
+            if sorted_ys:
+                p90_y = sorted_ys[int(len(sorted_ys) * 0.90)]
+                min_y = sorted_ys[0]
+                drawing_height = p90_y - min_y if p90_y > min_y else 1000.0
+                max_y_limit = p90_y
+            else:
+                drawing_height = 1000.0
+                max_y_limit = 1000.0
 
         # ---- STEP 1: LOCATE BOM REGION ----
         anchor_kws = [
@@ -1213,6 +1392,13 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 continue
             ins = e.geometry.get("insert") or [0, 0, 0]
             vy = ins[1]
+            # Ignore any text way above the sheet boundary (out-of-bounds noise)
+            if vy > max_y_limit + 10.0 * bom_coord_scale:
+                continue
+            # Ignore any text in the lower half of the drawing sheet (BOM is always top-right)
+            if vy < max_y_limit - drawing_height * 0.5:
+                continue
+                
             raw = e.properties.get("text", "").strip()
             decoded = safe_decode(raw).strip()
             n = bom_norm(decoded)
@@ -1222,17 +1408,9 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     break
 
         bom_y_min = 0.0
-        bom_header_band_min_y = None
         if candidate_ys:
             max_y = max(candidate_ys)
-            all_ys = [(e.geometry or {}).get("insert", [0, 0, 0])[1]
-                      for e in entities if e.entity_type == "text" and e.geometry]
-            drawing_height = max(all_ys) - min(all_ys) if all_ys else 1000
             bom_y_min = max_y - (drawing_height * 0.15)
-            ys_in_bom = [y for y in candidate_ys if y >= bom_y_min]
-            bom_header_band_min_y = min(ys_in_bom) if ys_in_bom else None
-
-        row1_max_y = (bom_header_band_min_y - (0.5 * bom_coord_scale)) if bom_header_band_min_y is not None else None
 
         def find_col_header(patterns: list):
             for pat_group in patterns:
@@ -1334,6 +1512,10 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         if not headers:
             return [], is_assembly
 
+        # Compute dynamic row1_max_y from matched headers
+        h_ys = [h["hy"] for h in headers.values()]
+        row1_max_y = min(h_ys) - (0.5 * bom_coord_scale)
+
         # Gather data entities below headers
         h_xs = [h["hx"] for h in headers.values()]
         x_min = min(h_xs) - 30.0 * bom_coord_scale
@@ -1346,7 +1528,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 continue
             ins = e.geometry.get("insert") or [0, 0, 0]
             vx, vy = ins[0], ins[1]
-            if row1_max_y is not None and vy >= row1_max_y:
+            if vy >= row1_max_y:
                 continue
             if vy < bom_y_min:
                 continue
@@ -1385,6 +1567,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         for group in rows_grouped:
             avg_y = sum(g.geometry.get("insert", [0, 0, 0])[1] for g in group) / len(group)
             row_fields = {}
+            row_has_data = False
+            
             for col_key, col_def in headers.items():
                 hx = col_def["hx"]
                 dx_tol = col_def["dx_tol"]
@@ -1398,20 +1582,37 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     if dx <= sdx_tol:
                         dist = math.sqrt((4.0 * (vx - hx)) ** 2 + (vy - avg_y) ** 2)
                         height = e.properties.get("height", 3.0)
-                        adj_vx = vx - (height * 1.5)
-                        adj_vy = vy + (height / 2.0)
-                        col_candidates.append((dist, e.properties.get("text", "").strip(), [adj_vx, adj_vy]))
+                        bbox = e.properties.get("bbox", None)
+                        if bbox:
+                            try:
+                                xmin, ymin = bbox[0]
+                                xmax, ymax = bbox[1]
+                                box_height = ymax - ymin
+                                coords = [xmin - (height * 0.5), ymin + (box_height / 2.0)]
+                            except Exception:
+                                coords = [vx - (height * 1.5), vy + (height / 2.0)]
+                        else:
+                            coords = [vx - (height * 1.5), vy + (height / 2.0)]
+                        
+                        col_candidates.append((dist, e.properties.get("text", "").strip(), coords))
                 
                 if col_candidates:
                     col_candidates.sort(key=lambda c: c[0])
                     val = col_candidates[0][1]
                     coords = col_candidates[0][2]
+                    clean_val = map_signature_value(val)
+                    if clean_val != "NONE":
+                        row_has_data = True
                 else:
                     val = "NONE"
                     coords = [hx, avg_y]
+                    clean_val = "NONE"
                 
-                row_fields[col_key] = {"value": map_signature_value(val), "coordinates": coords}
-            extracted_rows.append(row_fields)
+                row_fields[col_key] = {"value": clean_val, "coordinates": coords}
+            
+            # Only append the row if it contains at least one non-NONE value
+            if row_has_data:
+                extracted_rows.append(row_fields)
 
         return extracted_rows, is_assembly
 
@@ -1423,22 +1624,77 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 return obj.get("value", "NONE") or "NONE"
             return obj or "NONE"
 
+        def is_blank_spacer(row):
+            if not row:
+                return True
+            if is_assembly:
+                dwg = get_val(row, "DWG_NO")
+                title = get_val(row, "TITLE")
+                return dwg == "NONE" and title == "NONE"
+            else:
+                code = get_val(row, "CODE")
+                dim = get_val(row, "DIMENSION")
+                return code == "NONE" and dim == "NONE"
+
+        # Strip entirely blank spacer rows to handle structural row shifts
+        filtered_ref = [r for r in ref_rows if not is_blank_spacer(r)]
+        filtered_rev = [r for r in rev_rows if not is_blank_spacer(r)]
+
+        def get_row_key(row):
+            no_val = get_val(row, "NO")
+            if no_val == "NONE":
+                return ""
+            return no_val.strip()
+
+        ref_map = {}
+        for idx, r in enumerate(filtered_ref):
+            k = get_row_key(r)
+            if not k:
+                k = f"_ref_idx_{idx}"
+            ref_map[k] = r
+
+        rev_map = {}
+        for idx, r in enumerate(filtered_rev):
+            k = get_row_key(r)
+            if not k:
+                k = f"_rev_idx_{idx}"
+            rev_map[k] = r
+
+        all_keys = list(set(ref_map.keys()).union(set(rev_map.keys())))
+        
+        def key_sort_fn(key_str):
+            if key_str.startswith("_ref_idx_"):
+                try:
+                    return (2, int(key_str.split("_")[-1]), key_str)
+                except Exception:
+                    pass
+            if key_str.startswith("_rev_idx_"):
+                try:
+                    return (3, int(key_str.split("_")[-1]), key_str)
+                except Exception:
+                    pass
+            try:
+                nums = re.findall(r'\d+', key_str)
+                if nums:
+                    return (0, int(nums[0]), key_str)
+            except Exception:
+                pass
+            return (1, 0, key_str)
+        all_keys.sort(key=key_sort_fn)
+
         def cmp_status(orig, kmti):
-            o = (orig or "NONE").strip()
-            k = (kmti or "NONE").strip()
-            return "MATCHED" if o.lower() == k.lower() else "MISMATCHED"
+            s = compare_values(orig, kmti)
+            return "MATCHED" if s == "MATCHED" else "MISMATCHED"
 
         header = f"{'COLUMN':<32}| {'ORIGINAL':<20}| {'KMTI':<20}| MARKED"
         sep = '-' * len(header)
         lines = [header, sep]
 
-        num_rows = max(len(ref_rows), len(rev_rows))
-        if num_rows == 0:
-            num_rows = 1
+        for key in all_keys:
+            ref_row = ref_map.get(key, {})
+            rev_row = rev_map.get(key, {})
 
-        for r_idx in range(num_rows):
-            ref_row = ref_rows[r_idx] if r_idx < len(ref_rows) else {}
-            rev_row = rev_rows[r_idx] if r_idx < len(rev_rows) else {}
+            row_label = f"Unnumbered Row" if (key.startswith("_ref_idx_") or key.startswith("_rev_idx_")) else f"Item {key}"
 
             if is_assembly:
                 cols = [
@@ -1459,11 +1715,11 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     ("備考 / Remark",                "REMARK"),
                 ]
 
-            for label, key in cols:
-                orig = get_val(ref_row, key)
-                kmti = get_val(rev_row, key)
+            for label, key_col in cols:
+                orig = get_val(ref_row, key_col)
+                kmti = get_val(rev_row, key_col)
                 s = cmp_status(orig, kmti)
-                full_label = f"[Row {r_idx + 1}] {label}"
+                full_label = f"[{row_label}] {label}"
                 lines.append(f"{full_label:<32}| {orig:<20}| {kmti:<20}| {s}")
 
         return '\n'.join(lines)
@@ -1699,6 +1955,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         unit_no, unit_no_coords = extract_proximity_value(["Unit No.", "ユニットNo."], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
         part_no, part_no_coords = extract_proximity_value(["Part No.", "コードNo."], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
         stock_qty, stock_qty_coords = extract_proximity_value(["Stock Q'ty", "在庫棚入庫"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
+        std_no, std_no_coords = extract_proximity_value(["Std. No.", "標準図番号"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
 
         # Apply signature mapping to mapped clean values
         qty = map_signature_value(qty)
@@ -1715,6 +1972,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         unit_no = map_signature_value(unit_no)
         part_no = map_signature_value(part_no)
         stock_qty = map_signature_value(stock_qty)
+        std_no = map_signature_value(std_no)
 
         # Intelligent fallbacks using decoded text list
         if qty == "NONE" or is_garbage_value(qty) or qty.lower() in ["t.q'ty", "個数", "総製作個数", "stockq'ty"]:
@@ -1825,6 +2083,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             part_no_coords = find_entity_coords(part_no)
         if stock_qty != "NONE" and stock_qty_coords is None:
             stock_qty_coords = find_entity_coords(stock_qty)
+        if std_no != "NONE" and std_no_coords is None:
+            std_no_coords = find_entity_coords(std_no)
 
         res = {
             "QTY": {"value": qty, "coordinates": qty_coords},
@@ -1840,7 +2100,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "DWG NO": {"value": dwg_no, "coordinates": dwg_no_coords},
             "UNIT NO": {"value": unit_no, "coordinates": unit_no_coords},
             "PART NO": {"value": part_no, "coordinates": part_no_coords},
-            "STOCK QTY": {"value": stock_qty, "coordinates": stock_qty_coords}
+            "STOCK QTY": {"value": stock_qty, "coordinates": stock_qty_coords},
+            "STD NO": {"value": std_no, "coordinates": std_no_coords}
         }
         for k, v in res.items():
             if v["value"] is None or str(v["value"]).strip().lower() in ["none", ""]:
@@ -1873,12 +2134,77 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     title_block_table = build_title_block_table(ref_title_fields, rev_title_fields)
 
     # Build pre-computed BOM table (Python-side, using actual drawing vector text)
-    ref_bom_rows, ref_is_assembly = extract_bom_fields(ref_entities)
-    rev_bom_rows, rev_is_assembly = extract_bom_fields(rev_entities)
+    ref_bounds = ref_drawing.metadata.get("render_bounds") if ref_drawing and ref_drawing.metadata else None
+    rev_bounds = rev_drawing.metadata.get("render_bounds") if rev_drawing and rev_drawing.metadata else None
+    ref_bom_rows, ref_is_assembly = extract_bom_fields(ref_entities, render_bounds=ref_bounds)
+    rev_bom_rows, rev_is_assembly = extract_bom_fields(rev_entities, render_bounds=rev_bounds)
     # Assembly if either drawing is classified as assembly
     is_assembly_drawing = ref_is_assembly or rev_is_assembly
     bom_comparison_table = build_bom_table(ref_bom_rows, rev_bom_rows, is_assembly_drawing)
-    logger.info(f"BOM extraction complete — is_assembly={is_assembly_drawing}, ref_bom_rows={ref_bom_rows}, rev_bom_rows={rev_bom_rows}")
+    logger.info(f"BOM extraction complete - is_assembly={is_assembly_drawing}, ref_bom_rows={ref_bom_rows}, rev_bom_rows={rev_bom_rows}")
+    # --- Compute spatial region bounding boxes for BOM and Title Block ---
+    # These are used to constrain find_drawing_text_coordinates to the correct
+    # geometric zone even when all entities share a generic layer name.
+    def _spatial_region(rows: list, fields: dict, entities: list) -> Optional[tuple]:
+        """Return (xmin, ymin, xmax, ymax) covering all BOM row coordinates and
+        title-block field coordinates extracted from a drawing's entities."""
+        xs, ys = [], []
+        # BOM row coords
+        for row in rows:
+            for cell in row.values():
+                if isinstance(cell, dict):
+                    c = cell.get("coordinates")
+                    if c and len(c) >= 2:
+                        xs.append(c[0]); ys.append(c[1])
+        # Title block coords
+        for cell in fields.values():
+            if isinstance(cell, dict):
+                c = cell.get("coordinates")
+                if c and len(c) >= 2:
+                    xs.append(c[0]); ys.append(c[1])
+        if not xs:
+            return None
+        pad = 50.0  # generous padding so nearby labels are included
+        return (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+
+    def _bom_region(rows: list, entities: list) -> Optional[tuple]:
+        xs, ys = [], []
+        for row in rows:
+            for cell in row.values():
+                if isinstance(cell, dict):
+                    c = cell.get("coordinates")
+                    if c and len(c) >= 2:
+                        xs.append(c[0]); ys.append(c[1])
+        if not xs:
+            return None
+        pad = 40.0
+        return (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+
+    def _title_region(fields: dict, entities: list) -> Optional[tuple]:
+        xs, ys = [], []
+        for cell in fields.values():
+            if isinstance(cell, dict):
+                c = cell.get("coordinates")
+                if c and len(c) >= 2:
+                    xs.append(c[0]); ys.append(c[1])
+        if not xs:
+            return None
+        pad = 40.0
+        return (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+
+    ref_bom_bbox   = _bom_region(ref_bom_rows, ref_entities)
+    rev_bom_bbox   = _bom_region(rev_bom_rows, rev_entities)
+    ref_title_bbox = _title_region(ref_title_fields, ref_entities)
+    rev_title_bbox = _title_region(rev_title_fields, rev_entities)
+
+    logger.info(f"Spatial regions - rev BOM bbox: {rev_bom_bbox} | rev Title bbox: {rev_title_bbox}")
+
+    if rev_bom_bbox and rev_title_bbox:
+        _, bom_ymin, _, bom_ymax = rev_bom_bbox
+        _, title_ymin, _, title_ymax = rev_title_bbox
+        if not (bom_ymin > title_ymax or title_ymin > bom_ymax):
+            logger.warning(f"Spatial region overlap detected! BOM: {rev_bom_bbox}, Title: {rev_title_bbox}")
+
     # Isometric View dynamic detection
     ref_has_iso = any("iso" in e.layer.lower() or "isometric" in e.layer.lower() for e in ref_entities)
     rev_has_iso = any("iso" in e.layer.lower() or "isometric" in e.layer.lower() for e in rev_entities)
@@ -2058,20 +2384,73 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             ])
         contents.append(prompt)
 
-        # Spawns Gemini 2.5 Pro structured response execution with 0.0 temperature for absolute engineering precision
-        response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=PhysicalComparisonResponse,
-                temperature=0.0
-            )
-        )
+        cache_dir = get_storage_root() / "cache"
+        cache_file = cache_dir / f"gemini_comparison_{request.reference_drawing_id}_{request.drawing_id}.json"
+        
+        response_text = None
+        if cache_file.exists():
+            try:
+                async with aiofiles.open(cache_file, "r", encoding="utf-8") as cf:
+                    response_text = await cf.read()
+                logger.info(f"Loaded Gemini response from cache: {cache_file}")
+            except Exception as cache_err:
+                logger.warning(f"Failed to read from cache file: {str(cache_err)}")
+
+        if not response_text:
+            # Construct multimodal contents sequence
+            contents = []
+            if ref_image_part and rev_image_part:
+                contents.extend([
+                    "Reference Drawing Image (Original Baseline version):",
+                    ref_image_part,
+                    "Revised Drawing Image (Updated KMTI version):",
+                    rev_image_part,
+                    "Please compare the two drawings visually and semantically based on the rules."
+                ])
+            contents.append(prompt)
+
+            # Cascade model list: try each in order, with exponential backoff on 503/UNAVAILABLE
+            _model_cascade = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-1.5-pro"]
+            _last_err: Exception | None = None
+            response = None
+            for _attempt, _model in enumerate(_model_cascade):
+                try:
+                    logger.info(f"Gemini comparison attempt {_attempt + 1}/{len(_model_cascade)} using model: {_model}")
+                    response = client.models.generate_content(
+                        model=_model,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            response_mime_type="application/json",
+                            response_schema=PhysicalComparisonResponse,
+                            temperature=0.0
+                        )
+                    )
+                    logger.info(f"Gemini comparison succeeded with model: {_model}")
+                    break  # Success — exit retry loop
+                except Exception as _model_err:
+                    _last_err = _model_err
+                    _err_str = str(_model_err)
+                    _is_overload = "503" in _err_str or "UNAVAILABLE" in _err_str or "overloaded" in _err_str.lower() or "high demand" in _err_str.lower()
+                    if _is_overload and _attempt < len(_model_cascade) - 1:
+                        _backoff = 2 ** (_attempt + 1)  # 2s, 4s, 8s
+                        logger.warning(f"{_model} is unavailable (503/overload). Waiting {_backoff}s before trying next model...")
+                        time.sleep(_backoff)
+                        continue
+                    # Non-retriable error or last model exhausted — propagate
+                    raise _model_err
+            if response is None:
+                raise _last_err or RuntimeError("All Gemini models failed without a response.")
+            response_text = response.text
+            try:
+                async with aiofiles.open(cache_file, "w", encoding="utf-8") as cf:
+                    await cf.write(response_text)
+                logger.info(f"Saved Gemini response to cache: {cache_file}")
+            except Exception as cache_err:
+                logger.warning(f"Failed to save to cache file: {str(cache_err)}")
 
         import json
-        parsed = json.loads(response.text)
+        parsed = json.loads(response_text)
         logger.info("Successfully parsed structured Gemini 2.5 Pro comparison results.")
 
         # Override title_block and bill_of_materials comparative contents with Python-pre-built tables
@@ -2110,25 +2489,31 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             if not is_bom_category(cat):
                 return False
             # Catch other admin cells and cell label headers
-            admin_terms = ["2a", "114", "1", "unit no.", "part no.", "t. q'ty", "t. q’ty", "総製作個数", "コードno.", "ユニットno."]
+            admin_terms = [
+                "2a", "114", "1", "unit no.", "part no.", "t. q'ty", "t. q’ty", "総製作個数", "コードno.", "ユニットno.",
+                "no.", "図面番号", "dwg no.", "dwg.no.", "名称", "title", "個数", "備考", "remark",
+                "材質", "code", "材料寸法", "型式", "dimension", "材料個数", "素材重量", "material wt", "仕上重量", "finished wt"
+            ]
             return any(term in txt for term in admin_terms)
 
-        # Clean title block markings and administrative BOM cells to prevent duplicate checks/pins
-        clean_markings = [m for m in existing_markings if not is_title_block_category(m.get("category"))]
-        clean_markings = [m for m in clean_markings if not is_admin_bom_marking(m)]
+        # Clean title block and ALL Gemini-generated BOM markings to prevent duplicate and false-positive checks/pins
+        clean_markings = [
+            m for m in existing_markings 
+            if not is_title_block_category(m.get("category")) and not is_bom_category(m.get("category"))
+        ]
         
         field_labels_map = {
-            "QTY": "QTY",
-            "CROSS REF NO": "CROSS REF NO.",
-            "PREVIOUS DWG NO": "PREVIOUS DWG NO",
-            "DESIGNED": "DESIGNED",
-            "DRAWN": "DRAWN",
-            "SCALE": "SCALE",
-            "NAME": "NAME",
-            "TITLE": "TITLE",
-            "JOB NO": "JOB NO.",
-            "MACHINE CODE": "MACHINE CODE / UNIT CODE",
-            "DWG NO": "DWG NO."
+            "QTY": "総製作個数 T. Q'ty (Total Quantity)",
+            "CROSS REF NO": "共通番号 Cross ref No.",
+            "PREVIOUS DWG NO": "旧図面番号 Previous Dwg. No.",
+            "DESIGNED": "設計 DESIGNED / 作成 DRAWN",
+            "DRAWN": "設計 DESIGNED / 作成 DRAWN",
+            "SCALE": "尺度 SCALE",
+            "JOB NO": "工事番号 Job No.",
+            "STD NO": "標準図番号 Std. No.",
+            "MACHINE CODE": "機器記号 Mach. code / ユニット記号 Unit Code",
+            "DWG NO": "図面番号 DWG. No. / 機種 Machine Type / ユニット Unit No. / 部品 Part No. / 特性 派生 Branch",
+            "TITLE": "名称 TITLE"
         }
         
         def norm_scale(v):
@@ -2145,16 +2530,21 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             orig_coords = orig_obj.get("coordinates", None) if isinstance(orig_obj, dict) else None
             
             # Equivalence checking
-            if field_key == "SCALE":
-                is_matched = norm_scale(orig_val) == norm_scale(kmti_val)
-            else:
-                is_matched = orig_val.strip().lower() == kmti_val.strip().lower()
-                
-            status_val = "MATCHED" if is_matched else "CHANGED"
+            status_val = compare_values(orig_val, kmti_val)
             
-            if kmti_val:
+            # Exact value coordinate lookup — scoped to title_block spatial region first
+            if kmti_coords is None and kmti_val and kmti_val != "NONE" and len(kmti_val) > 2:
+                exact_coords = find_drawing_text_coordinates(rev_entities, kmti_val, category="title_block", region_bbox=rev_title_bbox)
+                if exact_coords:
+                    kmti_coords = exact_coords
+            if orig_coords is None and orig_val and orig_val != "NONE" and len(orig_val) > 2:
+                exact_coords = find_drawing_text_coordinates(ref_entities, orig_val, category="title_block", region_bbox=ref_title_bbox)
+                if exact_coords:
+                    orig_coords = exact_coords
+
+            if kmti_val != "NONE" or orig_val != "NONE":
                 marking_entry = {
-                    "text_content": kmti_val if kmti_val != "NONE" else display_label.lstrip('- '),
+                    "text_content": kmti_val if kmti_val != "NONE" else orig_val,
                     "status": status_val,
                     "details": f"Title block {display_label.lstrip('- ')} checked: {orig_val} vs {kmti_val}",
                     "category": "title_block"
@@ -2179,12 +2569,21 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             kmti_coords = rev_obj.get("coordinates", None) if isinstance(rev_obj, dict) else None
             orig_coords = orig_obj.get("coordinates", None) if isinstance(orig_obj, dict) else None
             
-            is_matched = orig_val.strip().lower() == kmti_val.strip().lower()
-            status_val = "MATCHED" if is_matched else "CHANGED"
+            status_val = compare_values(orig_val, kmti_val)
             
-            if kmti_val:
+            # Exact value coordinate lookup — scoped to bill_of_materials spatial region first
+            if kmti_coords is None and kmti_val and kmti_val != "NONE" and len(kmti_val) > 2:
+                exact_coords = find_drawing_text_coordinates(rev_entities, kmti_val, category="bill_of_materials", region_bbox=rev_bom_bbox)
+                if exact_coords:
+                    kmti_coords = exact_coords
+            if orig_coords is None and orig_val and orig_val != "NONE" and len(orig_val) > 2:
+                exact_coords = find_drawing_text_coordinates(ref_entities, orig_val, category="bill_of_materials", region_bbox=ref_bom_bbox)
+                if exact_coords:
+                    orig_coords = exact_coords
+
+            if kmti_val != "NONE" or orig_val != "NONE":
                 marking_entry = {
-                    "text_content": kmti_val if kmti_val != "NONE" else display_label,
+                    "text_content": kmti_val if kmti_val != "NONE" else orig_val,
                     "status": status_val,
                     "details": f"BOM block {display_label} checked: {orig_val} vs {kmti_val}",
                     "category": "bill_of_materials"
@@ -2195,10 +2594,99 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     marking_entry["ref_coordinates"] = orig_coords
                 clean_markings.append(marking_entry)
 
-        # 3. Inject BOM row cell markings for all rows
-        for r_idx, rev_row in enumerate(rev_bom_rows):
-            ref_row = ref_bom_rows[r_idx] if r_idx < len(ref_bom_rows) else {}
-            
+        # 3. Inject BOM row cell markings for all rows, aligned by Item Number keys
+        def is_empty_placeholder_remark(val: str) -> bool:
+            if not val or val == "NONE":
+                return True
+            v = val.strip()
+            v = re.sub(r'^[-\u2014\u2015\u2500\u30fc\s]*$', '', v)
+            return len(v) == 0
+
+        def get_val_outer(row_dict, key_name):
+            obj = row_dict.get(key_name, {})
+            if isinstance(obj, dict):
+                return obj.get("value", "NONE") or "NONE"
+            return obj or "NONE"
+
+        def get_row_key(row):
+            no_val = get_val_outer(row, "NO")
+            if no_val == "NONE":
+                return ""
+            return no_val.strip()
+
+        def key_sort_fn(key_str):
+            if key_str.startswith("_ref_idx_"):
+                try:
+                    return (2, int(key_str.split("_")[-1]), key_str)
+                except Exception:
+                    pass
+            if key_str.startswith("_rev_idx_"):
+                try:
+                    return (3, int(key_str.split("_")[-1]), key_str)
+                except Exception:
+                    pass
+            try:
+                nums = re.findall(r'\d+', key_str)
+                if nums:
+                    return (0, int(nums[0]), key_str)
+            except Exception:
+                pass
+            return (1, 0, key_str)
+
+        # Strip entirely blank spacer rows to handle structural row shifts and prevent false-positives
+        def is_blank_spacer(row):
+            if not row:
+                return True
+            if is_assembly_drawing:
+                dwg = get_val_outer(row, "DWG_NO")
+                title = get_val_outer(row, "TITLE")
+                return dwg == "NONE" and title == "NONE"
+            else:
+                code = get_val_outer(row, "CODE")
+                dim = get_val_outer(row, "DIMENSION")
+                return code == "NONE" and dim == "NONE"
+
+        filtered_ref = [r for r in ref_bom_rows if not is_blank_spacer(r)]
+        filtered_rev = [r for r in rev_bom_rows if not is_blank_spacer(r)]
+
+        ref_bom_map = {}
+        for idx, r in enumerate(filtered_ref):
+            k = get_row_key(r)
+            if not k:
+                k = f"_ref_idx_{idx}"
+            ref_bom_map[k] = r
+
+        rev_bom_map = {}
+        for idx, r in enumerate(filtered_rev):
+            k = get_row_key(r)
+            if not k:
+                k = f"_rev_idx_{idx}"
+            rev_bom_map[k] = r
+
+        # Build global texts sets for Fallback Global Text String Check
+        ref_bom_texts = set()
+        for r in filtered_ref:
+            for col_val_obj in r.values():
+                val = col_val_obj.get("value", "NONE") if isinstance(col_val_obj, dict) else col_val_obj
+                if val and val != "NONE" and len(val.strip()) > 1:
+                    ref_bom_texts.add(val.strip().lower())
+
+        rev_bom_texts = set()
+        for r in filtered_rev:
+            for col_val_obj in r.values():
+                val = col_val_obj.get("value", "NONE") if isinstance(col_val_obj, dict) else col_val_obj
+                if val and val != "NONE" and len(val.strip()) > 1:
+                    rev_bom_texts.add(val.strip().lower())
+
+        bom_keys = list(set(ref_bom_map.keys()).union(set(rev_bom_map.keys())))
+        bom_keys.sort(key=key_sort_fn)
+
+        for key in bom_keys:
+            rev_row = rev_bom_map.get(key, {})
+            ref_row = ref_bom_map.get(key, {})
+
+            row_label = f"Unnumbered Row" if (key.startswith("_ref_idx_") or key.startswith("_rev_idx_")) else f"Item {key}"
+
             if is_assembly_drawing:
                 bom_cols = [
                     ("NO", "No."),
@@ -2217,24 +2705,51 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     ("FINISHED_WEIGHT", "仕上重量Kg / Finished Wt(kg)"),
                     ("REMARK", "備考 / Remark")
                 ]
-                
+
             for col_key, display_label in bom_cols:
                 rev_cell = rev_row.get(col_key, {"value": "NONE", "coordinates": None})
                 orig_cell = ref_row.get(col_key, {"value": "NONE", "coordinates": None})
-                
+
                 orig_val = orig_cell.get("value", "NONE") if isinstance(orig_cell, dict) else orig_cell
                 kmti_val = rev_cell.get("value", "NONE") if isinstance(rev_cell, dict) else rev_cell
                 kmti_coords = rev_cell.get("coordinates", None) if isinstance(rev_cell, dict) else None
                 orig_coords = orig_cell.get("coordinates", None) if isinstance(orig_cell, dict) else None
-                
-                is_matched = orig_val.strip().lower() == kmti_val.strip().lower()
-                status_val = "MATCHED" if is_matched else "CHANGED"
-                
-                if kmti_val and kmti_val != "NONE":
+
+                status_val = compare_values(orig_val, kmti_val)
+
+                # Remarks Column Noise-Canceling
+                if col_key == "REMARK":
+                    if is_empty_placeholder_remark(orig_val) and is_empty_placeholder_remark(kmti_val):
+                        status_val = "MATCHED"
+
+                # Safeguard 1: if the item number/row exists in both drawings, it is a change, never an addition or removal!
+                if ref_row and rev_row and status_val in ("ADDED", "REMOVED"):
+                    status_val = "CHANGED"
+
+                # Safeguard 2: Fallback Global Text String Check (protect identical texts from showing as different)
+                if status_val == "ADDED" and kmti_val.strip().lower() in ref_bom_texts:
+                    status_val = "MATCHED"
+                elif status_val == "REMOVED" and orig_val.strip().lower() in rev_bom_texts:
+                    status_val = "MATCHED"
+                elif status_val == "CHANGED":
+                    if kmti_val.strip().lower() in ref_bom_texts and orig_val.strip().lower() in rev_bom_texts:
+                        status_val = "MATCHED"
+
+                # Exact value coordinate lookup — scoped to bill_of_materials spatial region first
+                if kmti_coords is None and kmti_val and kmti_val != "NONE" and len(kmti_val) > 2:
+                    exact_coords = find_drawing_text_coordinates(rev_entities, kmti_val, category="bill_of_materials", region_bbox=rev_bom_bbox)
+                    if exact_coords:
+                        kmti_coords = exact_coords
+                if orig_coords is None and orig_val and orig_val != "NONE" and len(orig_val) > 2:
+                    exact_coords = find_drawing_text_coordinates(ref_entities, orig_val, category="bill_of_materials", region_bbox=ref_bom_bbox)
+                    if exact_coords:
+                        orig_coords = exact_coords
+
+                if kmti_val != "NONE" or orig_val != "NONE":
                     marking_entry = {
-                        "text_content": kmti_val,
+                        "text_content": kmti_val if kmti_val != "NONE" else orig_val,
                         "status": status_val,
-                        "details": f"BOM [Row {r_idx + 1}] {display_label} checked: {orig_val} vs {kmti_val}",
+                        "details": f"BOM [{row_label}] {display_label} checked: {orig_val} vs {kmti_val}",
                         "category": "bill_of_materials"
                     }
                     if kmti_coords is not None:
