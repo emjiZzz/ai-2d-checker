@@ -29,7 +29,16 @@ export interface ViolationItem {
   pen_type?: string;
   is_resolved?: boolean;
   resolved_at?: string | null;
-  checker_remarks?: string | null;
+}
+
+export interface UndoAction {
+  type: "move" | "delete";
+  violationId: string;
+  oldCoords?: [number, number];
+  newCoords?: [number, number];
+  oldRefCoords?: [number, number];
+  newRefCoords?: [number, number];
+  violation?: ViolationItem;
 }
 
 export type UploadState = "idle" | "dragging" | "validating" | "uploading" | "processing" | "completed" | "failed";
@@ -81,6 +90,7 @@ interface WorkspaceState {
   complianceScore: number | null;
   violations: ViolationItem[];
   deletedViolationsStack: ViolationItem[];
+  undoStack: UndoAction[];
   selectedViolation: ViolationItem | null;
   auditError: string | null;
   
@@ -116,6 +126,8 @@ interface WorkspaceState {
   // Undo Actions
   pushDeletedViolation: (violation: ViolationItem) => void;
   popAndRestoreViolation: () => void;
+  pushUndoAction: (action: UndoAction) => void;
+  undoLastAction: () => void;
   
   // Navigation State
   currentNav: "workspace" | "standards" | "history" | "settings";
@@ -158,6 +170,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   complianceScore: null,
   violations: [],
   deletedViolationsStack: [],
+  undoStack: [],
   selectedViolation: null,
   auditError: null,
 
@@ -717,9 +730,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setSelectedClient: (name) => set({ selectedClient: name }),
 
-  pushDeletedViolation: (v) => set((state) => ({
-    deletedViolationsStack: [...state.deletedViolationsStack, v]
-  })),
+  pushDeletedViolation: (v) => set((state) => {
+    const action: UndoAction = {
+      type: "delete",
+      violationId: v.id,
+      violation: v
+    };
+    return {
+      deletedViolationsStack: [...state.deletedViolationsStack, v],
+      undoStack: [...state.undoStack, action]
+    };
+  }),
 
   popAndRestoreViolation: () => {
     const stack = get().deletedViolationsStack;
@@ -727,8 +748,41 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const last = stack[stack.length - 1];
     set({
       deletedViolationsStack: stack.slice(0, -1),
-      violations: [...get().violations, last]
+      violations: [...get().violations, last],
+      undoStack: get().undoStack.filter(act => !(act.type === "delete" && act.violationId === last.id))
     });
+  },
+
+  pushUndoAction: (action) => set((state) => ({
+    undoStack: [...state.undoStack, action]
+  })),
+
+  undoLastAction: () => {
+    const stack = get().undoStack;
+    if (stack.length === 0) return;
+    const last = stack[stack.length - 1];
+    const newStack = stack.slice(0, -1);
+    
+    if (last.type === "delete" && last.violation) {
+      set({
+        undoStack: newStack,
+        violations: [...get().violations, last.violation],
+        deletedViolationsStack: get().deletedViolationsStack.filter(v => v.id !== last.violationId)
+      });
+    } else if (last.type === "move") {
+      set({
+        undoStack: newStack,
+        violations: get().violations.map(v => {
+          if (v.id === last.violationId) {
+            const updated = { ...v };
+            if (last.oldCoords) updated.coordinates = last.oldCoords;
+            if (last.oldRefCoords) updated.ref_coordinates = last.oldRefCoords;
+            return updated;
+          }
+          return v;
+        })
+      });
+    }
   },
 
   resetWorkspace: () => {
@@ -744,6 +798,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       complianceScore: null,
       violations: [],
       deletedViolationsStack: [],
+      undoStack: [],
       selectedViolation: null,
       auditError: null,
     });

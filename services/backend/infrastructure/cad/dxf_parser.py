@@ -250,18 +250,28 @@ class DXFParser:
         
         def transcode_value(val: Any) -> Any:
             if isinstance(val, str):
+                val_clean = val
+                val_clean = val_clean.replace('\uff97', 'x')
+                val_clean = val_clean.replace('\u30e9', 'x')
+                val_clean = val_clean.replace('×', 'x')
+                val_clean = val_clean.replace('ラ', 'x')
                 try:
-                    b = val.encode('latin1')
+                    b = val_clean.encode('latin1')
                 except Exception:
-                    return val
+                    return val_clean
                 for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
                     if not enc:
                         continue
                     try:
-                        return b.decode(enc)
+                        decoded = b.decode(enc)
+                        decoded = decoded.replace('\uff97', 'x')
+                        decoded = decoded.replace('\u30e9', 'x')
+                        decoded = decoded.replace('×', 'x')
+                        decoded = decoded.replace('ラ', 'x')
+                        return decoded
                     except Exception:
                         continue
-                return b.decode('utf-8', errors='replace')
+                return b.decode('utf-8', errors='replace').replace('\uff97', 'x').replace('\u30e9', 'x').replace('×', 'x').replace('ラ', 'x')
             elif isinstance(val, dict):
                 return {transcode_value(k): transcode_value(v) for k, v in val.items()}
             elif isinstance(val, list):

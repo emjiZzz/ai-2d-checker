@@ -7,8 +7,21 @@ import logging
 # Add services/backend to path
 sys.path.append('services/backend')
 
-from api.v1 import perform_physical_comparison
-from api.schemas import PhysicalComparisonRequest, DrawingDocument, ExtractedEntity
+try:
+    from services.backend.api.v1 import perform_physical_comparison
+    from services.backend.api.schemas import PhysicalComparisonRequest
+    from services.backend.domain.models.drawing_document import DrawingDocument
+    from services.backend.domain.models.extracted_entity import ExtractedEntity
+except (ImportError, ModuleNotFoundError):
+    from api.v1 import perform_physical_comparison
+    from api.schemas import PhysicalComparisonRequest
+    try:
+        from domain.models.drawing_document import DrawingDocument
+        from domain.models.extracted_entity import ExtractedEntity
+    except Exception:
+        sys.path.append('services/backend')
+        from domain.models.drawing_document import DrawingDocument
+        from domain.models.extracted_entity import ExtractedEntity
 
 logging.basicConfig(level=logging.INFO)
 

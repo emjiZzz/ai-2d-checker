@@ -10,6 +10,8 @@ import { useThemeStore } from '../../stores/themeStore';
 const cleanCadText = (text: string): string => {
   if (!text) return "";
   let clean = text;
+  // Replace CP932 decoded multiplication sign "ラ" with standard lowercase "x"
+  clean = clean.replace(/ラ/g, "x");
   // Strip grouping braces {...}
   clean = clean.replace(/[{}]/g, "");
   // Strip AutoCAD backslash formatting tags (e.g., \A1;, \W0.85;, \C7;)
@@ -110,7 +112,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       selectedComparisonRegion,
       isRoiEditModeEnabled,
       customRegions,
-      updateCustomRegion
+      updateCustomRegion,
+      visibleMarkerTypes,
+      toggleMarkerTypeVisibility
     } = useReviewStore();
     const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
     const selectViolation = useWorkspaceStore((s) => s.selectViolation);
@@ -128,9 +132,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
     // Draggable Markers State
     const [dragMarkerId, setDragMarkerId] = useState<string | null>(null);
+    const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
     const [dragMarkerStartPos, setDragMarkerStartPos] = useState<[number, number] | null | undefined>(null);
     const [dragMarkerMouseStart, setDragMarkerMouseStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
     const [hasDragMarkerMoved, setHasDragMarkerMoved] = useState(false);
+    const [dragMarkerOriginalCoords, setDragMarkerOriginalCoords] = useState<{ coordinates?: [number, number], ref_coordinates?: [number, number] } | null>(null);
 
     // Custom Context Menu State
     const [contextMenu, setContextMenu] = useState<{
@@ -547,191 +553,197 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           hasBounds = true;
         }
         const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
+        const placedCardRects: { xMin: number; xMax: number; yMin: number; yMax: number }[] = [];
+
         violations.forEach((v, idx) => {
-          const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+          const penType = v.pen_type || 'ai_red';
+          if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green') return;
+
+          // Sheet Isolation filters
+          // 1. ADDED elements (checker_blue) must NOT render on the original drawing (isOldDrawing === true)
+          if (isOldDrawing && penType === 'checker_blue') return;
+          // 2. REMOVED elements (ai_red) must NOT render on the revised drawing (isOldDrawing === false)
+          if (!isOldDrawing && penType === 'ai_red') return;
+
+          let markerType = 'MISMATCHED';
+          if (penType === 'ai_orange') markerType = 'CHANGED';
+          else if (penType === 'checker_blue') markerType = 'ADDED';
+          else if (penType === 'ai_green' || penType === 'resolved_green') markerType = 'MATCHED';
+
+          if (!visibleMarkerTypes[markerType]) return;
+
+          // Strictly use ref_coordinates for old/original drawing, and coordinates for new/revised drawing.
+          // Never fall back to the other drawing's coordinates, which leads to floating markers!
+          let coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
           if (!coords) return;
+
           const [vx, raw_vy] = coords;
           const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
-          const radius = (24 / scale) * resolutionMultiplier;
-          const penType = v.pen_type || 'ai_red';
           const isSelected = selectedViolation?.id === v.id;
 
-          const SHOW_MARKER_TARGETS = showMarkerLabels;
+          const bulletColor = penType === 'ai_red' ? '#ef4444' : penType === 'ai_orange' ? '#f97316' : penType === 'checker_blue' ? '#3b82f6' : '#10b981';
+          const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : 'MATCHED';
+
+          // Project CAD coordinates onto absolute screen/CSS coordinates
+          const screenX = vx * scale + transX;
+          const screenY = vy * scale + transY;
+
+          // Reset context matrix to pixel space scaled by localDpr for stable rendering
+          ctx.save();
+          const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+          ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
+
+          const SHOW_MARKER_TARGETS = (showMarkerLabels && hoveredMarkerId === v.id) || isSelected;
           if (SHOW_MARKER_TARGETS) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.fillStyle = '#ff0055';
-            ctx.arc(vx, vy, (4 / scale) * resolutionMultiplier, 0, 2 * Math.PI);
-            ctx.fill();
+            // Text values to display without truncation
+            const displayVal = v.description || "";
+            const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
+            const displayStat = `Stat: ${statusLabel}`;
 
-            let matchedText: any = null;
-            Object.values(layers).forEach((entities) => {
-              entities.forEach((ent) => {
-                if (ent.type === 'text') {
-                  const rawText = ent.geometry?.text || ent.geometry?.content || ent.properties?.text || '';
-                  if (cleanCadText(rawText).trim() === cleanCadText(v.description).trim()) {
-                    matchedText = ent;
-                  }
-                }
-              });
-            });
+            ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            const seqId = `M${String(idx + 1).padStart(3, '0')}`;
 
-            if (matchedText && matchedText.properties?.bbox) {
-              const [[xmin, ymin], [xmax, ymax]] = matchedText.properties.bbox;
-              const ymin_screen = hasBounds ? (renderYMax + renderYMin - ymax) : ymin;
-              const ymax_screen = hasBounds ? (renderYMax + renderYMin - ymin) : ymax;
-              
-              ctx.beginPath();
-              ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
-              ctx.lineWidth = (1.2 / scale) * resolutionMultiplier;
-              ctx.setLineDash([(3 / scale) * resolutionMultiplier, (3 / scale) * resolutionMultiplier]);
-              ctx.strokeRect(xmin, ymin_screen, xmax - xmin, ymax_screen - ymin_screen);
-              ctx.setLineDash([]);
-              
-              ctx.beginPath();
-              ctx.strokeStyle = '#3b82f6';
-              ctx.lineWidth = (0.8 / scale) * resolutionMultiplier;
-              ctx.moveTo(vx, vy);
-              ctx.lineTo((xmin + xmax) / 2.0, (ymin_screen + ymax_screen) / 2.0);
-              ctx.stroke();
+            ctx.font = `bold ${12 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            const valWidth = ctx.measureText(displayVal).width;
+
+            ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            const catWidth = ctx.measureText(`Cat:  ${displayCat}`).width;
+            const statWidth = ctx.measureText(displayStat).width;
+
+            // Compute dynamic card size to fit all text values comfortably
+            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth);
+            const cardWidth = Math.max(160 * resolutionMultiplier, maxTextWidth + 16 * resolutionMultiplier);
+            const cardHeight = 58 * resolutionMultiplier;
+
+            // Center card horizontally above the marker
+            let labelX = screenX - cardWidth / 2;
+            let labelY = screenY - cardHeight - 12 * resolutionMultiplier;
+
+            // Screen boundaries check (keep on screen)
+            if (labelX < 4 * resolutionMultiplier) labelX = 4 * resolutionMultiplier;
+            const screenLimitWidth = isExport ? renderWidth : width;
+            if (labelX + cardWidth > screenLimitWidth - 4 * resolutionMultiplier) {
+              labelX = screenLimitWidth - cardWidth - 4 * resolutionMultiplier;
             }
 
-            const labelX = vx + (28 / scale) * resolutionMultiplier;
-            const labelY = vy - (14 / scale) * resolutionMultiplier;
+            // Screen-space vertical collision resolution loop to prevent label overlaps
+            let collisionDetected = true;
+            let safetyCounter = 0;
+            while (collisionDetected && safetyCounter < 15) {
+              collisionDetected = false;
+              for (const rect of placedCardRects) {
+                const overlapX = (labelX < rect.xMax && labelX + cardWidth > rect.xMin);
+                const overlapY = (labelY < rect.yMax && labelY + cardHeight > rect.yMin);
+                if (overlapX && overlapY) {
+                  labelY = rect.yMin - cardHeight - 6 * resolutionMultiplier;
+                  collisionDetected = true;
+                  break;
+                }
+              }
+              safetyCounter++;
+            }
+
+            placedCardRects.push({
+              xMin: labelX,
+              xMax: labelX + cardWidth,
+              yMin: labelY,
+              yMax: labelY + cardHeight
+            });
             
-            ctx.fillStyle = 'rgba(9, 9, 11, 0.85)';
-            ctx.strokeStyle = v.is_resolved ? '#10b981' : '#3b82f6';
-            ctx.lineWidth = (1 / scale) * resolutionMultiplier;
+            // Draw premium shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+            ctx.shadowBlur = 8 * resolutionMultiplier;
+            ctx.shadowOffsetX = 2 * resolutionMultiplier;
+            ctx.shadowOffsetY = 3 * resolutionMultiplier;
+
+            ctx.fillStyle = 'rgba(9, 9, 11, 0.95)';
+            ctx.strokeStyle = bulletColor;
+            ctx.lineWidth = 1.2 * resolutionMultiplier;
             
-            const cardWidth = (140 / scale) * resolutionMultiplier;
-            const cardHeight = (44 / scale) * resolutionMultiplier;
             ctx.fillRect(labelX, labelY, cardWidth, cardHeight);
             ctx.strokeRect(labelX, labelY, cardWidth, cardHeight);
 
+            // Restore shadow state for texts
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            // Sequence ID line
             ctx.fillStyle = '#ffffff';
-            ctx.font = `bold ${(8 / scale) * resolutionMultiplier}px monospace`;
-            const seqId = `M${String(idx + 1).padStart(3, '0')}`;
-            ctx.fillText(`[${seqId}]`, labelX + (6 / scale) * resolutionMultiplier, labelY + (10 / scale) * resolutionMultiplier);
+            ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            ctx.fillText(`[${seqId}]`, labelX + 8 * resolutionMultiplier, labelY + 14 * resolutionMultiplier);
             
-            ctx.font = `${(8 / scale) * resolutionMultiplier}px monospace`;
-            ctx.fillText(`Text: ${v.description.substring(0, 16)}`, labelX + (6 / scale) * resolutionMultiplier, labelY + (20 / scale) * resolutionMultiplier);
-            ctx.fillText(`Cat:  ${v.category.replace('_', ' ').substring(0, 16)}`, labelX + (6 / scale) * resolutionMultiplier, labelY + (30 / scale) * resolutionMultiplier);
+            // Bullet marker inline to the left of the text value
+            // Format: [Bullet Marker] Value
+            const cardBulletRadius = 4 * resolutionMultiplier;
+            const cardBulletX = labelX + 14 * resolutionMultiplier;
+            const cardBulletY = labelY + 28 * resolutionMultiplier;
             
-            ctx.fillStyle = v.is_resolved ? '#10b981' : '#ef4444';
-            ctx.fillText(`Stat: ${v.is_resolved ? 'MATCHED' : 'CHANGED'}`, labelX + (6 / scale) * resolutionMultiplier, labelY + (39 / scale) * resolutionMultiplier);
-            
-            ctx.restore();
-          }
-
-          ctx.save();
-
-          if (penType === 'ai_green') {
             ctx.beginPath();
-            ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-            ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
-            ctx.lineWidth = ((isSelected ? 2.5 : 1.5) / scale) * resolutionMultiplier;
-            ctx.shadowBlur = isExport ? 0 : 12;
-            ctx.shadowColor = '#10b981';
-            ctx.arc(vx, vy, radius * 1.5, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.fillStyle = '#10b981';
-            ctx.arc(vx, vy, (4 / scale) * resolutionMultiplier, 0, 2 * Math.PI);
-            ctx.fill();
-          }
-          else if (penType === 'ai_red') {
-            ctx.beginPath();
-            ctx.fillStyle = isSelected ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.05)';
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = ((isSelected ? 3 : 2) / scale) * resolutionMultiplier;
-            ctx.arc(vx, vy, radius, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
-
-            const pinHeight = (24 / scale) * resolutionMultiplier;
-            const pinWidth = (12 / scale) * resolutionMultiplier;
-            ctx.beginPath();
-            ctx.fillStyle = '#ef4444';
+            ctx.arc(cardBulletX, cardBulletY, cardBulletRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = bulletColor;
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = (1 / scale) * resolutionMultiplier;
-            ctx.moveTo(vx, vy);
-            ctx.bezierCurveTo(vx - pinWidth, vy - pinHeight / 2, pinWidth, vy - pinHeight, vx, vy - pinHeight);
-            ctx.bezierCurveTo(vx + pinWidth, vy - pinHeight, pinWidth, vy - pinHeight / 2, vx, vy);
+            ctx.lineWidth = 1 * resolutionMultiplier;
             ctx.fill();
             ctx.stroke();
-
-            ctx.beginPath();
+            
+            // Value text
             ctx.fillStyle = '#ffffff';
-            ctx.arc(vx, vy - pinHeight * 0.7, (3 / scale) * resolutionMultiplier, 0, 2 * Math.PI);
-            ctx.fill();
+            ctx.font = `bold ${12 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            ctx.fillText(displayVal, labelX + 24 * resolutionMultiplier, labelY + 32 * resolutionMultiplier);
+            
+            // Category & Status lines
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            ctx.fillText(`Cat:  ${displayCat}`, labelX + 8 * resolutionMultiplier, labelY + 43 * resolutionMultiplier);
+            
+            ctx.fillStyle = bulletColor;
+            ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+            ctx.fillText(displayStat, labelX + 8 * resolutionMultiplier, labelY + 53 * resolutionMultiplier);
           }
-          else if (penType === 'checker_blue') {
-            ctx.beginPath();
-            ctx.fillStyle = isSelected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.05)';
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = ((isSelected ? 3 : 2) / scale) * resolutionMultiplier;
-            ctx.arc(vx, vy, radius, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
 
-            const pinHeight = (24 / scale) * resolutionMultiplier;
-            const pinWidth = (12 / scale) * resolutionMultiplier;
+          // 1. Draw glowing circular background
+          const radius = 12 * resolutionMultiplier;
+          ctx.beginPath();
+          ctx.fillStyle = isSelected 
+            ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
+            : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.08)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.08)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(16, 185, 129, 0.08)');
+          ctx.arc(screenX, screenY, radius * 1.6, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // 2. Draw solid Circle Bullet marker
+          ctx.beginPath();
+          const bulletRadius = 6 * resolutionMultiplier;
+          ctx.arc(screenX, screenY, bulletRadius, 0, 2 * Math.PI);
+          ctx.fillStyle = bulletColor;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5 * resolutionMultiplier;
+          ctx.fill();
+          ctx.stroke();
+
+          // 2.5 Draw checkmark inside MATCHED solid circle
+          if (markerType === 'MATCHED') {
             ctx.beginPath();
-            ctx.fillStyle = '#3b82f6';
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = (1 / scale) * resolutionMultiplier;
-            ctx.moveTo(vx, vy);
-            ctx.bezierCurveTo(vx - pinWidth, vy - pinHeight / 2, pinWidth, vy - pinHeight, vx, vy - pinHeight);
-            ctx.bezierCurveTo(vx + pinWidth, vy - pinHeight, pinWidth, vy - pinHeight / 2, vx, vy);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.fillStyle = '#ffffff';
-            ctx.arc(vx, vy - pinHeight * 0.7, (3 / scale) * resolutionMultiplier, 0, 2 * Math.PI);
-            ctx.fill();
-          }
-          else if (penType === 'resolved_green' || penType === 'resolved_pink') {
-            const isGreen = penType === 'resolved_green';
-            const primaryColor = isGreen ? '#eab308' : '#ec4899';
-            const bgColor = isGreen ? 'rgba(234, 179, 8, 0.25)' : 'rgba(236, 72, 153, 0.2)';
-
-            ctx.save();
-            if (isGreen) {
-              ctx.shadowBlur = isExport ? 0 : 10;
-              ctx.shadowColor = '#eab308';
-            }
-            ctx.beginPath();
-            ctx.fillStyle = bgColor;
-            ctx.strokeStyle = primaryColor;
-            ctx.lineWidth = ((isSelected ? 3 : 2) / scale) * resolutionMultiplier;
-            ctx.arc(vx, vy, radius * 0.8, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
-            ctx.restore();
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.strokeStyle = (isExport || theme === 'hc-light' || isGreen) ? '#09090b' : '#ffffff';
-            ctx.lineWidth = (3 / scale) * resolutionMultiplier;
+            ctx.lineWidth = 1.8 * resolutionMultiplier;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
-            const size = radius * 0.3;
-            ctx.moveTo(vx - size, vy);
-            ctx.lineTo(vx - size * 0.2, vy + size);
-            ctx.lineTo(vx + size, vy - size);
+            const cx = screenX;
+            const cy = screenY;
+            const size = 3 * resolutionMultiplier;
+            ctx.moveTo(cx - size * 0.8, cy - size * 0.1);
+            ctx.lineTo(cx - size * 0.1, cy + size * 0.6);
+            ctx.lineTo(cx + size * 0.9, cy - size * 0.7);
             ctx.stroke();
-            ctx.restore();
           }
 
+          // 3. Draw selection dashed ring
           if (isSelected) {
             ctx.beginPath();
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = (1.2 / scale) * resolutionMultiplier;
-            ctx.setLineDash([(3 / scale) * resolutionMultiplier, (3 / scale) * resolutionMultiplier]);
-            ctx.arc(vx, vy, radius * 1.8, 0, 2 * Math.PI);
+            ctx.lineWidth = 1.2 * resolutionMultiplier;
+            ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
+            ctx.arc(screenX, screenY, radius * 1.8, 0, 2 * Math.PI);
             ctx.stroke();
             ctx.setLineDash([]);
           }
@@ -834,7 +846,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       }
 
       return { totalEntities, drawnEntities };
-    }, [layers, width, height, viewport, activeLayers, showViolations, showMarkerLabels, violations, selectedViolation, mouseCoords, bgImage, drawing, isNeonCAD, hoveredCoords, isLaserSyncEnabled, theme, lightBgImage, isHoveringMarkerState, oldDrawing]);
+    }, [layers, width, height, viewport, activeLayers, showViolations, showMarkerLabels, violations, selectedViolation, mouseCoords, bgImage, drawing, isNeonCAD, hoveredCoords, isLaserSyncEnabled, theme, lightBgImage, isHoveringMarkerState, oldDrawing, hoveredMarkerId]);
 
     // Redraw logic
     const drawCanvas = useCallback(() => {
@@ -927,6 +939,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       }
 
       const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'z') {
+        e.preventDefault();
+        useWorkspaceStore.getState().undoLastAction();
+        return;
+      }
       if (key === 'escape') {
         e.preventDefault();
         selectViolation(null);
@@ -1058,6 +1075,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           if (markerItem) {
             setDragMarkerId(clickedViolationId);
             setDragMarkerStartPos(isOldDrawing ? markerItem.ref_coordinates : markerItem.coordinates);
+            setDragMarkerOriginalCoords({
+              coordinates: markerItem.coordinates ? [...markerItem.coordinates] : undefined,
+              ref_coordinates: markerItem.ref_coordinates ? [...markerItem.ref_coordinates] : undefined
+            });
             setDragMarkerMouseStart({ x: e.clientX, y: e.clientY });
             setHasDragMarkerMoved(false);
           }
@@ -1179,6 +1200,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
 
     let isHoveringMarker = false;
+    let hoveredMId: string | null = null;
     if (showViolations) {
       const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
       let renderYMin = 0;
@@ -1191,6 +1213,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         hasBounds = true;
       }
       for (const v of violations) {
+        // Skip sheet isolation violations to match rendering logic!
+        if (isOldDrawing && v.pen_type === 'checker_blue') continue;
+        if (!isOldDrawing && v.pen_type === 'ai_red') continue;
+
         const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
         if (!coords) continue;
         const [vx, raw_vy] = coords;
@@ -1198,13 +1224,15 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         const sx = (vx - xmin) * effectiveScale + viewport.x;
         const sy = (vy - ymin) * effectiveScale + viewport.y;
         
-        if (Math.hypot(mx - sx, my - sy) <= 24) {
+        if (Math.hypot(mx - sx, my - sy) <= 18) {
           isHoveringMarker = true;
+          hoveredMId = v.id;
           break;
         }
       }
     }
     setIsHoveringMarkerState(isHoveringMarker);
+    setHoveredMarkerId(hoveredMId);
 
     if (isLaserSyncEnabled) {
       setHoveredCoords({ x: stdX, y: stdY });
@@ -1345,9 +1373,31 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
           });
         }
+      } else {
+        const currentViolations = useWorkspaceStore.getState().violations;
+        const markerItem = currentViolations.find(v => v.id === dragMarkerId);
+        if (markerItem && dragMarkerOriginalCoords) {
+          const coordsChanged =
+            markerItem.coordinates?.[0] !== dragMarkerOriginalCoords.coordinates?.[0] ||
+            markerItem.coordinates?.[1] !== dragMarkerOriginalCoords.coordinates?.[1] ||
+            markerItem.ref_coordinates?.[0] !== dragMarkerOriginalCoords.ref_coordinates?.[0] ||
+            markerItem.ref_coordinates?.[1] !== dragMarkerOriginalCoords.ref_coordinates?.[1];
+            
+          if (coordsChanged) {
+            useWorkspaceStore.getState().pushUndoAction({
+              type: "move",
+              violationId: dragMarkerId,
+              oldCoords: dragMarkerOriginalCoords.coordinates,
+              newCoords: markerItem.coordinates,
+              oldRefCoords: dragMarkerOriginalCoords.ref_coordinates,
+              newRefCoords: markerItem.ref_coordinates
+            });
+          }
+        }
       }
       setDragMarkerId(null);
       setDragMarkerStartPos(null);
+      setDragMarkerOriginalCoords(null);
     }
   };
 
@@ -1361,6 +1411,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     setIsHoveringMarkerState(false);
     setDragMarkerId(null);
     setDragMarkerStartPos(null);
+    setHoveredMarkerId(null);
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -1481,6 +1532,35 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               </span>
             )}
           </div>
+          <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
+          <div style={{ padding: '4px 14px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#71717a', fontWeight: 600 }}>Filter Markers</div>
+          {[
+            { label: "🔴 MISMATCHED", key: "MISMATCHED" },
+            { label: "🟠 CHANGED", key: "CHANGED" },
+            { label: "🔵 ADDED", key: "ADDED" },
+            { label: "🟢 MATCHED", key: "MATCHED" }
+          ].map((item) => (
+            <div
+              key={item.key}
+              className="context-menu-item"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px' }}
+              onClick={() => {
+                toggleMarkerTypeVisibility(item.key);
+                setRedrawTrigger(prev => prev + 1);
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={visibleMarkerTypes[item.key] ?? false}
+                  onChange={() => {}}
+                  style={{ cursor: 'pointer', accentColor: '#00e5ff' }}
+                />
+                <span>{item.label}</span>
+              </span>
+            </div>
+          ))}
+          <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
           <div className="context-menu-item has-submenu">
             <span>➕ Add Marker</span>
             <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▶</span>
@@ -1488,7 +1568,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               {[
                 { label: "🟢 MATCHED", type: "ai_green", isResolved: true, status: "MATCHED" },
                 { label: "🔴 MISMATCHED", type: "ai_red", isResolved: false, status: "MISMATCHED" },
-                { label: "🟠 CHANGE", type: "ai_red", isResolved: false, status: "CHANGED" },
+                { label: "🟠 CHANGE", type: "ai_orange", isResolved: false, status: "CHANGED" },
                 { label: "🔵 ADDED", type: "checker_blue", isResolved: false, status: "ADDED" }
               ].map((opt) => (
                 <div

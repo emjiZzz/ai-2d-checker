@@ -58,6 +58,10 @@ interface ReviewState {
   updateCustomRegion: (key: string, bounds: { xMin: number; xMax: number; yMin: number; yMax: number }) => void;
   resetCustomRegions: () => void;
   loadCustomRegions: (drawingId: string | null) => void;
+
+  // Context Menu Marker Filters
+  visibleMarkerTypes: Record<string, boolean>;
+  toggleMarkerTypeVisibility: (type: string) => void;
 }
 
 export const useReviewStore = create<ReviewState>((set) => ({
@@ -188,5 +192,18 @@ export const useReviewStore = create<ReviewState>((set) => ({
         }
       });
     }
-  }
+  },
+
+  visibleMarkerTypes: {
+    MISMATCHED: true,
+    CHANGED: true,
+    ADDED: true,
+    MATCHED: false
+  },
+  toggleMarkerTypeVisibility: (type) => set((state) => ({
+    visibleMarkerTypes: {
+      ...state.visibleMarkerTypes,
+      [type]: !state.visibleMarkerTypes[type]
+    }
+  }))
 }));

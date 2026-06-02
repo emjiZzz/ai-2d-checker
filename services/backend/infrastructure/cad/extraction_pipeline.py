@@ -311,18 +311,26 @@ class ExtractionPipeline:
             def transcode_str(s: str) -> str:
                 if not s:
                     return ""
+                decoded = s
                 try:
                     b = s.encode('latin1')
+                    for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
+                        if not enc:
+                            continue
+                        try:
+                            decoded = b.decode(enc)
+                            break
+                        except Exception:
+                            continue
                 except Exception:
-                    return s
-                for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
-                    if not enc:
-                        continue
-                    try:
-                        return b.decode(enc)
-                    except Exception:
-                        continue
-                return b.decode('utf-8', errors='replace')
+                    pass
+                
+                # Replace all CP932 decoded multiplication signs with standard x
+                decoded = decoded.replace('\uff97', 'x')
+                decoded = decoded.replace('\u30e9', 'x')
+                decoded = decoded.replace('×', 'x')
+                decoded = decoded.replace('ラ', 'x')
+                return decoded
                 
             # Transcode all layouts (Model & Paper Space)
             for layout in doc.layouts:
