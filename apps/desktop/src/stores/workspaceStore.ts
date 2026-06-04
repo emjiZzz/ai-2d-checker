@@ -29,6 +29,7 @@ export interface ViolationItem {
   pen_type?: string;
   is_resolved?: boolean;
   resolved_at?: string | null;
+  original_value?: string;
 }
 
 export interface UndoAction {

@@ -582,14 +582,27 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
         const placedCardRects: { xMin: number; xMax: number; yMin: number; yMax: number }[] = [];
 
-        violations.forEach((v, idx) => {
+        // Sort violations to enforce visual Z-Index: MATCHED (bottom) < CHANGED < ADDED/REMOVED (top)
+        const getPriority = (penType: string) => {
+          if (penType === 'ai_red' || penType === 'checker_blue') return 3;
+          if (penType === 'ai_orange') return 2;
+          return 1; // ai_green, resolved_green
+        };
+
+        const sortedViolationsWithIndex = violations.map((v, i) => ({ v, i })).sort((a, b) => {
+          return getPriority(a.v.pen_type || 'ai_red') - getPriority(b.v.pen_type || 'ai_red');
+        });
+
+        sortedViolationsWithIndex.forEach(({ v, i: idx }) => {
           const penType = v.pen_type || 'ai_red';
           if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green') return;
 
           // Sheet Isolation filters
           // 1. ADDED elements (checker_blue) must NOT render on the original drawing (isOldDrawing === true)
           if (isOldDrawing && penType === 'checker_blue') return;
-          // 2. REMOVED elements (ai_red) must NOT render on the revised drawing (isOldDrawing === false)
+          // 2. CHANGED elements (ai_orange) must NOT render on the original drawing (isOldDrawing === true)
+          if (isOldDrawing && penType === 'ai_orange') return;
+          // 3. REMOVED elements (ai_red) must NOT render on the revised drawing (isOldDrawing === false)
           if (!isOldDrawing && penType === 'ai_red') return;
 
           let markerType = 'MISMATCHED';
@@ -615,81 +628,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           let screenX = vx * scale + transX;
           let screenY = vy * scale + transY;
 
-          // Proximity text visual width calibration to implement strict right-side inline formatting with zero overlaps
-          let matchedEnt: EntityPayload | null = null;
-          let matchedTextVal = "";
-          let targetSearchTerm = v.description ? v.description.toLowerCase().trim() : "";
-          
-          if (targetSearchTerm) {
-            // Handle vertically stacked Title Block rows by parsing on the bottom line
-            if (targetSearchTerm.includes("\n")) {
-              const lines = targetSearchTerm.split("\n");
-              targetSearchTerm = lines[lines.length - 1].trim();
-            }
-            
-            // Pass 1: exact match
-            for (const [layerName, entities] of Object.entries(layers)) {
-              if (activeLayers[layerName] === false) continue;
-              for (const ent of entities) {
-                if (ent.type === 'text' && ent.geometry) {
-                  const rawText = ent.geometry.text || ent.geometry.content || ent.properties?.text || '';
-                  const textVal = cleanCadText(rawText).trim();
-                  if (textVal.toLowerCase() === targetSearchTerm) {
-                    matchedEnt = ent;
-                    matchedTextVal = textVal;
-                    break;
-                  }
-                }
-              }
-              if (matchedEnt) break;
-            }
-            
-            // Pass 2: fuzzy substring match
-            if (!matchedEnt) {
-              for (const [layerName, entities] of Object.entries(layers)) {
-                if (activeLayers[layerName] === false) continue;
-                for (const ent of entities) {
-                  if (ent.type === 'text' && ent.geometry) {
-                    const rawText = ent.geometry.text || ent.geometry.content || ent.properties?.text || '';
-                    const textVal = cleanCadText(rawText).trim();
-                    const tValNorm = textVal.toLowerCase();
-                    if (tValNorm && (tValNorm.includes(targetSearchTerm) || targetSearchTerm.includes(tValNorm))) {
-                      matchedEnt = ent;
-                      matchedTextVal = textVal;
-                      break;
-                    }
-                  }
-                }
-                if (matchedEnt) break;
-              }
-            }
-          }
-
-          if (matchedEnt && matchedEnt.geometry) {
-            const geo = matchedEnt.geometry;
-            const [tx, ty] = geo.location || geo.insert || [0, 0];
-            const vyText = hasBounds ? (renderYMax + renderYMin - ty) : ty;
-            const textScreenX = tx * scale + transX;
-            const textScreenY = vyText * scale + transY;
-
-            ctx.save();
-            const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
-            ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
-
-            const baseHeight = matchedEnt.properties?.height || matchedEnt.style?.fontSize || 12;
-            const screenHeight = baseHeight * scale;
-
-            ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
-            const textWidth = ctx.measureText(matchedTextVal).width;
-            ctx.restore();
-
-            const cssTextWidth = textWidth / localDpr;
-            const paddingBuffer = 12 * resolutionMultiplier;
-
-            screenX = textScreenX + cssTextWidth + paddingBuffer;
-            screenY = textScreenY;
-          }
-
           // Cache final visual coordinates for accurate hover detection
           markerPositionsRef.current[v.id] = { x: screenX, y: screenY };
 
@@ -704,6 +642,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             const displayVal = v.description || "";
             const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
             const displayStat = `Stat: ${statusLabel}`;
+            
+            // Only add Original Drawing text if it's a CHANGED status and we have the original value
+            const origValueText = (markerType === 'CHANGED' && v.original_value) 
+              ? `Original Drawing: ${v.original_value}` 
+              : null;
 
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             const seqId = `M${String(idx + 1).padStart(3, '0')}`;
@@ -714,11 +657,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             const catWidth = ctx.measureText(`Cat:  ${displayCat}`).width;
             const statWidth = ctx.measureText(displayStat).width;
+            const origWidth = origValueText ? ctx.measureText(origValueText).width : 0;
 
             // Compute dynamic card size to fit all text values comfortably
-            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth);
+            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth, origWidth);
             const cardWidth = Math.max(160 * resolutionMultiplier, maxTextWidth + 16 * resolutionMultiplier);
-            const cardHeight = 58 * resolutionMultiplier;
+            const cardHeight = origValueText ? 72 * resolutionMultiplier : 58 * resolutionMultiplier;
 
             // Center card horizontally above the marker
             let labelX = screenX - cardWidth / 2;
@@ -805,6 +749,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.fillStyle = bulletColor;
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(displayStat, labelX + 8 * resolutionMultiplier, labelY + 53 * resolutionMultiplier);
+            
+            // Render Original value underneath if applicable
+            if (origValueText) {
+              ctx.fillStyle = '#f97316'; // Same as changed marker color
+              ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+              ctx.fillText(origValueText, labelX + 8 * resolutionMultiplier, labelY + 65 * resolutionMultiplier);
+            }
           }
 
           // 1. Draw glowing circular background
@@ -1326,7 +1277,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         renderYMax = ymax;
         hasBounds = true;
       }
-      for (const v of violations) {
+      const getPriority = (penType: string) => {
+        if (penType === 'ai_red' || penType === 'checker_blue') return 3;
+        if (penType === 'ai_orange') return 2;
+        return 1;
+      };
+      
+      const sortedViolations = [...violations].sort((a, b) => {
+        return getPriority(b.pen_type || 'ai_red') - getPriority(a.pen_type || 'ai_red');
+      });
+
+      for (const v of sortedViolations) {
         // Skip sheet isolation violations to match rendering logic!
         if (isOldDrawing && v.pen_type === 'checker_blue') continue;
         if (!isOldDrawing && v.pen_type === 'ai_red') continue;

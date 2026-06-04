@@ -136,13 +136,17 @@ class DXFParser:
                 return
 
             dxftype = entity.dxftype()
-            if dxftype in ("INSERT", "DIMENSION"):
+            if dxftype in ("INSERT", "DIMENSION", "TOLERANCE", "LEADER", "MULTILEADER"):
                 try:
-                    # ezdxf's explode() decomposes INSERT blocks and DIMENSIONS into standard primitives (lines, text, arcs)
+                    if dxftype == "INSERT" and hasattr(entity, "attribs"):
+                        for attrib in entity.attribs:
+                            process_entity(attrib, layout_name, depth + 1)
+                            
+                    # ezdxf's explode() decomposes INSERT blocks, DIMENSIONS, and GD&T/welding symbols into standard primitives (lines, text, arcs)
                     # positioned and rotated correctly in world coordinates, then destroys the source compound entity.
                     exploded_query = entity.explode()
                     for child in exploded_query:
-                        process_entity(child, layout_name, depth + 1, is_dimension=is_dimension or (dxftype == "DIMENSION"))
+                        process_entity(child, layout_name, depth + 1, is_dimension=is_dimension or (dxftype in ("DIMENSION", "TOLERANCE", "LEADER", "MULTILEADER")))
                     return
                 except Exception as explode_err:
                     logger.warning(f"Unable to explode legacys complex {dxftype} entity: {str(explode_err)}")

@@ -622,11 +622,7 @@ export const AuditWorkspace: React.FC = () => {
             return false;
           }
 
-          // Exclude the entire bottom template footer (general tolerance tables and revision tables)
-          // from baseline matched check markers.
-          if (pctY >= 0.65) {
-            return false;
-          }
+          // Bottom footer exclusion removed because it filtered out valid bottom-aligned views/dimensions.
 
           // Strict boundary boxes for the 5 functional engineering regions:
           const regions = {
@@ -947,6 +943,38 @@ export const AuditWorkspace: React.FC = () => {
               penType = "checker_blue";
             }
 
+            const coordStr = coordinates ? `${coordinates[0].toFixed(2)},${coordinates[1].toFixed(2)}` : null;
+            const refCoordStr = ref_coordinates ? `${ref_coordinates[0].toFixed(2)},${ref_coordinates[1].toFixed(2)}` : null;
+
+            const isDuplicate = mappedMarkings.some(m => {
+              if (m.description !== marking.text_content) return false;
+              let coordsMatch = true;
+              if (coordStr) {
+                if (!m.coordinates) coordsMatch = false;
+                else {
+                  const mCoordStr = `${m.coordinates[0].toFixed(2)},${m.coordinates[1].toFixed(2)}`;
+                  if (mCoordStr !== coordStr) coordsMatch = false;
+                }
+              } else if (m.coordinates) {
+                coordsMatch = false;
+              }
+
+              let refCoordsMatch = true;
+              if (refCoordStr) {
+                if (!m.ref_coordinates) refCoordsMatch = false;
+                else {
+                  const mRefCoordStr = `${m.ref_coordinates[0].toFixed(2)},${m.ref_coordinates[1].toFixed(2)}`;
+                  if (mRefCoordStr !== refCoordStr) refCoordsMatch = false;
+                }
+              } else if (m.ref_coordinates) {
+                refCoordsMatch = false;
+              }
+
+              return coordsMatch && refCoordsMatch;
+            });
+
+            if (isDuplicate) continue;
+
             mappedMarkings.push({
               id: `phys_chk_${index}_inst_${i}_${Date.now()}`,
               severity: marking.status === "MATCHED" ? "low" : "high",
@@ -958,7 +986,8 @@ export const AuditWorkspace: React.FC = () => {
               coordinates,
               ref_coordinates,
               pen_type: penType,
-              is_resolved: marking.status === "MATCHED"
+              is_resolved: marking.status === "MATCHED",
+              original_value: marking.original_value
             });
           }
         });
