@@ -97,6 +97,7 @@ export interface DrawingCanvasRef {
 export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
   ({ layers, width, height, drawing }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const markerPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
 
     // Connect stores
     const {
@@ -129,6 +130,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     const [isNeonCAD, setIsNeonCAD] = useState(false);
     const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
     const [redrawTrigger, setRedrawTrigger] = useState(0);
+    const [isSpacePressed, setIsSpacePressed] = useState(false);
 
     // Draggable Markers State
     const [dragMarkerId, setDragMarkerId] = useState<string | null>(null);
@@ -146,6 +148,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       wx: number; // CAD world coordinates
       wy: number;
     } | null>(null);
+    const [preventNextContextMenu, setPreventNextContextMenu] = useState(false);
 
     // Close context menu on outside click
     useEffect(() => {
@@ -161,6 +164,30 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         window.removeEventListener('mousedown', closeMenu);
       };
     }, [contextMenu]);
+
+    // Track Spacebar for panning override
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === ' ' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          setIsSpacePressed(true);
+          e.preventDefault();
+        }
+      };
+      const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.key === ' ') {
+          setIsSpacePressed(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      const handleBlur = () => setIsSpacePressed(false);
+      window.addEventListener('blur', handleBlur);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+        window.removeEventListener('blur', handleBlur);
+      };
+    }, []);
 
     // ROI Interactive Drag handles local states
     const [activeDragHandle, setActiveDragHandle] = useState<{
@@ -585,8 +612,86 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : 'MATCHED';
 
           // Project CAD coordinates onto absolute screen/CSS coordinates
-          const screenX = vx * scale + transX;
-          const screenY = vy * scale + transY;
+          let screenX = vx * scale + transX;
+          let screenY = vy * scale + transY;
+
+          // Proximity text visual width calibration to implement strict right-side inline formatting with zero overlaps
+          let matchedEnt: EntityPayload | null = null;
+          let matchedTextVal = "";
+          let targetSearchTerm = v.description ? v.description.toLowerCase().trim() : "";
+          
+          if (targetSearchTerm) {
+            // Handle vertically stacked Title Block rows by parsing on the bottom line
+            if (targetSearchTerm.includes("\n")) {
+              const lines = targetSearchTerm.split("\n");
+              targetSearchTerm = lines[lines.length - 1].trim();
+            }
+            
+            // Pass 1: exact match
+            for (const [layerName, entities] of Object.entries(layers)) {
+              if (activeLayers[layerName] === false) continue;
+              for (const ent of entities) {
+                if (ent.type === 'text' && ent.geometry) {
+                  const rawText = ent.geometry.text || ent.geometry.content || ent.properties?.text || '';
+                  const textVal = cleanCadText(rawText).trim();
+                  if (textVal.toLowerCase() === targetSearchTerm) {
+                    matchedEnt = ent;
+                    matchedTextVal = textVal;
+                    break;
+                  }
+                }
+              }
+              if (matchedEnt) break;
+            }
+            
+            // Pass 2: fuzzy substring match
+            if (!matchedEnt) {
+              for (const [layerName, entities] of Object.entries(layers)) {
+                if (activeLayers[layerName] === false) continue;
+                for (const ent of entities) {
+                  if (ent.type === 'text' && ent.geometry) {
+                    const rawText = ent.geometry.text || ent.geometry.content || ent.properties?.text || '';
+                    const textVal = cleanCadText(rawText).trim();
+                    const tValNorm = textVal.toLowerCase();
+                    if (tValNorm && (tValNorm.includes(targetSearchTerm) || targetSearchTerm.includes(tValNorm))) {
+                      matchedEnt = ent;
+                      matchedTextVal = textVal;
+                      break;
+                    }
+                  }
+                }
+                if (matchedEnt) break;
+              }
+            }
+          }
+
+          if (matchedEnt && matchedEnt.geometry) {
+            const geo = matchedEnt.geometry;
+            const [tx, ty] = geo.location || geo.insert || [0, 0];
+            const vyText = hasBounds ? (renderYMax + renderYMin - ty) : ty;
+            const textScreenX = tx * scale + transX;
+            const textScreenY = vyText * scale + transY;
+
+            ctx.save();
+            const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+            ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
+
+            const baseHeight = matchedEnt.properties?.height || matchedEnt.style?.fontSize || 12;
+            const screenHeight = baseHeight * scale;
+
+            ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
+            const textWidth = ctx.measureText(matchedTextVal).width;
+            ctx.restore();
+
+            const cssTextWidth = textWidth / localDpr;
+            const paddingBuffer = 12 * resolutionMultiplier;
+
+            screenX = textScreenX + cssTextWidth + paddingBuffer;
+            screenY = textScreenY;
+          }
+
+          // Cache final visual coordinates for accurate hover detection
+          markerPositionsRef.current[v.id] = { x: screenX, y: screenY };
 
           // Reset context matrix to pixel space scaled by localDpr for stable rendering
           ctx.save();
@@ -1023,6 +1128,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
   // Mouse pan triggers
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 1 || e.button === 2 || isSpacePressed) {
+      // Middle click, Right click, or Spacebar+Left click strictly reserved for seamless panning!
+      // Skip all marker and boundary checks to guarantee immediate panning capability
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+      e.preventDefault();
+      return;
+    }
     if (e.button === 0) { // Left click to drag or calibrate
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
@@ -1063,7 +1176,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             const sx = (vx - xmin) * effectiveScale + viewport.x;
             const sy = (vy - ymin) * effectiveScale + viewport.y;
             
-            if (Math.hypot(mx - sx, my - sy) <= 24) {
+            // Reduced detection radius from 24 to 12 for seamless navigation without blocking drags
+            if (Math.hypot(mx - sx, my - sy) <= 12) {
               clickedViolationId = v.id;
               break;
             }
@@ -1221,10 +1335,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         if (!coords) continue;
         const [vx, raw_vy] = coords;
         const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
-        const sx = (vx - xmin) * effectiveScale + viewport.x;
-        const sy = (vy - ymin) * effectiveScale + viewport.y;
+        const pos = markerPositionsRef.current[v.id];
+        const sx = pos ? pos.x : (vx - xmin) * effectiveScale + viewport.x;
+        const sy = pos ? pos.y : (vy - ymin) * effectiveScale + viewport.y;
         
-        if (Math.hypot(mx - sx, my - sy) <= 18) {
+        // Reduced detection radius from 18 to 12 for seamless hover transition
+        if (Math.hypot(mx - sx, my - sy) <= 12) {
           isHoveringMarker = true;
           hoveredMId = v.id;
           break;
@@ -1351,27 +1467,33 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       const newX = e.clientX - dragStart.x;
       const newY = e.clientY - dragStart.y;
       setViewport({ ...viewport, x: newX, y: newY });
+      if (e.buttons === 2) {
+        setPreventNextContextMenu(true);
+      }
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     setIsDragging(false);
     setActiveDragHandle(null);
     setCenterDragStart(null);
 
     if (dragMarkerId) {
       if (!hasDragMarkerMoved) {
-        // Treat as a left-click delete!
         const currentViolations = useWorkspaceStore.getState().violations;
         const markerToDelete = currentViolations.find(v => v.id === dragMarkerId);
         if (markerToDelete) {
-          // Push to undo stack
-          useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
-          // Remove from violations
-          useWorkspaceStore.setState({
-            violations: currentViolations.filter(v => v.id !== dragMarkerId),
-            selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
-          });
+          if (e.altKey) {
+            // Alt + Click deletes the marker (matching the tooltip instructions!)
+            useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
+            useWorkspaceStore.setState({
+              violations: currentViolations.filter(v => v.id !== dragMarkerId),
+              selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
+            });
+          } else {
+            // Standard Left-click selects the violation instead of deleting it!
+            selectViolation(markerToDelete);
+          }
         }
       } else {
         const currentViolations = useWorkspaceStore.getState().violations;
@@ -1416,6 +1538,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (preventNextContextMenu) {
+      setPreventNextContextMenu(false);
+      return;
+    }
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
 
@@ -1483,15 +1609,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         onMouseLeave={handleMouseLeave}
         onContextMenu={handleContextMenu}
         style={{
-          cursor: activeDragHandle
-            ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
-            : hoveredHandleInfo
-              ? (hoveredHandleInfo.cursor as any)
-              : isHoveringMarkerState
-                ? 'pointer'
-                : isDragging
-                  ? 'grabbing'
-                  : 'grab',
+          cursor: isSpacePressed
+            ? (isDragging ? 'grabbing' : 'grab')
+            : activeDragHandle
+              ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
+              : hoveredHandleInfo
+                ? (hoveredHandleInfo.cursor as any)
+                : isHoveringMarkerState
+                  ? 'pointer'
+                  : isDragging
+                    ? 'grabbing'
+                    : 'grab',
           display: 'block',
           width: '100%',
           height: '100%'

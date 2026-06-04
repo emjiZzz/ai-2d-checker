@@ -1879,7 +1879,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                         dist = math.sqrt((4.0 * (vx - lx))**2 + (vy - ly)**2)
                         candidates.append((dist, decoded, [vx, vy]))
                 elif direction == 'right':
-                    if abs(vy - ly) <= scaled_dy_tol and scaled_dy_min <= (vx - lx) <= scaled_dx_tol:
+                    effective_dy_tol = max(scaled_dy_tol, 25.0 * coord_scale)
+                    if abs(vy - ly) <= effective_dy_tol and scaled_dy_min <= (vx - lx) <= scaled_dx_tol:
                         dist = math.sqrt((vx - lx)**2 + (4.0 * (vy - ly))**2)
                         candidates.append((dist, decoded, [vx, vy]))
                         
@@ -1887,7 +1888,42 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 return "NONE", [lx, ly]
                 
             candidates.sort(key=lambda item: item[0])
-            return candidates[0][1], candidates[0][2]
+            closest_candidate = candidates[0]
+            cx, cy = closest_candidate[2][0], closest_candidate[2][1]
+            
+            # Find all vertically stacked text entities sharing a similar column
+            grouped_ents = []
+            seen_texts = set()
+            for e in entities:
+                if e.entity_type != "text":
+                    continue
+                txt = e.properties.get("text", "").strip()
+                if not txt:
+                    continue
+                decoded = safe_decode(txt).strip()
+                if is_garbage_value(decoded):
+                    continue
+                
+                e_geom = e.geometry or {}
+                e_ins = e_geom.get("insert") or [0, 0, 0]
+                vx, vy = e_ins[0], e_ins[1]
+                
+                # Check horizontal proximity to label and vertical proximity to closest candidate
+                if vx >= lx - 5.0 * coord_scale and (vx - lx) <= scaled_dx_tol:
+                    if abs(vx - cx) <= 35.0 * coord_scale and abs(vy - cy) <= 30.0 * coord_scale:
+                        if decoded not in seen_texts:
+                            seen_texts.add(decoded)
+                            grouped_ents.append((vy, decoded, [vx, vy]))
+            
+            if len(grouped_ents) > 1:
+                # Sort from top to bottom (Y descending, since DXF Y-upwards means top row has higher Y)
+                grouped_ents.sort(key=lambda item: item[0], reverse=True)
+                merged_text = "\n".join([item[1] for item in grouped_ents])
+                avg_x = sum([item[2][0] for item in grouped_ents]) / len(grouped_ents)
+                avg_y = sum([item[2][1] for item in grouped_ents]) / len(grouped_ents)
+                return merged_text, [avg_x, avg_y]
+            else:
+                return closest_candidate[1], closest_candidate[2]
 
         def find_entity_coords(target_text: str) -> Optional[list[float]]:
             if not target_text or target_text == "NONE":
