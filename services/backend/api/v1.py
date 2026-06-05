@@ -934,26 +934,195 @@ async def launch_audit(
         )
     )
 
+def safe_decode(text):
+    import re
+    if not text:
+        return ""
+    # Replace CP932 decoded multiplication sign formats with standard lowercase "x"
+    text = text.replace('\uff97', 'x')
+    text = text.replace('\u30e9', 'x')
+    text = text.replace('×', 'x')
+    text = text.replace('ラ', 'x')
+    # If text already contains valid Japanese, return as-is to avoid Mojibake
+    if re.search(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]', text):
+        return text
+    try:
+        b = text.encode('latin1')
+        dec = b.decode('cp932')
+        dec = dec.replace('\uff97', 'x')
+        dec = dec.replace('\u30e9', 'x')
+        dec = dec.replace('×', 'x')
+        dec = dec.replace('ラ', 'x')
+        return dec
+    except Exception:
+        try:
+            b = text.encode('utf-8')
+            dec = b.decode('cp932')
+            dec = dec.replace('\uff97', 'x')
+            dec = dec.replace('\u30e9', 'x')
+            dec = dec.replace('×', 'x')
+            dec = dec.replace('ラ', 'x')
+            if re.search(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]', dec):
+                return dec
+            return text
+        except Exception:
+            return text
+
 def extract_semantic_text_groups(entities: list) -> dict:
     geometry_annotations = []
     notes_zone_text = []
     bom_zone_text = []
     title_block_data = []
     
+    def strip_mtext(t: str) -> str:
+        return re.sub(r'\\[A-Za-z0-9\-~|.]+;', '', t.replace('{', '').replace('}', '')).strip()
+    
+    # Pre-scan for structural label coordinates (Unit No, Part No, etc.) to securely bypass their values
+    structural_coords = []
+    tolerance_coords = []
     for e in entities:
-        if e.entity_type != "text":
+        if e.entity_type == "text":
+            raw_txt = e.properties.get("text")
+            if raw_txt:
+                txt_val = strip_mtext(safe_decode(str(raw_txt)))
+                txt_lower = txt_val.lower()
+                # Structural block scan
+                if any(kw in txt_lower for kw in ["unit no", "ユニットno", "part no", "コードno", "stock q'ty", "総製作個数", "t. q'ty", "共通番号"]):
+                    ins = e.geometry.get("insert")
+                    if ins and len(ins) >= 2:
+                        structural_coords.append((ins[0], ins[1]))
+                # Tolerance table scan
+                txt_no_space = txt_lower.replace(" ", "")
+                # Use both text headers AND tolerance table grid numeric patterns to locate the table robustly
+                if any(kw in txt_no_space for kw in ["表示外公差", "仕上げ記号", "機械加工", "板金加工", "寸法区分"]) or \
+                   ("100s" in txt_lower and "50s" in txt_lower) or \
+                   ("1005" in txt_lower and "505" in txt_lower) or \
+                   ("25s" in txt_lower and "12.5s" in txt_lower) or \
+                   ("255" in txt_lower and "12.55" in txt_lower) or \
+                   re.search(r'^\d+\.?\d*\s*[~〜～\-`\?]\s*\d+\.?\d*$', txt_val) or \
+                   re.search(r'^\d+\.?\d*[sS]\s*[~〜～\-`\?]\s*\d+\.?\d*[sS]$', txt_val) or \
+                   re.search(r'^}\s*\d+\.?\d*$', txt_val):
+                    ins = e.geometry.get("insert")
+                    if ins and len(ins) >= 2:
+                        tolerance_coords.append((ins[0], ins[1]))
+                        
+    min_x, min_y = float('inf'), float('inf')
+    max_x, max_y = float('-inf'), float('-inf')
+    for e in entities:
+        if e.entity_type == "text" and e.geometry:
+            ins = e.geometry.get("insert")
+            if ins and len(ins) >= 2:
+                min_x = min(min_x, ins[0])
+                max_x = max(max_x, ins[0])
+                min_y = min(min_y, ins[1])
+                max_y = max(max_y, ins[1])
+                
+    width = max_x - min_x if max_x > min_x else 1000.0
+    height = max_y - min_y if max_y > min_y else 1000.0
+    dx_margin = width * 0.04
+    dy_margin = height * 0.04
+    
+    for e in entities:
+        if e.entity_type != "text" or not e.geometry:
             continue
-        
+            
         raw_txt = e.properties.get("text")
         if raw_txt is None:
             continue
-        text_val = str(raw_txt).strip()
+            
+        text_val = strip_mtext(safe_decode(str(raw_txt)))
         if not text_val:
             continue
             
         layer_lower = e.layer.lower() if e.layer else ""
-        text_lower = text_val.lower()
+        text_lower = text_val.lower().strip()
+
+        # Hard Filter 1: Strip Outer Border grid markers (A, B, 1, 2) mathematically
+        is_outer_border = False
+        ins = e.geometry.get("insert")
+        if ins and len(ins) >= 2:
+            is_outer_border = (
+                ins[0] <= min_x + dx_margin or ins[0] >= max_x - dx_margin or
+                ins[1] <= min_y + dy_margin or ins[1] >= max_y - dy_margin
+            )
+            
+        if len(text_val) <= 2 and is_outer_border:
+            continue
+            
+        # Hard Filter 2: Strip Column Headers and Category Labels robustly
+        norm_txt = text_lower.replace(" ", "").replace("　", "").replace("’", "'").replace(":", "/")
+        column_headers = {
+            "no.", "no", "code", "dimension", "q'ty", "remark", "title", "dwgno.", "dwgno", 
+            "材質", "寸法", "個数", "重量", "備考", "名称", "図面番号", "材料寸法", "材料個数", "素材重量", "仕上重量",
+            "material", "weight", "qty", "unitcode", "unit/total", "t.q'ty", "stockq'ty",
+            "drawn", "製図", "approved", "承認", "checked", "照査", "designed", "設計",
+            "scale", "尺度", "jobno.", "工事番号", "mach.code", "unitno.", "partno.", "型式",
+            "材質/code", "材料寸法/型式/dimension", "材料個数/q'ty", "素材重量kg/materialwt(kg)", 
+            "仕上重量kg/finishedwt(kg)", "備考/remark", "図面番号/dwgno.", "名称/title"
+        }
         
+        is_header = False
+        for part in norm_txt.split("/"):
+            if part in column_headers:
+                is_header = True
+                break
+        if is_header:
+            continue
+            
+        # If the header is combined with a slash (e.g. "型式 / Code"), check its parts
+        if "/" in norm_txt:
+            parts = [p for p in norm_txt.split("/") if p]
+            if parts and all(p in column_headers for p in parts):
+                continue
+                
+        # Hard Filter 3: General Tolerance Table
+        # The tolerance table is a dense grid of numbers and ranges.
+        is_tolerance_value = False
+        if tolerance_coords:
+            ins = e.geometry.get("insert")
+            if ins and len(ins) >= 2:
+                for cx, cy in tolerance_coords:
+                    # If it's within a tightly bounded box of any tolerance header
+                    if abs(ins[0] - cx) < max(500.0, width * 0.15) and abs(ins[1] - cy) < max(350.0, height * 0.15):
+                        # Filter out isolated numbers, decimals, ranges, and finish symbols
+                        if re.search(r'^\d+(\.\d+)?$', text_val) or \
+                           re.search(r'^\d+\.?\d*\s*~\s*\d+\.?\d*$', text_val) or \
+                           re.search(r'^}\s*\d+\.?\d*$', text_val) or \
+                           re.search(r'^\d+\.?\d*[sS]\s*~\s*\d+\.?\d*[sS]$', text_val) or \
+                           norm_txt in ["表示外公差", "仕上げ記号", "機械加工", "板金加工", "寸法区分", "角度", "長さ", "削り加工", "参考", "example", "finishsymbol"]:
+                            is_tolerance_value = True
+                            break
+        if is_tolerance_value:
+            continue
+
+        # Check if the text is one of the structural labels
+        is_structural_label = any(kw in text_lower for kw in ["unit no", "ユニットno", "part no", "コードno", "stock q'ty", "在庫棚入庫", "t. q'ty", "総製作個数"])
+        
+        # Spatial check: if this text is physically near any of the structural labels, it's a metadata value.
+        is_structural_value = False
+        is_tolerance_value = False
+        ins = e.geometry.get("insert")
+        if ins and len(ins) >= 2:
+            for cx, cy in structural_coords:
+                # Same row (Y-alignment) within 5% of drawing height, and physically to the right (or nearby)
+                if abs(ins[1] - cy) < max(100.0, height * 0.05):
+                    # As long as it's not wildly far away (e.g., width * 0.8)
+                    if abs(ins[0] - cx) < max(1500.0, width * 0.6):
+                        is_structural_value = True
+                        break
+                        
+            # Tolerance table spatial filter: obliterate any generic numbers physically close to the table anchors
+            for cx, cy in tolerance_coords:
+                if abs(ins[0] - cx) < max(500.0, width * 0.15) and abs(ins[1] - cy) < max(450.0, height * 0.20):
+                    # Only delete them if they are typical tolerance table boilerplate (numbers, short codes)
+                    if len(text_val) < 15 and (re.search(r'^\d+(\.\d+)?$', text_val) or "s" in text_lower or "~" in text_val or "〜" in text_val or "-" in text_val or "5" in text_val or "0" in text_val):
+                        is_tolerance_value = True
+                        break
+        
+        # Completely bypass all categories for Unit No, Part No, etc. AND Tolerance Tables
+        if is_structural_label or is_structural_value or is_tolerance_value:
+            continue
+
         # 1. Title Block Data
         is_title = (
             "title" in layer_lower or "header" in layer_lower or "border" in layer_lower or 
@@ -964,7 +1133,7 @@ def extract_semantic_text_groups(entities: list) -> dict:
             "approved" in text_lower or "checked" in text_lower or "designed" in text_lower or
             "drawn" in text_lower or "scale" in text_lower or "dwg no" in text_lower or
             "job no" in text_lower or "cross ref" in text_lower or "prev" in text_lower or
-            any(kw in text_val for kw in ["日下部", "設計", "製図", "尺度", "図番", "図名", "品名", "年月日", "日付", "共通番号", "機番", "計画図", "総製作個数", "個数", "T. Q'ty", "T. Q’ty", "在庫棚入庫", "Stock Q'ty", "ユニットNo.", "Unit No.", "コードNo.", "Part No."]) or
+            any(kw in text_val for kw in ["日下部", "設計", "製図", "尺度", "図番", "図名", "品名", "年月日", "日付", "共通番号", "機番", "計画図", "総製作個数", "個数", "T. Q'ty", "T. Q’ty", "ユニットNo.", "Unit No.", "コードNo.", "Part No."]) or
             re.search(r'\b(?:REV|revision)\.?\s*([A-Z0-9]+)\b', text_val, re.IGNORECASE) or
             re.search(r'^\d{4}/\d{2}/\d{2}$', text_val) or
             re.search(r'^\d{4}-\d{1,2}-\d{1,2}$', text_val) or
@@ -972,6 +1141,8 @@ def extract_semantic_text_groups(entities: list) -> dict:
             (("title" in layer_lower or "header" in layer_lower or "border" in layer_lower or "admin" in layer_lower or "stamp" in layer_lower or "block" in layer_lower) and 
              (re.search(r'^[A-Z0-9_-]+$', text_val) or re.search(r'^\d+(\.\d+)?$', text_val)))
         )
+        if "在庫棚入庫" in text_val or "stock q'ty" in text_lower or "stock" in text_lower:
+            is_title = True  # Map Stock Qty specifically to title block to prevent leaks
         if is_title:
             title_block_data.append(text_val)
             continue
@@ -984,8 +1155,8 @@ def extract_semantic_text_groups(entities: list) -> dict:
             "fin.wt" in text_lower or "finished weight" in text_lower or "remark" in text_lower or
             "ss400" in text_lower or "sus304" in text_lower or "s235jr" in text_lower or
             "s355jr" in text_lower or "a6061" in text_lower or "alumin" in text_lower or
-            "t. q'ty" in text_lower or "stock q'ty" in text_lower or "unit no." in text_lower or "part no." in text_lower or
-            any(kw in text_val for kw in ["材質", "寸法", "型式", "個数", "素材重量", "仕上重量", "備考", "単／全", "総製作個数", "在庫棚入庫", "コードNo.", "ユニットNo."]) or
+            "unit no." in text_lower or "part no." in text_lower or
+            any(kw in text_val for kw in ["材質", "寸法", "型式", "素材重量", "仕上重量", "備考", "単／全", "コードNo.", "ユニットNo."]) or
             re.search(r'\b(?:qty|qt|quantity)\b', text_lower) or
             re.search(r'\b\d+\s*(?:[xX\*×]|\u00d7)\s*\d+\s*(?:[xX\*×]|\u00d7)\s*\d+\b', text_val) or
             # Include weights, counts and other cell contents if they are on a BOM/Table/Parts layer
@@ -1055,39 +1226,26 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     ref_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.reference_drawing_id).to_list()
     rev_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.drawing_id).to_list()
 
-    def safe_decode(text):
-        import re
-        if not text:
-            return ""
-        # Replace CP932 decoded multiplication sign formats with standard lowercase "x"
-        text = text.replace('\uff97', 'x')
-        text = text.replace('\u30e9', 'x')
-        text = text.replace('×', 'x')
-        text = text.replace('ラ', 'x')
-        # If text already contains valid Japanese, return as-is to avoid Mojibake
-        if re.search(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]', text):
-            return text
-        try:
-            b = text.encode('latin1')
-            dec = b.decode('cp932')
-            dec = dec.replace('\uff97', 'x')
-            dec = dec.replace('\u30e9', 'x')
-            dec = dec.replace('×', 'x')
-            dec = dec.replace('ラ', 'x')
-            return dec
-        except Exception:
-            try:
-                b = text.encode('utf-8')
-                dec = b.decode('cp932')
-                dec = dec.replace('\uff97', 'x')
-                dec = dec.replace('\u30e9', 'x')
-                dec = dec.replace('×', 'x')
-                dec = dec.replace('ラ', 'x')
-                if re.search(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]', dec):
-                    return dec
-                return text
-            except Exception:
-                return text
+    # Pre-extract mathematical title block coordinates to globally block them from coordinate snapping and marking
+    global_blocked_coords = []
+    global_blocked_values = set()
+    try:
+        from .v1 import extract_title_fields  # Ensure availability
+        is_assembly_drawing = True # Safe assumption for pre-extraction
+        temp_ref_title = extract_title_fields(ref_entities, is_assembly=is_assembly_drawing)
+        temp_rev_title = extract_title_fields(rev_entities, is_assembly=is_assembly_drawing)
+        for temp_tb in [temp_ref_title, temp_rev_title]:
+            for key in ["Unit No", "Part No", "Total Q'ty", "MACHINE CODE", "DWG NO"]:
+                obj = temp_tb.get(key, {})
+                coords = obj.get("coordinates")
+                val = obj.get("value")
+                if coords and len(coords) >= 2:
+                    global_blocked_coords.append((coords[0], coords[1]))
+                if val and str(val).strip() and str(val).strip() != "NONE":
+                    global_blocked_values.add(str(val).strip())
+    except Exception as e:
+        pass
+
 
     def map_signature_value(text: str) -> str:
         if not text:
@@ -1180,10 +1338,13 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     xmin, ymin = bbox[0]
                     xmax, ymax = bbox[1]
                     box_height = ymax - ymin
-                    return [xmin - (height * 0.5), ymin + (box_height / 2.0)]
+                    return [xmax + (height * 0.8), ymin + (box_height / 2.0)]
                 except Exception:
                     pass
-            return [ins[0] - (height * 1.5), ins[1] + (height / 2.0)]
+            # Estimate text width if bbox is missing or invalid
+            text_len = len(e.properties.get("text", ""))
+            estimated_width = text_len * height * 0.6
+            return [ins[0] + estimated_width + (height * 0.8), ins[1] + (height / 2.0)]
 
         def in_region(e) -> bool:
             """True if the entity's insertion point is inside region_bbox."""
@@ -1212,36 +1373,80 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         for e in entities:
             if e.entity_type != "text" or not e.geometry:
                 continue
+                
+            # --- PREVENT SNAPPING TO TITLE BLOCK METADATA ---
+            ins = e.geometry.get("insert")
+            if ins and len(ins) >= 2:
+                is_blocked = False
+                for bx, by in global_blocked_coords:
+                    if abs(ins[0] - bx) < 5.0 and abs(ins[1] - by) < 5.0:
+                        is_blocked = True
+                        break
+                if is_blocked:
+                    continue
             layer = getattr(e, "layer", "") or ""
             if region_bbox and in_region(e):
                 inside_region.append(e)
             elif layer_matches_category(layer, category):
                 layer_priority.append(e)
             else:
-                elsewhere.append(e)
+                # Prevent cross-contamination: if it belongs explicitly to a different category, SKIP IT!
+                is_cross_contaminated = False
+                for other_cat in ["title_block", "bill_of_materials"]:
+                    if category != other_cat and layer_matches_category(layer, other_cat):
+                        is_cross_contaminated = True
+                        break
+                if not is_cross_contaminated:
+                    elsewhere.append(e)
 
         # Search order: spatially-correct region first, then named-layer match, then global
-        if region_bbox:
-            search_order = inside_region
-        else:
-            search_order = layer_priority + elsewhere
+        search_order = inside_region + layer_priority + elsewhere
+
+        def strip_mtext(t: str) -> str:
+            import re
+            return re.sub(r'\\[A-Za-z0-9\-~|.]+;', '', t.replace('{', '').replace('}', '')).strip()
 
         # Pass 1 – Exact match
         for e in search_order:
+            # Squelch elsewhere fallback for super short strings in strict bounded regions
+            if len(target_norm) < 3 and region_bbox and e in elsewhere:
+                continue
+                
             raw_txt = e.properties.get("text", "")
             if raw_txt:
-                decoded = safe_decode(raw_txt).strip()
+                decoded = strip_mtext(safe_decode(raw_txt))
                 if decoded.replace(" ", "").lower() == target_norm:
                     return get_anchor(e)
 
         # Pass 2 – Containment substring match (target inside drawing text only)
         for e in search_order:
+            if len(target_norm) < 3 and region_bbox and e in elsewhere:
+                continue
             raw_txt = e.properties.get("text", "")
             if raw_txt:
-                decoded = safe_decode(raw_txt).strip()
+                decoded = strip_mtext(safe_decode(raw_txt))
                 dec_norm = decoded.replace(" ", "").lower()
-                if len(target_norm) > 2 and target_norm in dec_norm:
-                    return get_anchor(e)
+                if target_norm in dec_norm:
+                    if len(target_norm) > 2:
+                        return get_anchor(e)
+                    else:
+                        import re
+                        # For short strings (like "10" or "m6"), only allow if surrounded by non-digits or start/end
+                        # This prevents "10" from matching "100"
+                        if re.search(r'(^|\D)' + re.escape(target_norm) + r'(\D|$)', dec_norm):
+                            return get_anchor(e)
+
+        # Pass 3 – Fallback partial match for fragmented CAD text (e.g. single characters)
+        if len(target_norm) >= 3:
+            prefix = target_norm[:2]
+            for e in search_order:
+                raw_txt = e.properties.get("text", "")
+                if raw_txt:
+                    dec_norm = safe_decode(raw_txt).strip().replace(" ", "").lower()
+                    # If the CAD entity is just the first 1 or 2 characters of our target
+                    if dec_norm and (dec_norm in prefix or prefix in dec_norm):
+                        return get_anchor(e)
+
         return None
 
     # --- DYNAMIC 100% ACCURATE REAL PARSING ---
@@ -1308,8 +1513,30 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         def get_val(fields, key):
             val_obj = fields.get(key, "NONE")
             if isinstance(val_obj, dict):
-                return val_obj.get("value", "NONE")
-            return val_obj
+                val = val_obj.get("value", "NONE")
+            else:
+                val = val_obj
+                
+            val_str = str(val).strip()
+            if val_str == "NONE":
+                return val_str
+                
+            if key == 'DRAWN':
+                val_str = re.sub(r'^(?:作\s*成|製\s*図|DRAWN)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+            elif key == 'DESIGNED':
+                val_str = re.sub(r'^(?:設\s*計|DESIGNED)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+            elif key == 'JOB NO':
+                val_str = re.sub(r'^(?:工\s*事\s*番\s*号|JOB\s*NO\.?)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+            elif key == 'MACHINE CODE':
+                val_str = re.sub(r'^(?:機\s*器\s*/?\s*ユ\s*ニ\s*ッ\s*ト\s*記\s*号|機\s*器\s*記\s*号|ユ\s*ニ\s*ッ\s*ト\s*記\s*号|Mach\.?\s*code|Unit\s*Code)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+            elif key == 'DWG NO':
+                val_str = re.sub(r'^(?:図\s*面\s*番\s*号|DWG\.?\s*No\.?|機\s*種|Machine\s*Type|ユ\s*ニ\s*ッ\s*ト|Unit\s*No\.?|部\s*品|Part\s*No\.?|特\s*性|派\s*生|Branch)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+            elif key == 'TITLE':
+                val_str = re.sub(r'^(?:名\s*称|TITLE)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+            elif key == 'QTY':
+                val_str = re.sub(r'^(?:総\s*製\s*作\s*個\s*数|T\.\s*Q\'ty|Total\s*Quantity)\s*:?\s*', '', val_str, flags=re.IGNORECASE).strip()
+                
+            return val_str or "NONE"
 
         ref_des = get_val(ref_fields, 'DESIGNED')
         ref_drw = get_val(ref_fields, 'DRAWN')
@@ -1870,6 +2097,18 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 if is_garbage_value(decoded):
                     continue
                     
+                if exclude_patterns:
+                    exclude_found = False
+                    norm_txt_c = txt.replace(" ", "").lower()
+                    norm_dec_c = decoded.replace(" ", "").lower()
+                    for excl in exclude_patterns:
+                        norm_excl = excl.replace(" ", "").lower()
+                        if norm_excl in norm_txt_c or norm_excl in norm_dec_c:
+                            exclude_found = True
+                            break
+                    if exclude_found:
+                        continue
+                        
                 e_geom = e.geometry or {}
                 e_ins = e_geom.get("insert") or [0, 0, 0]
                 vx, vy = e_ins[0], e_ins[1]
@@ -1877,22 +2116,99 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 if direction == 'below':
                     if abs(vx - lx) <= scaled_dx_tol and scaled_dy_min <= (ly - vy) <= scaled_dy_tol:
                         dist = math.sqrt((4.0 * (vx - lx))**2 + (vy - ly)**2)
-                        candidates.append((dist, decoded, [vx, vy]))
+                        h = e.properties.get("height", 3.0)
+                        bbox = e.properties.get("bbox")
+                        if bbox and len(bbox) >= 2:
+                            xmax, ymin, ymax = bbox[1][0], bbox[0][1], bbox[1][1]
+                            candidates.append((dist, decoded, [xmax + (h * 0.8), ymin + ((ymax - ymin) / 2.0)]))
+                        else:
+                            candidates.append((dist, decoded, [vx + (h * 0.8), vy + (h * 0.5)]))
                 elif direction == 'right':
-                    if abs(vy - ly) <= scaled_dy_tol and scaled_dy_min <= (vx - lx) <= scaled_dx_tol:
+                    effective_dy_tol = max(scaled_dy_tol, 25.0 * coord_scale)
+                    if abs(vy - ly) <= effective_dy_tol and scaled_dy_min <= (vx - lx) <= scaled_dx_tol:
                         dist = math.sqrt((vx - lx)**2 + (4.0 * (vy - ly))**2)
-                        candidates.append((dist, decoded, [vx, vy]))
+                        h = e.properties.get("height", 3.0)
+                        bbox = e.properties.get("bbox")
+                        if bbox and len(bbox) >= 2:
+                            xmax, ymin, ymax = bbox[1][0], bbox[0][1], bbox[1][1]
+                            candidates.append((dist, decoded, [xmax + (h * 0.8), ymin + ((ymax - ymin) / 2.0)]))
+                        else:
+                            candidates.append((dist, decoded, [vx + (h * 0.8), vy + (h * 0.5)]))
                         
             if not candidates:
                 return "NONE", [lx, ly]
                 
             candidates.sort(key=lambda item: item[0])
-            return candidates[0][1], candidates[0][2]
+            closest_candidate = candidates[0]
+            cx, cy = closest_candidate[2][0], closest_candidate[2][1]
+            
+            # Find all vertically stacked text entities sharing a similar column
+            grouped_ents = []
+            seen_texts = set()
+            for e in entities:
+                if e.entity_type != "text":
+                    continue
+                txt = e.properties.get("text", "").strip()
+                if not txt:
+                    continue
+                decoded = safe_decode(txt).strip()
+                if is_garbage_value(decoded):
+                    continue
+                
+                e_geom = e.geometry or {}
+                e_ins = e_geom.get("insert") or [0, 0, 0]
+                vx, vy = e_ins[0], e_ins[1]
+                
+                if exclude_patterns:
+                    exclude_found = False
+                    norm_txt_c = txt.replace(" ", "").lower()
+                    norm_dec_c = decoded.replace(" ", "").lower()
+                    for excl in exclude_patterns:
+                        norm_excl = excl.replace(" ", "").lower()
+                        if norm_excl in norm_txt_c or norm_excl in norm_dec_c:
+                            exclude_found = True
+                            break
+                    if exclude_found:
+                        continue
+                
+                
+                # Check horizontal proximity to label and vertical proximity to closest candidate
+                if vx >= lx - 5.0 * coord_scale and (vx - lx) <= scaled_dx_tol:
+                    if abs(vx - cx) <= 10.0 * coord_scale and abs(vy - cy) <= 15.0 * coord_scale:
+                        if decoded not in seen_texts:
+                            seen_texts.add(decoded)
+                            h = e.properties.get("height", 3.0)
+                            bbox = e.properties.get("bbox")
+                            if bbox and len(bbox) >= 2:
+                                xmax, ymin, ymax = bbox[1][0], bbox[0][1], bbox[1][1]
+                                grouped_ents.append((vy, decoded, [xmax + (h * 0.8), ymin + ((ymax - ymin) / 2.0)]))
+                            else:
+                                grouped_ents.append((vy, decoded, [vx + (h * 0.8), vy + (h * 0.5)]))
+            
+            if len(grouped_ents) > 1:
+                # Sort from top to bottom (Y descending, since DXF Y-upwards means top row has higher Y)
+                grouped_ents.sort(key=lambda item: item[0], reverse=True)
+                merged_text = "\n".join([item[1] for item in grouped_ents])
+                avg_x = sum([item[2][0] for item in grouped_ents]) / len(grouped_ents)
+                avg_y = sum([item[2][1] for item in grouped_ents]) / len(grouped_ents)
+                return merged_text, [avg_x, avg_y]
+            else:
+                return closest_candidate[1], closest_candidate[2]
 
         def find_entity_coords(target_text: str) -> Optional[list[float]]:
             if not target_text or target_text == "NONE":
                 return None
             target_norm = target_text.strip().lower()
+            
+            def get_centered_coords(e):
+                h = e.properties.get("height", 3.0)
+                bbox = e.properties.get("bbox")
+                if bbox and len(bbox) >= 2:
+                    return [bbox[1][0] + (h * 0.8), bbox[0][1] + ((bbox[1][1] - bbox[0][1]) / 2.0)]
+                e_geom = e.geometry or {}
+                e_ins = e_geom.get("insert") or [0, 0, 0]
+                return [e_ins[0] + (h * 0.8), e_ins[1] + (h * 0.5)]
+
             # Try to match in title layers first to avoid snapping to zone numbers or other text
             for e in entities:
                 if e.entity_type == "text":
@@ -1903,9 +2219,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                         if raw_txt:
                             decoded = safe_decode(raw_txt).strip()
                             if decoded.lower() == target_norm:
-                                e_geom = e.geometry or {}
-                                e_ins = e_geom.get("insert") or [0, 0, 0]
-                                return [e_ins[0], e_ins[1]]
+                                return get_centered_coords(e)
             # Try exact match in all layers
             for e in entities:
                 if e.entity_type == "text":
@@ -1913,9 +2227,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     if raw_txt:
                         decoded = safe_decode(raw_txt).strip()
                         if decoded.lower() == target_norm:
-                            e_geom = e.geometry or {}
-                            e_ins = e_geom.get("insert") or [0, 0, 0]
-                            return [e_ins[0], e_ins[1]]
+                            return get_centered_coords(e)
             # Substring match in title layers
             for e in entities:
                 if e.entity_type == "text":
@@ -1926,9 +2238,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                         if raw_txt:
                             decoded = safe_decode(raw_txt).strip()
                             if target_norm in decoded.lower():
-                                e_geom = e.geometry or {}
-                                e_ins = e_geom.get("insert") or [0, 0, 0]
-                                return [e_ins[0], e_ins[1]]
+                                return get_centered_coords(e)
             # Substring match in all layers
             for e in entities:
                 if e.entity_type == "text":
@@ -1936,12 +2246,10 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     if raw_txt:
                         decoded = safe_decode(raw_txt).strip()
                         if target_norm in decoded.lower():
-                            e_geom = e.geometry or {}
-                            e_ins = e_geom.get("insert") or [0, 0, 0]
-                            return [e_ins[0], e_ins[1]]
+                            return get_centered_coords(e)
             return None
 
-        qty, qty_coords = extract_proximity_value(["T. Q'ty", "T. Q\u2019ty", "総製作個数"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
+        qty, qty_coords = extract_proximity_value(["T. Q'ty", "T. Q\u2019ty", "総製作個数"], "right", 150.0, 6.0, 1.0, ["Stock", "在庫", "棚入庫"], prefer_highest_y=True)
         cross_ref, cross_ref_coords = extract_proximity_value(["Cross ref No.", "共通番号"], "below", 5.0, 30.0, 1.0, ["Previous", "旧"], prefer_lowest_y=True)
         prev_dwg, prev_dwg_coords = extract_proximity_value(["Previous Dwg. No,", "Previous Dwg. No.", "旧図面番号"], "below", 5.0, 30.0, 1.0, prefer_lowest_y=True)
         designed, designed_coords = extract_proximity_value(["DESIGNED", "設計"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
@@ -2273,10 +2581,16 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "   - Smallest differences in symbols (e.g. 'Ø10' vs 'Ø12'), arrow alignments, text heights, or Katakana/Kanji changes ('M24' vs 'M24通シ') must be caught and reported under CHANGED status.\n"
             "   - You must review all main dimensions (e.g. 38, 12, 105, 65, etc.). Check the Full Text lists to verify if a dimension exists in both drawings. Do not report a dimension as deleted (ghost discrepancy) if it is present in the revised drawing's text list.\n\n"
             "2. NOTES SECTION:\n"
-            "   - Keep in mind that Notes do not have a standard templated position and their placement varies based on where the drawing has wide blank spaces. However, they are mostly positioned below the upper-left title block.\n"
-            "   - Read instructions line-by-line. Preserve formatting.\n"
-            "   - Classify standard, special, manufacturing, and safety notes.\n"
-            "   - Detect added notes, removed notes, modified notes, formatting changes, symbol changes, or swapped line hierarchies.\n\n"
+            "   - Keep in mind that the position of notes in the drawing may not always be in one place; they are positioned depending on the free space in the drawing template.\n"
+            "   - Read instructions line-by-line and preserve formatting.\n"
+            "   - ENFORCE STRICT PROCESS SEQUENCE: Process notes MUST be organized chronologically according to the processes the parts will undergo. Validate the following hierarchy:\n"
+            "       a. Machining before welding (for welded parts): Ensure parts with a machining symbol inside parentheses indicate that machining must be processed first before welding.\n"
+            "       b. Welding notes.\n"
+            "       c. Annealing and Shot blasting process.\n"
+            "       d. Surface treatment or Surface coating.\n"
+            "       e. Additional drawing notes.\n"
+            "       f. Standard notes (The standard notes MUST ALWAYS be placed at the very end/last part of the notes section).\n"
+            "   - Detect added notes, removed notes, modified notes, formatting changes, symbol changes, or swapped line hierarchies that violate this process sequence.\n\n"
             "3. BILL OF MATERIALS (BOM):\n"
             "   - Compare row by row, column by column, cell by cell.\n"
             "   - Rigorously check all columns including: 'Unit No.', 'Part No.', 'T. Q'ty', 'Stock Q'ty', 'No.', 'Code', 'Dimension/Model No.', 'Material Weight (kg)', 'Finished Weight (kg)', and 'Remark'.\n"
@@ -2317,10 +2631,6 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "     * Enforce status rules: If any of the 11 fields has meaningfully different values between ORIGINAL and KMTI (after applying equivalence rules like scale notation), the overall status of `title_block` MUST be 'CHANGED'. If they are all equivalent, it is 'MATCHED'.\n"
             "     * Set `difference_summary` to a concise 1-2 sentence description summarizing the title block check outcome (e.g. 'All 11 metadata fields matched perfectly' or 'Title block check identified a mismatch: QTY differs between drawings').\n"
             "     * Set `engineering_discrepancy_details` to specific details about any mismatch found (e.g. 'QTY is 1 in original but 2 in KMTI') or 'All 11 title block fields matched successfully' if none.\n"
-            "     * Under `canvas_markings`, for EVERY Title Block field that is checked, add one canvas marking with:\n"
-            "       - `text_content`: The exact raw value as it physically appears in KMTI (e.g. the actual job number, drawing number, machine code, etc. read from the drawing) — NEVER use placeholder or example strings here.\n"
-            "       - `status`: MATCHED (if equivalent to original, using equivalence rules) or CHANGED (if genuinely different).\n"
-            "       - `details`: A brief description such as 'Job No. matched' or 'QTY changed from 1 to 2'.\n"
             "       - `category`: 'title_block'.\n\n"
             "5. ISOMETRIC VIEW:\n"
             "   - Keep in mind that the Isometric View does not have a standard templated position and its placement varies based on available sheet space. Typically, it is positioned below the BOM on the upper-right side.\n"
@@ -2331,12 +2641,18 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "   - Compare sheet borders grid patterns, margin tick configurations, Tree views, and drawing coordinates.\n\n"
             "Enforce status values strictly from: MATCHED, CHANGED, ADDED, REMOVED, MISSING.\n\n"
             "VISUAL CANVAS CHECKLIST MARKINGS (canvas_markings):\n"
-            "You must perform a complete audit of all elements. To ensure every checked element gets an overlay check/pin on the active drawing canvas, you MUST populate the 'canvas_markings' list. For EVERY key notes text line, BOM cell/row, title block field, and main dimension/symbol checked in the revised KMTI drawing:\n"
-            "  - 'text_content': The exact, raw text string as it physically appears inside the revised KMTI drawing (e.g., 'Ø12 hole', 'B1', '162', 'SS400', '38', '12', '105', '2652', etc.). Do not include comparisons, descriptions, or text from both drawings (like 'Ø10 hole (ORIGINAL) vs Ø12 hole (KMTI)') in this field; it MUST be the exact raw string from KMTI. This is a critical requirement so the frontend text locator can resolve the string to the correct coordinate in the CAD layers.\n"
+            "You must perform a complete audit of all elements. To ensure every checked element gets an overlay check/pin on the active drawing canvas, you MUST populate the 'canvas_markings' list. For EVERY key notes text line and main dimension/symbol checked in the revised KMTI drawing:\n"
+            "  - 'text_content': The exact, raw text string as it physically appears inside the revised KMTI drawing (e.g., 'Ø12 hole', '38', '12', '105', etc.). Do not include comparisons, descriptions, or text from both drawings (like 'Ø10 hole (ORIGINAL) vs Ø12 hole (KMTI)') in this field; it MUST be the exact raw string from KMTI. This is a critical requirement so the frontend text locator can resolve the string to the correct coordinate in the CAD layers.\n"
             "  - 'status': Enforce one of: MATCHED, CHANGED, ADDED, REMOVED.\n"
+            "  - 'original_value': If status is CHANGED or REMOVED, you MUST provide the exact raw text string from the ORIGINAL Reference Drawing. If status is MATCHED or ADDED, leave this blank or null.\n"
             "  - 'details': A brief 1-line description of the audit result containing the comparison text (e.g., 'Dimension Ø10 hole in original changed to Ø12 hole in KMTI' or 'Dimension 38 remains unchanged').\n"
-            "  - 'category': The exact checklist segment this text belongs to. Enforce one of: 'drawing_views', 'notes_section', 'bill_of_materials', 'title_block', 'isometric_view'.\n"
-            "CRITICAL: Do not just list changes or errors! You must include ALL verified text items in 'canvas_markings' (e.g. unchanged notes lines, unchanged BOM values, unchanged title block metadata parameters, unchanged dimensions) with MATCHED status, so the frontend can display green check marks over all correct/matching elements on the drawing canvas."
+            "  - 'category': The exact checklist segment this text belongs to. Enforce one of: 'drawing_views', 'notes_section', 'isometric_view'.\n"
+            "CRITICAL EXCLUSIONS AND RULES:\n"
+            "  1. DO NOT generate 'canvas_markings' for Bill of Materials ('bill_of_materials') or Title Block ('title_block') elements. The backend Python engine programmatically generates exact mathematical markers for these. You must completely skip them in the 'canvas_markings' list to prevent duplicate overlap bugs and header snapping.\n"
+            "  2. ISOMETRIC VIEW TAGGING: When adding a marking for the 'isometric_view', you MUST use a specific identifiable text string that exists in the drawing (e.g. the actual isometric geometric block label like 'ISOMETRIC VIEW' or 'SCALE 1:1'), rather than using vague floating symbols like '1' or '①' which can snap to the wrong CAD features.\n"
+            "  3. STRIP MARKERS FROM OUTER BORDER / TEMPLATE: Do NOT generate 'canvas_markings' for grid markers (e.g., A, B, C, 1, 2, 3) or template lines located along the extreme outer edges/margins of the drawing frame.\n"
+            "  4. STRIP MARKERS FROM COLUMN HEADERS: Do NOT generate 'canvas_markings' for table headers or category labels (e.g., 'No.', 'Title', 'Q\\'ty', 'Remark', 'Unit No.', 'Part No.', 'Code'). These are structural templates, not inspected design values.\n"
+            "  5. Do not just list changes or errors! You must include ALL verified text items in 'canvas_markings' (e.g. unchanged notes lines, unchanged dimensions) with MATCHED status, so the frontend can display green check marks over all correct/matching elements on the drawing canvas."
         )
 
         # Load rendering images for multimodal visual check if they exist
@@ -2480,11 +2796,13 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         def is_admin_bom_marking(m: dict) -> bool:
             txt = str(m.get("text_content", "")).strip().lower()
             details = str(m.get("details", "")).strip().lower()
-            # Aggressively remove any Stock Q'ty or '0' markings to prevent STOCK QTY highlights
+            
+            # Aggressively remove any Stock Q'ty or '0' markings across ALL categories (Fixes Issue 3)
             if any(x in txt or x in details for x in ["stock", "在庫", "棚", "0.0", "0.00"]):
                 return True
             if txt == "0":
                 return True
+                
             cat = m.get("category", "")
             if not is_bom_category(cat):
                 return False
@@ -2499,33 +2817,53 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         # Clean title block and ALL Gemini-generated BOM markings to prevent duplicate and false-positive checks/pins
         clean_markings = [
             m for m in existing_markings 
-            if not is_title_block_category(m.get("category")) and not is_bom_category(m.get("category"))
+            if not is_title_block_category(m.get("category")) 
+            and not is_bom_category(m.get("category")) 
+            and not is_admin_bom_marking(m)
+            and str(m.get("text_content", "")).strip() not in global_blocked_values
         ]
+        
+        # Post-process Gemini canvas markings to extract original_value for CHANGED markers (Fixes Issue 1)
+        for m in clean_markings:
+            if m.get("status") == "CHANGED" and not m.get("original_value"):
+                d = m.get("details", "")
+                if " changed: " in d and " -> " in d:
+                    try:
+                        m["original_value"] = d.split(" changed: ")[1].split(" -> ")[0].strip()
+                    except Exception:
+                        pass
         
         field_labels_map = {
             "QTY": "総製作個数 T. Q'ty (Total Quantity)",
             "CROSS REF NO": "共通番号 Cross ref No.",
             "PREVIOUS DWG NO": "旧図面番号 Previous Dwg. No.",
-            "DESIGNED": "設計 DESIGNED / 作成 DRAWN",
-            "DRAWN": "設計 DESIGNED / 作成 DRAWN",
+            "DESIGNED": "設計 DESIGNED",
+            "DRAWN": "作成 DRAWN",
             "SCALE": "尺度 SCALE",
+            "NAME": "名称 TITLE",
             "JOB NO": "工事番号 Job No.",
             "STD NO": "標準図番号 Std. No.",
             "MACHINE CODE": "機器記号 Mach. code / ユニット記号 Unit Code",
-            "DWG NO": "図面番号 DWG. No. / 機種 Machine Type / ユニット Unit No. / 部品 Part No. / 特性 派生 Branch",
-            "TITLE": "名称 TITLE"
+            "DWG NO": "図面番号 DWG. No. / 機種 Machine Type / ユニット Unit No. / 部品 Part No. / 特性 派生 Branch"
         }
         
         def norm_scale(v):
             return re.sub(r':', '/', v.strip()) if v and v != 'NONE' else v
+            
+        def sanitize_title_value(val):
+            # Fixes Issue 4 & 5: Strips label prefixes before comparison and assignment
+            if val == "NONE" or not val:
+                return val
+            val = re.sub(r'^(作\s*成|設\s*計|drawn|designed|検\s*図|承\s*認|checked|approved|機\s*器\s*記\s*号|機\s*番\s*記\s*号|ユ\s*ニ\s*ッ\s*ト\s*記\s*号|mach\.?\s*code|unit\s*code|工\s*事\s*番\s*号|job\s*no\.?|図\s*面\s*番\s*号|dwg\s*no\.?|dwg\.no|尺\s*度|scale)\s*[:：\-]*\s*', '', val, flags=re.IGNORECASE)
+            return val.strip()
 
         # 1. Inject Title Block markings
         for field_key, display_label in field_labels_map.items():
             orig_obj = ref_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
             rev_obj = rev_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
             
-            orig_val = orig_obj.get("value", "NONE") if isinstance(orig_obj, dict) else orig_obj
-            kmti_val = rev_obj.get("value", "NONE") if isinstance(rev_obj, dict) else rev_obj
+            orig_val = sanitize_title_value(orig_obj.get("value", "NONE") if isinstance(orig_obj, dict) else orig_obj)
+            kmti_val = sanitize_title_value(rev_obj.get("value", "NONE") if isinstance(rev_obj, dict) else rev_obj)
             kmti_coords = rev_obj.get("coordinates", None) if isinstance(rev_obj, dict) else None
             orig_coords = orig_obj.get("coordinates", None) if isinstance(orig_obj, dict) else None
             
@@ -2533,12 +2871,12 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             status_val = compare_values(orig_val, kmti_val)
             
             # Exact value coordinate lookup — scoped to title_block spatial region first
-            if kmti_coords is None and kmti_val and kmti_val != "NONE" and len(kmti_val) > 2:
-                exact_coords = find_drawing_text_coordinates(rev_entities, kmti_val, category="title_block", region_bbox=rev_title_bbox)
+            if kmti_coords is None and kmti_val and kmti_val != "NONE":
+                exact_coords = find_drawing_text_coordinates(rev_entities, kmti_val, category="title_block")
                 if exact_coords:
                     kmti_coords = exact_coords
-            if orig_coords is None and orig_val and orig_val != "NONE" and len(orig_val) > 2:
-                exact_coords = find_drawing_text_coordinates(ref_entities, orig_val, category="title_block", region_bbox=ref_title_bbox)
+            if orig_coords is None and orig_val and orig_val != "NONE":
+                exact_coords = find_drawing_text_coordinates(ref_entities, orig_val, category="title_block")
                 if exact_coords:
                     orig_coords = exact_coords
 
@@ -2547,7 +2885,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     "text_content": kmti_val if kmti_val != "NONE" else orig_val,
                     "status": status_val,
                     "details": f"Title block {display_label.lstrip('- ')} checked: {orig_val} vs {kmti_val}",
-                    "category": "title_block"
+                    "category": "title_block",
+                    "original_value": orig_val if status_val == "CHANGED" else None
                 }
                 if kmti_coords is not None:
                     marking_entry["coordinates"] = kmti_coords
@@ -2555,44 +2894,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     marking_entry["ref_coordinates"] = orig_coords
                 clean_markings.append(marking_entry)
 
-        # 2. Inject Administrative BOM block markings
-        bom_block_fields_map = {
-            "QTY": "T. Q'ty"
-        }
-        
-        for field_key, display_label in bom_block_fields_map.items():
-            orig_obj = ref_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
-            rev_obj = rev_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
-            
-            orig_val = orig_obj.get("value", "NONE") if isinstance(orig_obj, dict) else orig_obj
-            kmti_val = rev_obj.get("value", "NONE") if isinstance(rev_obj, dict) else rev_obj
-            kmti_coords = rev_obj.get("coordinates", None) if isinstance(rev_obj, dict) else None
-            orig_coords = orig_obj.get("coordinates", None) if isinstance(orig_obj, dict) else None
-            
-            status_val = compare_values(orig_val, kmti_val)
-            
-            # Exact value coordinate lookup — scoped to bill_of_materials spatial region first
-            if kmti_coords is None and kmti_val and kmti_val != "NONE" and len(kmti_val) > 2:
-                exact_coords = find_drawing_text_coordinates(rev_entities, kmti_val, category="bill_of_materials", region_bbox=rev_bom_bbox)
-                if exact_coords:
-                    kmti_coords = exact_coords
-            if orig_coords is None and orig_val and orig_val != "NONE" and len(orig_val) > 2:
-                exact_coords = find_drawing_text_coordinates(ref_entities, orig_val, category="bill_of_materials", region_bbox=ref_bom_bbox)
-                if exact_coords:
-                    orig_coords = exact_coords
-
-            if kmti_val != "NONE" or orig_val != "NONE":
-                marking_entry = {
-                    "text_content": kmti_val if kmti_val != "NONE" else orig_val,
-                    "status": status_val,
-                    "details": f"BOM block {display_label} checked: {orig_val} vs {kmti_val}",
-                    "category": "bill_of_materials"
-                }
-                if kmti_coords is not None:
-                    marking_entry["coordinates"] = kmti_coords
-                if orig_coords is not None:
-                    marking_entry["ref_coordinates"] = orig_coords
-                clean_markings.append(marking_entry)
+        # (Administrative BOM block markings removed: QTY is now handled in Title Block)
 
         # 3. Inject BOM row cell markings for all rows, aligned by Item Number keys
         def is_empty_placeholder_remark(val: str) -> bool:
@@ -2750,13 +3052,48 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                         "text_content": kmti_val if kmti_val != "NONE" else orig_val,
                         "status": status_val,
                         "details": f"BOM [{row_label}] {display_label} checked: {orig_val} vs {kmti_val}",
-                        "category": "bill_of_materials"
+                        "category": "bill_of_materials",
+                        "original_value": orig_val if status_val == "CHANGED" else None
                     }
                     if kmti_coords is not None:
                         marking_entry["coordinates"] = kmti_coords
                     if orig_coords is not None:
                         marking_entry["ref_coordinates"] = orig_coords
+                        
+                    # Spatial boundary filter (Fixes Issue 6: Stray BOM marker over Title Block area)
+                    if kmti_coords is not None and kmti_coords[1] < 60.0:
+                        continue
+                        
                     clean_markings.append(marking_entry)
+        
+        # 4. Resolve coordinates for all remaining Gemini-generated markings (Notes, Views, Iso)
+        for m in clean_markings:
+            if "coordinates" not in m and "ref_coordinates" not in m:
+                txt = m.get("text_content", "")
+                orig_txt = m.get("original_value") or txt
+                cat = m.get("category")
+                status_val = m.get("status")
+                
+                if status_val == "ADDED":
+                    if txt and txt != "NONE":
+                        m["coordinates"] = find_drawing_text_coordinates(rev_entities, txt, category=cat)
+                
+                elif status_val == "REMOVED":
+                    search_txt = m.get("original_value") or txt
+                    if search_txt and search_txt != "NONE":
+                        m["ref_coordinates"] = find_drawing_text_coordinates(ref_entities, search_txt, category=cat)
+                        
+                elif status_val == "CHANGED":
+                    if txt and txt != "NONE":
+                        m["coordinates"] = find_drawing_text_coordinates(rev_entities, txt, category=cat)
+                    search_txt = m.get("original_value") or txt
+                    if search_txt and search_txt != "NONE":
+                        m["ref_coordinates"] = find_drawing_text_coordinates(ref_entities, search_txt, category=cat)
+                        
+                else: # MATCHED
+                    if txt and txt != "NONE":
+                        m["coordinates"] = find_drawing_text_coordinates(rev_entities, txt, category=cat)
+                        m["ref_coordinates"] = find_drawing_text_coordinates(ref_entities, txt, category=cat)
         
         parsed["canvas_markings"] = clean_markings
 

@@ -163,9 +163,15 @@ class EntityMapper:
 
     @staticmethod
     def map_text(entity: Any) -> Dict[str, Any]:
-        # Text/MText maps literal strings
+        # Text/MText/Attributes maps literal strings
         dxftype = entity.dxftype()
-        raw_content = entity.text if dxftype == "MTEXT" else entity.dxf.text
+        
+        # 'text' attribute exists on MTEXT, ATTRIB, ATTDEF, whereas standard TEXT uses dxf.text
+        if dxftype in ("MTEXT", "ATTRIB", "ATTDEF"):
+            raw_content = entity.text if hasattr(entity, "text") else getattr(entity.dxf, "text", "")
+        else:
+            raw_content = entity.dxf.text if hasattr(entity.dxf, "text") else ""
+            
         insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0,0,0]
         height = entity.dxf.height if hasattr(entity.dxf, "height") else 2.5
         rotation = entity.dxf.rotation if hasattr(entity.dxf, "rotation") else 0.0
@@ -231,6 +237,34 @@ class EntityMapper:
             }
         }
 
+    @staticmethod
+    def map_tolerance(entity: Any) -> Dict[str, Any]:
+        content = ""
+        if hasattr(entity.dxf, "content") and entity.dxf.content:
+            content = entity.dxf.content
+        elif hasattr(entity.dxf, "text") and entity.dxf.text:
+            content = entity.dxf.text
+        insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0, 0, 0]
+        
+        return {
+            "entity_type": "text",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "text": content,
+                "height": 2.5,
+                "is_multiline": False,
+                "rotation": 0.0,
+                "halign": 1,
+                "valign": 1,
+                "attachment_point": 0
+            },
+            "geometry": {
+                "insert": [insert[0], insert[1], insert[2]]
+            }
+        }
+
     @classmethod
     def map_any(cls, entity: Any) -> Dict[str, Any] | None:
         """
@@ -252,7 +286,9 @@ class EntityMapper:
                 return cls.map_polyline(entity)
             elif dxftype == "DIMENSION":
                 return cls.map_dimension(entity)
-            elif dxftype in ("TEXT", "MTEXT"):
+            elif dxftype == "TOLERANCE":
+                return cls.map_tolerance(entity)
+            elif dxftype in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
                 return cls.map_text(entity)
             elif dxftype == "INSERT":
                 return cls.map_block(entity)

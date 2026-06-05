@@ -202,6 +202,7 @@ class CanvasMarking(BaseModel):
     )
     coordinates: Optional[list[float]] = Field(default=None, description="Optional physical coordinate [x, y] of the text element on the sheet.")
     ref_coordinates: Optional[list[float]] = Field(default=None, description="Optional physical coordinate [x, y] of the text element on the reference sheet.")
+    original_value: Optional[str] = Field(default=None, description="The original value from the reference drawing, if changed.")
 
 class PhysicalComparisonResponse(BaseModel):
     drawing_views: CategoryComparison

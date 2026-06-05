@@ -97,6 +97,7 @@ export interface DrawingCanvasRef {
 export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
   ({ layers, width, height, drawing }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const markerPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
 
     // Connect stores
     const {
@@ -129,6 +130,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     const [isNeonCAD, setIsNeonCAD] = useState(false);
     const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
     const [redrawTrigger, setRedrawTrigger] = useState(0);
+    const [isSpacePressed, setIsSpacePressed] = useState(false);
 
     // Draggable Markers State
     const [dragMarkerId, setDragMarkerId] = useState<string | null>(null);
@@ -146,6 +148,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       wx: number; // CAD world coordinates
       wy: number;
     } | null>(null);
+    const [preventNextContextMenu, setPreventNextContextMenu] = useState(false);
 
     // Close context menu on outside click
     useEffect(() => {
@@ -161,6 +164,30 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         window.removeEventListener('mousedown', closeMenu);
       };
     }, [contextMenu]);
+
+    // Track Spacebar for panning override
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === ' ' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          setIsSpacePressed(true);
+          e.preventDefault();
+        }
+      };
+      const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.key === ' ') {
+          setIsSpacePressed(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      const handleBlur = () => setIsSpacePressed(false);
+      window.addEventListener('blur', handleBlur);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+        window.removeEventListener('blur', handleBlur);
+      };
+    }, []);
 
     // ROI Interactive Drag handles local states
     const [activeDragHandle, setActiveDragHandle] = useState<{
@@ -555,14 +582,27 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
         const placedCardRects: { xMin: number; xMax: number; yMin: number; yMax: number }[] = [];
 
-        violations.forEach((v, idx) => {
+        // Sort violations to enforce visual Z-Index: MATCHED (bottom) < CHANGED < ADDED/REMOVED (top)
+        const getPriority = (penType: string) => {
+          if (penType === 'ai_red' || penType === 'checker_blue') return 3;
+          if (penType === 'ai_orange') return 2;
+          return 1; // ai_green, resolved_green
+        };
+
+        const sortedViolationsWithIndex = violations.map((v, i) => ({ v, i })).sort((a, b) => {
+          return getPriority(a.v.pen_type || 'ai_red') - getPriority(b.v.pen_type || 'ai_red');
+        });
+
+        sortedViolationsWithIndex.forEach(({ v, i: idx }) => {
           const penType = v.pen_type || 'ai_red';
           if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green') return;
 
           // Sheet Isolation filters
           // 1. ADDED elements (checker_blue) must NOT render on the original drawing (isOldDrawing === true)
           if (isOldDrawing && penType === 'checker_blue') return;
-          // 2. REMOVED elements (ai_red) must NOT render on the revised drawing (isOldDrawing === false)
+          // 2. CHANGED elements (ai_orange) must NOT render on the original drawing (isOldDrawing === true)
+          if (isOldDrawing && penType === 'ai_orange') return;
+          // 3. REMOVED elements (ai_red) must NOT render on the revised drawing (isOldDrawing === false)
           if (!isOldDrawing && penType === 'ai_red') return;
 
           let markerType = 'MISMATCHED';
@@ -585,8 +625,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : 'MATCHED';
 
           // Project CAD coordinates onto absolute screen/CSS coordinates
-          const screenX = vx * scale + transX;
-          const screenY = vy * scale + transY;
+          let screenX = vx * scale + transX;
+          let screenY = vy * scale + transY;
+
+          // Cache final visual coordinates for accurate hover detection
+          markerPositionsRef.current[v.id] = { x: screenX, y: screenY };
 
           // Reset context matrix to pixel space scaled by localDpr for stable rendering
           ctx.save();
@@ -599,6 +642,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             const displayVal = v.description || "";
             const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
             const displayStat = `Stat: ${statusLabel}`;
+            
+            // Only add Original Drawing text if it's a CHANGED status and we have the original value
+            const origValueText = (markerType === 'CHANGED' && v.original_value) 
+              ? `Original Drawing: ${v.original_value}` 
+              : null;
 
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             const seqId = `M${String(idx + 1).padStart(3, '0')}`;
@@ -609,11 +657,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             const catWidth = ctx.measureText(`Cat:  ${displayCat}`).width;
             const statWidth = ctx.measureText(displayStat).width;
+            const origWidth = origValueText ? ctx.measureText(origValueText).width : 0;
 
             // Compute dynamic card size to fit all text values comfortably
-            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth);
+            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth, origWidth);
             const cardWidth = Math.max(160 * resolutionMultiplier, maxTextWidth + 16 * resolutionMultiplier);
-            const cardHeight = 58 * resolutionMultiplier;
+            const cardHeight = origValueText ? 72 * resolutionMultiplier : 58 * resolutionMultiplier;
 
             // Center card horizontally above the marker
             let labelX = screenX - cardWidth / 2;
@@ -700,6 +749,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.fillStyle = bulletColor;
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(displayStat, labelX + 8 * resolutionMultiplier, labelY + 53 * resolutionMultiplier);
+            
+            // Render Original value underneath if applicable
+            if (origValueText) {
+              ctx.fillStyle = '#f97316'; // Same as changed marker color
+              ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+              ctx.fillText(origValueText, labelX + 8 * resolutionMultiplier, labelY + 65 * resolutionMultiplier);
+            }
           }
 
           // 1. Draw glowing circular background
@@ -1023,6 +1079,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
   // Mouse pan triggers
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 1 || e.button === 2 || isSpacePressed) {
+      // Middle click, Right click, or Spacebar+Left click strictly reserved for seamless panning!
+      // Skip all marker and boundary checks to guarantee immediate panning capability
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+      e.preventDefault();
+      return;
+    }
     if (e.button === 0) { // Left click to drag or calibrate
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
@@ -1063,7 +1127,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             const sx = (vx - xmin) * effectiveScale + viewport.x;
             const sy = (vy - ymin) * effectiveScale + viewport.y;
             
-            if (Math.hypot(mx - sx, my - sy) <= 24) {
+            // Reduced detection radius from 24 to 12 for seamless navigation without blocking drags
+            if (Math.hypot(mx - sx, my - sy) <= 12) {
               clickedViolationId = v.id;
               break;
             }
@@ -1212,7 +1277,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         renderYMax = ymax;
         hasBounds = true;
       }
-      for (const v of violations) {
+      const getPriority = (penType: string) => {
+        if (penType === 'ai_red' || penType === 'checker_blue') return 3;
+        if (penType === 'ai_orange') return 2;
+        return 1;
+      };
+      
+      const sortedViolations = [...violations].sort((a, b) => {
+        return getPriority(b.pen_type || 'ai_red') - getPriority(a.pen_type || 'ai_red');
+      });
+
+      for (const v of sortedViolations) {
         // Skip sheet isolation violations to match rendering logic!
         if (isOldDrawing && v.pen_type === 'checker_blue') continue;
         if (!isOldDrawing && v.pen_type === 'ai_red') continue;
@@ -1221,10 +1296,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         if (!coords) continue;
         const [vx, raw_vy] = coords;
         const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
-        const sx = (vx - xmin) * effectiveScale + viewport.x;
-        const sy = (vy - ymin) * effectiveScale + viewport.y;
+        const pos = markerPositionsRef.current[v.id];
+        const sx = pos ? pos.x : (vx - xmin) * effectiveScale + viewport.x;
+        const sy = pos ? pos.y : (vy - ymin) * effectiveScale + viewport.y;
         
-        if (Math.hypot(mx - sx, my - sy) <= 18) {
+        // Reduced detection radius from 18 to 12 for seamless hover transition
+        if (Math.hypot(mx - sx, my - sy) <= 12) {
           isHoveringMarker = true;
           hoveredMId = v.id;
           break;
@@ -1351,27 +1428,33 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       const newX = e.clientX - dragStart.x;
       const newY = e.clientY - dragStart.y;
       setViewport({ ...viewport, x: newX, y: newY });
+      if (e.buttons === 2) {
+        setPreventNextContextMenu(true);
+      }
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     setIsDragging(false);
     setActiveDragHandle(null);
     setCenterDragStart(null);
 
     if (dragMarkerId) {
       if (!hasDragMarkerMoved) {
-        // Treat as a left-click delete!
         const currentViolations = useWorkspaceStore.getState().violations;
         const markerToDelete = currentViolations.find(v => v.id === dragMarkerId);
         if (markerToDelete) {
-          // Push to undo stack
-          useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
-          // Remove from violations
-          useWorkspaceStore.setState({
-            violations: currentViolations.filter(v => v.id !== dragMarkerId),
-            selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
-          });
+          if (e.altKey) {
+            // Alt + Click deletes the marker (matching the tooltip instructions!)
+            useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
+            useWorkspaceStore.setState({
+              violations: currentViolations.filter(v => v.id !== dragMarkerId),
+              selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
+            });
+          } else {
+            // Standard Left-click selects the violation instead of deleting it!
+            selectViolation(markerToDelete);
+          }
         }
       } else {
         const currentViolations = useWorkspaceStore.getState().violations;
@@ -1416,6 +1499,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (preventNextContextMenu) {
+      setPreventNextContextMenu(false);
+      return;
+    }
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
 
@@ -1483,15 +1570,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         onMouseLeave={handleMouseLeave}
         onContextMenu={handleContextMenu}
         style={{
-          cursor: activeDragHandle
-            ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
-            : hoveredHandleInfo
-              ? (hoveredHandleInfo.cursor as any)
-              : isHoveringMarkerState
-                ? 'pointer'
-                : isDragging
-                  ? 'grabbing'
-                  : 'grab',
+          cursor: isSpacePressed
+            ? (isDragging ? 'grabbing' : 'grab')
+            : activeDragHandle
+              ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
+              : hoveredHandleInfo
+                ? (hoveredHandleInfo.cursor as any)
+                : isHoveringMarkerState
+                  ? 'pointer'
+                  : isDragging
+                    ? 'grabbing'
+                    : 'grab',
           display: 'block',
           width: '100%',
           height: '100%'

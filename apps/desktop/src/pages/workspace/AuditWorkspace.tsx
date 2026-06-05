@@ -587,6 +587,25 @@ export const AuditWorkspace: React.FC = () => {
             return false;
           }
 
+          // Strict exact match for tolerance table numerical values to prevent fake green pins
+          const tClean = ent.text.trim().replace(/\s/g, '').toLowerCase();
+          // Range patterns like "1000~2500" or "30 ~ 120" or "100S〜50S"
+          const isToleranceRange = /^\d+(\.\d+)?[sS]?(~|〜|-)\d+(\.\d+)?[sS]?$/.test(tClean);
+          // Surface finish codes like "100S", "50S", "12.5S"
+          const isSurfaceFinish = /^\d+(\.\d+)?[sS]$/.test(tClean);
+          // Standalone symbols
+          const toleranceSymbols = ["~", "〜", "±"];
+          const isToleranceKw = ["表示外公差", "寸法区分", "平行度", "直角度", "許容差", "仕上ゲ記号", "表面粗さ", "普通寸法許容差", "角度", "長さ", "表示外"].some(kw => ent.text.includes(kw));
+          const isToleranceSymbol = toleranceSymbols.includes(tClean);
+
+          if (isToleranceRange || isSurfaceFinish || isToleranceKw || isToleranceSymbol) {
+            return false;
+          }
+
+          if (ent.layer && isTitleBlockLayer(ent.layer)) {
+            return false;
+          }
+
           const isOld = oldDrawing && drawing?.id === oldDrawing.id;
           const xmin = isOld ? oldXMin : newXMin;
           const xmax = isOld ? oldXMax : newXMax;
@@ -613,8 +632,17 @@ export const AuditWorkspace: React.FC = () => {
 
           // Strictly filter out waku / frame / grid / border layers to avoid ticks matches
           const layerStr = (ent.layer || "").toLowerCase();
-          const isWakuLayer = ["waku", "border", "frame", "grid", "template", "form"].some(x => layerStr.includes(x));
+          const isWakuLayer = ["waku", "border", "frame", "grid", "template", "form", "cosa", "tol", "std", "standard", "legend", "admin", "block", "table"].some(x => layerStr.includes(x));
           if (isWakuLayer) {
+            return false;
+          }
+
+          // Bottom footer exclusion removed because it filtered out valid bottom-aligned views/dimensions.
+
+          // Hard exclusion: the Tolerance/Surface Roughness table is always in the bottom-left corner
+          // Its spatial footprint is approximately pctX 0.04–0.40, pctY 0.70–1.0
+          const inToleranceTableZone = (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02);
+          if (inToleranceTableZone) {
             return false;
           }
 
@@ -745,25 +773,33 @@ export const AuditWorkspace: React.FC = () => {
         rawMarkings.forEach((marking: any, index: number) => {
           const preferModel = (marking.category === 'drawing_views' || !marking.category);
 
-          let matches = findAllFuzzyMatches(marking.text_content, textEntities, preferModel);
-          let refMatches = findAllFuzzyMatches(marking.text_content, refTextEntities, preferModel);
+          let searchTerm = marking.text_content;
+          if (searchTerm && searchTerm.includes("\n")) {
+            const lines = searchTerm.split("\n");
+            searchTerm = lines[lines.length - 1].trim();
+          }
+
+          let matches = findAllFuzzyMatches(searchTerm, textEntities, preferModel);
+          let refMatches = findAllFuzzyMatches(searchTerm, refTextEntities, preferModel);
 
           // For CHANGED, REMOVED, or ADDED markings, if one of the drawings has zero matches, do a fallback fuzzy pass that ignores numbers!
           if (marking.status === 'CHANGED' || marking.status === 'REMOVED' || marking.status === 'ADDED') {
             if (matches.length === 0) {
-              matches = findAllFuzzyMatches(marking.text_content, textEntities, preferModel, true);
+              matches = findAllFuzzyMatches(searchTerm, textEntities, preferModel, true);
             }
             if (refMatches.length === 0) {
-              refMatches = findAllFuzzyMatches(marking.text_content, refTextEntities, preferModel, true);
+              refMatches = findAllFuzzyMatches(searchTerm, refTextEntities, preferModel, true);
             }
           }
 
           const rawMatchesCount = matches.length;
           const rawRefMatchesCount = refMatches.length;
 
-          // Apply strict spatial boundaries filters to matches and refMatches
-          matches = matches.filter(m => isEngineeringDataEntity(m, newDrawing));
-          refMatches = refMatches.filter(m => isEngineeringDataEntity(m, oldDrawing));
+          // Bypass strict spatial boundaries filters for Title Block and BOM markings
+          if (marking.category !== "title_block" && marking.category !== "bill_of_materials") {
+            matches = matches.filter(m => isEngineeringDataEntity(m, newDrawing));
+            refMatches = refMatches.filter(m => isEngineeringDataEntity(m, oldDrawing));
+          }
 
           const maxInstances = Math.max(matches.length, refMatches.length, 1);
 
@@ -809,6 +845,55 @@ export const AuditWorkspace: React.FC = () => {
               ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
             }
 
+            // Proximity counterpart coordinate calibration & exclusions lookup when a match is found on one drawing but not on the other due to spelling/number mismatches
+            if (match && !refMatch) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              refTextEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - match.x, ent.y - match.y);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                const rh = closestEnt.height || 3.0;
+                ref_coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+                if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
+                  try {
+                    const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
+                    const hVal = closestEnt.height || (bymax - bymin) || 3.0;
+                    ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
+                  } catch { }
+                }
+                refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+              }
+            }
+
+            if (refMatch && !match) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              textEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - refMatch.x, ent.y - refMatch.y);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                const rh = closestEnt.height || 3.0;
+                coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+                if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
+                  try {
+                    const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
+                    const hVal = closestEnt.height || (bymax - bymin) || 3.0;
+                    coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
+                  } catch { }
+                }
+                textEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+              }
+            }
+
             // Skip fallback coordinates if potential matches were strictly filtered out as margin ticks
             const isMatchFilteredTick = (rawMatchesCount > 0 && matches.length === 0) || (rawRefMatchesCount > 0 && refMatches.length === 0);
 
@@ -821,9 +906,54 @@ export const AuditWorkspace: React.FC = () => {
 
             if (match) {
               textEntitiesWithMarkers.add(getCoordKey(match.x, match.y));
+              if (marking.text_content && marking.text_content.includes("\n")) {
+                const lines = marking.text_content.split("\n");
+                lines.forEach((line: string) => {
+                  const lineMatches = findAllFuzzyMatches(line.trim(), textEntities, preferModel);
+                  lineMatches.forEach((lm: any) => {
+                    textEntitiesWithMarkers.add(getCoordKey(lm.x, lm.y));
+                  });
+                });
+              }
+            } else if (marking.coordinates && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              textEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - marking.coordinates[0], ent.y - marking.coordinates[1]);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                textEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+              }
             }
+
             if (refMatch) {
               refTextEntitiesWithMarkers.add(getCoordKey(refMatch.x, refMatch.y));
+              if (marking.text_content && marking.text_content.includes("\n")) {
+                const lines = marking.text_content.split("\n");
+                lines.forEach((line: string) => {
+                  const lineMatches = findAllFuzzyMatches(line.trim(), refTextEntities, preferModel);
+                  lineMatches.forEach((lm: any) => {
+                    refTextEntitiesWithMarkers.add(getCoordKey(lm.x, lm.y));
+                  });
+                });
+              }
+            } else if (marking.ref_coordinates && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              refTextEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - marking.ref_coordinates[0], ent.y - marking.ref_coordinates[1]);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+              }
             }
 
             let penType = "resolved_green";
@@ -834,6 +964,38 @@ export const AuditWorkspace: React.FC = () => {
             } else if (marking.status === "ADDED") {
               penType = "checker_blue";
             }
+
+            const coordStr = coordinates ? `${coordinates[0].toFixed(2)},${coordinates[1].toFixed(2)}` : null;
+            const refCoordStr = ref_coordinates ? `${ref_coordinates[0].toFixed(2)},${ref_coordinates[1].toFixed(2)}` : null;
+
+            const isDuplicate = mappedMarkings.some(m => {
+              if (m.description !== marking.text_content) return false;
+              let coordsMatch = true;
+              if (coordStr) {
+                if (!m.coordinates) coordsMatch = false;
+                else {
+                  const mCoordStr = `${m.coordinates[0].toFixed(2)},${m.coordinates[1].toFixed(2)}`;
+                  if (mCoordStr !== coordStr) coordsMatch = false;
+                }
+              } else if (m.coordinates) {
+                coordsMatch = false;
+              }
+
+              let refCoordsMatch = true;
+              if (refCoordStr) {
+                if (!m.ref_coordinates) refCoordsMatch = false;
+                else {
+                  const mRefCoordStr = `${m.ref_coordinates[0].toFixed(2)},${m.ref_coordinates[1].toFixed(2)}`;
+                  if (mRefCoordStr !== refCoordStr) refCoordsMatch = false;
+                }
+              } else if (m.ref_coordinates) {
+                refCoordsMatch = false;
+              }
+
+              return coordsMatch && refCoordsMatch;
+            });
+
+            if (isDuplicate) continue;
 
             mappedMarkings.push({
               id: `phys_chk_${index}_inst_${i}_${Date.now()}`,
@@ -846,7 +1008,8 @@ export const AuditWorkspace: React.FC = () => {
               coordinates,
               ref_coordinates,
               pen_type: penType,
-              is_resolved: marking.status === "MATCHED"
+              is_resolved: marking.status === "MATCHED",
+              original_value: marking.original_value
             });
           }
         });
@@ -882,20 +1045,19 @@ export const AuditWorkspace: React.FC = () => {
             const refMatches = findAllFuzzyMatches(ent.text, refTextEntities, preferModel);
             const refMatch = refMatches[0];
 
-            const h = ent.height || 3.0;
-            let coordinates: [number, number] = [ent.x + h * 0.8, ent.y + h * 0.5];
-            if (ent.bbox && Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
-              try {
-                const [[, bymin], [bxmax, bymax]] = ent.bbox;
-                const hVal = ent.height || (bymax - bymin) || 3.0;
-                coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
-              } catch { }
-            }
-
-            let ref_coordinates: [number, number] | undefined = undefined;
             if (refMatch) {
+              const h = ent.height || 3.0;
+              let coordinates: [number, number] = [ent.x + h * 0.8, ent.y + h * 0.5];
+              if (ent.bbox && Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
+                try {
+                  const [[, bymin], [bxmax, bymax]] = ent.bbox;
+                  const hVal = ent.height || (bymax - bymin) || 3.0;
+                  coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
+                } catch { }
+              }
+
               const rh = refMatch.height || 3.0;
-              ref_coordinates = [refMatch.x + rh * 0.8, refMatch.y + rh * 0.5];
+              let ref_coordinates: [number, number] = [refMatch.x + rh * 0.8, refMatch.y + rh * 0.5];
               if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) {
                 try {
                   const [[, bymin], [bxmax, bymax]] = refMatch.bbox;
@@ -903,23 +1065,21 @@ export const AuditWorkspace: React.FC = () => {
                   ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
                 } catch { }
               }
-            }
 
-            mappedMarkings.push({
-              id: `auto_chk_rev_${idx}_${Date.now()}`,
-              severity: "low",
-              category: "drawing_views",
-              description: ent.text,
-              recommendation: "Perfect baseline match verification",
-              affected_entities: [],
-              confidence: 1.0,
-              coordinates,
-              ref_coordinates,
-              pen_type: "resolved_green",
-              is_resolved: true
-            });
-            textEntitiesWithMarkers.add(key);
-            if (refMatch) {
+              mappedMarkings.push({
+                id: `auto_chk_rev_${idx}_${Date.now()}`,
+                severity: "low",
+                category: "drawing_views",
+                description: ent.text,
+                recommendation: "Perfect baseline match verification",
+                affected_entities: [],
+                confidence: 1.0,
+                coordinates,
+                ref_coordinates,
+                pen_type: "resolved_green",
+                is_resolved: true
+              });
+              textEntitiesWithMarkers.add(key);
               refTextEntitiesWithMarkers.add(getCoordKey(refMatch.x, refMatch.y));
             }
           }
@@ -955,20 +1115,19 @@ export const AuditWorkspace: React.FC = () => {
             const revMatches = findAllFuzzyMatches(ent.text, textEntities, preferModel);
             const revMatch = revMatches[0];
 
-            const h = ent.height || 3.0;
-            let ref_coordinates: [number, number] = [ent.x + h * 0.8, ent.y + h * 0.5];
-            if (ent.bbox && Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
-              try {
-                const [[, bymin], [bxmax, bymax]] = ent.bbox;
-                const hVal = ent.height || (bymax - bymin) || 3.0;
-                ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
-              } catch { }
-            }
-
-            let coordinates: [number, number] | undefined = undefined;
             if (revMatch) {
+              const h = ent.height || 3.0;
+              let ref_coordinates: [number, number] = [ent.x + h * 0.8, ent.y + h * 0.5];
+              if (ent.bbox && Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
+                try {
+                  const [[, bymin], [bxmax, bymax]] = ent.bbox;
+                  const hVal = ent.height || (bymax - bymin) || 3.0;
+                  ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
+                } catch { }
+              }
+
               const rh = revMatch.height || 3.0;
-              coordinates = [revMatch.x + rh * 0.8, revMatch.y + rh * 0.5];
+              let coordinates: [number, number] = [revMatch.x + rh * 0.8, revMatch.y + rh * 0.5];
               if (revMatch.bbox && Array.isArray(revMatch.bbox) && revMatch.bbox.length >= 2) {
                 try {
                   const [[, bymin], [bxmax, bymax]] = revMatch.bbox;
@@ -976,23 +1135,21 @@ export const AuditWorkspace: React.FC = () => {
                   coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
                 } catch { }
               }
-            }
 
-            mappedMarkings.push({
-              id: `auto_chk_ref_${idx}_${Date.now()}`,
-              severity: "low",
-              category: "drawing_views",
-              description: ent.text,
-              recommendation: "Perfect baseline match verification",
-              affected_entities: [],
-              confidence: 1.0,
-              coordinates,
-              ref_coordinates,
-              pen_type: "resolved_green",
-              is_resolved: true
-            });
-            refTextEntitiesWithMarkers.add(key);
-            if (revMatch) {
+              mappedMarkings.push({
+                id: `auto_chk_ref_${idx}_${Date.now()}`,
+                severity: "low",
+                category: "drawing_views",
+                description: ent.text,
+                recommendation: "Perfect baseline match verification",
+                affected_entities: [],
+                confidence: 1.0,
+                coordinates,
+                ref_coordinates,
+                pen_type: "resolved_green",
+                is_resolved: true
+              });
+              refTextEntitiesWithMarkers.add(key);
               textEntitiesWithMarkers.add(getCoordKey(revMatch.x, revMatch.y));
             }
           }
@@ -1604,19 +1761,45 @@ export const AuditWorkspace: React.FC = () => {
                                             badgeBg = "rgba(59, 130, 246, 0.08)";
                                           }
 
+                                          const matchingViolation = violations.find(v => {
+                                            const desc = v.description ? v.description.trim() : "";
+                                            const matchesText = desc === row.kmti || desc === row.original;
+                                            const vCat = v.category ? v.category.toLowerCase().replace(/_/g, "") : "";
+                                            const pKey = key.toLowerCase().replace(/_/g, "");
+                                            const matchesCategory = vCat === pKey || vCat.includes(pKey) || pKey.includes(vCat);
+                                            return matchesText && matchesCategory;
+                                          });
+
+                                          const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id);
+
                                           return (
                                             <div
                                               key={idx}
+                                              onClick={() => {
+                                                if (matchingViolation) {
+                                                  selectViolation(matchingViolation);
+                                                  const coords = matchingViolation.coordinates || matchingViolation.ref_coordinates;
+                                                  if (coords) {
+                                                    const [vx, vy] = coords;
+                                                    setReviewViewport({
+                                                      x: 240 - vx * 1.5,
+                                                      y: 200 - vy * 1.5,
+                                                      scale: 1.5
+                                                    });
+                                                  }
+                                                }
+                                              }}
                                               style={{
-                                                background: "rgba(255,255,255,0.02)",
-                                                border: "1px solid rgba(255,255,255,0.06)",
+                                                background: isSelected ? "rgba(0, 229, 255, 0.06)" : "rgba(255,255,255,0.02)",
+                                                border: isSelected ? "1px solid var(--accent-cyan)" : "1px solid rgba(255,255,255,0.06)",
                                                 borderRadius: "8px",
                                                 padding: "10px 12px",
                                                 display: "flex",
                                                 flexDirection: "column",
                                                 gap: "8px",
-                                                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                                                transition: "border-color 0.2s ease"
+                                                boxShadow: isSelected ? "0 0 10px rgba(0, 229, 255, 0.2)" : "0 2px 8px rgba(0,0,0,0.15)",
+                                                cursor: matchingViolation ? "pointer" : "default",
+                                                transition: "all 0.2s ease"
                                               }}
                                             >
                                               {/* Header row: Title + Status Tag */}
