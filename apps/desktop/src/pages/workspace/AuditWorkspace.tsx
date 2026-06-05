@@ -587,6 +587,21 @@ export const AuditWorkspace: React.FC = () => {
             return false;
           }
 
+          // Strict exact match for tolerance table numerical values to prevent fake green pins
+          const tClean = ent.text.trim().replace(/\s/g, '').toLowerCase();
+          // Range patterns like "1000~2500" or "30 ~ 120" or "100S〜50S"
+          const isToleranceRange = /^\d+(\.\d+)?[sS]?(~|〜|-)\d+(\.\d+)?[sS]?$/.test(tClean);
+          // Surface finish codes like "100S", "50S", "12.5S"
+          const isSurfaceFinish = /^\d+(\.\d+)?[sS]$/.test(tClean);
+          // Standalone symbols
+          const toleranceSymbols = ["~", "〜", "±"];
+          const isToleranceKw = ["表示外公差", "寸法区分", "平行度", "直角度", "許容差", "仕上ゲ記号", "表面粗さ", "普通寸法許容差", "角度", "長さ", "表示外"].some(kw => ent.text.includes(kw));
+          const isToleranceSymbol = toleranceSymbols.includes(tClean);
+
+          if (isToleranceRange || isSurfaceFinish || isToleranceKw || isToleranceSymbol) {
+            return false;
+          }
+
           if (ent.layer && isTitleBlockLayer(ent.layer)) {
             return false;
           }
@@ -623,6 +638,13 @@ export const AuditWorkspace: React.FC = () => {
           }
 
           // Bottom footer exclusion removed because it filtered out valid bottom-aligned views/dimensions.
+
+          // Hard exclusion: the Tolerance/Surface Roughness table is always in the bottom-left corner
+          // Its spatial footprint is approximately pctX 0.04–0.40, pctY 0.70–1.0
+          const inToleranceTableZone = (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02);
+          if (inToleranceTableZone) {
+            return false;
+          }
 
           // Strict boundary boxes for the 5 functional engineering regions:
           const regions = {
