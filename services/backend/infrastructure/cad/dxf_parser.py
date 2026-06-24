@@ -86,11 +86,13 @@ class DXFParser:
         # Identify active paperspace layout to see if we need viewport coordinate projection
         paperspace_layouts = [l for l in doc.layouts if l.name.lower() != 'model' and len(l) > 0]
         viewports = []
-        if paperspace_layouts:
-            active_layout = paperspace_layouts[0]
-            # Retrieve all non-initial viewport entities
-            viewports = [e for e in active_layout if e.dxftype() == "VIEWPORT" and e.dxf.id != 1]
-
+        active_layout = None
+        for pl in paperspace_layouts:
+            vp_candidates = [e for e in pl if e.dxftype() == "VIEWPORT" and e.dxf.id != 1]
+            if vp_candidates:
+                active_layout = pl
+                viewports = vp_candidates
+                break
         def project_point(x: float, y: float) -> Tuple[float, float, float]:
             for vp in viewports:
                 cx, cy = vp.dxf.center.x, vp.dxf.center.y
@@ -136,22 +138,13 @@ class DXFParser:
                 return
 
             dxftype = entity.dxftype()
-            if dxftype in ("INSERT", "DIMENSION", "TOLERANCE", "LEADER", "MULTILEADER"):
+
+            if dxftype == "INSERT":
                 try:
-                    if dxftype == "INSERT" and hasattr(entity, "attribs"):
-                        for attrib in entity.attribs:
-                            process_entity(attrib, layout_name, depth + 1)
-                            
-                    # ezdxf's explode() decomposes INSERT blocks, DIMENSIONS, and GD&T/welding symbols into standard primitives (lines, text, arcs)
-                    # positioned and rotated correctly in world coordinates, then destroys the source compound entity.
-                    exploded_query = entity.explode()
-                    for child in exploded_query:
-                        process_entity(child, layout_name, depth + 1, is_dimension=is_dimension or (dxftype in ("DIMENSION", "TOLERANCE", "LEADER", "MULTILEADER")))
-                    return
-                except Exception as explode_err:
-                    logger.warning(f"Unable to explode legacys complex {dxftype} entity: {str(explode_err)}")
-                    # Fallback to normal mapping if explode fails
-                    pass
+                    for sub_ent in entity.virtual_entities():
+                        process_entity(sub_ent, layout_name, depth + 1, is_dimension)
+                except Exception as ex:
+                    logger.debug(f"Could not explode block {getattr(entity.dxf, 'name', 'unknown')}: {ex}")
 
             mapped = EntityMapper.map_any(entity)
             if mapped:
@@ -244,6 +237,66 @@ class DXFParser:
             "extmax": list(doc.header.get("$EXTMAX", [0, 0, 0])),
         }
 
+        # Dynamic Layout Analysis
+        lines = []
+        for e in entities:
+            if e.get("entity_type") == "line" and "geometry" in e:
+                geo = e["geometry"]
+                if "start" in geo and "end" in geo:
+                    lines.append((geo["start"], geo["end"]))
+            elif e.get("entity_type") == "polyline" and "geometry" in e:
+                geo = e["geometry"]
+                if "vertices" in geo:
+                    pts = geo["vertices"]
+                    for i in range(len(pts) - 1):
+                        lines.append((pts[i], pts[i+1]))
+                elif "points" in geo:
+                    pts = geo["points"]
+                    for i in range(len(pts) - 1):
+                        lines.append((pts[i], pts[i+1]))
+
+        default_regions = {
+            "views":         { "xMin": 0.04, "xMax": 0.68, "yMin": 0.12, "yMax": 0.88 },
+            "notes":         { "xMin": 0.04, "xMax": 0.38, "yMin": 0.18, "yMax": 0.62 },
+            "bom":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.04, "yMax": 0.44 },
+            "title":         { "xMin": 0.38, "xMax": 0.98, "yMin": 0.72, "yMax": 0.98 },
+            "titleUpperLeft":{ "xMin": 0.02, "xMax": 0.35, "yMin": 0.02, "yMax": 0.35 },
+            "iso":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.42, "yMax": 0.74 }
+        }
+        
+        metadata["regions"] = default_regions
+
+        if lines:
+            try:
+                min_x = min(min(p1[0], p2[0]) for p1, p2 in lines)
+                max_x = max(max(p1[0], p2[0]) for p1, p2 in lines)
+                min_y = min(min(p1[1], p2[1]) for p1, p2 in lines)
+                max_y = max(max(p1[1], p2[1]) for p1, p2 in lines)
+                
+                width = max_x - min_x
+                height = max_y - min_y
+                if width > 0 and height > 0:
+                    tr_lines = [l for l in lines if (l[0][0]-min_x)/width > 0.6 and (l[0][1]-min_y)/height < 0.5]
+                    br_lines = [l for l in lines if (l[0][0]-min_x)/width > 0.4 and (l[0][1]-min_y)/height > 0.6]
+                    
+                    def get_bounds(quad_lines, default_box):
+                        if not quad_lines: return default_box
+                        qx_min = min(min(p1[0], p2[0]) for p1, p2 in quad_lines)
+                        qx_max = max(max(p1[0], p2[0]) for p1, p2 in quad_lines)
+                        qy_min = min(min(p1[1], p2[1]) for p1, p2 in quad_lines)
+                        qy_max = max(max(p1[1], p2[1]) for p1, p2 in quad_lines)
+                        return {
+                            "xMin": max(0.0, (qx_min - min_x) / width - 0.01),
+                            "xMax": min(1.0, (qx_max - min_x) / width + 0.01),
+                            "yMin": max(0.0, (qy_min - min_y) / height - 0.01),
+                            "yMax": min(1.0, (qy_max - min_y) / height + 0.01)
+                        }
+                    
+                    metadata["regions"]["bom"] = get_bounds(tr_lines, default_regions["bom"])
+                    metadata["regions"]["title"] = get_bounds(br_lines, default_regions["title"])
+            except Exception:
+                pass
+
         # Transcode all string elements in layers and entities to their correct drawing encoding
         doc_encoding = getattr(doc, "encoding", "cp932") or "cp932"
         # Normalize to lower standard
@@ -254,28 +307,18 @@ class DXFParser:
         
         def transcode_value(val: Any) -> Any:
             if isinstance(val, str):
-                val_clean = val
-                val_clean = val_clean.replace('\uff97', 'x')
-                val_clean = val_clean.replace('\u30e9', 'x')
-                val_clean = val_clean.replace('×', 'x')
-                val_clean = val_clean.replace('ラ', 'x')
                 try:
-                    b = val_clean.encode('latin1')
+                    b = val.encode('latin1')
                 except Exception:
-                    return val_clean
+                    return val
                 for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
                     if not enc:
                         continue
                     try:
-                        decoded = b.decode(enc)
-                        decoded = decoded.replace('\uff97', 'x')
-                        decoded = decoded.replace('\u30e9', 'x')
-                        decoded = decoded.replace('×', 'x')
-                        decoded = decoded.replace('ラ', 'x')
-                        return decoded
+                        return b.decode(enc)
                     except Exception:
                         continue
-                return b.decode('utf-8', errors='replace').replace('\uff97', 'x').replace('\u30e9', 'x').replace('×', 'x').replace('ラ', 'x')
+                return b.decode('utf-8', errors='replace')
             elif isinstance(val, dict):
                 return {transcode_value(k): transcode_value(v) for k, v in val.items()}
             elif isinstance(val, list):

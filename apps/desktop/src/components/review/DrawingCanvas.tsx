@@ -597,12 +597,15 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const penType = v.pen_type || 'ai_red';
           if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green') return;
 
-          // Sheet Isolation filters
-          // 1. ADDED elements (checker_blue) must NOT render on the original drawing (isOldDrawing === true)
+          // Sheet Isolation filters — strict per-canvas rules:
+          // ORIGINAL canvas: only MATCHED (green) + REMOVED (red) are visible.
+          // KMTI canvas:     only MATCHED (green) + CHANGED (orange) + ADDED (blue) are visible.
+          //
+          // ADDED (blue)    — new content in KMTI only     → hide on ORIGINAL
           if (isOldDrawing && penType === 'checker_blue') return;
-          // 2. CHANGED elements (ai_orange) must NOT render on the original drawing (isOldDrawing === true)
-          if (isOldDrawing && penType === 'ai_orange') return;
-          // 3. REMOVED elements (ai_red) must NOT render on the revised drawing (isOldDrawing === false)
+          // CHANGED (orange) — revision of a value in KMTI → hide on ORIGINAL (belongs on the revision side)
+          // Removed: if (isOldDrawing && penType === 'ai_orange') return; -> Users want to see the orange pin on the Original to know what changed.
+          // REMOVED (red)   — content deleted in KMTI      → hide on KMTI (it only existed in ORIGINAL)
           if (!isOldDrawing && penType === 'ai_red') return;
 
           let markerType = 'MISMATCHED';
@@ -615,6 +618,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           // Strictly use ref_coordinates for old/original drawing, and coordinates for new/revised drawing.
           // Never fall back to the other drawing's coordinates, which leads to floating markers!
           let coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+          let bbox: any = isOldDrawing ? (v as any).ref_bbox : (v as any).bbox;
           if (!coords) return;
 
           const [vx, raw_vy] = coords;
@@ -639,13 +643,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const SHOW_MARKER_TARGETS = (showMarkerLabels && hoveredMarkerId === v.id) || isSelected;
           if (SHOW_MARKER_TARGETS) {
             // Text values to display without truncation
-            const displayVal = v.description || "";
+            const displayVal = (isOldDrawing && v.original_value) ? v.original_value : (v.description || "");
             const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
             const displayStat = `Stat: ${statusLabel}`;
             
-            // Only add Original Drawing text if it's a CHANGED status and we have the original value
-            const origValueText = (markerType === 'CHANGED' && v.original_value) 
-              ? `Original Drawing: ${v.original_value}` 
+            // Only add secondary text if it's a CHANGED status
+            const subValueText = markerType === 'CHANGED'
+              ? (isOldDrawing ? `Revised Drawing: ${v.description}` : (v.original_value ? `Original Drawing: ${v.original_value}` : null))
               : null;
 
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
@@ -657,12 +661,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             const catWidth = ctx.measureText(`Cat:  ${displayCat}`).width;
             const statWidth = ctx.measureText(displayStat).width;
-            const origWidth = origValueText ? ctx.measureText(origValueText).width : 0;
+            const subWidth = subValueText ? ctx.measureText(subValueText).width : 0;
 
             // Compute dynamic card size to fit all text values comfortably
-            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth, origWidth);
+            const maxTextWidth = Math.max(valWidth + 24 * resolutionMultiplier, catWidth, statWidth, subWidth);
             const cardWidth = Math.max(160 * resolutionMultiplier, maxTextWidth + 16 * resolutionMultiplier);
-            const cardHeight = origValueText ? 72 * resolutionMultiplier : 58 * resolutionMultiplier;
+            const cardHeight = subValueText ? 72 * resolutionMultiplier : 58 * resolutionMultiplier;
 
             // Center card horizontally above the marker
             let labelX = screenX - cardWidth / 2;
@@ -684,9 +688,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                 const overlapX = (labelX < rect.xMax && labelX + cardWidth > rect.xMin);
                 const overlapY = (labelY < rect.yMax && labelY + cardHeight > rect.yMin);
                 if (overlapX && overlapY) {
-                  labelY = rect.yMin - cardHeight - 6 * resolutionMultiplier;
-                  collisionDetected = true;
-                  break;
+                   labelY = rect.yMin - cardHeight - 6 * resolutionMultiplier;
+                   collisionDetected = true;
+                   break;
                 }
               }
               safetyCounter++;
@@ -750,58 +754,94 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(displayStat, labelX + 8 * resolutionMultiplier, labelY + 53 * resolutionMultiplier);
             
-            // Render Original value underneath if applicable
-            if (origValueText) {
+            // Render Original/Revised value underneath if applicable
+            if (subValueText) {
               ctx.fillStyle = '#f97316'; // Same as changed marker color
               ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
-              ctx.fillText(origValueText, labelX + 8 * resolutionMultiplier, labelY + 65 * resolutionMultiplier);
+              ctx.fillText(subValueText, labelX + 8 * resolutionMultiplier, labelY + 65 * resolutionMultiplier);
             }
           }
 
-          // 1. Draw glowing circular background
-          const radius = 12 * resolutionMultiplier;
-          ctx.beginPath();
-          ctx.fillStyle = isSelected 
-            ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
-            : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.08)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.08)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(16, 185, 129, 0.08)');
-          ctx.arc(screenX, screenY, radius * 1.6, 0, 2 * Math.PI);
-          ctx.fill();
+          if (bbox && bbox.length >= 2) {
+             const [[bxmin, bymin_raw], [bxmax, bymax_raw]] = bbox;
+             const bymin = hasBounds ? (renderYMax + renderYMin - bymin_raw) : bymin_raw;
+             const bymax = hasBounds ? (renderYMax + renderYMin - bymax_raw) : bymax_raw;
+             
+             // Project CAD coordinates onto absolute screen/CSS coordinates
+             const pxmin = bxmin * scale + transX;
+             const pymin = Math.min(bymin, bymax) * scale + transY;
+             const pxmax = bxmax * scale + transX;
+             const pymax = Math.max(bymin, bymax) * scale + transY;
+             const rectW = Math.max(pxmax - pxmin, 1);
+             const rectH = Math.max(pymax - pymin, 1);
+             
+             // Draw precise polygonal highlight box
+             ctx.beginPath();
+             ctx.rect(pxmin, pymin, rectW, rectH);
+             ctx.fillStyle = isSelected 
+                ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
+                : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.12)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.12)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)');
+             ctx.fill();
+             ctx.strokeStyle = bulletColor;
+             ctx.lineWidth = 1.5 * resolutionMultiplier;
+             ctx.stroke();
 
-          // 2. Draw solid Circle Bullet marker
-          ctx.beginPath();
-          const bulletRadius = 6 * resolutionMultiplier;
-          ctx.arc(screenX, screenY, bulletRadius, 0, 2 * Math.PI);
-          ctx.fillStyle = bulletColor;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5 * resolutionMultiplier;
-          ctx.fill();
-          ctx.stroke();
-
-          // 2.5 Draw checkmark inside MATCHED solid circle
-          if (markerType === 'MATCHED') {
+             // Draw selection dashed ring over it
+             if (isSelected) {
+               ctx.beginPath();
+               ctx.strokeStyle = '#ffffff';
+               ctx.lineWidth = 1.2 * resolutionMultiplier;
+               ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
+               ctx.rect(pxmin - 4 * resolutionMultiplier, pymin - 4 * resolutionMultiplier, rectW + 8 * resolutionMultiplier, rectH + 8 * resolutionMultiplier);
+               ctx.stroke();
+               ctx.setLineDash([]);
+             }
+          } else {
+            // 1. Draw glowing circular background
+            const radius = 12 * resolutionMultiplier;
             ctx.beginPath();
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.8 * resolutionMultiplier;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            const cx = screenX;
-            const cy = screenY;
-            const size = 3 * resolutionMultiplier;
-            ctx.moveTo(cx - size * 0.8, cy - size * 0.1);
-            ctx.lineTo(cx - size * 0.1, cy + size * 0.6);
-            ctx.lineTo(cx + size * 0.9, cy - size * 0.7);
-            ctx.stroke();
-          }
+            ctx.fillStyle = isSelected 
+              ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
+              : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.08)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.08)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(16, 185, 129, 0.08)');
+            ctx.arc(screenX, screenY, radius * 1.6, 0, 2 * Math.PI);
+            ctx.fill();
 
-          // 3. Draw selection dashed ring
-          if (isSelected) {
+            // 2. Draw solid Circle Bullet marker
             ctx.beginPath();
+            const bulletRadius = 6 * resolutionMultiplier;
+            ctx.arc(screenX, screenY, bulletRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = bulletColor;
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.2 * resolutionMultiplier;
-            ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
-            ctx.arc(screenX, screenY, radius * 1.8, 0, 2 * Math.PI);
+            ctx.lineWidth = 1.5 * resolutionMultiplier;
+            ctx.fill();
             ctx.stroke();
-            ctx.setLineDash([]);
+
+            // 2.5 Draw checkmark inside MATCHED solid circle
+            if (markerType === 'MATCHED') {
+              ctx.beginPath();
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 1.8 * resolutionMultiplier;
+              ctx.lineCap = 'round';
+              ctx.lineJoin = 'round';
+              const cx = screenX;
+              const cy = screenY;
+              const size = 3 * resolutionMultiplier;
+              ctx.moveTo(cx - size * 0.8, cy - size * 0.1);
+              ctx.lineTo(cx - size * 0.1, cy + size * 0.6);
+              ctx.lineTo(cx + size * 0.9, cy - size * 0.7);
+              ctx.stroke();
+            }
+
+            // 3. Draw selection dashed ring
+            if (isSelected) {
+              ctx.beginPath();
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 1.2 * resolutionMultiplier;
+              ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
+              ctx.arc(screenX, screenY, radius * 1.8, 0, 2 * Math.PI);
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
           }
 
           ctx.restore();

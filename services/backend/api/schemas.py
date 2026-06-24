@@ -200,6 +200,7 @@ class CanvasMarking(BaseModel):
         default="drawing_views",
         description="The checklist category this text belongs to."
     )
+    entity_id: Optional[str] = Field(default=None, description="The precise [ID: <handle>] extracted from the provided text string (e.g. '1B2A'). For ADDED or CHANGED items, use the REV-ID. For REMOVED items, use the REF-ID. Mandatory if present.")
     coordinates: Optional[list[float]] = Field(default=None, description="Optional physical coordinate [x, y] of the text element on the sheet.")
     ref_coordinates: Optional[list[float]] = Field(default=None, description="Optional physical coordinate [x, y] of the text element on the reference sheet.")
     original_value: Optional[str] = Field(default=None, description="The original value from the reference drawing, if changed.")

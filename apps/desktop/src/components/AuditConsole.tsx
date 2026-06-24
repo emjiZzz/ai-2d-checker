@@ -3,31 +3,31 @@ import { useAuditStore } from "../stores/auditStore";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useConnectionStore } from "../stores/connectionStore";
 import { CopilotPanel } from "./copilot/CopilotPanel";
-import { 
-  ShieldCheck, 
-  Play, 
-  Loader2, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
-  Cpu, 
-  BookOpen, 
-  Layers, 
-  MapPin, 
-  Filter, 
+import {
+  ShieldCheck,
+  Play,
+  Loader2,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Cpu,
+  BookOpen,
+  Layers,
+  MapPin,
+  Filter,
   XCircle
 } from "lucide-react";
 
 export const AuditConsole: React.FC = () => {
-  const { 
-    standards, 
-    fetchStandards, 
-    launchAudit, 
-    activeSession, 
-    activeViolations, 
-    auditState, 
-    errorMessage, 
-    resetStore 
+  const {
+    standards,
+    fetchStandards,
+    launchAudit,
+    activeSession,
+    activeViolations,
+    auditState,
+    errorMessage,
+    resetStore
   } = useAuditStore();
 
   const { activeDrawing } = useDrawingStore();
@@ -43,7 +43,7 @@ export const AuditConsole: React.FC = () => {
   useEffect(() => {
     fetchStandards();
     fetchLocalDrawings();
-    
+
     if (activeDrawing) {
       setSelectedDrawingId(activeDrawing.id);
     }
@@ -123,7 +123,7 @@ export const AuditConsole: React.FC = () => {
           <div className="trigger-form-grid">
             <div className="form-group">
               <label className="form-label">1. Target Engineering Drawing</label>
-              <select 
+              <select
                 className="form-input select-input"
                 value={selectedDrawingId}
                 onChange={(e) => setSelectedDrawingId(e.target.value)}
@@ -139,7 +139,7 @@ export const AuditConsole: React.FC = () => {
 
             <div className="form-group">
               <label className="form-label">2. Target Compliance Standard</label>
-              <select 
+              <select
                 className="form-input select-input"
                 value={selectedStandardId}
                 onChange={(e) => setSelectedStandardId(e.target.value)}
@@ -154,8 +154,8 @@ export const AuditConsole: React.FC = () => {
             </div>
           </div>
 
-          <button 
-            className="btn btn-primary mt-4" 
+          <button
+            className="btn btn-primary mt-4"
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "14px" }}
             onClick={handleStartAudit}
             disabled={!selectedDrawingId || !selectedStandardId}
@@ -173,7 +173,7 @@ export const AuditConsole: React.FC = () => {
           <span className="loading-sub">
             Session ID: <code style={{ color: "#c084fc" }}>{activeSession.id}</code>
           </span>
-          
+
           <div className="loading-steps-list">
             <div className="step-item active">
               <div className="step-bullet"></div>
@@ -216,7 +216,7 @@ export const AuditConsole: React.FC = () => {
       {/* 4. SUCCESS RESULTS STATE */}
       {auditState === "completed" && activeSession && (
         <div className="results-view">
-          
+
           {/* Top Info Bar with resetting action */}
           <div className="results-header">
             <div>
@@ -224,8 +224,8 @@ export const AuditConsole: React.FC = () => {
               <span className="results-subtitle">Grounded on: {getStandardName(activeSession.standard_id || "")}</span>
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
-              <button 
-                className={`btn ${showCopilot ? 'btn-primary' : 'btn-secondary'}`} 
+              <button
+                className={`btn ${showCopilot ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setShowCopilot(!showCopilot)}
                 style={{ display: "flex", alignItems: "center", gap: "8px" }}
               >
@@ -240,211 +240,211 @@ export const AuditConsole: React.FC = () => {
           <div className="results-main-layout" style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
             <div className="results-body-left" style={{ flex: 1, minWidth: 0 }}>
 
-          {/* Scores Overview Row */}
-          <div className="scores-grid">
-            
-            {/* Score 1: Compliance Gauge */}
-            <div className="card score-card">
-              <span className="score-label">Overall Compliance Rating</span>
-              
-              <div className="score-display">
-                <div 
-                  className="radial-gauge"
-                  style={{ borderColor: getScoreColor(activeSession.compliance_score || 0).border }}
-                >
-                  <span className="gauge-number" style={{ color: getScoreColor(activeSession.compliance_score || 0).text }}>
-                    {activeSession.compliance_score}%
-                  </span>
+              {/* Scores Overview Row */}
+              <div className="scores-grid">
+
+                {/* Score 1: Compliance Gauge */}
+                <div className="card score-card">
+                  <span className="score-label">Overall Compliance Rating</span>
+
+                  <div className="score-display">
+                    <div
+                      className="radial-gauge"
+                      style={{ borderColor: getScoreColor(activeSession.compliance_score || 0).border }}
+                    >
+                      <span className="gauge-number" style={{ color: getScoreColor(activeSession.compliance_score || 0).text }}>
+                        {activeSession.compliance_score}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    className="score-verdict-badge"
+                    style={{
+                      color: getScoreColor(activeSession.compliance_score || 0).text,
+                      background: getScoreColor(activeSession.compliance_score || 0).bg
+                    }}
+                  >
+                    {getScoreColor(activeSession.compliance_score || 0).label}
+                  </div>
+                </div>
+
+                {/* Score 2: Confidence Rating */}
+                <div className="card score-card">
+                  <span className="score-label">Aggregate Analysis Confidence</span>
+
+                  <div className="score-display" style={{ minHeight: "140px", flexDirection: "column", justifyContent: "center" }}>
+                    <span className="confidence-percent">
+                      {((activeSession.confidence_score || 0.95) * 100).toFixed(1)}%
+                    </span>
+                    <span className="confidence-desc">
+                      Confidence rating based on grounded database chunks matching and structural entity density overlaps.
+                    </span>
+                  </div>
+
+                  <div className="score-verdict-badge bg-purple-soft text-purple">
+                    HIGH VALIDATION FIDELITY
+                  </div>
                 </div>
               </div>
 
-              <div 
-                className="score-verdict-badge"
-                style={{ 
-                  color: getScoreColor(activeSession.compliance_score || 0).text,
-                  background: getScoreColor(activeSession.compliance_score || 0).bg
-                }}
-              >
-                {getScoreColor(activeSession.compliance_score || 0).label}
-              </div>
-            </div>
+              {/* Diagnostic Execution Timings Card */}
+              <div className="card timings-card">
+                <h4 className="timing-title">
+                  <Cpu size={16} className="text-purple" /> Diagnostics Console
+                </h4>
 
-            {/* Score 2: Confidence Rating */}
-            <div className="card score-card">
-              <span className="score-label">Aggregate Analysis Confidence</span>
-              
-              <div className="score-display" style={{ minHeight: "140px", flexDirection: "column", justifyContent: "center" }}>
-                <span className="confidence-percent">
-                  {((activeSession.confidence_score || 0.95) * 100).toFixed(1)}%
-                </span>
-                <span className="confidence-desc">
-                  Confidence rating based on grounded database chunks matching and structural entity density overlaps.
-                </span>
+                <div className="timing-grid">
+                  <div className="timing-item">
+                    <span className="timing-label">Rule Engine execution time</span>
+                    <span className="timing-value">
+                      <Clock size={12} /> {activeSession.timings.rule_engine_seconds || 0.05}s
+                    </span>
+                  </div>
+                  <div className="timing-item">
+                    <span className="timing-label">Gemini Vision comparative logic</span>
+                    <span className="timing-value">
+                      <Clock size={12} /> {activeSession.timings.ai_engine_seconds || 1.2}s
+                    </span>
+                  </div>
+                  <div className="timing-item">
+                    <span className="timing-label">Total pipeline roundtrip</span>
+                    <span className="timing-value text-purple" style={{ fontWeight: 600 }}>
+                      <Clock size={12} /> {activeSession.timings.total_seconds || 1.3}s
+                    </span>
+                  </div>
+                  <div className="timing-item">
+                    <span className="timing-label">Evaluated reference knowledge</span>
+                    <span className="timing-value text-cyan" style={{ fontWeight: 600 }}>
+                      <BookOpen size={12} /> {activeSession.diagnostics.grounding_chunks_evaluated || 8} segments
+                    </span>
+                  </div>
+                </div>
               </div>
-              
-              <div className="score-verdict-badge bg-purple-soft text-purple">
-                HIGH VALIDATION FIDELITY
-              </div>
-            </div>
-          </div>
 
-          {/* Diagnostic Execution Timings Card */}
-          <div className="card timings-card">
-            <h4 className="timing-title">
-              <Cpu size={16} className="text-purple" /> Diagnostics Console
-            </h4>
-            
-            <div className="timing-grid">
-              <div className="timing-item">
-                <span className="timing-label">Rule Engine execution time</span>
-                <span className="timing-value">
-                  <Clock size={12} /> {activeSession.timings.rule_engine_seconds || 0.05}s
-                </span>
-              </div>
-              <div className="timing-item">
-                <span className="timing-label">Gemini Vision comparative logic</span>
-                <span className="timing-value">
-                  <Clock size={12} /> {activeSession.timings.ai_engine_seconds || 1.2}s
-                </span>
-              </div>
-              <div className="timing-item">
-                <span className="timing-label">Total pipeline roundtrip</span>
-                <span className="timing-value text-purple" style={{ fontWeight: 600 }}>
-                  <Clock size={12} /> {activeSession.timings.total_seconds || 1.3}s
-                </span>
-              </div>
-              <div className="timing-item">
-                <span className="timing-label">Evaluated reference knowledge</span>
-                <span className="timing-value text-cyan" style={{ fontWeight: 600 }}>
-                  <BookOpen size={12} /> {activeSession.diagnostics.grounding_chunks_evaluated || 8} segments
-                </span>
-              </div>
-            </div>
-          </div>
+              {/* INFRACTIONS FEED PANEL */}
+              <div className="infractions-feed-layout">
 
-          {/* INFRACTIONS FEED PANEL */}
-          <div className="infractions-feed-layout">
-            
-            {/* Filter Bar */}
-            <div className="feed-header-bar">
-              <h3 className="section-title">
-                Drawing Infraction Feed ({filteredViolations.length})
-              </h3>
-              
-              <div className="filter-group">
-                <Filter size={14} className="text-purple" />
-                <span className="filter-label">Filter Severity:</span>
-                <button 
-                  className={`btn-filter ${severityFilter === "all" ? "active" : ""}`}
-                  onClick={() => setSeverityFilter("all")}
-                >
-                  All
-                </button>
-                <button 
-                  className={`btn-filter ${severityFilter === "critical" ? "active" : ""}`}
-                  onClick={() => setSeverityFilter("critical")}
-                >
-                  Critical
-                </button>
-                <button 
-                  className={`btn-filter ${severityFilter === "high" ? "active" : ""}`}
-                  onClick={() => setSeverityFilter("high")}
-                >
-                  High
-                </button>
-                <button 
-                  className={`btn-filter ${severityFilter === "medium" ? "active" : ""}`}
-                  onClick={() => setSeverityFilter("medium")}
-                >
-                  Medium
-                </button>
-                <button 
-                  className={`btn-filter ${severityFilter === "low" ? "active" : ""}`}
-                  onClick={() => setSeverityFilter("low")}
-                >
-                  Low
-                </button>
-              </div>
-            </div>
+                {/* Filter Bar */}
+                <div className="feed-header-bar">
+                  <h3 className="section-title">
+                    Drawing Infraction Feed ({filteredViolations.length})
+                  </h3>
 
-            {/* Cards List */}
-            {filteredViolations.length === 0 ? (
-              <div className="empty-feed-card">
-                <CheckCircle size={36} className="text-emerald" style={{ marginBottom: "12px", opacity: 0.8 }} />
-                <h4>No violations detected</h4>
-                <p>Drawing meets all criteria in this specific reference grouping.</p>
-              </div>
-            ) : (
-              <div className="infractions-list">
-                {filteredViolations.map((violation) => {
-                  const styles = getSeverityStyles(violation.severity);
-                  return (
-                    <div 
-                      className="violation-card card" 
-                      key={violation.id}
-                      style={{ borderLeft: `4px solid ${styles.iconColor}` }}
+                  <div className="filter-group">
+                    <Filter size={14} className="text-purple" />
+                    <span className="filter-label">Filter Severity:</span>
+                    <button
+                      className={`btn-filter ${severityFilter === "all" ? "active" : ""}`}
+                      onClick={() => setSeverityFilter("all")}
                     >
-                      <div className="violation-card-top">
-                        <div className="violation-title-group">
-                          <AlertTriangle size={16} style={{ color: styles.iconColor }} />
-                          <h4 className="violation-category">{violation.category}</h4>
+                      All
+                    </button>
+                    <button
+                      className={`btn-filter ${severityFilter === "critical" ? "active" : ""}`}
+                      onClick={() => setSeverityFilter("critical")}
+                    >
+                      Critical
+                    </button>
+                    <button
+                      className={`btn-filter ${severityFilter === "high" ? "active" : ""}`}
+                      onClick={() => setSeverityFilter("high")}
+                    >
+                      High
+                    </button>
+                    <button
+                      className={`btn-filter ${severityFilter === "medium" ? "active" : ""}`}
+                      onClick={() => setSeverityFilter("medium")}
+                    >
+                      Medium
+                    </button>
+                    <button
+                      className={`btn-filter ${severityFilter === "low" ? "active" : ""}`}
+                      onClick={() => setSeverityFilter("low")}
+                    >
+                      Low
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cards List */}
+                {filteredViolations.length === 0 ? (
+                  <div className="empty-feed-card">
+                    <CheckCircle size={36} className="text-emerald" style={{ marginBottom: "12px", opacity: 0.8 }} />
+                    <h4>No violations detected</h4>
+                    <p>Drawing meets all criteria in this specific reference grouping.</p>
+                  </div>
+                ) : (
+                  <div className="infractions-list">
+                    {filteredViolations.map((violation) => {
+                      const styles = getSeverityStyles(violation.severity);
+                      return (
+                        <div
+                          className="violation-card card"
+                          key={violation.id}
+                          style={{ borderLeft: `4px solid ${styles.iconColor}` }}
+                        >
+                          <div className="violation-card-top">
+                            <div className="violation-title-group">
+                              <AlertTriangle size={16} style={{ color: styles.iconColor }} />
+                              <h4 className="violation-category">{violation.category}</h4>
+                            </div>
+
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <span className="source-badge">
+                                {violation.source === "rule_engine" ? "CAD Engine" : "AI Grounding"}
+                              </span>
+                              <span
+                                className="severity-badge"
+                                style={{ color: styles.text, background: styles.bg, borderColor: styles.border }}
+                              >
+                                {violation.severity.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="violation-desc">{violation.description}</p>
+
+                          <div className="violation-recommendation-box">
+                            <span className="rec-label">Correction Guideline:</span>
+                            <p className="rec-text">{violation.recommendation}</p>
+                          </div>
+
+                          <div className="violation-footer">
+                            {violation.standard_reference && (
+                              <div className="footer-tag">
+                                <BookOpen size={12} />
+                                <span>Grounded Clause: {violation.standard_reference}</span>
+                              </div>
+                            )}
+
+                            {violation.affected_entities && violation.affected_entities.length > 0 && (
+                              <div className="footer-tag">
+                                <Layers size={12} />
+                                <span>Affected Primitives: {violation.affected_entities.map(e => e.type).join(", ")}</span>
+                              </div>
+                            )}
+
+                            {violation.coordinates && (
+                              <div className="footer-tag">
+                                <MapPin size={12} />
+                                <span>Coordinates: {JSON.stringify(violation.coordinates)}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        
-                        <div style={{ display: "flex", gap: "8px" }}>
-                          <span className="source-badge">
-                            {violation.source === "rule_engine" ? "CAD Engine" : "AI Grounding"}
-                          </span>
-                          <span 
-                            className="severity-badge"
-                            style={{ color: styles.text, background: styles.bg, borderColor: styles.border }}
-                          >
-                            {violation.severity.toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
 
-                      <p className="violation-desc">{violation.description}</p>
-
-                      <div className="violation-recommendation-box">
-                        <span className="rec-label">Correction Guideline:</span>
-                        <p className="rec-text">{violation.recommendation}</p>
-                      </div>
-
-                      <div className="violation-footer">
-                        {violation.standard_reference && (
-                          <div className="footer-tag">
-                            <BookOpen size={12} />
-                            <span>Grounded Clause: {violation.standard_reference}</span>
-                          </div>
-                        )}
-                        
-                        {violation.affected_entities && violation.affected_entities.length > 0 && (
-                          <div className="footer-tag">
-                            <Layers size={12} />
-                            <span>Affected Primitives: {violation.affected_entities.map(e => e.type).join(", ")}</span>
-                          </div>
-                        )}
-
-                        {violation.coordinates && (
-                          <div className="footer-tag">
-                            <MapPin size={12} />
-                            <span>Coordinates: {JSON.stringify(violation.coordinates)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+            {showCopilot && (
+              <div className="results-body-right" style={{ width: "360px", flexShrink: 0, position: "sticky", top: "20px" }}>
+                <CopilotPanel />
               </div>
             )}
-          </div>
-          </div>
-
-          {showCopilot && (
-            <div className="results-body-right" style={{ width: "360px", flexShrink: 0, position: "sticky", top: "20px" }}>
-              <CopilotPanel />
-            </div>
-          )}
           </div>
         </div>
       )}

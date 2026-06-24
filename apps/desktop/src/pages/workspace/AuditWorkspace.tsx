@@ -225,35 +225,14 @@ export const AuditWorkspace: React.FC = () => {
           headers["Authorization"] = `Bearer ${apiToken}`;
         }
 
-        // Load drawings
+        // Load drawings — bind exclusively to live database records.
+        // An empty database must surface as an empty state, never a phantom catalog.
         const dwgRes = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
         const dwgData = await dwgRes.json();
         if (dwgRes.ok && dwgData.success) {
-          // If no drawings returned, mock a standard list so the user is wowed immediately!
-          if (dwgData.data && dwgData.data.length > 0) {
-            setDrawings(dwgData.data);
-          } else {
-            setDrawings([
-              {
-                id: "dwg_01",
-                file_name: "floor_layout_v1_reference.dwg",
-                file_path: "uploads/dwg_01.dwg",
-                format: "dwg",
-                entity_counts: { LINE: 1204, CIRCLE: 480, TEXT: 125, DIMENSION: 94 },
-                metadata: { extmin: [0, 0], extmax: [400, 300] },
-                created_at: new Date(Date.now() - 3600 * 1000).toISOString()
-              },
-              {
-                id: "dwg_02",
-                file_name: "floor_layout_v2_revision.dwg",
-                file_path: "uploads/dwg_02.dwg",
-                format: "dwg",
-                entity_counts: { LINE: 1225, CIRCLE: 478, TEXT: 132, DIMENSION: 95 },
-                metadata: { extmin: [0, 0], extmax: [400, 300] },
-                created_at: new Date().toISOString()
-              }
-            ]);
-          }
+          // Bind strictly to the dynamic payload returned from the ingestion pipeline.
+          // drawings.length === 0 is the correct signal for the empty-state import prompt.
+          setDrawings(dwgData.data && dwgData.data.length > 0 ? dwgData.data : []);
         }
 
         // Load standards list
@@ -421,9 +400,31 @@ export const AuditWorkspace: React.FC = () => {
           searchTerm: string,
           entities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[],
           preferModelSpace: boolean = false,
-          allowNumberMismatch: boolean = false
+          allowNumberMismatch: boolean = false,
+          minScore: number = 0
         ): { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] => {
           if (!searchTerm) return [];
+
+          // Fix F1: multi-line search terms (e.g. a \n-joined TITLE field merged from two stacked
+          // rows) cannot match single-line CAD entities. Split on \n and run per-line searches,
+          // returning the deduplicated union so both rows get their own marker pin.
+          if (searchTerm.includes('\n')) {
+            const lines = searchTerm.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+            const seen = new Set<string>();
+            const combined: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] = [];
+            for (const line of lines) {
+              const lineMatches = findAllFuzzyMatches(line, entities, preferModelSpace, allowNumberMismatch, minScore);
+              for (const m of lineMatches) {
+                const key = `${m.x.toFixed(2)},${m.y.toFixed(2)}`;
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  combined.push(m);
+                }
+              }
+            }
+            return combined;
+          }
+
           const normSearch = normalizeStr(searchTerm);
           if (!normSearch) return [];
 
@@ -493,50 +494,11 @@ export const AuditWorkspace: React.FC = () => {
           if (matches.length === 0) return [];
           const maxScore = Math.max(...matches.map(m => m.score));
           const threshold = maxScore >= 100 ? 100 : (maxScore - 5);
-          return matches.filter(m => m.score >= threshold).map(m => m.ent);
+          const finalThreshold = Math.max(threshold, minScore);
+          return matches.filter(m => m.score >= finalThreshold).map(m => m.ent);
         };
 
-        const getRoiFallbackCoordinates = (
-          regionKey: string,
-          drawing: any,
-          index: number
-        ): [number, number] => {
-          let xmin = 0, ymin = 0, xmax = 400, ymax = 300;
-          if (drawing?.metadata?.render_bounds && Array.isArray(drawing.metadata.render_bounds) && drawing.metadata.render_bounds.length >= 4) {
-            [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-          } else {
-            const extmin = drawing?.metadata?.extmin || [0, 0];
-            const extmax = drawing?.metadata?.extmax || [400, 300];
-            xmin = extmin[0];
-            ymin = extmin[1];
-            xmax = extmax[0];
-            ymax = extmax[1];
-          }
-          const width = xmax - xmin;
-          const height = ymax - ymin;
 
-          const regions: Record<string, { x: number; y: number }> = {
-            notes_section: { x: 0.20, y: 0.40 },
-            bill_of_materials: { x: 0.82, y: 0.25 },
-            title_block: { x: 0.70, y: 0.85 },
-            isometric_view: { x: 0.82, y: 0.60 },
-            drawing_views: { x: 0.35, y: 0.50 }
-          };
-
-          const center = regions[regionKey] || { x: 0.5, y: 0.5 };
-          const staggerX = ((index % 5) - 2) * (width * 0.03);
-          const staggerY = ((index % 3) - 1) * (height * 0.03);
-
-          return [
-            xmin + (width * center.x) + staggerX,
-            ymax - (height * center.y) + staggerY
-          ];
-        };
-
-        const isTitleBlockLayer = (layerName: string): boolean => {
-          const l = (layerName || "").toLowerCase();
-          return ["title", "border", "stamp", "attr", "admin", "block", "header", "logo", "dwg", "rev", "approved", "checked", "designed", "drawn", "scale", "date", "waku", "frame"].some(x => l.includes(x));
-        };
 
         const isCoordinateTick = (text: string): boolean => {
           const t = (text || "").trim().toUpperCase();
@@ -580,32 +542,44 @@ export const AuditWorkspace: React.FC = () => {
         let oldXMin = 0, oldXMax = 1000, oldYMin = 0, oldYMax = 1000;
 
         const isEngineeringDataEntity = (
-          ent: { text: string; x: number; y: number; layer?: string },
+          ent: { text: string; x: number; y: number; layer?: string; eType?: string },
           drawing: any
         ): boolean => {
-          if (isStaticLabelOrHeader(ent.text)) {
-            return false;
+
+          // ── Structural annotation fast-path (Fix 4) ─────────────────────────────────
+          const isNativeStructural = ent.eType === 'tolerance' || ent.eType === 'leader' || ent.eType === 'multileader' || ent.eType === 'attrib' || ent.eType === 'insert' || ent.eType === 'mtext' || ent.eType === 'block';
+          // Chamfer/radius: "C1", "2-C1", "4-C1", "R5", "3XR2"
+          const tCleanAnnotation = ent.text.trim();
+          const isChamferOrRadius = /^\d*[-]?[CR]\d+(\.\d+)?$/i.test(tCleanAnnotation.replace(/\s/g, ''));
+          // Balloon tags: circled Unicode numbers ①–⑳, or parenthesised integers (1)–(99)
+          const isBalloonTag = /^[\u2460-\u2473\u3251-\u325f\u32b1-\u32bf]$/.test(tCleanAnnotation) ||
+                               /^\(\d{1,2}\)$/.test(tCleanAnnotation);
+          // GD&T / machining surface symbols: ▽ ∇ ▲ △ ⊙ ◯ □
+          const isGdtOrMachining = /^[\u25bd\u25bf\u25b3\u25b2\u2299\u25ef\u25a1]$/.test(tCleanAnnotation);
+
+          // For structural annotations: skip isStaticLabelOrHeader AND isCoordinateTick entirely.
+          // Fall through directly to layer / spatial zone checks below.
+          const isStructuralAnnotation = isNativeStructural || isChamferOrRadius || isBalloonTag || isGdtOrMachining;
+
+          if (!isStructuralAnnotation) {
+            // Standard path: reject static label headers and coordinate tick marks
+            if (isStaticLabelOrHeader(ent.text)) return false;
+
+            const tClean = ent.text.trim().replace(/\s/g, '').toLowerCase();
+            const isToleranceRange = /^\d+(\.\d+)?[sS]?(~|〜|-)\d+(\.\d+)?[sS]?$/.test(tClean);
+            const isSurfaceFinish = /^\d+(\.\d+)?[sS]$/.test(tClean);
+            const toleranceSymbols = ["~", "〜", "±"];
+            const isToleranceKw = ["表示外公差", "寸法区分", "平行度", "直角度", "許容差", "仕上ゲ記号", "表面粗さ", "普通寸法許容差", "角度", "長さ", "表示外"].some(kw => ent.text.includes(kw));
+            const isToleranceSymbol = toleranceSymbols.includes(tClean);
+            if (isToleranceRange || isSurfaceFinish || isToleranceKw || isToleranceSymbol) return false;
           }
 
-          // Strict exact match for tolerance table numerical values to prevent fake green pins
-          const tClean = ent.text.trim().replace(/\s/g, '').toLowerCase();
-          // Range patterns like "1000~2500" or "30 ~ 120" or "100S〜50S"
-          const isToleranceRange = /^\d+(\.\d+)?[sS]?(~|〜|-)\d+(\.\d+)?[sS]?$/.test(tClean);
-          // Surface finish codes like "100S", "50S", "12.5S"
-          const isSurfaceFinish = /^\d+(\.\d+)?[sS]$/.test(tClean);
-          // Standalone symbols
-          const toleranceSymbols = ["~", "〜", "±"];
-          const isToleranceKw = ["表示外公差", "寸法区分", "平行度", "直角度", "許容差", "仕上ゲ記号", "表面粗さ", "普通寸法許容差", "角度", "長さ", "表示外"].some(kw => ent.text.includes(kw));
-          const isToleranceSymbol = toleranceSymbols.includes(tClean);
+          // ── Layer filters (Removed in Phase 6.1) ──────────────────────────────────
+          // Layer filters for title blocks and waku frames were overly aggressive and
+          // blocked true INSERT and ATTRIB data from being audited.
 
-          if (isToleranceRange || isSurfaceFinish || isToleranceKw || isToleranceSymbol) {
-            return false;
-          }
 
-          if (ent.layer && isTitleBlockLayer(ent.layer)) {
-            return false;
-          }
-
+          // ── Spatial region checks ────────────────────────────────────────────────────
           const isOld = oldDrawing && drawing?.id === oldDrawing.id;
           const xmin = isOld ? oldXMin : newXMin;
           const xmax = isOld ? oldXMax : newXMax;
@@ -619,59 +593,43 @@ export const AuditWorkspace: React.FC = () => {
           const pctX = (ent.x - xmin) / width;
           const pctY = 1.0 - (ent.y - ymin) / height;
 
-          // Margin/Tick filter: strictly exclude any text elements at the extreme edges
-          if (pctX < 0.045 || pctX > 0.98 || pctY < 0.045 || pctY > 0.98) {
-            return false;
-          }
+          if (pctX < 0.045 || pctX > 0.98 || pctY < 0.045 || pctY > 0.98) return false;
 
-          // Strictly filter out any coordinate ticks located near margins
           const isNearMargin = pctX < 0.12 || pctX > 0.88 || pctY < 0.12 || pctY > 0.88;
-          if (isNearMargin && isCoordinateTick(ent.text)) {
-            return false;
-          }
+          // isCoordinateTick is only applied on the standard path — structural annotations skip it
+          if (!isStructuralAnnotation && isNearMargin && isCoordinateTick(ent.text)) return false;
 
-          // Strictly filter out waku / frame / grid / border layers to avoid ticks matches
-          const layerStr = (ent.layer || "").toLowerCase();
-          const isWakuLayer = ["waku", "border", "frame", "grid", "template", "form", "cosa", "tol", "std", "standard", "legend", "admin", "block", "table"].some(x => layerStr.includes(x));
-          if (isWakuLayer) {
-            return false;
-          }
-
-          // Bottom footer exclusion removed because it filtered out valid bottom-aligned views/dimensions.
-
-          // Hard exclusion: the Tolerance/Surface Roughness table is always in the bottom-left corner
-          // Its spatial footprint is approximately pctX 0.04–0.40, pctY 0.70–1.0
+          // Hard exclusion: Tolerance/Surface Roughness table (bottom-left)
           const inToleranceTableZone = (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02);
-          if (inToleranceTableZone) {
-            return false;
-          }
+          if (inToleranceTableZone) return false;
 
-          // Strict boundary boxes for the 5 functional engineering regions:
-          const regions = {
-            views: { xMin: 0.04, xMax: 0.68, yMin: 0.12, yMax: 0.88 },
-            notes: { xMin: 0.04, xMax: 0.38, yMin: 0.18, yMax: 0.62 },
-            bom: { xMin: 0.62, xMax: 0.98, yMin: 0.04, yMax: 0.44 },
-            title: { xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98 },
-            titleUpperLeft: { xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 },
-            iso: { xMin: 0.62, xMax: 0.98, yMin: 0.42, yMax: 0.74 }
+          const defaultRegions = {
+            views:         { xMin: 0.04, xMax: 0.68, yMin: 0.12, yMax: 0.88 },
+            notes:         { xMin: 0.04, xMax: 0.38, yMin: 0.18, yMax: 0.62 },
+            bom:           { xMin: 0.62, xMax: 0.98, yMin: 0.04, yMax: 0.44 },
+            title:         { xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98 },
+            titleUpperLeft:{ xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 },
+            iso:           { xMin: 0.62, xMax: 0.98, yMin: 0.42, yMax: 0.74 }
           };
+          const targetMetadata = (isOld ? oldDrawing?.metadata : drawing?.metadata) || {};
+          const regions = targetMetadata.regions || defaultRegions;
+          const inside = (px: number, py: number, box: { xMin: number; xMax: number; yMin: number; yMax: number }) =>
+            px >= box.xMin && px <= box.xMax && py >= box.yMin && py <= box.yMax;
 
-          const inside = (px: number, py: number, box: { xMin: number; xMax: number; yMin: number; yMax: number }) => {
-            return px >= box.xMin && px <= box.xMax && py >= box.yMin && py <= box.yMax;
-          };
-
-          const inViews = inside(pctX, pctY, regions.views);
-          const inNotes = inside(pctX, pctY, regions.notes);
-          const inBom = inside(pctX, pctY, regions.bom);
-          const inIso = inside(pctX, pctY, regions.iso);
-          const inTitle = inside(pctX, pctY, regions.title);
+          const inViews  = inside(pctX, pctY, regions.views);
+          const inNotes  = inside(pctX, pctY, regions.notes);
+          const inBom    = inside(pctX, pctY, regions.bom);
+          const inIso    = inside(pctX, pctY, regions.iso);
+          const inTitle  = inside(pctX, pctY, regions.title);
           const inTitleUL = inside(pctX, pctY, regions.titleUpperLeft);
 
-          // Total Qty must be located only inside the Upper Left Title Block quadrant
+          // Total Qty label pass-through (must be in upper-left quadrant)
           const isTotalQtyText = ["総製作個数", "t. q'ty", "t. qty", "total quantity"].some(x => ent.text.toLowerCase().includes(x));
-          if (inTitleUL && isTotalQtyText) {
-            return true;
-          }
+          if (inTitleUL && isTotalQtyText) return true;
+
+          // Fix 6: Block pure integers in upper-left title block — they are T.Q'ty values,
+          // not engineering data. Without this, "1" from T.Q'ty collides with BOM No.=1.
+          if (inTitleUL && /^\d+$/.test(ent.text.trim())) return false;
 
           return inViews || inNotes || inBom || inIso || inTitle;
         };
@@ -685,14 +643,21 @@ export const AuditWorkspace: React.FC = () => {
           return list.some(ent => ent.text === text && Math.hypot(ent.x - x, ent.y - y) < 1.0);
         };
 
-        const textEntities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] = [];
+        const textEntities: { text: string; x: number; y: number; handle?: string; bbox?: any; height?: number; layoutSpace?: string; layer?: string; eType?: string }[] = [];
         if (newLayers) {
           Object.entries(newLayers).forEach(([layerName, entities]: any) => {
             if (Array.isArray(entities)) {
               entities.forEach((ent: any) => {
-                if (ent.type === 'text') {
+                const eType = ent.type || ent.entity_type;
+                if (eType === 'text' || eType === 'mtext' || eType === 'tolerance' || eType === 'multileader' || eType === 'attrib' || eType === 'insert' || eType === 'block') {
                   const geo = ent.geometry || {};
-                  const rawText = geo.text || geo.content || ent.properties?.text || '';
+                  let rawText = geo.text || geo.content || ent.properties?.text || '';
+                  
+                  // Flatten block attributes into searchable text
+                  if (eType === 'block' && ent.properties?.attributes) {
+                    rawText = Object.values(ent.properties.attributes).join(' ');
+                  }
+                  
                   const textVal = cleanCadText(rawText);
                   if (textVal && (geo.location || geo.insert)) {
                     const [tx, ty] = geo.location || geo.insert;
@@ -702,12 +667,39 @@ export const AuditWorkspace: React.FC = () => {
                         text: cleanedText,
                         x: tx,
                         y: ty,
+                        handle: ent.properties?.handle,
                         bbox: ent.properties?.bbox,
                         height: ent.properties?.height,
                         layoutSpace: ent.properties?.layout_space || 'Model',
-                        layer: layerName
+                        layer: layerName,
+                        eType: eType
                       });
                     }
+                  }
+                } else if (eType === 'block') {
+                  const attrs = ent.properties?.attributes;
+                  if (attrs && typeof attrs === 'object') {
+                    const geo = ent.geometry || {};
+                    const [bx, by] = geo.insert || [0, 0];
+                    Object.values(attrs).forEach((rawVal: any) => {
+                      const textVal = cleanCadText(String(rawVal));
+                      if (textVal) {
+                        const cleanedText = textVal.trim();
+                        if (!isDuplicateEntity(textEntities, cleanedText, bx, by)) {
+                          textEntities.push({
+                            text: cleanedText,
+                            x: bx,
+                            y: by,
+                            handle: ent.properties?.handle,
+                            bbox: ent.properties?.bbox,
+                            height: ent.properties?.height || 3.0,
+                            layoutSpace: ent.properties?.layout_space || 'Model',
+                            layer: layerName,
+                            eType: 'block'
+                          });
+                        }
+                      }
+                    });
                   }
                 }
               });
@@ -715,12 +707,13 @@ export const AuditWorkspace: React.FC = () => {
           });
         }
 
-        const refTextEntities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] = [];
+        const refTextEntities: { text: string; x: number; y: number; handle?: string; bbox?: any; height?: number; layoutSpace?: string; layer?: string; eType?: string }[] = [];
         if (oldLayers) {
           Object.entries(oldLayers).forEach(([layerName, entities]: any) => {
             if (Array.isArray(entities)) {
               entities.forEach((ent: any) => {
-                if (ent.type === 'text') {
+                const eType = ent.type || ent.entity_type;
+                if (eType === 'text' || eType === 'tolerance' || eType === 'multileader') {
                   const geo = ent.geometry || {};
                   const rawText = geo.text || geo.content || ent.properties?.text || '';
                   const textVal = cleanCadText(rawText);
@@ -732,12 +725,39 @@ export const AuditWorkspace: React.FC = () => {
                         text: cleanedText,
                         x: tx,
                         y: ty,
+                        handle: ent.properties?.handle,
                         bbox: ent.properties?.bbox,
                         height: ent.properties?.height,
                         layoutSpace: ent.properties?.layout_space || 'Model',
-                        layer: layerName
+                        layer: layerName,
+                        eType: eType
                       });
                     }
+                  }
+                } else if (eType === 'block') {
+                  const attrs = ent.properties?.attributes;
+                  if (attrs && typeof attrs === 'object') {
+                    const geo = ent.geometry || {};
+                    const [bx, by] = geo.insert || [0, 0];
+                    Object.values(attrs).forEach((rawVal: any) => {
+                      const textVal = cleanCadText(String(rawVal));
+                      if (textVal) {
+                        const cleanedText = textVal.trim();
+                        if (!isDuplicateEntity(refTextEntities, cleanedText, bx, by)) {
+                          refTextEntities.push({
+                            text: cleanedText,
+                            x: bx,
+                            y: by,
+                            handle: ent.properties?.handle,
+                            bbox: ent.properties?.bbox,
+                            height: ent.properties?.height || 3.0,
+                            layoutSpace: ent.properties?.layout_space || 'Model',
+                            layer: layerName,
+                            eType: 'block'
+                          });
+                        }
+                      }
+                    });
                   }
                 }
               });
@@ -745,22 +765,61 @@ export const AuditWorkspace: React.FC = () => {
           });
         }
 
+        const computeBounds = (entities: { text: string; x: number; y: number; layer?: string }[]) => {
+          if (entities.length === 0) return { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
+
+          // 1. Try to anchor using the frame/waku layers if they exist
+          const wakuEntities = entities.filter(ent => {
+            const layerStr = (ent.layer || "").toLowerCase();
+            return ["waku", "border", "frame", "grid", "template", "form", "cosa", "legend", "admin", "block", "table"].some(x => layerStr.includes(x));
+          });
+
+          // Use frame text if found; otherwise, fall back to all text
+          const sourceEntities = wakuEntities.length > 0 ? wakuEntities : entities;
+
+          // 2. Statistical Outlier Rejection (IQR method)
+          const getCleanBounds = (vals: number[]) => {
+            if (vals.length < 4) return { min: Math.min(...vals), max: Math.max(...vals) };
+            const sorted = [...vals].sort((a, b) => a - b);
+            const q1 = sorted[Math.floor(sorted.length * 0.25)];
+            const q3 = sorted[Math.floor(sorted.length * 0.75)];
+            const iqr = q3 - q1;
+            
+            // Use 2.0 as multiplier to be slightly forgiving but strictly drop extreme stray outliers
+            const lowerBound = q1 - 2.0 * iqr;
+            const upperBound = q3 + 2.0 * iqr;
+            
+            const cleanVals = vals.filter(v => v >= lowerBound && v <= upperBound);
+            
+            // Fallback to absolute min/max if the IQR filter somehow rejected everything
+            if (cleanVals.length === 0) return { min: Math.min(...vals), max: Math.max(...vals) };
+            
+            return { min: Math.min(...cleanVals), max: Math.max(...cleanVals) };
+          };
+
+          const xs = sourceEntities.map(e => e.x);
+          const ys = sourceEntities.map(e => e.y);
+
+          const xBounds = getCleanBounds(xs);
+          const yBounds = getCleanBounds(ys);
+
+          return { xMin: xBounds.min, xMax: xBounds.max, yMin: yBounds.min, yMax: yBounds.max };
+        };
+
         if (textEntities.length > 0) {
-          const xs = textEntities.map(t => t.x);
-          const ys = textEntities.map(t => t.y);
-          newXMin = Math.min(...xs);
-          newXMax = Math.max(...xs);
-          newYMin = Math.min(...ys);
-          newYMax = Math.max(...ys);
+          const bounds = computeBounds(textEntities);
+          newXMin = bounds.xMin;
+          newXMax = bounds.xMax;
+          newYMin = bounds.yMin;
+          newYMax = bounds.yMax;
         }
 
         if (refTextEntities.length > 0) {
-          const xs = refTextEntities.map(t => t.x);
-          const ys = refTextEntities.map(t => t.y);
-          oldXMin = Math.min(...xs);
-          oldXMax = Math.max(...xs);
-          oldYMin = Math.min(...ys);
-          oldYMax = Math.max(...ys);
+          const bounds = computeBounds(refTextEntities);
+          oldXMin = bounds.xMin;
+          oldXMax = bounds.xMax;
+          oldYMin = bounds.yMin;
+          oldYMax = bounds.yMax;
         }
 
         const mappedMarkings: any[] = [];
@@ -773,22 +832,63 @@ export const AuditWorkspace: React.FC = () => {
         rawMarkings.forEach((marking: any, index: number) => {
           const preferModel = (marking.category === 'drawing_views' || !marking.category);
 
-          let searchTerm = marking.text_content;
-          if (searchTerm && searchTerm.includes("\n")) {
-            const lines = searchTerm.split("\n");
-            searchTerm = lines[lines.length - 1].trim();
+          // Fix F2 is handled inside findAllFuzzyMatches (\n splitting).
+          // Do NOT pre-strip multi-line text_content here — pass full string directly.
+          const searchTerm = marking.text_content;
+          
+          let matches: any[] = [];
+          let refMatches: any[] = [];
+          let usedDirectIdMapping = false;
+
+          // Phase 1: Precision Entity ID Mapping
+          if (marking.entity_id) {
+            const id = marking.entity_id.trim();
+            if (id.startsWith('REV-')) {
+              const handle = id.replace('REV-', '');
+              const found = textEntities.find(e => e.handle === handle);
+              if (found) { matches = [found]; usedDirectIdMapping = true; }
+            } else if (id.startsWith('REF-')) {
+              const handle = id.replace('REF-', '');
+              const found = refTextEntities.find(e => e.handle === handle);
+              if (found) { refMatches = [found]; usedDirectIdMapping = true; }
+            } else {
+              // Fallback if AI omitted prefix
+              const foundRev = textEntities.find(e => e.handle === id);
+              if (foundRev) { matches = [foundRev]; usedDirectIdMapping = true; }
+              const foundRef = refTextEntities.find(e => e.handle === id);
+              if (foundRef) { refMatches = [foundRef]; usedDirectIdMapping = true; }
+            }
           }
 
-          let matches = findAllFuzzyMatches(searchTerm, textEntities, preferModel);
-          let refMatches = findAllFuzzyMatches(searchTerm, refTextEntities, preferModel);
+          // Phase 2: Fallback to Fuzzy Search if ID mapping yielded zero matches
+          if (!usedDirectIdMapping) {
+            // Short-string exact-match pre-pass for structural annotations (chamfer, balloon,
+            // GD&T, weld symbols). These are ≤6-char strings like "C1", "①", "▽", "M24".
+            // The fuzzy scorer returns near-zero confidence for such short strings, so we
+            // run a case-insensitive exact search first and skip fuzzy if hits are found.
+            const isShortAnnotation = searchTerm && searchTerm.trim().length <= 6 && !searchTerm.includes('\n');
+            const exactMatchFilter = (entities: typeof textEntities) =>
+              entities.filter(e => e.text.trim().toLowerCase() === searchTerm.trim().toLowerCase());
 
-          // For CHANGED, REMOVED, or ADDED markings, if one of the drawings has zero matches, do a fallback fuzzy pass that ignores numbers!
-          if (marking.status === 'CHANGED' || marking.status === 'REMOVED' || marking.status === 'ADDED') {
-            if (matches.length === 0) {
-              matches = findAllFuzzyMatches(searchTerm, textEntities, preferModel, true);
-            }
-            if (refMatches.length === 0) {
-              refMatches = findAllFuzzyMatches(searchTerm, refTextEntities, preferModel, true);
+            matches = isShortAnnotation && exactMatchFilter(textEntities).length > 0
+              ? exactMatchFilter(textEntities)
+              : findAllFuzzyMatches(searchTerm, textEntities, preferModel);
+            refMatches = isShortAnnotation && exactMatchFilter(refTextEntities).length > 0
+              ? exactMatchFilter(refTextEntities)
+              : findAllFuzzyMatches(searchTerm, refTextEntities, preferModel);
+
+            // For CHANGED, REMOVED, or ADDED markings, if one of the drawings has zero matches, do a fallback fuzzy pass that ignores numbers!
+            if (marking.status === 'CHANGED' || marking.status === 'REMOVED' || marking.status === 'ADDED') {
+              if (matches.length === 0) {
+                matches = isShortAnnotation
+                  ? findAllFuzzyMatches(searchTerm, textEntities, preferModel)
+                  : findAllFuzzyMatches(searchTerm, textEntities, preferModel, true);
+              }
+              if (refMatches.length === 0) {
+                refMatches = isShortAnnotation
+                  ? findAllFuzzyMatches(searchTerm, refTextEntities, preferModel)
+                  : findAllFuzzyMatches(searchTerm, refTextEntities, preferModel, true);
+              }
             }
           }
 
@@ -799,6 +899,39 @@ export const AuditWorkspace: React.FC = () => {
           if (marking.category !== "title_block" && marking.category !== "bill_of_materials") {
             matches = matches.filter(m => isEngineeringDataEntity(m, newDrawing));
             refMatches = refMatches.filter(m => isEngineeringDataEntity(m, oldDrawing));
+          } else {
+            // ENFORCE strict spatial placement for BOM and Title Block so they don't claim matching values
+            // (like the number "1") located in the drawing views.
+            const enforceZone = (m: any, isOld: boolean) => {
+              const xmin = isOld ? oldXMin : newXMin;
+              const xmax = isOld ? oldXMax : newXMax;
+              const ymin = isOld ? oldYMin : newYMin;
+              const ymax = isOld ? oldYMax : newYMax;
+              const width = xmax - xmin;
+              const height = ymax - ymin;
+              if (width <= 0 || height <= 0) return true;
+              const pctX = (m.x - xmin) / width;
+              const pctY = 1.0 - (m.y - ymin) / height;
+
+              if (marking.category === "bill_of_materials") {
+                // BOM is top-right (roughly x > 0.5, y < 0.5)
+                return pctX >= 0.50 && pctY <= 0.50;
+              }
+              if (marking.category === "title_block") {
+                // Title is bottom-right or upper-left
+                const inTitle = pctX >= 0.35 && pctY >= 0.65;
+                const inTitleUL = pctX <= 0.35 && pctY <= 0.35;
+                return inTitle || inTitleUL;
+              }
+              return true;
+            };
+            
+            // Apply the spatial constraints to prevent category bleeding
+            const zoneMatches = matches.filter(m => enforceZone(m, false));
+            if (zoneMatches.length > 0) matches = zoneMatches; // Fallback to all if strict zone fails
+
+            const zoneRefMatches = refMatches.filter(m => enforceZone(m, true));
+            if (zoneRefMatches.length > 0) refMatches = zoneRefMatches;
           }
 
           const maxInstances = Math.max(matches.length, refMatches.length, 1);
@@ -808,9 +941,11 @@ export const AuditWorkspace: React.FC = () => {
             const refMatch = refMatches[i] || refMatches[0];
 
             let coordinates: [number, number] | undefined = undefined;
+            let bbox: any = undefined;
             if (match) {
               const h = match.height || 3.0;
               if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) {
+                bbox = match.bbox;
                 try {
                   const [[, ymin], [xmax, ymax]] = match.bbox;
                   const hVal = match.height || (ymax - ymin) || 3.0;
@@ -827,9 +962,11 @@ export const AuditWorkspace: React.FC = () => {
             }
 
             let ref_coordinates: [number, number] | undefined = undefined;
+            let ref_bbox: any = undefined;
             if (refMatch) {
               const h = refMatch.height || 3.0;
               if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) {
+                ref_bbox = refMatch.bbox;
                 try {
                   const [[, ymin], [xmax, ymax]] = refMatch.bbox;
                   const hVal = refMatch.height || (ymax - ymin) || 3.0;
@@ -845,7 +982,11 @@ export const AuditWorkspace: React.FC = () => {
               ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
             }
 
-            // Proximity counterpart coordinate calibration & exclusions lookup when a match is found on one drawing but not on the other due to spelling/number mismatches
+            // Fix F1 — proximity counterpart text-identity validation.
+            // Before accepting a closest-entity result as the ref_coordinates counterpart, verify
+            // that the entity's text actually fuzzy-matches the marking text. If the closest entity
+            // is a completely different string (score < 80), reject the assignment rather than
+            // placing a marker over the wrong entity on the original drawing canvas.
             if (match && !refMatch) {
               let closestEnt: any = null;
               let minDistance = Infinity;
@@ -857,16 +998,29 @@ export const AuditWorkspace: React.FC = () => {
                 }
               });
               if (closestEnt && minDistance < 50.0) {
-                const rh = closestEnt.height || 3.0;
-                ref_coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
-                if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
-                  try {
-                    const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
-                    const hVal = closestEnt.height || (bymax - bymin) || 3.0;
-                    ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
-                  } catch { }
+                // Identity guard: only accept if the closest entity's text meaningfully matches
+                // the marking text — prevents cross-panel MATCHED/ADDED asymmetry caused by
+                // spatially adjacent but semantically unrelated entities.
+                const identityMatches = findAllFuzzyMatches(marking.text_content, [closestEnt], preferModel, false, 80);
+                const isLocked = refTextEntitiesWithMarkers.has(getCoordKey(closestEnt.x, closestEnt.y));
+                if (identityMatches.length > 0 && !isLocked) {
+                  const rh = closestEnt.height || 3.0;
+                  ref_coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+                  if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
+                    ref_bbox = closestEnt.bbox;
+                    try {
+                      const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
+                      const hVal = closestEnt.height || (bymax - bymin) || 3.0;
+                      ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
+                    } catch { }
+                  }
+                  refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+                } else {
+                  console.warn(
+                    `[F1-Guard] Proximity counterpart rejected for "${marking.text_content}": ` +
+                    `nearest entity "${closestEnt.text}" at dist=${minDistance.toFixed(1)} failed identity check.`
+                  );
                 }
-                refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
               }
             }
 
@@ -881,27 +1035,47 @@ export const AuditWorkspace: React.FC = () => {
                 }
               });
               if (closestEnt && minDistance < 50.0) {
-                const rh = closestEnt.height || 3.0;
-                coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
-                if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
-                  try {
-                    const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
-                    const hVal = closestEnt.height || (bymax - bymin) || 3.0;
-                    coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
-                  } catch { }
+                // Identity guard (symmetric): same protection for the new drawing side.
+                const identityMatches = findAllFuzzyMatches(marking.text_content, [closestEnt], preferModel);
+                if (identityMatches.length > 0) {
+                  const rh = closestEnt.height || 3.0;
+                  coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+                  if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
+                    bbox = closestEnt.bbox;
+                    try {
+                      const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
+                      const hVal = closestEnt.height || (bymax - bymin) || 3.0;
+                      coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
+                    } catch { }
+                  }
+                  textEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+                } else {
+                  console.warn(
+                    `[F1-Guard] Proximity counterpart rejected for "${marking.text_content}": ` +
+                    `nearest entity "${closestEnt.text}" at dist=${minDistance.toFixed(1)} failed identity check.`
+                  );
                 }
-                textEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
               }
             }
 
             // Skip fallback coordinates if potential matches were strictly filtered out as margin ticks
             const isMatchFilteredTick = (rawMatchesCount > 0 && matches.length === 0) || (rawRefMatchesCount > 0 && refMatches.length === 0);
 
-            if (!coordinates && newDrawing && !isMatchFilteredTick) {
-              coordinates = getRoiFallbackCoordinates(marking.category || "drawing_views", newDrawing, index + i);
+            // Strict coordinate guard: if text-entity resolution fails and coordinates cannot be
+            // determined from the real drawing data, suppress the marker entirely.
+            // A pin at a guessed/fractional position is structurally worse than no pin.
+            if (!coordinates && !isMatchFilteredTick) {
+              console.warn(
+                `[ComparisonMarker] Coordinate resolution missed for text item "${marking.text_content}" ` +
+                `(category: ${marking.category ?? 'unknown'}). Marker suppressed to prevent misaligned placement.`
+              );
+              continue;
             }
-            if (!ref_coordinates && oldDrawing && !isMatchFilteredTick) {
-              ref_coordinates = getRoiFallbackCoordinates(marking.category || "drawing_views", oldDrawing, index + i);
+            if (!ref_coordinates && !isMatchFilteredTick) {
+              console.warn(
+                `[ComparisonMarker] Ref-coordinate resolution missed for text item "${marking.text_content}" ` +
+                `(category: ${marking.category ?? 'unknown'}). Ref marker suppressed to prevent misaligned placement.`
+              );
             }
 
             if (match) {
@@ -1007,150 +1181,48 @@ export const AuditWorkspace: React.FC = () => {
               confidence: 1.0,
               coordinates,
               ref_coordinates,
+              bbox,
+              ref_bbox,
               pen_type: penType,
               is_resolved: marking.status === "MATCHED",
               original_value: marking.original_value
             });
-          }
-        });
 
-        // Ensure ALL remaining text structures on both drawings receive a Matched marker
-        textEntities.forEach((ent, idx) => {
-          if (ent.layer && isTitleBlockLayer(ent.layer)) return;
-          if (!isEngineeringDataEntity(ent, newDrawing)) return;
-
-          const xmin = newXMin;
-          const xmax = newXMax;
-          const ymin = newYMin;
-          const ymax = newYMax;
-          const width = xmax - xmin;
-          const height = ymax - ymin;
-          if (width > 0 && height > 0) {
-            const pctX = (ent.x - xmin) / width;
-            const pctY = 1.0 - (ent.y - ymin) / height;
-            // Title Block bounding box: xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98
-            if (pctX >= 0.38 && pctX <= 0.98 && pctY >= 0.72 && pctY <= 0.98) {
-              return;
-            }
-            // Upper Left Title Block quadrant: xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 (Total Qty check)
-            const isTotalQtyText = ["総製作個数", "t. q'ty", "t. qty", "total quantity"].some(x => ent.text.toLowerCase().includes(x));
-            if (pctX >= 0.02 && pctX <= 0.35 && pctY >= 0.02 && pctY <= 0.35 && isTotalQtyText) {
-              return;
-            }
-          }
-
-          const key = getCoordKey(ent.x, ent.y);
-          if (!textEntitiesWithMarkers.has(key)) {
-            const preferModel = (ent.layoutSpace === 'Model');
-            const refMatches = findAllFuzzyMatches(ent.text, refTextEntities, preferModel);
-            const refMatch = refMatches[0];
-
-            if (refMatch) {
-              const h = ent.height || 3.0;
-              let coordinates: [number, number] = [ent.x + h * 0.8, ent.y + h * 0.5];
-              if (ent.bbox && Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
-                try {
-                  const [[, bymin], [bxmax, bymax]] = ent.bbox;
-                  const hVal = ent.height || (bymax - bymin) || 3.0;
-                  coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
-                } catch { }
+            // Cross-panel entity claiming — Fix 7: always runs for ADDED and REMOVED regardless
+            // of whether ref_coordinates/coordinates was already resolved by the F1 proximity guard.
+            // Previously the !ref_coordinates condition caused the claim to be skipped when F1
+            // had already set ref_coordinates, leaving the ORIGINAL entity unclaimed and allowing
+            // the catch-all green sweep to place a ghost MATCHED marker on it.
+            if (marking.status === "ADDED") {
+              // Claim the nearest ORIGINAL entity by proximity — prevents ghost green on ORIGINAL.
+              let nearestRef: any = null;
+              let nearestRefDist = Infinity;
+              const addedAnchorX = match?.x ?? (coordinates ? coordinates[0] : null);
+              const addedAnchorY = match?.y ?? (coordinates ? coordinates[1] : null);
+              if (addedAnchorX !== null && addedAnchorY !== null) {
+                refTextEntities.forEach(ent => {
+                  const dist = Math.hypot(ent.x - addedAnchorX!, ent.y - addedAnchorY!);
+                  if (dist < nearestRefDist) { nearestRefDist = dist; nearestRef = ent; }
+                });
+                if (nearestRef && nearestRefDist < 80.0) {
+                  refTextEntitiesWithMarkers.add(getCoordKey(nearestRef.x, nearestRef.y));
+                }
               }
-
-              const rh = refMatch.height || 3.0;
-              let ref_coordinates: [number, number] = [refMatch.x + rh * 0.8, refMatch.y + rh * 0.5];
-              if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) {
-                try {
-                  const [[, bymin], [bxmax, bymax]] = refMatch.bbox;
-                  const hVal = refMatch.height || (bymax - bymin) || 3.0;
-                  ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
-                } catch { }
+            } else if (marking.status === "REMOVED") {
+              // Claim the nearest KMTI entity by proximity — prevents ghost green on KMTI.
+              let nearestNew: any = null;
+              let nearestNewDist = Infinity;
+              const removedAnchorX = refMatch?.x ?? (ref_coordinates ? ref_coordinates[0] : null);
+              const removedAnchorY = refMatch?.y ?? (ref_coordinates ? ref_coordinates[1] : null);
+              if (removedAnchorX !== null && removedAnchorY !== null) {
+                textEntities.forEach(ent => {
+                  const dist = Math.hypot(ent.x - removedAnchorX!, ent.y - removedAnchorY!);
+                  if (dist < nearestNewDist) { nearestNewDist = dist; nearestNew = ent; }
+                });
+                if (nearestNew && nearestNewDist < 80.0) {
+                  textEntitiesWithMarkers.add(getCoordKey(nearestNew.x, nearestNew.y));
+                }
               }
-
-              mappedMarkings.push({
-                id: `auto_chk_rev_${idx}_${Date.now()}`,
-                severity: "low",
-                category: "drawing_views",
-                description: ent.text,
-                recommendation: "Perfect baseline match verification",
-                affected_entities: [],
-                confidence: 1.0,
-                coordinates,
-                ref_coordinates,
-                pen_type: "resolved_green",
-                is_resolved: true
-              });
-              textEntitiesWithMarkers.add(key);
-              refTextEntitiesWithMarkers.add(getCoordKey(refMatch.x, refMatch.y));
-            }
-          }
-        });
-
-        refTextEntities.forEach((ent, idx) => {
-          if (ent.layer && isTitleBlockLayer(ent.layer)) return;
-          if (!isEngineeringDataEntity(ent, oldDrawing)) return;
-
-          const xmin = oldXMin;
-          const xmax = oldXMax;
-          const ymin = oldYMin;
-          const ymax = oldYMax;
-          const width = xmax - xmin;
-          const height = ymax - ymin;
-          if (width > 0 && height > 0) {
-            const pctX = (ent.x - xmin) / width;
-            const pctY = 1.0 - (ent.y - ymin) / height;
-            // Title Block bounding box: xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98
-            if (pctX >= 0.38 && pctX <= 0.98 && pctY >= 0.72 && pctY <= 0.98) {
-              return;
-            }
-            // Upper Left Title Block quadrant: xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 (Total Qty check)
-            const isTotalQtyText = ["総製作個数", "t. q'ty", "t. qty", "total quantity"].some(x => ent.text.toLowerCase().includes(x));
-            if (pctX >= 0.02 && pctX <= 0.35 && pctY >= 0.02 && pctY <= 0.35 && isTotalQtyText) {
-              return;
-            }
-          }
-
-          const key = getCoordKey(ent.x, ent.y);
-          if (!refTextEntitiesWithMarkers.has(key)) {
-            const preferModel = (ent.layoutSpace === 'Model');
-            const revMatches = findAllFuzzyMatches(ent.text, textEntities, preferModel);
-            const revMatch = revMatches[0];
-
-            if (revMatch) {
-              const h = ent.height || 3.0;
-              let ref_coordinates: [number, number] = [ent.x + h * 0.8, ent.y + h * 0.5];
-              if (ent.bbox && Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
-                try {
-                  const [[, bymin], [bxmax, bymax]] = ent.bbox;
-                  const hVal = ent.height || (bymax - bymin) || 3.0;
-                  ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
-                } catch { }
-              }
-
-              const rh = revMatch.height || 3.0;
-              let coordinates: [number, number] = [revMatch.x + rh * 0.8, revMatch.y + rh * 0.5];
-              if (revMatch.bbox && Array.isArray(revMatch.bbox) && revMatch.bbox.length >= 2) {
-                try {
-                  const [[, bymin], [bxmax, bymax]] = revMatch.bbox;
-                  const hVal = revMatch.height || (bymax - bymin) || 3.0;
-                  coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)];
-                } catch { }
-              }
-
-              mappedMarkings.push({
-                id: `auto_chk_ref_${idx}_${Date.now()}`,
-                severity: "low",
-                category: "drawing_views",
-                description: ent.text,
-                recommendation: "Perfect baseline match verification",
-                affected_entities: [],
-                confidence: 1.0,
-                coordinates,
-                ref_coordinates,
-                pen_type: "resolved_green",
-                is_resolved: true
-              });
-              refTextEntitiesWithMarkers.add(key);
-              textEntitiesWithMarkers.add(getCoordKey(revMatch.x, revMatch.y));
             }
           }
         });
@@ -1421,7 +1493,21 @@ export const AuditWorkspace: React.FC = () => {
       const field = cleanedParts[0] || '';
       const original = cleanedParts[1] || '';
       const kmti = cleanedParts[2] || '';
-      const status = cleanedParts[3] || '';
+      const rawStatus = cleanedParts[3] || '';
+
+      // Fix F2: Single Source of Truth Status Vocabulary Normalizer Map
+      // Normalize the Gemini-generated status vocabulary to the canonical set used by
+      // the canvas marker pen_type assignments. "MISMATCHED" from the prompt template maps to
+      // "CHANGED" on the canvas (ai_orange). Without this, the sidebar shows red while the canvas
+      // shows orange for the exact same entity discrepancy.
+      const normalizeStatus = (s: string): string => {
+        const u = s?.toUpperCase().trim() || "";
+        if (["MISMATCHED", "MISMATCH", "DIFFER", "DIFFERENT"].includes(u)) {
+            return "CHANGED";
+        }
+        return s?.trim() || "";
+      };
+      const status = normalizeStatus(rawStatus);
 
       const statusUpper = status.toUpperCase();
       const isMatch = statusUpper.includes('MATCHED') && !statusUpper.includes('MIS');
@@ -1749,26 +1835,45 @@ export const AuditWorkspace: React.FC = () => {
                                     ) : (
                                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                         {diffRows.map((row, idx) => {
-                                          let badgeColor = "#ef4444"; // Mismatched / Removed
+                                          let badgeColor = "#ef4444"; // default: Removed/Mismatched
                                           let badgeBg = "rgba(239, 68, 68, 0.08)";
                                           let statusText = row.status || "MISMATCHED";
 
-                                          if (statusText.toUpperCase().includes("CHANGE")) {
-                                            badgeColor = "#f59e0b"; // Changed
-                                            badgeBg = "rgba(245, 158, 11, 0.08)";
-                                          } else if (statusText.toUpperCase().includes("ADD")) {
-                                            badgeColor = "#3b82f6"; // Added
-                                            badgeBg = "rgba(59, 130, 246, 0.08)";
-                                          }
-
+                                          // Fix 8 — derive badge colour from the matching canvas violation
+                                          // (which uses canvas_markings as its source of truth) rather than
+                                          // from the Gemini free-text table. This synchronises sidebar and
+                                          // canvas so both always show the same status colour.
                                           const matchingViolation = violations.find(v => {
                                             const desc = v.description ? v.description.trim() : "";
-                                            const matchesText = desc === row.kmti || desc === row.original;
+                                            const matchesText = desc === row.kmti || desc === row.original ||
+                                              desc.toLowerCase().includes((row.kmti || "").toLowerCase()) ||
+                                              (row.kmti || "").toLowerCase().includes(desc.toLowerCase());
                                             const vCat = v.category ? v.category.toLowerCase().replace(/_/g, "") : "";
                                             const pKey = key.toLowerCase().replace(/_/g, "");
                                             const matchesCategory = vCat === pKey || vCat.includes(pKey) || pKey.includes(vCat);
                                             return matchesText && matchesCategory;
                                           });
+
+                                          if (matchingViolation) {
+                                            // Source of truth: use pen_type from the canvas marking
+                                            const pt = matchingViolation.pen_type || "";
+                                            if (pt === "ai_orange") {
+                                              badgeColor = "#f97316"; statusText = "CHANGED"; badgeBg = "rgba(249, 115, 22, 0.08)";
+                                            } else if (pt === "checker_blue") {
+                                              badgeColor = "#3b82f6"; statusText = "ADDED"; badgeBg = "rgba(59, 130, 246, 0.08)";
+                                            } else if (pt === "ai_red") {
+                                              badgeColor = "#ef4444"; statusText = "REMOVED"; badgeBg = "rgba(239, 68, 68, 0.08)";
+                                            } else if (pt === "resolved_green" || pt === "ai_green") {
+                                              badgeColor = "#10b981"; statusText = "MATCHED"; badgeBg = "rgba(16, 185, 129, 0.08)";
+                                            }
+                                          } else {
+                                            // Fallback: derive from normalised row.status text
+                                            if (statusText.toUpperCase().includes("CHANGE")) {
+                                              badgeColor = "#f97316"; badgeBg = "rgba(249, 115, 22, 0.08)";
+                                            } else if (statusText.toUpperCase().includes("ADD")) {
+                                              badgeColor = "#3b82f6"; badgeBg = "rgba(59, 130, 246, 0.08)";
+                                            }
+                                          }
 
                                           const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id);
 
