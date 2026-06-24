@@ -620,13 +620,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             if (violationsRes.ok && violationsData.success) {
               set({
                 violations: violationsData.data,
-                complianceScore: session.compliance_score || 85.0,
+                // Use ?? null so a genuine score of 0 is never overwritten with a fake default.
+                // A null score renders as "Score Pending / N/A" in the UI.
+                complianceScore: session.compliance_score ?? null,
                 auditStatus: "completed",
               });
             } else {
               set({
                 violations: [],
-                complianceScore: session.compliance_score || 85.0,
+                // Violations fetch failed — preserve null so the UI shows "Score Pending" rather
+                // than a fictitious passing score.
+                complianceScore: session.compliance_score ?? null,
                 auditStatus: "completed",
               });
             }

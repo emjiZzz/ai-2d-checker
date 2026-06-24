@@ -102,7 +102,7 @@ class ExtractionPipeline:
             if drawing.format.lower() == "pdf":
                 self._render_pdf_background(input_abs_path, drawing_id, metadata)
             elif dxf_file_path and dxf_file_path.exists():
-                self._render_dxf_background(dxf_file_path, drawing_id, metadata)
+                self._render_dxf_background(dxf_file_path, drawing_id, metadata, entities)
 
             # 4. Persist Extracted Geometry Records into MongoDB
             # Save layers as well (as an entity type)
@@ -236,7 +236,7 @@ class ExtractionPipeline:
         except Exception as e:
             logger.error(f"Failed to render PDF background: {e}", exc_info=True)
 
-    def _render_dxf_background(self, dxf_path: Path, drawing_id: str, metadata: Dict[str, Any]) -> None:
+    def _render_dxf_background(self, dxf_path: Path, drawing_id: str, metadata: Dict[str, Any], entities: List[Dict[str, Any]]) -> None:
         try:
             import matplotlib
             matplotlib.use('Agg') # Headless background thread safe execution
@@ -370,14 +370,20 @@ class ExtractionPipeline:
                         logger.info(f"Overriding DXF style '{style.dxf.get('name', '?')}': {font!r}+{bigfont!r} -> {jp_font_filename}")
 
             
-            # --- Step 4: Select best layout to render (Paper Space preferred over Model Space) ---
+            # --- Step 4: Select best layout to render (Paper Space preferred over Model Space, but ONLY if it contains a viewport) ---
             paperspace_layouts = [l for l in doc.layouts if l.name.lower() != 'model' and len(l) > 0]
-            if paperspace_layouts:
-                layout_to_render = paperspace_layouts[0]
-                logger.info(f"Rendering Paper Space layout: {layout_to_render.name}")
-            else:
+            layout_to_render = None
+            for pl in paperspace_layouts:
+                # Check if this paper space layout actually contains a viewport that looks into model space
+                # Ignore viewport id=1 as it's the paper space background itself
+                if any(e.dxftype() == "VIEWPORT" and e.dxf.id != 1 for e in pl):
+                    layout_to_render = pl
+                    logger.info(f"Rendering Paper Space layout (contains viewport): {layout_to_render.name}")
+                    break
+            
+            if not layout_to_render:
                 layout_to_render = doc.modelspace()
-                logger.info("No Paper Space layouts found. Defaulting to Model Space.")
+                logger.info("No valid Paper Space layouts with viewports found. Defaulting to Model Space rendering.")
 
             fig = plt.figure(figsize=(24, 18), dpi=350)
             ax = fig.add_axes([0, 0, 1, 1])
@@ -431,6 +437,28 @@ class ExtractionPipeline:
             logger.info(f"High-fidelity CAD background rendering successfully saved to: {output_png_path}")
         except Exception as render_e:
             logger.error(f"High-fidelity rendering generation failed: {str(render_e)}\n{traceback.format_exc()}")
+            
+            # Fallback: compute bounds manually from extracted entities if Matplotlib failed (e.g. missing block definitions)
+            if "render_bounds" not in metadata and entities:
+                logger.info("Computing fallback render_bounds from extracted entities.")
+                min_x = float("inf")
+                min_y = float("inf")
+                max_x = float("-inf")
+                max_y = float("-inf")
+                has_valid_point = False
+                for e in entities:
+                    if "geometry" in e and "points" in e["geometry"]:
+                        for pt in e["geometry"]["points"]:
+                            min_x = min(min_x, pt[0])
+                            min_y = min(min_y, pt[1])
+                            max_x = max(max_x, pt[0])
+                            max_y = max(max_y, pt[1])
+                            has_valid_point = True
+                
+                if has_valid_point and min_x < max_x and min_y < max_y:
+                    metadata["render_bounds"] = [min_x, min_y, max_x, max_y]
+                    metadata["render_aspect"] = (max_x - min_x) / (max_y - min_y)
+                    logger.info(f"Fallback render_bounds computed: {metadata['render_bounds']}")
             # Ensure figure resources are cleaned up
             try:
                 import matplotlib.pyplot as plt

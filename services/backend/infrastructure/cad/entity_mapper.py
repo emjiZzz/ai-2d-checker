@@ -223,6 +223,15 @@ class EntityMapper:
         insert = entity.dxf.insert
         rotation = entity.dxf.rotation if hasattr(entity.dxf, "rotation") else 0.0
         
+        attributes = {}
+        if hasattr(entity, "attribs"):
+            for attrib in entity.attribs:
+                if hasattr(attrib.dxf, "tag") and hasattr(attrib.dxf, "text"):
+                    # Clean MTEXT control codes and decode bytes if necessary
+                    raw_content = attrib.text if hasattr(attrib, "text") else getattr(attrib.dxf, "text", "")
+                    clean_text = EntityMapper._clean_mtext_content(raw_content) if raw_content else ""
+                    attributes[attrib.dxf.tag] = clean_text
+        
         return {
             "entity_type": "block",
             "layer": entity.dxf.layer,
@@ -230,7 +239,8 @@ class EntityMapper:
                 "handle": entity.dxf.handle,
                 "color": entity.dxf.color,
                 "block_name": block_name,
-                "rotation": rotation
+                "rotation": rotation,
+                "attributes": attributes
             },
             "geometry": {
                 "insert": [insert[0], insert[1], insert[2]]
@@ -247,21 +257,64 @@ class EntityMapper:
         insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0, 0, 0]
         
         return {
-            "entity_type": "text",
+            "entity_type": "tolerance",
             "layer": entity.dxf.layer,
             "properties": {
                 "handle": entity.dxf.handle,
                 "color": entity.dxf.color,
                 "text": content,
-                "height": 2.5,
-                "is_multiline": False,
-                "rotation": 0.0,
-                "halign": 1,
-                "valign": 1,
-                "attachment_point": 0
+                "rotation": entity.dxf.get("rotation", 0.0) if hasattr(entity.dxf, "get") else 0.0,
             },
             "geometry": {
                 "insert": [insert[0], insert[1], insert[2]]
+            }
+        }
+
+    @staticmethod
+    def map_leader(entity: Any) -> Dict[str, Any]:
+        vertices = []
+        if hasattr(entity, "vertices"):
+            vertices = [[v[0], v[1], v[2]] for v in entity.vertices]
+        
+        return {
+            "entity_type": "leader",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "has_arrowhead": entity.dxf.get("has_arrowhead", 1) if hasattr(entity.dxf, "get") else 1
+            },
+            "geometry": {
+                "vertices": vertices
+            }
+        }
+
+    @staticmethod
+    def map_multileader(entity: Any) -> Dict[str, Any]:
+        text = ""
+        if hasattr(entity, "context") and hasattr(entity.context, "text"):
+            text = entity.context.text
+        elif hasattr(entity.dxf, "text"):
+            text = entity.dxf.text
+            
+        vertices = []
+        # MultiLeaders are complex, we extract basic location/vertices if possible
+        if hasattr(entity, "leaders"):
+            for leader in entity.leaders:
+                if hasattr(leader, "vertices"):
+                    vertices.extend([[v[0], v[1], v[2]] for v in leader.vertices])
+                    
+        return {
+            "entity_type": "multileader",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "text": text
+            },
+            "geometry": {
+                "vertices": vertices,
+                "insert": entity.dxf.insert if hasattr(entity.dxf, "insert") else [0, 0, 0]
             }
         }
 
@@ -288,6 +341,10 @@ class EntityMapper:
                 return cls.map_dimension(entity)
             elif dxftype == "TOLERANCE":
                 return cls.map_tolerance(entity)
+            elif dxftype == "LEADER":
+                return cls.map_leader(entity)
+            elif dxftype == "MULTILEADER":
+                return cls.map_multileader(entity)
             elif dxftype in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
                 return cls.map_text(entity)
             elif dxftype == "INSERT":
