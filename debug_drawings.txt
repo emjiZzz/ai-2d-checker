@@ -1,0 +1,7 @@
+Total drawings in database: 6
+ID: 6a3b907f2934333f3250ae07 | Name: LD11016U01_LMMU_old.dxf | Hash: 9a10e6d5e1a7430fe80df15d99fdfeaa4d6f4ed3bb810b48024e800f89242b16 | Status: completed
+ID: 6a3b909e2934333f3250bb75 | Name: LD11016U01_LMMU_new.dxf | Hash: 66d194fd31ee90b69149c548d14412a0ec1dab32ed480971766c58842fdb88fa | Status: completed
+ID: 6a3b9d43cfe2275d9c062838 | Name: CMB1162N01_MCMU_old.dxf | Hash: 77144c15425956b8b7d6258b73f729e7fd8a88857310fe15bdb8201abbd89270 | Status: completed
+ID: 6a3b9d65cfe2275d9c062a52 | Name: CMB1162N01_MCMU_new.dxf | Hash: ebeb2563c67ffab025d737db9e9ef3de63cad7d4483187f97492718d081a51b8 | Status: completed
+ID: 6a3c94c853b26f97fe8edc3c | Name: MI51100A01_old.dxf | Hash: 442ae763cbdf1404b5cf305074745b87bed0fa27a15d54264169c00c7db0b64d | Status: completed
+ID: 6a3c94e653b26f97fe8edfb9 | Name: MI51100A01_new.dxf | Hash: dc505050cdc96c84e11b77d3a17510d73742a89604be21d86efbc41cf6404d07 | Status: completed

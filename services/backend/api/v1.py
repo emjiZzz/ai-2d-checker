@@ -48,6 +48,7 @@ from ..domain.models.audit_session import AuditSession
 from ..domain.models.audit_violation import AuditViolation
 from ..domain.models.extracted_entity import ExtractedEntity
 from ..domain.models.client import ClientDocument
+from ..domain.models.comparison import Comparison
 from ..infrastructure.rendering.geometry_serializer import GeometrySerializer
 from ..infrastructure.audit.standards_loader import StandardsLoader
 from ..infrastructure.audit.audit_pipeline import audit_queue
@@ -239,19 +240,63 @@ async def upload_drawing(file: UploadFile = File(...)):
         final_upload_path = get_storage_root() / "uploads" / secure_filename
         
         try:
-            # Move the new temp file to the secure location (overwriting if exists)
-            if final_upload_path.exists():
-                final_upload_path.unlink()
-            temp_upload_path.rename(final_upload_path)
-        except Exception:
-            # If rename fails, the original file might still be there, just delete the temp file
+            import shutil
+            # Use shutil.move to handle cross-device moves and Windows file-locking overwrites safely
+            shutil.move(str(temp_upload_path), str(final_upload_path))
+        except Exception as e:
+            logger.error(f"Failed to move uploaded file to {final_upload_path}: {e}")
             try:
-                temp_upload_path.unlink()
+                temp_upload_path.unlink(missing_ok=True)
             except Exception:
                 pass
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save uploaded drawing file. The file might be locked by another process."
+            )
 
         # Force re-ingestion: Clear stale extracted entities to ensure fresh parsing logic is executed
         await ExtractedEntity.find(ExtractedEntity.drawing_id == str(existing_drawing.id)).delete()
+        
+        # Clear stale extraction jobs for this drawing
+        await ExtractionJob.find(ExtractionJob.drawing_id == str(existing_drawing.id)).delete()
+        
+        # Clear stale audit sessions and associated violations
+        stale_sessions = await AuditSession.find({
+            "$or": [
+                {"drawing_id": str(existing_drawing.id)},
+                {"reference_drawing_id": str(existing_drawing.id)}
+            ]
+        }).to_list()
+        stale_session_ids = [str(s.id) for s in stale_sessions]
+        if stale_session_ids:
+            await AuditViolation.find({"audit_session_id": {"$in": stale_session_ids}}).delete()
+            for s in stale_sessions:
+                await s.delete()
+                
+        # Clear stale comparisons
+        await Comparison.find({
+            "$or": [
+                {"original_id": str(existing_drawing.id)},
+                {"modified_id": str(existing_drawing.id)}
+            ]
+        }).delete()
+        
+        # Invalidate visual/multimodal comparison cache for the drawing
+        try:
+            cache_dir = get_storage_root() / "cache"
+            if cache_dir.exists():
+                for p in cache_dir.glob(f"gemini_comparison_*_{existing_drawing.id}.json"):
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+                for p in cache_dir.glob(f"gemini_comparison_{existing_drawing.id}_*.json"):
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         
         # Reset the drawing record properties for a clean extraction run
         existing_drawing.status = "queued"
@@ -1195,11 +1240,12 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     global_blocked_values = set()
     try:
         from .v1 import extract_title_fields  # Ensure availability
-        is_assembly_drawing = True # Safe assumption for pre-extraction
-        temp_ref_title = extract_title_fields(ref_entities, is_assembly=is_assembly_drawing)
-        temp_rev_title = extract_title_fields(rev_entities, is_assembly=is_assembly_drawing)
+        ref_all_text_list = [map_signature_value(safe_decode(e.properties.get("text"))) for e in ref_entities if e.entity_type == "text" and e.properties.get("text") is not None]
+        rev_all_text_list = [map_signature_value(safe_decode(e.properties.get("text"))) for e in rev_entities if e.entity_type == "text" and e.properties.get("text") is not None]
+        temp_ref_title = extract_title_fields(ref_entities, ref_all_text_list)
+        temp_rev_title = extract_title_fields(rev_entities, rev_all_text_list)
         for temp_tb in [temp_ref_title, temp_rev_title]:
-            for key in ["Unit No", "Part No", "Total Q'ty", "MACHINE CODE", "DWG NO"]:
+            for key in ["QTY", "CROSS REF NO", "PREVIOUS DWG NO", "DESIGNED", "DRAWN", "SCALE", "NAME", "TITLE", "JOB NO", "MACHINE CODE", "DWG NO", "UNIT NO", "PART NO", "STOCK QTY", "STD NO"]:
                 obj = temp_tb.get(key, {})
                 coords = obj.get("coordinates")
                 val = obj.get("value")
@@ -1208,7 +1254,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 if val and str(val).strip() and str(val).strip() != "NONE":
                     global_blocked_values.add(str(val).strip())
     except Exception as e:
-        pass
+        logger.warning(f"Error in pre-extracting title block values: {str(e)}")
 
 
     def map_signature_value(text: str) -> str:
@@ -1230,12 +1276,44 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         def normalize(val: str) -> str:
             if not val or val == "NONE":
                 return ""
-            v = val.lower().strip()
+            import unicodedata
+            v = unicodedata.normalize('NFKC', str(val))
+            v = v.lower().strip()
             # Removed CP932 heuristic replacement
             # Treat lowercase x, uppercase X, and × multiplication symbol identically
             v = re.sub(r'[xX×]', 'x', v)
             # Treat colons : and slashes / identically
             v = re.sub(r':', '/', v)
+            
+            # 1. Whitespace Ignorance: Compress all newlines, tabs, and spaces
+            v = re.sub(r'\s+', ' ', v).strip()
+            
+            # Strip trailing placeholder dashes, slashes, and spaces (e.g. CMB1162N01 / / / / /)
+            v = re.sub(r'[-\s/]+$', '', v)
+            
+            # 2. Date normalization: convert YYYY-MM-DD or YY/MM/DD to unified YY/MM/DD
+            v = re.sub(r'\b(?:20)?(\d{2})[-./](\d{1,2})[-./](\d{1,2})\b', r'\1/\2/\3', v)
+            # Pad date parts (e.g. 24/10/5 to 24/10/05)
+            def pad_date(m):
+                yy, mm, dd = m.group(1), m.group(2), m.group(3)
+                return f"{yy}/{int(mm):02d}/{int(dd):02d}"
+            v = re.sub(r'\b(\d{2})/(\d{1,2})/(\d{1,2})\b', pad_date, v)
+
+            # 3. Tolerance normalization:
+            # Replace ± with +/-
+            v = v.replace('±', '+/-')
+            # Convert +0.1/-0.1 or +0.1 -0.1 to +/-0.1
+            v = re.sub(r'\+([\d.]+)(?:/|\s+)-([\d.]+)', lambda m: f"+/-{m.group(1)}" if m.group(1) == m.group(2) else m.group(0), v)
+            # Strip spaces around operators
+            v = re.sub(r'\s*([+\-*/±])\s*', r'\1', v)
+
+            # 4. Numerical / Mathematical equivalence (e.g., 3.1 vs 3.10)
+            try:
+                float_val = float(v)
+                v = f"{float_val:.6f}".rstrip('0').rstrip('.')
+            except ValueError:
+                pass
+                
             return v
             
         norm_o = normalize(o)
@@ -2065,11 +2143,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                                 native_coords[matched_key] = [ins[0], ins[1]]
 
         if found_native:
-            # Format the output identically to the legacy heuristic output
-            res = {}
-            for k in native_fields:
-                res[k] = {"value": native_fields[k], "coordinates": native_coords[k]}
-            return res
+            # Native return early bypassed to allow heuristic fallbacks for NONE fields
+            pass
 
         decoded_texts = [safe_decode(t).strip() for t in all_text_list if t.strip()]
         
@@ -2372,13 +2447,13 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         cross_ref, cross_ref_coords = extract_proximity_value(["Cross ref No.", "共通番号"], "below", 5.0, 30.0, 1.0, ["Previous", "旧"], prefer_lowest_y=True)
         prev_dwg, prev_dwg_coords = extract_proximity_value(["Previous Dwg. No,", "Previous Dwg. No.", "旧図面番号"], "below", 5.0, 30.0, 1.0, prefer_lowest_y=True)
         designed, designed_coords = extract_proximity_value(["DESIGNED", "設計"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
-        drawn, drawn_coords = extract_proximity_value(["DRAWN", "製図"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
+        drawn, drawn_coords = extract_proximity_value(["DRAWN", "製図", "作成"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
         scale, scale_coords = extract_proximity_value(["SCALE", "尺度"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
         name, name_coords = extract_proximity_value(["名称", "名 称"], "right", 150.0, 6.0, 1.0, prefer_lowest_y=True)
         title, title_coords = extract_proximity_value(["TITLE", "図面名", "図 名"], "right", 150.0, 6.0, 1.0, prefer_lowest_y=True)
         job_no, job_no_coords = extract_proximity_value(["Job No.", "工事番号"], "right", 80.0, 6.0, 1.0, prefer_lowest_y=True)
-        mach_code, mach_code_coords = extract_proximity_value(["Unit Code", "Mach. code", "ユニット記号", "機番記号"], "below", 20.0, 30.0, 1.0, prefer_lowest_y=True)
-        dwg_no, dwg_no_coords = extract_proximity_value(["DWG.No.", "図面番号"], "right", 100.0, 6.0, 1.0, ["Previous", "旧"], prefer_lowest_y=True)
+        mach_code, mach_code_coords = extract_proximity_value(["Unit Code", "Mach. code", "ユニット記号", "機番記号", "機器記号"], "below", 20.0, 30.0, 1.0, prefer_lowest_y=True)
+        dwg_no, dwg_no_coords = extract_proximity_value(["DWG.No.", "図面番号", "DWG. No.", "DWG NO"], "right", 100.0, 6.0, 1.0, ["Previous", "旧"], prefer_lowest_y=True)
         unit_no, unit_no_coords = extract_proximity_value(["Unit No.", "ユニットNo."], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
         part_no, part_no_coords = extract_proximity_value(["Part No.", "コードNo."], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
         stock_qty, stock_qty_coords = extract_proximity_value(["Stock Q'ty", "在庫棚入庫"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
@@ -2576,6 +2651,14 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         for k, v in res.items():
             if v["value"] is None or str(v["value"]).strip().lower() in ["none", ""]:
                 res[k] = {"value": "NONE", "coordinates": v.get("coordinates")}
+                
+        if found_native:
+            # Merge native attributes, falling back to heuristic fields if native is NONE
+            for k in res:
+                n_val = native_fields.get(k, "NONE")
+                if n_val and str(n_val).strip().lower() not in ("none", ""):
+                    res[k] = {"value": n_val, "coordinates": native_coords.get(k)}
+                    
         return res
 
     ref_all_text_list = []
@@ -2699,10 +2782,14 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "Analyze technical drawings character-by-character for deep semantic differences. "
             "Do not provide generic high-level count summaries like 'lines: 250 vs 255'.\n"
             "You must perform a rigorous, exhaustive comparison of all technical contents and text, detecting procedural inconsistencies, and identifying manufacturing-impact changes.\n"
-            "Treat even minor differences in decimal precision (e.g., '2.6' vs '2.60'), font spacing, line styles, case sensitivity, alignment, or dimension placements as explicit engineering discrepancies.\n"
-            "Understand sheet templates and positioning variations: Notes and Isometric views do not have a fixed position, as they depend on which side of the template has a wide blank space. "
-            "Note that Notes are mostly positioned below the upper-left title block, and Isometric views are typically positioned below the BOM on the upper-right.\n"
-            "Understand that the main DRAWING VIEWS (orthographic, sectional, or detailed geometry) are typically positioned and displayed in the center of the sheet template. "
+            "Understand sheet templates and positioning variations: Notes and Isometric views do not have a fixed position, as they depend on which side of the template has a wide blank space.\n"
+            "Understand that the main DRAWING VIEWS (orthographic, sectional, or detailed geometry) are typically positioned and displayed in the center of the sheet template.\n"
+            "You must follow these critical Equivalence Rules when checking for differences:\n"
+            "  - WHITESPACE IGNORANCE RULE: Ignore structural formatting differences such as newlines (\\n), tabs, or duplicate spaces. If the text content is identical when wrapped onto a single line, it MUST be evaluated as 'MATCHED' (do not report it as a discrepancy).\n"
+            "  - TOLERANCE & FORMATTING EQUIVALENCE RULE: Evaluate engineering tolerances and dates mathematically or logically (e.g., '50 ±0.1' is equivalent to '50 +0.1/-0.1'; '2024.10.05' is equivalent to '24-10-05'). If they are logically identical, they MUST be 'MATCHED'.\n"
+            "  - SEMANTIC TRANSLATION RULE: If the KMTI drawing contains an accurate Japanese translation of an English note from the Original drawing (or vice versa), it MUST be evaluated as 'MATCHED' and not flagged as a discrepancy.\n"
+            "  - CODE & DWG NO. EQUIVALENCE RULE: Ignore trailing placeholder slash or dash characters (e.g., '/////' or '-----') from drawing numbers, part numbers, or machine codes, and treat full-width Japanese alphanumeric characters and half-width alphanumeric characters as identical (e.g., 'ＭＣＭＵ' matches 'MCMU', and 'CMB1162N01 /////' matches 'CMB1162N01').\n"
+            "For other dimensions and numbers, treat differences in decimal precision (e.g., '2.6' vs '2.60'), font spacing, line styles, alignment, or dimension placements as explicit engineering discrepancies unless mathematically equivalent.\n"
             "It is of critical, absolute importance to review and check all physical dimensions, precision tolerances, and geometric specifications character-by-character to prevent manufacturing defects."
         )
 
@@ -2874,15 +2961,15 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         cache_dir = get_storage_root() / "cache"
         cache_file = cache_dir / f"gemini_comparison_{request.reference_drawing_id}_{request.drawing_id}.json"
         
-        response_text = None
+        # Force cache refresh in development to apply updated equivalence rules immediately
         if cache_file.exists():
             try:
-                async with aiofiles.open(cache_file, "r", encoding="utf-8") as cf:
-                    response_text = await cf.read()
-                logger.info(f"Loaded Gemini response from cache: {cache_file}")
-            except Exception as cache_err:
-                logger.warning(f"Failed to read from cache file: {str(cache_err)}")
-
+                cache_file.unlink()
+                logger.info(f"Unlinked stale comparison cache file: {cache_file}")
+            except Exception as unlink_err:
+                logger.warning(f"Failed to unlink cache file: {str(unlink_err)}")
+        
+        response_text = None
         if not response_text:
             # Construct multimodal contents sequence
             contents = []
@@ -3051,6 +3138,36 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 if eid.startswith("REF-") and eid not in allowed_ref_ids:
                     logger.warning(f"Guardrail intercepted marker {eid} because it is outside allowed drawing views (likely BOM/Title block hallucination).")
                     continue
+            else:
+                # If Gemini stripped the ID, we must verify the text isn't a known Title Block / BOM text
+                # We already blocked `global_blocked_values` in `clean_markings`, but let's also block 
+                # any text that ONLY exists outside the allowed regions.
+                is_valid = False
+                
+                # Determine which text space to search based on the marker's status
+                search_space = (rev_geom + "\n" + rev_notes)
+                if status == "REMOVED":
+                    search_space = (ref_geom + "\n" + ref_notes)
+                elif status == "CHANGED":
+                    search_space += "\n" + ref_geom + "\n" + ref_notes
+                    
+                for line in search_space.split('\n'):
+                    if txt_clean in line.lower().replace(" ", "").replace("\n", ""):
+                        is_valid = True
+                        break
+                        
+                if not is_valid and status == "CHANGED":
+                    # For CHANGED, the text might be completely different, so check if the original text existed
+                    orig = str(m.get("original_value") or "").strip().lower().replace(" ", "")
+                    if orig:
+                        for line in (ref_geom + "\n" + ref_notes).split('\n'):
+                            if orig in line.lower().replace(" ", "").replace("\n", ""):
+                                is_valid = True
+                                break
+                                
+                if not is_valid:
+                    logger.warning(f"Guardrail intercepted marker '{txt}' (no entity_id) because it does not exist in allowed drawing views.")
+                    continue
             
             # Guardrail 2: Check if the exact claimed text actually exists in the CAD data
             if status in ["ADDED", "CHANGED"]:
@@ -3115,12 +3232,11 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             
         def sanitize_title_value(val):
             # Strips label prefixes before comparison and assignment.
-            # IMPORTANT: The separator group [:：\-\s]+ is REQUIRED after the keyword so that
-            # bare code strings which happen to contain a label word (e.g. a machine code of the
-            # form 'mach-XYZ') are NOT partially stripped. Without the mandatory separator,
-            # 'machXYZ' would be trimmed to 'XYZ' by the regex.
             if val == "NONE" or not val:
                 return val
+            # Unicode NFKC normalization to standard half-width characters
+            import unicodedata
+            val = unicodedata.normalize('NFKC', str(val))
             val = re.sub(
                 r'^(作\s*成|設\s*計|drawn|designed|検\s*図|承\s*認|checked|approved'
                 r'|機\s*器\s*記\s*号|機\s*番\s*記\s*号|ユ\s*ニ\s*ッ\s*ト\s*記\s*号'
@@ -3128,7 +3244,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 r'|工\s*事\s*番\s*号|job\s*no\.?'
                 r'|図\s*面\s*番\s*号|dwg\s*no\.?|dwg\.no'
                 r'|尺\s*度|scale)'
-                r'[\s\t]*[:：\-\–]+[\s\t]*',  # mandatory separator — colon/dash required
+                r'([\s\t]*[:：\-\–]+[\s\t]*|[\s\t]+)',  # separator - colon, dash, or space required
                 '', val, flags=re.IGNORECASE
             )
             return val.strip()

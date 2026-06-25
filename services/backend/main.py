@@ -12,7 +12,7 @@ if sys.platform == "win32":
 
 # Import Phase 2 Core and Infrastructure
 from .core.security import initialize_local_api_token
-from .infrastructure.storage.path_resolver import bootstrap_storage
+from .infrastructure.storage.path_resolver import bootstrap_storage, get_storage_root
 from .infrastructure.database.connection import db_manager
 from .infrastructure.database.indexes import bootstrap_indexes
 from .api.middleware import CorrelationIDMiddleware, RequestDurationMiddleware, ExceptionLoggingMiddleware
@@ -79,6 +79,17 @@ async def startup_event() -> None:
     if db_success:
         # D. Index bootstrapping
         await bootstrap_indexes()
+        try:
+            from .domain.models.drawing_document import DrawingDocument
+            drawings = await DrawingDocument.find_all().to_list()
+            debug_path = get_storage_root() / "debug_drawings.txt"
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(f"Total drawings in database: {len(drawings)}\n")
+                for d in drawings:
+                    f.write(f"ID: {d.id} | Name: {d.file_name} | Hash: {d.file_hash} | Status: {d.status}\n")
+            logger.info(f"Successfully dumped debug_drawings.txt to {debug_path}")
+        except Exception as ex:
+            logger.error(f"Failed to dump drawings: {ex}")
     else:
         logger.warning("FastAPI backend is operating in offline/disconnected fallback mode.")
 
