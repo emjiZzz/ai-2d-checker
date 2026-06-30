@@ -2918,7 +2918,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 except Exception as _model_err:
                     _last_err = _model_err
                     _err_str = str(_model_err)
-                    _is_overload = "503" in _err_str or "UNAVAILABLE" in _err_str or "overloaded" in _err_str.lower() or "high demand" in _err_str.lower()
+                    _is_overload = "503" in _err_str or "429" in _err_str or "RESOURCE_EXHAUSTED" in _err_str or "UNAVAILABLE" in _err_str or "overloaded" in _err_str.lower() or "high demand" in _err_str.lower()
                     if _is_overload and _attempt < len(_model_cascade) - 1:
                         _backoff = 2 ** (_attempt + 1)  # 2s, 4s, 8s
                         logger.warning(f"{_model} is unavailable (503/overload). Waiting {_backoff}s before trying next model...")
@@ -3040,7 +3040,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             if not txt:
                 continue
             txt_clean = txt.lower().replace(" ", "").replace("\n", "")
-            status = m.get("status")
+            mark_status = m.get("status")
             
             # Guardrail 1: Exact Spatial Allowed-List (Destroys ghost pins in Title Block / BOM margins)
             eid = m.get("entity_id")
@@ -3053,11 +3053,11 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     continue
             
             # Guardrail 2: Check if the exact claimed text actually exists in the CAD data
-            if status in ["ADDED", "CHANGED"]:
+            if mark_status in ["ADDED", "CHANGED"]:
                 if txt_clean not in rev_all_text_lower:
-                    logger.warning(f"Guardrail intercepted hallucinated {status} marker for '{txt}' (not found in rev drawing)")
+                    logger.warning(f"Guardrail intercepted hallucinated {mark_status} marker for '{txt}' (not found in rev drawing)")
                     continue
-            elif status == "REMOVED":
+            elif mark_status == "REMOVED":
                 if txt_clean not in ref_all_text_lower:
                     logger.warning(f"Guardrail intercepted hallucinated REMOVED marker for '{txt}' (not found in ref drawing)")
                     continue

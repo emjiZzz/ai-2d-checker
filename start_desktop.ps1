@@ -10,6 +10,14 @@ if ($env:Path -notmatch [regex]::Escape($cargoPath)) {
     $env:Path += ";$cargoPath"
 }
 
+# 1.5 Inject Node.js Path
+$nodePath = "C:\Program Files\nodejs"
+if (Test-Path $nodePath) {
+    if ($env:Path -notmatch [regex]::Escape($nodePath)) {
+        $env:Path = "$nodePath;$env:Path"
+    }
+}
+
 # 2. Setup Portable MSVC Environment (link.exe, cl.exe, Windows SDK)
 $msvcRoot = "$env:USERPROFILE\msvc"
 $msvcVer = "14.51.36231"
@@ -42,5 +50,9 @@ Write-Host "MSVC link.exe and Windows SDK injected successfully." -ForegroundCol
 Write-Host "Starting Tauri Desktop Dev Server..." -ForegroundColor Green
 Write-Host ""
 
-# 3. Launch Tauri
-pnpm --filter desktop tauri dev
+# 3. Install packages
+Write-Host "Installing packages..." -ForegroundColor Yellow
+npx pnpm install
+
+# 4. Launch Tauri
+npx pnpm --filter desktop tauri dev

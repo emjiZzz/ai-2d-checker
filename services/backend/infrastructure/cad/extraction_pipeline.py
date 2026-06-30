@@ -385,6 +385,21 @@ class ExtractionPipeline:
                 layout_to_render = doc.modelspace()
                 logger.info("No valid Paper Space layouts with viewports found. Defaulting to Model Space rendering.")
 
+            # --- Brighten dark colors for visibility on dark UI background ---
+            # AutoCAD Color 5 (Blue) and Color 8 (Dark Gray) are nearly invisible on a dark canvas.
+            for layer in doc.layers:
+                if layer.color == 5:
+                    layer.color = 4  # Change Blue to Cyan
+                elif layer.color == 8:
+                    layer.color = 9  # Change Dark Gray to Light Gray
+            
+            for entity in doc.entitydb.values():
+                if hasattr(entity, 'dxf') and hasattr(entity.dxf, 'color'):
+                    if entity.dxf.color == 5:
+                        entity.dxf.color = 4
+                    elif entity.dxf.color == 8:
+                        entity.dxf.color = 9
+
             fig = plt.figure(figsize=(24, 18), dpi=350)
             ax = fig.add_axes([0, 0, 1, 1])
             ax.set_axis_off()

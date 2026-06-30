@@ -16,7 +16,7 @@ $venvDir = Join-Path $PSScriptRoot ".venv"
 
 if (-not (Test-Path $venvDir)) {
     Write-Host "⚠️ Python Virtual Environment (.venv) not found. Initializing..." -ForegroundColor Yellow
-    python -m venv $venvDir
+    py -m venv $venvDir
     Write-Host "✅ Virtual environment created at $venvDir" -ForegroundColor Green
 }
 
@@ -27,7 +27,7 @@ $activateScript = Join-Path $venvDir "Scripts\Activate.ps1"
 
 # Install / update requirements
 Write-Host "Verifying backend dependencies..." -ForegroundColor Yellow
-python -m pip install --upgrade pip
+py -m pip install --upgrade pip
 pip install -r (Join-Path $PSScriptRoot "requirements.txt")
 
 # Determine port from Env or default
@@ -50,4 +50,4 @@ Write-Host "   Press Ctrl+C to terminate backend process.`n" -ForegroundColor Da
 
 # Launch Uvicorn with PYTHONPATH configured for local imports
 $env:PYTHONPATH = "$PSScriptRoot;$env:PYTHONPATH"
-python -m uvicorn services.backend.main:app --host 127.0.0.1 --port $port --reload --reload-dir services/backend
+py -m uvicorn services.backend.main:app --host 127.0.0.1 --port $port --reload --reload-dir services/backend

@@ -22,7 +22,7 @@ out/
 .turbo/
 
 # === Runtime Local Storage (NEVER commit raw or metadata files) ===
-storage/
+/storage/
 
 # === Environment & Local Configs ===
 .env
