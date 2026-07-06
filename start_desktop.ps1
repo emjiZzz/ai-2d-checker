@@ -47,6 +47,36 @@ $env:LIB = @(
 ) -join ";"
 
 Write-Host "MSVC link.exe and Windows SDK injected successfully." -ForegroundColor Green
+Write-Host ""
+
+# Ensure MongoDB and Backend are running
+Write-Host "Checking services status..." -ForegroundColor Yellow
+powershell -ExecutionPolicy Bypass -File .\start-mongo.ps1
+
+# Determine port from Env or default
+$envFile = ".\.env"
+$port = 8080
+if (Test-Path $envFile) {
+    $envContent = Get-Content $envFile -Raw
+    if ($envContent -match "SIDECAR_PORT=(\d+)") {
+        $foundPort = [int]$Matches[1]
+        if ($foundPort -ne 0) {
+            $port = $foundPort
+        }
+    }
+}
+
+$backendRunning = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+if (-not $backendRunning) {
+    Write-Host "Backend is not running on port $port. Launching FastAPI Backend Service..." -ForegroundColor Yellow
+    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoExit -File .\services\backend\start.ps1" -WorkingDirectory $PWD
+    Write-Host "Waiting a few seconds for backend to initialize..." -ForegroundColor Gray
+    Start-Sleep -Seconds 5
+}
+else {
+    Write-Host "✅ Backend is already running on port $port." -ForegroundColor Green
+}
+
 Write-Host "Starting Tauri Desktop Dev Server..." -ForegroundColor Green
 Write-Host ""
 

@@ -25,21 +25,21 @@ const cleanCadText = (text: string): string => {
 const getPrintColor = (color: string): string => {
   if (!color) return '#18181b';
   const cleanColor = color.trim().toLowerCase();
-  
+
   if (cleanColor.startsWith('#')) {
     let hex = cleanColor;
     if (hex.length === 4) {
       hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
     }
-    
+
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
-    
+
     if (r > 220 && g > 220 && b > 220) {
       return '#18181b';
     }
-    
+
     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
     if (brightness > 150) {
       if (r > 200 && g > 200 && b < 100) {
@@ -59,7 +59,7 @@ const getPrintColor = (color: string): string => {
     }
     return hex;
   }
-  
+
   const nameMap: Record<string, string> = {
     'white': '#18181b',
     'yellow': '#b45309',
@@ -71,7 +71,7 @@ const getPrintColor = (color: string): string => {
     'lightgray': '#52525b',
     'gray': '#71717a'
   };
-  
+
   return nameMap[cleanColor] || color;
 };
 
@@ -97,7 +97,8 @@ export interface DrawingCanvasRef {
 export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
   ({ layers, width, height, drawing }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const markerPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
+    const rafId = useRef<number | null>(null);
+    const markerPositionsRef = useRef<Record<string, { x: number, y: number }>>({});
 
     // Connect stores
     const {
@@ -231,11 +232,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             });
           });
 
-          const bboxStr = matchedTextEnt?.properties?.bbox 
+          const bboxStr = matchedTextEnt?.properties?.bbox
             ? `[ [${matchedTextEnt.properties.bbox[0][0].toFixed(2)}, ${matchedTextEnt.properties.bbox[0][1].toFixed(2)}], [${matchedTextEnt.properties.bbox[1][0].toFixed(2)}, ${matchedTextEnt.properties.bbox[1][1].toFixed(2)}] ]`
             : "None (Fallback)";
-            
-          const coordStr = v.coordinates 
+
+          const coordStr = v.coordinates
             ? `[${v.coordinates[0].toFixed(2)}, ${v.coordinates[1].toFixed(2)}]`
             : "None";
 
@@ -574,7 +575,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         let renderYMax = 0;
         let hasBounds = false;
         if (drawing?.metadata?.render_bounds) {
-          const [,,, ymax] = drawing.metadata.render_bounds;
+          const [, , , ymax] = drawing.metadata.render_bounds;
           renderYMin = drawing.metadata.render_bounds[1];
           renderYMax = ymax;
           hasBounds = true;
@@ -646,7 +647,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             const displayVal = (isOldDrawing && v.original_value) ? v.original_value : (v.description || "");
             const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
             const displayStat = `Stat: ${statusLabel}`;
-            
+
             // Only add secondary text if it's a CHANGED status
             const subValueText = markerType === 'CHANGED'
               ? (isOldDrawing ? `Revised Drawing: ${v.description}` : (v.original_value ? `Original Drawing: ${v.original_value}` : null))
@@ -688,9 +689,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                 const overlapX = (labelX < rect.xMax && labelX + cardWidth > rect.xMin);
                 const overlapY = (labelY < rect.yMax && labelY + cardHeight > rect.yMin);
                 if (overlapX && overlapY) {
-                   labelY = rect.yMin - cardHeight - 6 * resolutionMultiplier;
-                   collisionDetected = true;
-                   break;
+                  labelY = rect.yMin - cardHeight - 6 * resolutionMultiplier;
+                  collisionDetected = true;
+                  break;
                 }
               }
               safetyCounter++;
@@ -702,7 +703,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               yMin: labelY,
               yMax: labelY + cardHeight
             });
-            
+
             // Draw premium shadow
             ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
             ctx.shadowBlur = 8 * resolutionMultiplier;
@@ -712,7 +713,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.fillStyle = 'rgba(9, 9, 11, 0.95)';
             ctx.strokeStyle = bulletColor;
             ctx.lineWidth = 1.2 * resolutionMultiplier;
-            
+
             ctx.fillRect(labelX, labelY, cardWidth, cardHeight);
             ctx.strokeRect(labelX, labelY, cardWidth, cardHeight);
 
@@ -725,13 +726,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.fillStyle = '#ffffff';
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(`[${seqId}]`, labelX + 8 * resolutionMultiplier, labelY + 14 * resolutionMultiplier);
-            
+
             // Bullet marker inline to the left of the text value
             // Format: [Bullet Marker] Value
             const cardBulletRadius = 4 * resolutionMultiplier;
             const cardBulletX = labelX + 14 * resolutionMultiplier;
             const cardBulletY = labelY + 28 * resolutionMultiplier;
-            
+
             ctx.beginPath();
             ctx.arc(cardBulletX, cardBulletY, cardBulletRadius, 0, 2 * Math.PI);
             ctx.fillStyle = bulletColor;
@@ -739,21 +740,21 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             ctx.lineWidth = 1 * resolutionMultiplier;
             ctx.fill();
             ctx.stroke();
-            
+
             // Value text
             ctx.fillStyle = '#ffffff';
             ctx.font = `bold ${12 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(displayVal, labelX + 24 * resolutionMultiplier, labelY + 32 * resolutionMultiplier);
-            
+
             // Category & Status lines
             ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
             ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(`Cat:  ${displayCat}`, labelX + 8 * resolutionMultiplier, labelY + 43 * resolutionMultiplier);
-            
+
             ctx.fillStyle = bulletColor;
             ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
             ctx.fillText(displayStat, labelX + 8 * resolutionMultiplier, labelY + 53 * resolutionMultiplier);
-            
+
             // Render Original/Revised value underneath if applicable
             if (subValueText) {
               ctx.fillStyle = '#f97316'; // Same as changed marker color
@@ -762,75 +763,72 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             }
           }
 
-          if (bbox && bbox.length >= 2) {
-             const [[bxmin, bymin_raw], [bxmax, bymax_raw]] = bbox;
-             const bymin = hasBounds ? (renderYMax + renderYMin - bymin_raw) : bymin_raw;
-             const bymax = hasBounds ? (renderYMax + renderYMin - bymax_raw) : bymax_raw;
-             
-             // Project CAD coordinates onto absolute screen/CSS coordinates
-             const pxmin = bxmin * scale + transX;
-             const pymin = Math.min(bymin, bymax) * scale + transY;
-             const pxmax = bxmax * scale + transX;
-             const pymax = Math.max(bymin, bymax) * scale + transY;
-             const rectW = Math.max(pxmax - pxmin, 1);
-             const rectH = Math.max(pymax - pymin, 1);
-             
-             // Draw precise polygonal highlight box
-             ctx.beginPath();
-             ctx.rect(pxmin, pymin, rectW, rectH);
-             ctx.fillStyle = isSelected 
-                ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
-                : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.12)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.12)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)');
-             ctx.fill();
-             ctx.strokeStyle = bulletColor;
-             ctx.lineWidth = 1.5 * resolutionMultiplier;
-             ctx.stroke();
+          // Use Box rendering for Title Block, BOM, Notes, Isometric. Use Checkmark for Drawing Views.
+          if (v.category !== 'drawing_views') {
+            // Default to fixed box around center coordinate if bbox is missing
+            let pxmin = screenX - 10 * resolutionMultiplier;
+            let pymin = screenY - 10 * resolutionMultiplier;
+            let rectW = 20 * resolutionMultiplier;
+            let rectH = 20 * resolutionMultiplier;
 
-             // Draw selection dashed ring over it
-             if (isSelected) {
-               ctx.beginPath();
-               ctx.strokeStyle = '#ffffff';
-               ctx.lineWidth = 1.2 * resolutionMultiplier;
-               ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
-               ctx.rect(pxmin - 4 * resolutionMultiplier, pymin - 4 * resolutionMultiplier, rectW + 8 * resolutionMultiplier, rectH + 8 * resolutionMultiplier);
-               ctx.stroke();
-               ctx.setLineDash([]);
-             }
+            if (bbox && bbox.length >= 2) {
+              const [[bxmin, bymin_raw], [bxmax, bymax_raw]] = bbox;
+              const bymin = hasBounds ? (renderYMax + renderYMin - bymin_raw) : bymin_raw;
+              const bymax = hasBounds ? (renderYMax + renderYMin - bymax_raw) : bymax_raw;
+
+              pxmin = bxmin * scale + transX;
+              pymin = Math.min(bymin, bymax) * scale + transY;
+              const pxmax = bxmax * scale + transX;
+              const pymax = Math.max(bymin, bymax) * scale + transY;
+              rectW = Math.max(pxmax - pxmin, 1);
+              rectH = Math.max(pymax - pymin, 1);
+            }
+
+            // Draw precise polygonal highlight box
+            ctx.beginPath();
+            ctx.rect(pxmin, pymin, rectW, rectH);
+            ctx.fillStyle = isSelected
+              ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
+              : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.12)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.12)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)');
+            ctx.fill();
+            ctx.strokeStyle = bulletColor;
+            ctx.lineWidth = 1.5 * resolutionMultiplier;
+            ctx.stroke();
+
+            // Draw selection dashed ring over it
+            if (isSelected) {
+              ctx.beginPath();
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 1.2 * resolutionMultiplier;
+              ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
+              ctx.rect(pxmin - 4 * resolutionMultiplier, pymin - 4 * resolutionMultiplier, rectW + 8 * resolutionMultiplier, rectH + 8 * resolutionMultiplier);
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
           } else {
-            // 1. Draw glowing circular background
+            // Drawing Views: Draw a Checkmark (no circle)
+            // 1. Draw glowing circular background to help it stand out
             const radius = 12 * resolutionMultiplier;
             ctx.beginPath();
-            ctx.fillStyle = isSelected 
+            ctx.fillStyle = isSelected
               ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
               : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.08)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.08)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(16, 185, 129, 0.08)');
             ctx.arc(screenX, screenY, radius * 1.6, 0, 2 * Math.PI);
             ctx.fill();
 
-            // 2. Draw solid Circle Bullet marker
+            // 2. Draw Checkmark
             ctx.beginPath();
-            const bulletRadius = 6 * resolutionMultiplier;
-            ctx.arc(screenX, screenY, bulletRadius, 0, 2 * Math.PI);
-            ctx.fillStyle = bulletColor;
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.5 * resolutionMultiplier;
-            ctx.fill();
+            ctx.strokeStyle = bulletColor;
+            ctx.lineWidth = 3 * resolutionMultiplier;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            const cx = screenX;
+            const cy = screenY;
+            const size = 6 * resolutionMultiplier;
+            ctx.moveTo(cx - size * 0.8, cy - size * 0.1);
+            ctx.lineTo(cx - size * 0.1, cy + size * 0.6);
+            ctx.lineTo(cx + size * 0.9, cy - size * 0.7);
             ctx.stroke();
-
-            // 2.5 Draw checkmark inside MATCHED solid circle
-            if (markerType === 'MATCHED') {
-              ctx.beginPath();
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 1.8 * resolutionMultiplier;
-              ctx.lineCap = 'round';
-              ctx.lineJoin = 'round';
-              const cx = screenX;
-              const cy = screenY;
-              const size = 3 * resolutionMultiplier;
-              ctx.moveTo(cx - size * 0.8, cy - size * 0.1);
-              ctx.lineTo(cx - size * 0.1, cy + size * 0.6);
-              ctx.lineTo(cx + size * 0.9, cy - size * 0.7);
-              ctx.stroke();
-            }
 
             // 3. Draw selection dashed ring
             if (isSelected) {
@@ -869,14 +867,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
         const wx = (normXMin + (mouseCoords.x - viewport.x) / effectiveScale).toFixed(2);
         const raw_wy = normYMin - (mouseCoords.y - viewport.y) / effectiveScale;
-        let renderYMin = 0;
-        let renderYMax = 0;
+        let crossYMin = 0;
+        let crossYMax = 0;
         if (drawing?.metadata?.render_bounds) {
-          const [,,, ymax] = drawing.metadata.render_bounds;
-          renderYMin = drawing.metadata.render_bounds[1];
-          renderYMax = ymax;
+          const [, , , ymax] = drawing.metadata.render_bounds;
+          crossYMin = drawing.metadata.render_bounds[1];
+          crossYMax = ymax;
         }
-        const wy = (drawing?.metadata?.render_bounds ? (renderYMax + renderYMin - raw_wy) : raw_wy).toFixed(2);
+        const wy = (drawing?.metadata?.render_bounds ? (crossYMax + crossYMin - raw_wy) : raw_wy).toFixed(2);
 
         ctx.fillStyle = isHoveringMarkerState ? '#ef4444' : '#a1a1aa';
         ctx.font = '10px monospace';
@@ -888,14 +886,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       // 7.5 Draw Synced Laser Crosshair from the other viewport!
       if (!isExport && isLaserSyncEnabled && hoveredCoords && !mouseCoords) {
         const syncedX = viewport.x + effectiveScale * (hoveredCoords.x - normXMin);
-        let renderYMin = 0;
-        let renderYMax = 0;
+        let syncYMin = 0;
+        let syncYMax = 0;
         if (drawing?.metadata?.render_bounds) {
-          const [,,, ymax] = drawing.metadata.render_bounds;
-          renderYMin = drawing.metadata.render_bounds[1];
-          renderYMax = ymax;
+          const [, , , ymax] = drawing.metadata.render_bounds;
+          syncYMin = drawing.metadata.render_bounds[1];
+          syncYMax = ymax;
         }
-        const raw_hover_y = drawing?.metadata?.render_bounds ? (renderYMax + renderYMin - hoveredCoords.y) : hoveredCoords.y;
+        const raw_hover_y = drawing?.metadata?.render_bounds ? (syncYMax + syncYMin - hoveredCoords.y) : hoveredCoords.y;
         const syncedY = viewport.y + effectiveScale * (raw_hover_y - normYMin);
 
         if (syncedX >= 0 && syncedX <= width && syncedY >= 0 && syncedY <= height) {
@@ -986,66 +984,22 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       }
     }));
 
-  // Handle redraw when values update
-  useEffect(() => {
-    drawCanvas();
-  }, [drawCanvas, redrawTrigger]);
+    // Handle redraw when values update
+    useEffect(() => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(() => {
+        drawCanvas();
+      });
+      return () => {
+        if (rafId.current) cancelAnimationFrame(rafId.current);
+      };
+    }, [drawCanvas, redrawTrigger]);
 
-  // Zoom-to-focus selected violation coordinates (smooth dynamic viewport tracking)
-  useEffect(() => {
-    if (selectedViolation && selectedViolation.coordinates && drawing) {
-      // Ensure only the canvas corresponding to the violation owner updates the global viewport!
-      if ((selectedViolation as any).drawing_id === drawing.id) {
-        const [vx, vy] = selectedViolation.coordinates;
-
-        let normScale = 1;
-        let xmin = 0;
-        let ymin = 0;
-        let ymax = 0;
-        if (drawing?.metadata?.render_bounds) {
-          const [x0, y0, x1, y1] = drawing.metadata.render_bounds;
-          const boundsWidth = x1 - x0;
-          if (boundsWidth > 0) {
-            normScale = 1000 / boundsWidth;
-            xmin = x0;
-            ymin = y0;
-            ymax = y1;
-          }
-        }
-
-        const stdX = (vx - xmin) * normScale;
-        const vy_inverted = drawing?.metadata?.render_bounds ? (ymax + ymin - vy) : vy;
-        const stdY = (vy_inverted - ymin) * normScale;
-
-        const targetScale = 2.2;
-        const targetX = width / 2 - stdX * targetScale;
-        const targetY = height / 2 - stdY * targetScale;
-
-        // Update the shared viewport store instantly so both baseline and revision sync focus
-        setViewport({ x: targetX, y: targetY, scale: targetScale });
-      }
-    }
-  }, [selectedViolation, drawing, width, height, setViewport]);
-
-  // Keyboard shortcut actions
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
-        return;
-      }
-
-      const key = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && key === 'z') {
-        e.preventDefault();
-        useWorkspaceStore.getState().undoLastAction();
-        return;
-      }
-      if (key === 'escape') {
-        e.preventDefault();
-        selectViolation(null);
-      } else if (key === 'f') {
-        e.preventDefault();
-        if (selectedViolation && selectedViolation.coordinates && drawing) {
+    // Zoom-to-focus selected violation coordinates (smooth dynamic viewport tracking)
+    useEffect(() => {
+      if (selectedViolation && selectedViolation.coordinates && drawing) {
+        // Ensure only the canvas corresponding to the violation owner updates the global viewport!
+        if ((selectedViolation as any).drawing_id === drawing.id) {
           const [vx, vy] = selectedViolation.coordinates;
 
           let normScale = 1;
@@ -1070,142 +1024,135 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const targetScale = 2.2;
           const targetX = width / 2 - stdX * targetScale;
           const targetY = height / 2 - stdY * targetScale;
+
+          // Update the shared viewport store instantly so both baseline and revision sync focus
           setViewport({ x: targetX, y: targetY, scale: targetScale });
         }
-      } else if (e.key === 'delete' || e.key === 'backspace') {
-        if (selectedViolation) {
-          e.preventDefault();
-          const currentViolations = useWorkspaceStore.getState().violations;
-          useWorkspaceStore.setState({
-            violations: currentViolations.filter(v => v.id !== selectedViolation.id),
-            selectedViolation: null
-          });
-        }
-      } else if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
-        e.preventDefault();
-        setViewport({ ...viewport, scale: Math.min(25, viewport.scale * 1.25) });
-      } else if (e.ctrlKey && e.key === '-') {
-        e.preventDefault();
-        setViewport({ ...viewport, scale: Math.max(0.1, viewport.scale / 1.25) });
       }
-    };
+    }, [selectedViolation, drawing, width, height, setViewport]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [viewport, selectedViolation, width, height, setViewport, selectViolation]);
-
-  // Mouse wheel zoom
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    const worldX = (mouseX - viewport.x) / viewport.scale;
-    const worldY = (mouseY - viewport.y) / viewport.scale;
-
-    const newScale = Math.max(0.1, Math.min(viewport.scale * zoomFactor, 25));
-    const newX = mouseX - worldX * newScale;
-    const newY = mouseY - worldY * newScale;
-
-    setViewport({ x: newX, y: newY, scale: newScale });
-  };
-
-  // Mouse pan triggers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || e.button === 2 || isSpacePressed) {
-      // Middle click, Right click, or Spacebar+Left click strictly reserved for seamless panning!
-      // Skip all marker and boundary checks to guarantee immediate panning capability
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
-      e.preventDefault();
-      return;
-    }
-    if (e.button === 0) { // Left click to drag or calibrate
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        
-        let normScale = 1;
-        let xmin = 0;
-        let ymin = 0;
-        if (drawing?.metadata?.render_bounds) {
-          const [x0, y0, x1] = drawing.metadata.render_bounds;
-          const boundsWidth = x1 - x0;
-          if (boundsWidth > 0) {
-            normScale = 1000 / boundsWidth;
-            xmin = x0;
-            ymin = y0;
-          }
-        }
-        const effectiveScale = viewport.scale * normScale;
-        const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
-        
-        let clickedViolationId: string | null = null;
-        if (showViolations) {
-          let renderYMin = 0;
-          let renderYMax = 0;
-          let hasBounds = false;
-          if (drawing?.metadata?.render_bounds) {
-            const [,,, ymax] = drawing.metadata.render_bounds;
-            renderYMin = drawing.metadata.render_bounds[1];
-            renderYMax = ymax;
-            hasBounds = true;
-          }
-          for (const v of violations) {
-            const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
-            if (!coords) continue;
-            const [vx, raw_vy] = coords;
-            const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
-            const sx = (vx - xmin) * effectiveScale + viewport.x;
-            const sy = (vy - ymin) * effectiveScale + viewport.y;
-            
-            // Reduced detection radius from 24 to 12 for seamless navigation without blocking drags
-            if (Math.hypot(mx - sx, my - sy) <= 12) {
-              clickedViolationId = v.id;
-              break;
-            }
-          }
-        }
-        
-        if (clickedViolationId) {
-          const markerItem = violations.find(v => v.id === clickedViolationId);
-          if (markerItem) {
-            setDragMarkerId(clickedViolationId);
-            setDragMarkerStartPos(isOldDrawing ? markerItem.ref_coordinates : markerItem.coordinates);
-            setDragMarkerOriginalCoords({
-              coordinates: markerItem.coordinates ? [...markerItem.coordinates] : undefined,
-              ref_coordinates: markerItem.ref_coordinates ? [...markerItem.ref_coordinates] : undefined
-            });
-            setDragMarkerMouseStart({ x: e.clientX, y: e.clientY });
-            setHasDragMarkerMoved(false);
-          }
+    // Keyboard shortcut actions
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
           return;
         }
-      }
 
-      if (isRoiEditModeEnabled && hoveredHandleInfo) {
-        setActiveDragHandle({
-          regionKey: hoveredHandleInfo.regionKey,
-          handleId: hoveredHandleInfo.handleId as any
-        });
-
-        if (hoveredHandleInfo.handleId === 'center') {
-          const rect = canvasRef.current?.getBoundingClientRect();
-          if (rect && drawing?.metadata?.render_bounds) {
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
+        const key = e.key.toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && key === 'z') {
+          e.preventDefault();
+          useWorkspaceStore.getState().undoLastAction();
+          return;
+        }
+        if (key === 'escape') {
+          e.preventDefault();
+          selectViolation(null);
+        } else if (key === 'f') {
+          e.preventDefault();
+          if (selectedViolation && selectedViolation.coordinates && drawing) {
+            const [vx, vy] = selectedViolation.coordinates;
 
             let normScale = 1;
             let xmin = 0;
             let ymin = 0;
+            let ymax = 0;
+            if (drawing?.metadata?.render_bounds) {
+              const [x0, y0, x1, y1] = drawing.metadata.render_bounds;
+              const boundsWidth = x1 - x0;
+              if (boundsWidth > 0) {
+                normScale = 1000 / boundsWidth;
+                xmin = x0;
+                ymin = y0;
+                ymax = y1;
+              }
+            }
+
+            const stdX = (vx - xmin) * normScale;
+            const vy_inverted = drawing?.metadata?.render_bounds ? (ymax + ymin - vy) : vy;
+            const stdY = (vy_inverted - ymin) * normScale;
+
+            const targetScale = 2.2;
+            const targetX = width / 2 - stdX * targetScale;
+            const targetY = height / 2 - stdY * targetScale;
+            setViewport({ x: targetX, y: targetY, scale: targetScale });
+          }
+        } else if (e.key === 'delete' || e.key === 'backspace') {
+          if (selectedViolation) {
+            e.preventDefault();
+            const currentViolations = useWorkspaceStore.getState().violations;
+            useWorkspaceStore.setState({
+              violations: currentViolations.filter(v => v.id !== selectedViolation.id),
+              selectedViolation: null
+            });
+          }
+        } else if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
+          e.preventDefault();
+          setViewport({ ...viewport, scale: Math.min(25, viewport.scale * 1.25) });
+        } else if (e.ctrlKey && e.key === '-') {
+          e.preventDefault();
+          setViewport({ ...viewport, scale: Math.max(0.1, viewport.scale / 1.25) });
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }, [viewport, selectedViolation, width, height, setViewport, selectViolation]);
+
+    // Mouse wheel zoom
+    const handleWheel = useCallback((e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const worldX = (mouseX - viewport.x) / viewport.scale;
+      const worldY = (mouseY - viewport.y) / viewport.scale;
+
+      const newScale = Math.max(0.1, Math.min(viewport.scale * zoomFactor, 25));
+      const newX = mouseX - worldX * newScale;
+      const newY = mouseY - worldY * newScale;
+
+      setViewport({ x: newX, y: newY, scale: newScale });
+    }, [viewport, setViewport]);
+
+    useEffect(() => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+      }
+      return () => {
+        if (canvas) {
+          canvas.removeEventListener('wheel', handleWheel);
+        }
+      };
+    }, [handleWheel]);
+
+    // Mouse pan triggers
+    const handleMouseDown = (e: React.MouseEvent) => {
+      if (e.button === 1 || e.button === 2 || isSpacePressed) {
+        // Middle click, Right click, or Spacebar+Left click strictly reserved for seamless panning!
+        // Skip all marker and boundary checks to guarantee immediate panning capability
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+        e.preventDefault();
+        return;
+      }
+      if (e.button === 0) { // Left click to drag or calibrate
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+
+          let normScale = 1;
+          let xmin = 0;
+          let ymin = 0;
+          if (drawing?.metadata?.render_bounds) {
             const [x0, y0, x1] = drawing.metadata.render_bounds;
             const boundsWidth = x1 - x0;
             if (boundsWidth > 0) {
@@ -1213,673 +1160,741 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               xmin = x0;
               ymin = y0;
             }
+          }
+          const effectiveScale = viewport.scale * normScale;
+          const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
 
-            const effectiveScale = viewport.scale * normScale;
-            const worldX = xmin + (mx - viewport.x) / effectiveScale;
-            const worldY = ymin + (my - viewport.y) / effectiveScale;
+          let clickedViolationId: string | null = null;
+          if (showViolations) {
+            let renderYMin = 0;
+            let renderYMax = 0;
+            let hasBounds = false;
+            if (drawing?.metadata?.render_bounds) {
+              const [, , , ymax] = drawing.metadata.render_bounds;
+              renderYMin = drawing.metadata.render_bounds[1];
+              renderYMax = ymax;
+              hasBounds = true;
+            }
+            for (const v of violations) {
+              const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+              if (!coords) continue;
+              const [vx, raw_vy] = coords;
+              const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
+              const sx = (vx - xmin) * effectiveScale + viewport.x;
+              const sy = (vy - ymin) * effectiveScale + viewport.y;
 
-            const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
-            const w = rxMax - rxMin;
-            const h = ryMax - ryMin;
+              // Reduced detection radius from 24 to 12 for seamless navigation without blocking drags
+              if (Math.hypot(mx - sx, my - sy) <= 12) {
+                clickedViolationId = v.id;
+                break;
+              }
+            }
+          }
 
-            const pctX = (worldX - rxMin) / w;
-            const pctY = (worldY - ryMin) / h;
-
-            const current = customRegions[hoveredHandleInfo.regionKey];
-            if (current) {
-              setCenterDragStart({
-                pctX,
-                pctY,
-                originalXMin: current.xMin,
-                originalXMax: current.xMax,
-                originalYMin: current.yMin,
-                originalYMax: current.yMax
+          if (clickedViolationId) {
+            const markerItem = violations.find(v => v.id === clickedViolationId);
+            if (markerItem) {
+              setDragMarkerId(clickedViolationId);
+              setDragMarkerStartPos(isOldDrawing ? markerItem.ref_coordinates : markerItem.coordinates);
+              setDragMarkerOriginalCoords({
+                coordinates: markerItem.coordinates ? [...markerItem.coordinates] : undefined,
+                ref_coordinates: markerItem.ref_coordinates ? [...markerItem.ref_coordinates] : undefined
               });
+              setDragMarkerMouseStart({ x: e.clientX, y: e.clientY });
+              setHasDragMarkerMoved(false);
+            }
+            return;
+          }
+        }
+
+        if (isRoiEditModeEnabled && hoveredHandleInfo) {
+          setActiveDragHandle({
+            regionKey: hoveredHandleInfo.regionKey,
+            handleId: hoveredHandleInfo.handleId as any
+          });
+
+          if (hoveredHandleInfo.handleId === 'center') {
+            const rect = canvasRef.current?.getBoundingClientRect();
+            if (rect && drawing?.metadata?.render_bounds) {
+              const mx = e.clientX - rect.left;
+              const my = e.clientY - rect.top;
+
+              let normScale = 1;
+              let xmin = 0;
+              let ymin = 0;
+              const [x0, y0, x1] = drawing.metadata.render_bounds;
+              const boundsWidth = x1 - x0;
+              if (boundsWidth > 0) {
+                normScale = 1000 / boundsWidth;
+                xmin = x0;
+                ymin = y0;
+              }
+
+              const effectiveScale = viewport.scale * normScale;
+              const worldX = xmin + (mx - viewport.x) / effectiveScale;
+              const worldY = ymin + (my - viewport.y) / effectiveScale;
+
+              const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+              const w = rxMax - rxMin;
+              const h = ryMax - ryMin;
+
+              const pctX = (worldX - rxMin) / w;
+              const pctY = (worldY - ryMin) / h;
+
+              const current = customRegions[hoveredHandleInfo.regionKey];
+              if (current) {
+                setCenterDragStart({
+                  pctX,
+                  pctY,
+                  originalXMin: current.xMin,
+                  originalXMax: current.xMax,
+                  originalYMin: current.yMin,
+                  originalYMax: current.yMax
+                });
+              }
+            }
+          }
+        } else {
+          setIsDragging(true);
+          setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+        }
+      }
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      setMouseCoords({ x: mx, y: my });
+
+      // Calculate standardized hover coordinates to synchronize with the other viewport!
+      let normScale = 1;
+      let xmin = 0;
+      let ymin = 0;
+      if (drawing?.metadata?.render_bounds) {
+        const [x0, y0, x1] = drawing.metadata.render_bounds;
+        const boundsWidth = x1 - x0;
+        if (boundsWidth > 0) {
+          normScale = 1000 / boundsWidth;
+          xmin = x0;
+          ymin = y0;
+        }
+      }
+      const effectiveScale = viewport.scale * normScale;
+      const stdX = xmin + (mx - viewport.x) / effectiveScale;
+      const stdY = ymin - (my - viewport.y) / effectiveScale;
+
+      if (dragMarkerId && dragMarkerStartPos) {
+        const deltaX = (e.clientX - dragMarkerMouseStart.x) / effectiveScale;
+        let hasBounds = false;
+        if (drawing?.metadata?.render_bounds) {
+          hasBounds = true;
+        }
+        const deltaY = (e.clientY - dragMarkerMouseStart.y) / effectiveScale;
+        const adjustedDeltaY = hasBounds ? -deltaY : deltaY;
+
+        const newX = dragMarkerStartPos[0] + deltaX;
+        const newY = dragMarkerStartPos[1] + adjustedDeltaY;
+
+        if (Math.hypot(e.clientX - dragMarkerMouseStart.x, e.clientY - dragMarkerMouseStart.y) > 3) {
+          setHasDragMarkerMoved(true);
+        }
+
+        const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
+        const currentViolations = useWorkspaceStore.getState().violations;
+        useWorkspaceStore.setState({
+          violations: currentViolations.map(v => {
+            if (v.id === dragMarkerId) {
+              return isOldDrawing
+                ? { ...v, ref_coordinates: [newX, newY] as [number, number] }
+                : { ...v, coordinates: [newX, newY] as [number, number] };
+            }
+            return v;
+          })
+        });
+        return;
+      }
+
+
+
+      let isHoveringMarker = false;
+      let hoveredMId: string | null = null;
+      if (showViolations) {
+        const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
+        let renderYMin = 0;
+        let renderYMax = 0;
+        let hasBounds = false;
+        if (drawing?.metadata?.render_bounds) {
+          const [, , , ymax] = drawing.metadata.render_bounds;
+          renderYMin = drawing.metadata.render_bounds[1];
+          renderYMax = ymax;
+          hasBounds = true;
+        }
+        const getPriority = (penType: string) => {
+          if (penType === 'ai_red' || penType === 'checker_blue') return 3;
+          if (penType === 'ai_orange') return 2;
+          return 1;
+        };
+
+        const sortedViolations = [...violations].sort((a, b) => {
+          return getPriority(b.pen_type || 'ai_red') - getPriority(a.pen_type || 'ai_red');
+        });
+
+        for (const v of sortedViolations) {
+          // Skip sheet isolation violations to match rendering logic!
+          if (isOldDrawing && v.pen_type === 'checker_blue') continue;
+          if (!isOldDrawing && v.pen_type === 'ai_red') continue;
+
+          const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
+          if (!coords) continue;
+          const [vx, raw_vy] = coords;
+          const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
+          const pos = markerPositionsRef.current[v.id];
+          const sx = pos ? pos.x : (vx - xmin) * effectiveScale + viewport.x;
+          const sy = pos ? pos.y : (vy - ymin) * effectiveScale + viewport.y;
+
+          // Reduced detection radius from 18 to 12 for seamless hover transition
+          if (Math.hypot(mx - sx, my - sy) <= 12) {
+            isHoveringMarker = true;
+            hoveredMId = v.id;
+            break;
+          }
+        }
+      }
+      setIsHoveringMarkerState(isHoveringMarker);
+      setHoveredMarkerId(hoveredMId);
+
+      if (isLaserSyncEnabled) {
+        setHoveredCoords({ x: stdX, y: stdY });
+      } else if (hoveredCoords !== null) {
+        setHoveredCoords(null);
+      }
+
+      // ROI Drag Handle interaction
+      if (isRoiEditModeEnabled && selectedComparisonRegion && drawing?.metadata?.render_bounds) {
+        const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+        const w = rxMax - rxMin;
+        const h = ryMax - ryMin;
+        const regionKey = selectedComparisonRegion;
+        const customReg = customRegions[regionKey];
+
+        if (customReg) {
+          const screenXMin = (rxMin + w * customReg.xMin - xmin) * effectiveScale + viewport.x;
+          const screenXMax = (rxMin + w * customReg.xMax - xmin) * effectiveScale + viewport.x;
+          const screenYMin = (ryMin + h * customReg.yMin - ymin) * effectiveScale + viewport.y;
+          const screenYMax = (ryMin + h * customReg.yMax - ymin) * effectiveScale + viewport.y;
+
+          const handles = [
+            { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
+            { id: 'top-right', x: screenXMax, y: screenYMin, cursor: 'nesw-resize' },
+            { id: 'bottom-left', x: screenXMin, y: screenYMax, cursor: 'nesw-resize' },
+            { id: 'bottom-right', x: screenXMax, y: screenYMax, cursor: 'nwse-resize' }
+          ];
+
+          const hovered = handles.find(hd => Math.hypot(mx - hd.x, my - hd.y) <= 12);
+          if (hovered) {
+            setHoveredHandleInfo({
+              regionKey,
+              handleId: hovered.id,
+              cursor: hovered.cursor
+            });
+          } else {
+            // If not hovering corners, check if we are hovering inside the selected region box!
+            if (mx >= screenXMin && mx <= screenXMax && my >= screenYMin && my <= screenYMax) {
+              setHoveredHandleInfo({
+                regionKey,
+                handleId: 'center',
+                cursor: 'move'
+              });
+            } else {
+              setHoveredHandleInfo(null);
             }
           }
         }
       } else {
-        setIsDragging(true);
-        setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
-      }
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    setMouseCoords({ x: mx, y: my });
-
-    // Calculate standardized hover coordinates to synchronize with the other viewport!
-    let normScale = 1;
-    let xmin = 0;
-    let ymin = 0;
-    if (drawing?.metadata?.render_bounds) {
-      const [x0, y0, x1] = drawing.metadata.render_bounds;
-      const boundsWidth = x1 - x0;
-      if (boundsWidth > 0) {
-        normScale = 1000 / boundsWidth;
-        xmin = x0;
-        ymin = y0;
-      }
-    }
-    const effectiveScale = viewport.scale * normScale;
-    const stdX = xmin + (mx - viewport.x) / effectiveScale;
-    const stdY = ymin - (my - viewport.y) / effectiveScale;
-
-    if (dragMarkerId && dragMarkerStartPos) {
-      const deltaX = (e.clientX - dragMarkerMouseStart.x) / effectiveScale;
-      let hasBounds = false;
-      if (drawing?.metadata?.render_bounds) {
-        hasBounds = true;
-      }
-      const deltaY = (e.clientY - dragMarkerMouseStart.y) / effectiveScale;
-      const adjustedDeltaY = hasBounds ? -deltaY : deltaY;
-
-      const newX = dragMarkerStartPos[0] + deltaX;
-      const newY = dragMarkerStartPos[1] + adjustedDeltaY;
-
-      if (Math.hypot(e.clientX - dragMarkerMouseStart.x, e.clientY - dragMarkerMouseStart.y) > 3) {
-        setHasDragMarkerMoved(true);
+        if (hoveredHandleInfo) setHoveredHandleInfo(null);
       }
 
-      const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
-      const currentViolations = useWorkspaceStore.getState().violations;
-      useWorkspaceStore.setState({
-        violations: currentViolations.map(v => {
-          if (v.id === dragMarkerId) {
-            return isOldDrawing
-              ? { ...v, ref_coordinates: [newX, newY] as [number, number] }
-              : { ...v, coordinates: [newX, newY] as [number, number] };
+      if (activeDragHandle && drawing?.metadata?.render_bounds) {
+        const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
+        const w = rxMax - rxMin;
+        const h = ryMax - ryMin;
+
+        const worldX = xmin + (mx - viewport.x) / effectiveScale;
+        const worldY = ymin + (my - viewport.y) / effectiveScale;
+
+        const pctX = Math.max(0.0, Math.min(1.0, (worldX - rxMin) / w));
+        const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));
+
+        const currentBounds = { ...customRegions[activeDragHandle.regionKey] };
+
+        if (activeDragHandle.handleId === 'center' && centerDragStart) {
+          const deltaPctX = pctX - centerDragStart.pctX;
+          const deltaPctY = pctY - centerDragStart.pctY;
+
+          const boxW = centerDragStart.originalXMax - centerDragStart.originalXMin;
+          const boxH = centerDragStart.originalYMax - centerDragStart.originalYMin;
+
+          // Apply shift with boundaries clamped to [0.0, 1.0]
+          let newXMin = centerDragStart.originalXMin + deltaPctX;
+          let newXMax = centerDragStart.originalXMax + deltaPctX;
+          let newYMin = centerDragStart.originalYMin + deltaPctY;
+          let newYMax = centerDragStart.originalYMax + deltaPctY;
+
+          if (newXMin < 0) {
+            newXMin = 0;
+            newXMax = boxW;
+          } else if (newXMax > 1) {
+            newXMax = 1;
+            newXMin = 1 - boxW;
           }
-          return v;
-        })
-      });
-      return;
-    }
 
+          if (newYMin < 0) {
+            newYMin = 0;
+            newYMax = boxH;
+          } else if (newYMax > 1) {
+            newYMax = 1;
+            newYMin = 1 - boxH;
+          }
 
+          currentBounds.xMin = newXMin;
+          currentBounds.xMax = newXMax;
+          currentBounds.yMin = newYMin;
+          currentBounds.yMax = newYMax;
+        } else if (activeDragHandle.handleId === 'top-left') {
+          currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
+          currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
+        } else if (activeDragHandle.handleId === 'top-right') {
+          currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
+          currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
+        } else if (activeDragHandle.handleId === 'bottom-left') {
+          currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
+          currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
+        } else if (activeDragHandle.handleId === 'bottom-right') {
+          currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
+          currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
+        }
 
-    let isHoveringMarker = false;
-    let hoveredMId: string | null = null;
-    if (showViolations) {
-      const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
+        updateCustomRegion(activeDragHandle.regionKey, currentBounds);
+        setRedrawTrigger(prev => prev + 1);
+      } else if (isDragging) {
+        const newX = e.clientX - dragStart.x;
+        const newY = e.clientY - dragStart.y;
+        setViewport({ ...viewport, x: newX, y: newY });
+        if (e.buttons === 2) {
+          setPreventNextContextMenu(true);
+        }
+      }
+    };
+
+    const handleMouseUp = (e: React.MouseEvent) => {
+      setIsDragging(false);
+      setActiveDragHandle(null);
+      setCenterDragStart(null);
+
+      if (dragMarkerId) {
+        if (!hasDragMarkerMoved) {
+          const currentViolations = useWorkspaceStore.getState().violations;
+          const markerToDelete = currentViolations.find(v => v.id === dragMarkerId);
+          if (markerToDelete) {
+            if (e.altKey) {
+              // Alt + Click deletes the marker (matching the tooltip instructions!)
+              useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
+              useWorkspaceStore.setState({
+                violations: currentViolations.filter(v => v.id !== dragMarkerId),
+                selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
+              });
+            } else {
+              // Standard Left-click selects the violation instead of deleting it!
+              selectViolation(markerToDelete);
+            }
+          }
+        } else {
+          const currentViolations = useWorkspaceStore.getState().violations;
+          const markerItem = currentViolations.find(v => v.id === dragMarkerId);
+          if (markerItem && dragMarkerOriginalCoords) {
+            const coordsChanged =
+              markerItem.coordinates?.[0] !== dragMarkerOriginalCoords.coordinates?.[0] ||
+              markerItem.coordinates?.[1] !== dragMarkerOriginalCoords.coordinates?.[1] ||
+              markerItem.ref_coordinates?.[0] !== dragMarkerOriginalCoords.ref_coordinates?.[0] ||
+              markerItem.ref_coordinates?.[1] !== dragMarkerOriginalCoords.ref_coordinates?.[1];
+
+            if (coordsChanged) {
+              useWorkspaceStore.getState().pushUndoAction({
+                type: "move",
+                violationId: dragMarkerId,
+                oldCoords: dragMarkerOriginalCoords.coordinates,
+                newCoords: markerItem.coordinates,
+                oldRefCoords: dragMarkerOriginalCoords.ref_coordinates,
+                newRefCoords: markerItem.ref_coordinates
+              });
+            }
+          }
+        }
+        setDragMarkerId(null);
+        setDragMarkerStartPos(null);
+        setDragMarkerOriginalCoords(null);
+      }
+    };
+
+    const handleMouseLeave = () => {
+      setIsDragging(false);
+      setActiveDragHandle(null);
+      setCenterDragStart(null);
+      setMouseCoords(null);
+      setHoveredCoords(null);
+      setHoveredHandleInfo(null);
+      setIsHoveringMarkerState(false);
+      setDragMarkerId(null);
+      setDragMarkerStartPos(null);
+      setHoveredMarkerId(null);
+    };
+
+    const handleContextMenu = (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (preventNextContextMenu) {
+        setPreventNextContextMenu(false);
+        return;
+      }
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      let normScale = 1;
+      let xmin = 0;
+      let ymin = 0;
+      if (drawing?.metadata?.render_bounds) {
+        const [x0, y0, x1] = drawing.metadata.render_bounds;
+        const boundsWidth = x1 - x0;
+        if (boundsWidth > 0) {
+          normScale = 1000 / boundsWidth;
+          xmin = x0;
+          ymin = y0;
+        }
+      }
+      const effectiveScale = viewport.scale * normScale;
+      const wx = xmin + (mx - viewport.x) / effectiveScale;
+      const wy_screen = ymin + (my - viewport.y) / effectiveScale;
+
       let renderYMin = 0;
       let renderYMax = 0;
       let hasBounds = false;
       if (drawing?.metadata?.render_bounds) {
-        const [,,, ymax] = drawing.metadata.render_bounds;
+        const [, , , ymax] = drawing.metadata.render_bounds;
         renderYMin = drawing.metadata.render_bounds[1];
         renderYMax = ymax;
         hasBounds = true;
       }
-      const getPriority = (penType: string) => {
-        if (penType === 'ai_red' || penType === 'checker_blue') return 3;
-        if (penType === 'ai_orange') return 2;
-        return 1;
-      };
-      
-      const sortedViolations = [...violations].sort((a, b) => {
-        return getPriority(b.pen_type || 'ai_red') - getPriority(a.pen_type || 'ai_red');
+      const wy = hasBounds ? (renderYMax + renderYMin - wy_screen) : wy_screen;
+
+      // Shift menu slightly if too close to right/bottom edges to fit cleanly
+      let menuX = mx;
+      let menuY = my;
+      const menuWidth = 190;
+      const menuHeight = 120;
+      if (mx + menuWidth > width) {
+        menuX = mx - menuWidth;
+      }
+      if (my + menuHeight > height) {
+        menuY = my - menuHeight;
+      }
+
+      setContextMenu({
+        visible: true,
+        x: menuX,
+        y: menuY,
+        wx,
+        wy
       });
+    };
 
-      for (const v of sortedViolations) {
-        // Skip sheet isolation violations to match rendering logic!
-        if (isOldDrawing && v.pen_type === 'checker_blue') continue;
-        if (!isOldDrawing && v.pen_type === 'ai_red') continue;
-
-        const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
-        if (!coords) continue;
-        const [vx, raw_vy] = coords;
-        const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
-        const pos = markerPositionsRef.current[v.id];
-        const sx = pos ? pos.x : (vx - xmin) * effectiveScale + viewport.x;
-        const sy = pos ? pos.y : (vy - ymin) * effectiveScale + viewport.y;
-        
-        // Reduced detection radius from 18 to 12 for seamless hover transition
-        if (Math.hypot(mx - sx, my - sy) <= 12) {
-          isHoveringMarker = true;
-          hoveredMId = v.id;
-          break;
-        }
-      }
-    }
-    setIsHoveringMarkerState(isHoveringMarker);
-    setHoveredMarkerId(hoveredMId);
-
-    if (isLaserSyncEnabled) {
-      setHoveredCoords({ x: stdX, y: stdY });
-    } else if (hoveredCoords !== null) {
-      setHoveredCoords(null);
-    }
-
-    // ROI Drag Handle interaction
-    if (isRoiEditModeEnabled && selectedComparisonRegion && drawing?.metadata?.render_bounds) {
-      const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
-      const w = rxMax - rxMin;
-      const h = ryMax - ryMin;
-      const regionKey = selectedComparisonRegion;
-      const customReg = customRegions[regionKey];
-
-      if (customReg) {
-        const screenXMin = (rxMin + w * customReg.xMin - xmin) * effectiveScale + viewport.x;
-        const screenXMax = (rxMin + w * customReg.xMax - xmin) * effectiveScale + viewport.x;
-        const screenYMin = (ryMin + h * customReg.yMin - ymin) * effectiveScale + viewport.y;
-        const screenYMax = (ryMin + h * customReg.yMax - ymin) * effectiveScale + viewport.y;
-
-        const handles = [
-          { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
-          { id: 'top-right', x: screenXMax, y: screenYMin, cursor: 'nesw-resize' },
-          { id: 'bottom-left', x: screenXMin, y: screenYMax, cursor: 'nesw-resize' },
-          { id: 'bottom-right', x: screenXMax, y: screenYMax, cursor: 'nwse-resize' }
-        ];
-
-        const hovered = handles.find(hd => Math.hypot(mx - hd.x, my - hd.y) <= 12);
-        if (hovered) {
-          setHoveredHandleInfo({
-            regionKey,
-            handleId: hovered.id,
-            cursor: hovered.cursor
-          });
-        } else {
-          // If not hovering corners, check if we are hovering inside the selected region box!
-          if (mx >= screenXMin && mx <= screenXMax && my >= screenYMin && my <= screenYMax) {
-            setHoveredHandleInfo({
-              regionKey,
-              handleId: 'center',
-              cursor: 'move'
-            });
-          } else {
-            setHoveredHandleInfo(null);
-          }
-        }
-      }
-    } else {
-      if (hoveredHandleInfo) setHoveredHandleInfo(null);
-    }
-
-    if (activeDragHandle && drawing?.metadata?.render_bounds) {
-      const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
-      const w = rxMax - rxMin;
-      const h = ryMax - ryMin;
-
-      const worldX = xmin + (mx - viewport.x) / effectiveScale;
-      const worldY = ymin + (my - viewport.y) / effectiveScale;
-
-      const pctX = Math.max(0.0, Math.min(1.0, (worldX - rxMin) / w));
-      const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));
-
-      const currentBounds = { ...customRegions[activeDragHandle.regionKey] };
-
-      if (activeDragHandle.handleId === 'center' && centerDragStart) {
-        const deltaPctX = pctX - centerDragStart.pctX;
-        const deltaPctY = pctY - centerDragStart.pctY;
-
-        const boxW = centerDragStart.originalXMax - centerDragStart.originalXMin;
-        const boxH = centerDragStart.originalYMax - centerDragStart.originalYMin;
-
-        // Apply shift with boundaries clamped to [0.0, 1.0]
-        let newXMin = centerDragStart.originalXMin + deltaPctX;
-        let newXMax = centerDragStart.originalXMax + deltaPctX;
-        let newYMin = centerDragStart.originalYMin + deltaPctY;
-        let newYMax = centerDragStart.originalYMax + deltaPctY;
-
-        if (newXMin < 0) {
-          newXMin = 0;
-          newXMax = boxW;
-        } else if (newXMax > 1) {
-          newXMax = 1;
-          newXMin = 1 - boxW;
-        }
-
-        if (newYMin < 0) {
-          newYMin = 0;
-          newYMax = boxH;
-        } else if (newYMax > 1) {
-          newYMax = 1;
-          newYMin = 1 - boxH;
-        }
-
-        currentBounds.xMin = newXMin;
-        currentBounds.xMax = newXMax;
-        currentBounds.yMin = newYMin;
-        currentBounds.yMax = newYMax;
-      } else if (activeDragHandle.handleId === 'top-left') {
-        currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
-        currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
-      } else if (activeDragHandle.handleId === 'top-right') {
-        currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
-        currentBounds.yMin = Math.min(pctY, currentBounds.yMax - 0.02);
-      } else if (activeDragHandle.handleId === 'bottom-left') {
-        currentBounds.xMin = Math.min(pctX, currentBounds.xMax - 0.02);
-        currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
-      } else if (activeDragHandle.handleId === 'bottom-right') {
-        currentBounds.xMax = Math.max(pctX, currentBounds.xMin + 0.02);
-        currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
-      }
-
-      updateCustomRegion(activeDragHandle.regionKey, currentBounds);
-      setRedrawTrigger(prev => prev + 1);
-    } else if (isDragging) {
-      const newX = e.clientX - dragStart.x;
-      const newY = e.clientY - dragStart.y;
-      setViewport({ ...viewport, x: newX, y: newY });
-      if (e.buttons === 2) {
-        setPreventNextContextMenu(true);
-      }
-    }
-  };
-
-  const handleMouseUp = (e: React.MouseEvent) => {
-    setIsDragging(false);
-    setActiveDragHandle(null);
-    setCenterDragStart(null);
-
-    if (dragMarkerId) {
-      if (!hasDragMarkerMoved) {
-        const currentViolations = useWorkspaceStore.getState().violations;
-        const markerToDelete = currentViolations.find(v => v.id === dragMarkerId);
-        if (markerToDelete) {
-          if (e.altKey) {
-            // Alt + Click deletes the marker (matching the tooltip instructions!)
-            useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
-            useWorkspaceStore.setState({
-              violations: currentViolations.filter(v => v.id !== dragMarkerId),
-              selectedViolation: selectedViolation?.id === dragMarkerId ? null : selectedViolation
-            });
-          } else {
-            // Standard Left-click selects the violation instead of deleting it!
-            selectViolation(markerToDelete);
-          }
-        }
-      } else {
-        const currentViolations = useWorkspaceStore.getState().violations;
-        const markerItem = currentViolations.find(v => v.id === dragMarkerId);
-        if (markerItem && dragMarkerOriginalCoords) {
-          const coordsChanged =
-            markerItem.coordinates?.[0] !== dragMarkerOriginalCoords.coordinates?.[0] ||
-            markerItem.coordinates?.[1] !== dragMarkerOriginalCoords.coordinates?.[1] ||
-            markerItem.ref_coordinates?.[0] !== dragMarkerOriginalCoords.ref_coordinates?.[0] ||
-            markerItem.ref_coordinates?.[1] !== dragMarkerOriginalCoords.ref_coordinates?.[1];
-            
-          if (coordsChanged) {
-            useWorkspaceStore.getState().pushUndoAction({
-              type: "move",
-              violationId: dragMarkerId,
-              oldCoords: dragMarkerOriginalCoords.coordinates,
-              newCoords: markerItem.coordinates,
-              oldRefCoords: dragMarkerOriginalCoords.ref_coordinates,
-              newRefCoords: markerItem.ref_coordinates
-            });
-          }
-        }
-      }
-      setDragMarkerId(null);
-      setDragMarkerStartPos(null);
-      setDragMarkerOriginalCoords(null);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setIsDragging(false);
-    setActiveDragHandle(null);
-    setCenterDragStart(null);
-    setMouseCoords(null);
-    setHoveredCoords(null);
-    setHoveredHandleInfo(null);
-    setIsHoveringMarkerState(false);
-    setDragMarkerId(null);
-    setDragMarkerStartPos(null);
-    setHoveredMarkerId(null);
-  };
-
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (preventNextContextMenu) {
-      setPreventNextContextMenu(false);
-      return;
-    }
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    let normScale = 1;
-    let xmin = 0;
-    let ymin = 0;
-    if (drawing?.metadata?.render_bounds) {
-      const [x0, y0, x1] = drawing.metadata.render_bounds;
-      const boundsWidth = x1 - x0;
-      if (boundsWidth > 0) {
-        normScale = 1000 / boundsWidth;
-        xmin = x0;
-        ymin = y0;
-      }
-    }
-    const effectiveScale = viewport.scale * normScale;
-    const wx = xmin + (mx - viewport.x) / effectiveScale;
-    const wy_screen = ymin + (my - viewport.y) / effectiveScale;
-
-    let renderYMin = 0;
-    let renderYMax = 0;
-    let hasBounds = false;
-    if (drawing?.metadata?.render_bounds) {
-      const [,,, ymax] = drawing.metadata.render_bounds;
-      renderYMin = drawing.metadata.render_bounds[1];
-      renderYMax = ymax;
-      hasBounds = true;
-    }
-    const wy = hasBounds ? (renderYMax + renderYMin - wy_screen) : wy_screen;
-
-    // Shift menu slightly if too close to right/bottom edges to fit cleanly
-    let menuX = mx;
-    let menuY = my;
-    const menuWidth = 190;
-    const menuHeight = 120;
-    if (mx + menuWidth > width) {
-      menuX = mx - menuWidth;
-    }
-    if (my + menuHeight > height) {
-      menuY = my - menuHeight;
-    }
-
-    setContextMenu({
-      visible: true,
-      x: menuX,
-      y: menuY,
-      wx,
-      wy
-    });
-  };
-
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-      <canvas
-        ref={canvasRef}
-        width={width * dpr}
-        height={height * dpr}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onContextMenu={handleContextMenu}
-        style={{
-          cursor: isSpacePressed
-            ? (isDragging ? 'grabbing' : 'grab')
-            : activeDragHandle
-              ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
-              : hoveredHandleInfo
-                ? (hoveredHandleInfo.cursor as any)
-                : isHoveringMarkerState
-                  ? 'pointer'
-                  : isDragging
-                    ? 'grabbing'
-                    : 'grab',
-          display: 'block',
-          width: '100%',
-          height: '100%'
-        }}
-      />
-
-      {contextMenu && (
-        <div
-          className="custom-context-menu"
+    return (
+      <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+        <canvas
+          ref={canvasRef}
+          width={width * dpr}
+          height={height * dpr}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          onContextMenu={handleContextMenu}
           style={{
-            position: 'absolute',
-            left: contextMenu.x,
-            top: contextMenu.y,
+            cursor: isSpacePressed
+              ? (isDragging ? 'grabbing' : 'grab')
+              : activeDragHandle
+                ? (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right' ? 'nwse-resize' : 'nesw-resize')
+                : hoveredHandleInfo
+                  ? (hoveredHandleInfo.cursor as any)
+                  : isHoveringMarkerState
+                    ? 'pointer'
+                    : isDragging
+                      ? 'grabbing'
+                      : 'grab',
+            display: 'block',
+            width: '100%',
+            height: '100%'
           }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
+        />
+
+        {contextMenu && (
           <div
-            className="context-menu-item"
-            onClick={() => {
-              toggleMarkerLabels();
-              setContextMenu(null);
+            className="custom-context-menu"
+            style={{
+              position: 'absolute',
+              left: contextMenu.x,
+              top: contextMenu.y,
             }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
-            {showMarkerLabels ? "🏷 Hide Labels" : "🏷 Show Labels"}
-          </div>
-          <div
-            className={`context-menu-item ${useWorkspaceStore.getState().deletedViolationsStack.length === 0 ? "disabled" : ""}`}
-            onClick={() => {
-              useWorkspaceStore.getState().popAndRestoreViolation();
-              setContextMenu(null);
-            }}
-          >
-            <span>↩ Undo Delete</span>
-            {useWorkspaceStore.getState().deletedViolationsStack.length > 0 && (
-              <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', marginLeft: '6px' }}>
-                {useWorkspaceStore.getState().deletedViolationsStack.length}
-              </span>
-            )}
-          </div>
-          <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
-          <div style={{ padding: '4px 14px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#71717a', fontWeight: 600 }}>Filter Markers</div>
-          {[
-            { label: "🔴 MISMATCHED", key: "MISMATCHED" },
-            { label: "🟠 CHANGED", key: "CHANGED" },
-            { label: "🔵 ADDED", key: "ADDED" },
-            { label: "🟢 MATCHED", key: "MATCHED" }
-          ].map((item) => (
             <div
-              key={item.key}
               className="context-menu-item"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px' }}
               onClick={() => {
-                toggleMarkerTypeVisibility(item.key);
-                setRedrawTrigger(prev => prev + 1);
+                toggleMarkerLabels();
+                setContextMenu(null);
               }}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
-                <input
-                  type="checkbox"
-                  checked={visibleMarkerTypes[item.key] ?? false}
-                  onChange={() => {}}
-                  style={{ cursor: 'pointer', accentColor: '#00e5ff' }}
-                />
-                <span>{item.label}</span>
-              </span>
+              {showMarkerLabels ? "🏷 Hide Labels" : "🏷 Show Labels"}
             </div>
-          ))}
-          <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
-          <div className="context-menu-item has-submenu">
-            <span>➕ Add Marker</span>
-            <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▶</span>
-            <div className="context-submenu">
-              {[
-                { label: "🟢 MATCHED", type: "ai_green", isResolved: true, status: "MATCHED" },
-                { label: "🔴 MISMATCHED", type: "ai_red", isResolved: false, status: "MISMATCHED" },
-                { label: "🟠 CHANGE", type: "ai_orange", isResolved: false, status: "CHANGED" },
-                { label: "🔵 ADDED", type: "checker_blue", isResolved: false, status: "ADDED" }
-              ].map((opt) => (
-                <div
-                  key={opt.label}
-                  className="context-menu-item"
-                  onClick={() => {
-                    // Add new marker at click coordinates wx, wy
-                    // Populating BOTH coordinates and ref_coordinates to sync on both drawings!
-                    const newMarker: any = {
-                      id: `custom_marker_${Date.now()}`,
-                      severity: opt.status === "MATCHED" ? "low" : "high",
-                      category: "Manual Marker",
-                      description: "Manually added marker",
-                      recommendation: "Manual verification check",
-                      affected_entities: [],
-                      confidence: 1.0,
-                      coordinates: [contextMenu.wx, contextMenu.wy],
-                      ref_coordinates: [contextMenu.wx, contextMenu.wy],
-                      pen_type: opt.type,
-                      is_resolved: opt.isResolved,
-                      status: opt.status
-                    };
-                    const current = useWorkspaceStore.getState().violations;
-                    useWorkspaceStore.setState({
-                      violations: [...current, newMarker]
-                    });
-                    setContextMenu(null);
-                  }}
-                >
-                  {opt.label}
-                </div>
-              ))}
+            <div
+              className={`context-menu-item ${useWorkspaceStore.getState().deletedViolationsStack.length === 0 ? "disabled" : ""}`}
+              onClick={() => {
+                useWorkspaceStore.getState().popAndRestoreViolation();
+                setContextMenu(null);
+              }}
+            >
+              <span>↩ Undo Delete</span>
+              {useWorkspaceStore.getState().deletedViolationsStack.length > 0 && (
+                <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', marginLeft: '6px' }}>
+                  {useWorkspaceStore.getState().deletedViolationsStack.length}
+                </span>
+              )}
+            </div>
+            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
+            <div style={{ padding: '4px 14px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#71717a', fontWeight: 600 }}>Filter Markers</div>
+            {[
+              { label: "🔴 MISMATCHED", key: "MISMATCHED" },
+              { label: "🟠 CHANGED", key: "CHANGED" },
+              { label: "🔵 ADDED", key: "ADDED" },
+              { label: "🟢 MATCHED", key: "MATCHED" }
+            ].map((item) => (
+              <div
+                key={item.key}
+                className="context-menu-item"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px' }}
+                onClick={() => {
+                  toggleMarkerTypeVisibility(item.key);
+                  setRedrawTrigger(prev => prev + 1);
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={visibleMarkerTypes[item.key] ?? false}
+                    onChange={() => { }}
+                    style={{ cursor: 'pointer', accentColor: '#00e5ff' }}
+                  />
+                  <span>{item.label}</span>
+                </span>
+              </div>
+            ))}
+            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
+            <div className="context-menu-item has-submenu">
+              <span>➕ Add Marker</span>
+              <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▶</span>
+              <div className="context-submenu">
+                {[
+                  { label: "🟢 MATCHED", type: "ai_green", isResolved: true, status: "MATCHED" },
+                  { label: "🔴 MISMATCHED", type: "ai_red", isResolved: false, status: "MISMATCHED" },
+                  { label: "🟠 CHANGE", type: "ai_orange", isResolved: false, status: "CHANGED" },
+                  { label: "🔵 ADDED", type: "checker_blue", isResolved: false, status: "ADDED" }
+                ].map((opt) => (
+                  <div
+                    key={opt.label}
+                    className="context-menu-item"
+                    onClick={() => {
+                      // Add new marker at click coordinates wx, wy
+                      // Populating BOTH coordinates and ref_coordinates to sync on both drawings!
+                      const newMarker: any = {
+                        id: `custom_marker_${Date.now()}`,
+                        severity: opt.status === "MATCHED" ? "low" : "high",
+                        category: "Manual Marker",
+                        description: "Manually added marker",
+                        recommendation: "Manual verification check",
+                        affected_entities: [],
+                        confidence: 1.0,
+                        coordinates: [contextMenu.wx, contextMenu.wy],
+                        ref_coordinates: [contextMenu.wx, contextMenu.wy],
+                        pen_type: opt.type,
+                        is_resolved: opt.isResolved,
+                        status: opt.status
+                      };
+                      const current = useWorkspaceStore.getState().violations;
+                      useWorkspaceStore.setState({
+                        violations: [...current, newMarker]
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    {opt.label}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Floating CAD Compass & Navigation HUD Overlay (Top Right) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 12,
-          right: 12,
-          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
-          backdropFilter: 'blur(12px)',
-          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
-          padding: '10px 14px',
-          borderRadius: '10px',
-          fontFamily: 'sans-serif',
-          color: theme === 'hc-light' ? '#3f3f46' : '#e4e4e7',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px',
-          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
-          pointerEvents: 'none',
-          userSelect: 'none',
-          transition: 'all 0.3s ease'
-        }}
-      >
-        {/* Animated Cyber Dial */}
-        <div style={{ position: 'relative', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="36" height="36" viewBox="0 0 36 36" style={{ transform: `rotate(${(viewport.x + viewport.y) * 0.05}deg)`, transition: 'transform 0.1s linear' }}>
-            <circle cx="18" cy="18" r="16" fill="none" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'} strokeWidth="1.5" />
-            <circle cx="18" cy="18" r="16" fill="none" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" strokeDasharray="8, 6" />
-            <line x1="18" y1="2" x2="18" y2="8" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" />
-            <line x1="18" y1="28" x2="18" y2="34" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
-            <line x1="2" y1="18" x2="8" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
-            <line x1="28" y1="18" x2="34" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
-          </svg>
-          <div style={{
-            position: 'absolute',
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            backgroundColor: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff'),
-            boxShadow: `0 0 8px ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')}`
-          }} />
-        </div>
-
-        {/* Nav Stats */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: theme === 'hc-light' ? '#71717a' : '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
-          <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', display: 'flex', gap: '10px' }}>
-            <span>X: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.x.toFixed(0)}</span></span>
-            <span>Y: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.y.toFixed(0)}</span></span>
-            <span>MAG: <span style={{ color: '#ec4899' }}>{viewport.scale.toFixed(2)}x</span></span>
-          </div>
-        </div>
-      </div>
-
-      {/* Floating Visual Quality Controller Panel (Bottom Right) */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 12,
-          right: 12,
-          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
-          backdropFilter: 'blur(12px)',
-          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
-          padding: '8px 12px',
-          borderRadius: '10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
-          userSelect: 'none',
-          zIndex: 10
-        }}
-      >
-        {/* Render Quality Badge */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-          <span style={{ fontSize: '0.55rem', color: theme === 'hc-light' ? '#a1a1aa' : '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
-          <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-            350 DPI High-Res
-          </span>
-        </div>
-
-        <div style={{ width: '1px', height: '24px', backgroundColor: theme === 'hc-light' ? 'rgba(228, 228, 231, 1)' : 'rgba(63, 63, 70, 0.5)' }} />
-
-        {/* Neon CAD Toggle Button */}
-        <button
-          onClick={() => {
-            setIsNeonCAD(prev => !prev);
-            setRedrawTrigger(prev => prev + 1);
-          }}
+        {/* Floating CAD Compass & Navigation HUD Overlay (Top Right) */}
+        <div
           style={{
-            background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : (theme === 'hc-light' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.03)'),
-            border: `1px solid ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)')}`,
-            padding: '4px 10px',
-            borderRadius: '6px',
-            fontSize: '0.68rem',
-            fontWeight: 600,
-            color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#71717a' : '#a1a1aa'),
-            cursor: 'pointer',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            outline: 'none',
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
+            backdropFilter: 'blur(12px)',
+            border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            fontFamily: 'sans-serif',
+            color: theme === 'hc-light' ? '#3f3f46' : '#e4e4e7',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            boxShadow: isNeonCAD ? '0 0 10px rgba(0, 255, 204, 0.25)' : 'none'
-          }}
-          onMouseEnter={(e) => {
-            if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(161, 161, 170, 0.8)' : 'rgba(255, 255, 255, 0.3)';
-          }}
-          onMouseLeave={(e) => {
-            if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)';
+            gap: '14px',
+            boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
+            pointerEvents: 'none',
+            userSelect: 'none',
+            transition: 'all 0.3s ease'
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-          </svg>
-          NEON GLOW
-        </button>
-      </div>
+          {/* Animated Cyber Dial */}
+          <div style={{ position: 'relative', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="36" height="36" viewBox="0 0 36 36" style={{ transform: `rotate(${(viewport.x + viewport.y) * 0.05}deg)`, transition: 'transform 0.1s linear' }}>
+              <circle cx="18" cy="18" r="16" fill="none" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'} strokeWidth="1.5" />
+              <circle cx="18" cy="18" r="16" fill="none" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" strokeDasharray="8, 6" />
+              <line x1="18" y1="2" x2="18" y2="8" stroke={isNeonCAD ? "#00ffcc" : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')} strokeWidth="1.5" />
+              <line x1="18" y1="28" x2="18" y2="34" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+              <line x1="2" y1="18" x2="8" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+              <line x1="28" y1="18" x2="34" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
+            </svg>
+            <div style={{
+              position: 'absolute',
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff'),
+              boxShadow: `0 0 8px ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff')}`
+            }} />
+          </div>
 
-      {/* High-Fidelity HUD Engineering Diagnostics Overlay (Bottom Left) */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 12,
-          left: 12,
-          background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
-          backdropFilter: 'blur(12px)',
-          border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
-          padding: '8px 12px',
-          borderRadius: '10px',
-          fontFamily: 'monospace',
-          fontSize: '0.62rem',
-          color: theme === 'hc-light' ? '#71717a' : '#a1a1aa',
-          display: 'flex',
-          gap: '12px',
-          pointerEvents: 'none',
-          boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)'
-        }}
-      >
-        <div>ZOOM: <span style={{ color: '#00e5ff', fontWeight: 600 }}>{(viewport.scale * 100).toFixed(0)}%</span></div>
-        <div>VIRTUALIZED: <span style={{ color: '#10b981', fontWeight: 600 }}>{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
-        <div>RENDER: <span style={{ color: '#eab308', fontWeight: 600 }}>{renderDiagnostics.renderTimeMs}ms</span></div>
-      </div>
+          {/* Nav Stats */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: theme === 'hc-light' ? '#71717a' : '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
+            <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', display: 'flex', gap: '10px' }}>
+              <span>X: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.x.toFixed(0)}</span></span>
+              <span>Y: <span style={{ color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff') }}>{viewport.y.toFixed(0)}</span></span>
+              <span>MAG: <span style={{ color: '#ec4899' }}>{viewport.scale.toFixed(2)}x</span></span>
+            </div>
+          </div>
+        </div>
 
-      <style>{`
+        {/* Floating Visual Quality Controller Panel (Bottom Right) */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 12,
+            right: 12,
+            background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
+            backdropFilter: 'blur(12px)',
+            border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
+            padding: '8px 12px',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
+            userSelect: 'none',
+            zIndex: 10
+          }}
+        >
+          {/* Render Quality Badge */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <span style={{ fontSize: '0.55rem', color: theme === 'hc-light' ? '#a1a1aa' : '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
+            <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+              350 DPI High-Res
+            </span>
+          </div>
+
+          <div style={{ width: '1px', height: '24px', backgroundColor: theme === 'hc-light' ? 'rgba(228, 228, 231, 1)' : 'rgba(63, 63, 70, 0.5)' }} />
+
+          {/* Neon CAD Toggle Button */}
+          <button
+            onClick={() => {
+              setIsNeonCAD(prev => !prev);
+              setRedrawTrigger(prev => prev + 1);
+            }}
+            style={{
+              background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : (theme === 'hc-light' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.03)'),
+              border: `1px solid ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)')}`,
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#71717a' : '#a1a1aa'),
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              outline: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: isNeonCAD ? '0 0 10px rgba(0, 255, 204, 0.25)' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(161, 161, 170, 0.8)' : 'rgba(255, 255, 255, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)';
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+            </svg>
+            NEON GLOW
+          </button>
+        </div>
+
+        {/* High-Fidelity HUD Engineering Diagnostics Overlay (Bottom Left) */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 12,
+            left: 12,
+            background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
+            backdropFilter: 'blur(12px)',
+            border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
+            padding: '8px 12px',
+            borderRadius: '10px',
+            fontFamily: 'monospace',
+            fontSize: '0.62rem',
+            color: theme === 'hc-light' ? '#71717a' : '#a1a1aa',
+            display: 'flex',
+            gap: '12px',
+            pointerEvents: 'none',
+            boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)'
+          }}
+        >
+          <div>ZOOM: <span style={{ color: '#00e5ff', fontWeight: 600 }}>{(viewport.scale * 100).toFixed(0)}%</span></div>
+          <div>VIRTUALIZED: <span style={{ color: '#10b981', fontWeight: 600 }}>{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
+          <div>RENDER: <span style={{ color: '#eab308', fontWeight: 600 }}>{renderDiagnostics.renderTimeMs}ms</span></div>
+        </div>
+
+        <style>{`
         .custom-context-menu {
           position: absolute;
           background: rgba(18, 18, 24, 0.95);
@@ -1936,6 +1951,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           flex-direction: column;
         }
       `}</style>
-    </div>
-  );
-});
+      </div>
+    );
+  });

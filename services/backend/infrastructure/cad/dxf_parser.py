@@ -195,6 +195,10 @@ class DXFParser:
                             tx, ty, s = project_point(geo["insert"][0], geo["insert"][1])
                             geo["insert"] = [tx, ty]
                             scale = s
+                        if "text_point" in geo:
+                            tx, ty, s = project_point(geo["text_point"][0], geo["text_point"][1])
+                            geo["text_point"] = [tx, ty]
+                            scale = s
                         
                         # Project bbox if present
                         props = mapped.get("properties", {})
@@ -204,11 +208,22 @@ class DXFParser:
                                 xmin, ymin, s = project_point(bbox[0][0], bbox[0][1])
                                 xmax, ymax, s = project_point(bbox[1][0], bbox[1][1])
                                 props["bbox"] = [[xmin, ymin], [xmax, ymax]]
-                                scale = s
                             except Exception:
                                 pass
+                    elif mapped["entity_type"] == "dimension" and "geometry" in mapped:
+                        geo = mapped["geometry"]
+                        if "def_point" in geo:
+                            tx, ty, s = project_point(geo["def_point"][0], geo["def_point"][1])
+                            geo["def_point"] = [tx, ty]
+                            scale = s
+                        if "text_point" in geo:
+                            tx, ty, s = project_point(geo["text_point"][0], geo["text_point"][1])
+                            geo["text_point"] = [tx, ty]
+                            scale = s
+
                         
                         # Scale font size/height
+                        props = mapped.get("properties", {})
                         if "height" in props:
                             props["height"] = props["height"] * scale
                         style = mapped.get("style", {})

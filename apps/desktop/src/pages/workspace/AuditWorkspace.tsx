@@ -375,22 +375,26 @@ export const AuditWorkspace: React.FC = () => {
         const cleanCadText = (text: string): string => {
           if (!text) return "";
           let clean = text;
-          // Replace CP932 decoded multiplication sign "ラ" with standard lowercase "x"
-          clean = clean.replace(/ラ/g, "x");
+          // Replace CP932 decoded multiplication sign "×" with standard lowercase "x"
+          clean = clean.replace(/×/g, "x");
           clean = clean.replace(/[{}]/g, "");
-          clean = clean.replace(/\\[A-Za-z][^;]*;/g, "");
+          // Aggressively strip ALL AutoCAD MTEXT formatting codes (fonts, colors, alignment, etc.)
+          clean = clean.replace(/\\[A-Za-z0-9\-~|.]+;/g, "");
           clean = clean.replace(/\\P/g, " ");
+          // Fallback strip for any remaining \L or \l formatting tags
+          clean = clean.replace(/\\[LlOo]/g, "");
           return clean.trim();
         };
 
         const normalizeStr = (str: string) => {
           let s = str.toLowerCase().trim();
+          s = s.replace(/%%c/g, "⌀").replace(/%%d/g, "°").replace(/%%p/g, "±");
           // Replace CP932 decoded multiplication sign "ラ" with standard lowercase "x"
           s = s.replace(/ラ/g, "x");
           s = s.replace(/×/g, "x");
           s = s.replace(/:/g, "/");
           return s
-            .replace(/[\s\(\)\[\]\{\}\:\;\,\-\_\.\/\引\（\）]/g, "")
+            .replace(/[\s\(\)\[\]\{\}\:\;\,\-\_\.\/\引\（\）－−–—―〜～]/g, "")
             .trim();
         };
 
@@ -413,7 +417,8 @@ export const AuditWorkspace: React.FC = () => {
             const seen = new Set<string>();
             const combined: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] = [];
             for (const line of lines) {
-              const lineMatches = findAllFuzzyMatches(line, entities, preferModelSpace, allowNumberMismatch, minScore);
+              // Always allow number mismatch for split lines because partial lines won't match the whole entity's numbers
+              const lineMatches = findAllFuzzyMatches(line, entities, preferModelSpace, true, minScore);
               for (const m of lineMatches) {
                 const key = `${m.x.toFixed(2)},${m.y.toFixed(2)}`;
                 if (!seen.has(key)) {
@@ -447,11 +452,24 @@ export const AuditWorkspace: React.FC = () => {
             } else if (
               normEnt.replace(/^[0-9]+-/, "") === normSearch ||
               normSearch.replace(/^[0-9]+-/, "") === normEnt ||
-              normEnt.replace(/^[rmøø]/i, "") === normSearch ||
-              normSearch.replace(/^[rmøø]/i, "") === normEnt
+              normEnt.replace(/^[crmoo⌀]/i, "") === normSearch ||
+              normSearch.replace(/^[crmoo⌀]/i, "") === normEnt
             ) {
               score = 90;
             } else {
+              // Try parsing as numbers to handle floating point variations (e.g. "C1" vs "1.00")
+              const cleanSearchNum = normSearch.replace(/^[0-9]+-/, "").replace(/^[crmoo⌀]/i, "");
+              const cleanEntNum = normEnt.replace(/^[0-9]+-/, "").replace(/^[crmoo⌀]/i, "");
+              const fSearch = parseFloat(cleanSearchNum);
+              const fEnt = parseFloat(cleanEntNum);
+              if (!isNaN(fSearch) && !isNaN(fEnt) && fSearch === fEnt) {
+                score = 90;
+              } else if (!isNaN(fSearch) && !isNaN(parseFloat(normEnt)) && fSearch === parseFloat(normEnt)) {
+                score = 90;
+              }
+            }
+
+            if (score < 90) {
               const stripLeadDigits = (s: string) => s.replace(/^\d+/, "");
               const strippedSearch = stripLeadDigits(normSearch);
               const strippedEnt = stripLeadDigits(normEnt);
@@ -471,6 +489,8 @@ export const AuditWorkspace: React.FC = () => {
                 searchChars.forEach(c => { if (entChars.has(c)) intersection++; });
                 const jaccard = intersection / Math.max(searchChars.size, entChars.size);
                 if (jaccard > 0.60) {
+                  score = jaccard * 70;
+                } else if (allowNumberMismatch && jaccard > 0.40) { // For multi-line notes, reduce threshold
                   score = jaccard * 70;
                 }
               }
@@ -547,13 +567,13 @@ export const AuditWorkspace: React.FC = () => {
         ): boolean => {
 
           // ── Structural annotation fast-path (Fix 4) ─────────────────────────────────
-          const isNativeStructural = ent.eType === 'tolerance' || ent.eType === 'leader' || ent.eType === 'multileader' || ent.eType === 'attrib' || ent.eType === 'insert' || ent.eType === 'mtext' || ent.eType === 'block';
+          const isNativeStructural = ent.eType === 'tolerance' || ent.eType === 'leader' || ent.eType === 'multileader' || ent.eType === 'attrib' || ent.eType === 'insert' || ent.eType === 'mtext' || ent.eType === 'block' || ent.eType === 'dimension';
           // Chamfer/radius: "C1", "2-C1", "4-C1", "R5", "3XR2"
           const tCleanAnnotation = ent.text.trim();
           const isChamferOrRadius = /^\d*[-]?[CR]\d+(\.\d+)?$/i.test(tCleanAnnotation.replace(/\s/g, ''));
           // Balloon tags: circled Unicode numbers ①–⑳, or parenthesised integers (1)–(99)
           const isBalloonTag = /^[\u2460-\u2473\u3251-\u325f\u32b1-\u32bf]$/.test(tCleanAnnotation) ||
-                               /^\(\d{1,2}\)$/.test(tCleanAnnotation);
+            /^\(\d{1,2}\)$/.test(tCleanAnnotation);
           // GD&T / machining surface symbols: ▽ ∇ ▲ △ ⊙ ◯ □
           const isGdtOrMachining = /^[\u25bd\u25bf\u25b3\u25b2\u2299\u25ef\u25a1]$/.test(tCleanAnnotation);
 
@@ -604,23 +624,23 @@ export const AuditWorkspace: React.FC = () => {
           if (inToleranceTableZone) return false;
 
           const defaultRegions = {
-            views:         { xMin: 0.04, xMax: 0.68, yMin: 0.12, yMax: 0.88 },
-            notes:         { xMin: 0.04, xMax: 0.38, yMin: 0.18, yMax: 0.62 },
-            bom:           { xMin: 0.62, xMax: 0.98, yMin: 0.04, yMax: 0.44 },
-            title:         { xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98 },
-            titleUpperLeft:{ xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 },
-            iso:           { xMin: 0.62, xMax: 0.98, yMin: 0.42, yMax: 0.74 }
+            views: { xMin: 0.04, xMax: 0.68, yMin: 0.12, yMax: 0.88 },
+            notes: { xMin: 0.04, xMax: 0.38, yMin: 0.18, yMax: 0.62 },
+            bom: { xMin: 0.62, xMax: 0.98, yMin: 0.04, yMax: 0.44 },
+            title: { xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98 },
+            titleUpperLeft: { xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 },
+            iso: { xMin: 0.62, xMax: 0.98, yMin: 0.42, yMax: 0.74 }
           };
           const targetMetadata = (isOld ? oldDrawing?.metadata : drawing?.metadata) || {};
           const regions = targetMetadata.regions || defaultRegions;
           const inside = (px: number, py: number, box: { xMin: number; xMax: number; yMin: number; yMax: number }) =>
             px >= box.xMin && px <= box.xMax && py >= box.yMin && py <= box.yMax;
 
-          const inViews  = inside(pctX, pctY, regions.views);
-          const inNotes  = inside(pctX, pctY, regions.notes);
-          const inBom    = inside(pctX, pctY, regions.bom);
-          const inIso    = inside(pctX, pctY, regions.iso);
-          const inTitle  = inside(pctX, pctY, regions.title);
+          const inViews = inside(pctX, pctY, regions.views);
+          const inNotes = inside(pctX, pctY, regions.notes);
+          const inBom = inside(pctX, pctY, regions.bom);
+          const inIso = inside(pctX, pctY, regions.iso);
+          const inTitle = inside(pctX, pctY, regions.title);
           const inTitleUL = inside(pctX, pctY, regions.titleUpperLeft);
 
           // Total Qty label pass-through (must be in upper-left quadrant)
@@ -649,18 +669,18 @@ export const AuditWorkspace: React.FC = () => {
             if (Array.isArray(entities)) {
               entities.forEach((ent: any) => {
                 const eType = ent.type || ent.entity_type;
-                if (eType === 'text' || eType === 'mtext' || eType === 'tolerance' || eType === 'multileader' || eType === 'attrib' || eType === 'insert' || eType === 'block') {
+                if (eType === 'text' || eType === 'mtext' || eType === 'tolerance' || eType === 'multileader' || eType === 'attrib' || eType === 'insert' || eType === 'block' || eType === 'dimension') {
                   const geo = ent.geometry || {};
                   let rawText = geo.text || geo.content || ent.properties?.text || '';
-                  
+
                   // Flatten block attributes into searchable text
                   if (eType === 'block' && ent.properties?.attributes) {
                     rawText = Object.values(ent.properties.attributes).join(' ');
                   }
-                  
+
                   const textVal = cleanCadText(rawText);
-                  if (textVal && (geo.location || geo.insert)) {
-                    const [tx, ty] = geo.location || geo.insert;
+                  if (textVal && (geo.location || geo.insert || geo.text_point)) {
+                    const [tx, ty] = geo.location || geo.insert || geo.text_point;
                     const cleanedText = textVal.trim();
                     if (!isDuplicateEntity(textEntities, cleanedText, tx, ty)) {
                       textEntities.push({
@@ -713,12 +733,18 @@ export const AuditWorkspace: React.FC = () => {
             if (Array.isArray(entities)) {
               entities.forEach((ent: any) => {
                 const eType = ent.type || ent.entity_type;
-                if (eType === 'text' || eType === 'tolerance' || eType === 'multileader') {
+                if (eType === 'text' || eType === 'mtext' || eType === 'tolerance' || eType === 'multileader' || eType === 'attrib' || eType === 'insert' || eType === 'block' || eType === 'dimension') {
                   const geo = ent.geometry || {};
-                  const rawText = geo.text || geo.content || ent.properties?.text || '';
+                  let rawText = geo.text || geo.content || ent.properties?.text || '';
+
+                  // Flatten block attributes into searchable text
+                  if (eType === 'block' && ent.properties?.attributes) {
+                    rawText = Object.values(ent.properties.attributes).join(' ');
+                  }
+
                   const textVal = cleanCadText(rawText);
-                  if (textVal && (geo.location || geo.insert)) {
-                    const [tx, ty] = geo.location || geo.insert;
+                  if (textVal && (geo.location || geo.insert || geo.text_point)) {
+                    const [tx, ty] = geo.location || geo.insert || geo.text_point;
                     const cleanedText = textVal.trim();
                     if (!isDuplicateEntity(refTextEntities, cleanedText, tx, ty)) {
                       refTextEntities.push({
@@ -784,16 +810,16 @@ export const AuditWorkspace: React.FC = () => {
             const q1 = sorted[Math.floor(sorted.length * 0.25)];
             const q3 = sorted[Math.floor(sorted.length * 0.75)];
             const iqr = q3 - q1;
-            
+
             // Use 2.0 as multiplier to be slightly forgiving but strictly drop extreme stray outliers
             const lowerBound = q1 - 2.0 * iqr;
             const upperBound = q3 + 2.0 * iqr;
-            
+
             const cleanVals = vals.filter(v => v >= lowerBound && v <= upperBound);
-            
+
             // Fallback to absolute min/max if the IQR filter somehow rejected everything
             if (cleanVals.length === 0) return { min: Math.min(...vals), max: Math.max(...vals) };
-            
+
             return { min: Math.min(...cleanVals), max: Math.max(...cleanVals) };
           };
 
@@ -835,7 +861,7 @@ export const AuditWorkspace: React.FC = () => {
           // Fix F2 is handled inside findAllFuzzyMatches (\n splitting).
           // Do NOT pre-strip multi-line text_content here — pass full string directly.
           const searchTerm = marking.text_content;
-          
+
           let matches: any[] = [];
           let refMatches: any[] = [];
           let usedDirectIdMapping = false;
@@ -925,7 +951,7 @@ export const AuditWorkspace: React.FC = () => {
               }
               return true;
             };
-            
+
             // Apply the spatial constraints to prevent category bleeding
             const zoneMatches = matches.filter(m => enforceZone(m, false));
             if (zoneMatches.length > 0) matches = zoneMatches; // Fallback to all if strict zone fails
@@ -1503,7 +1529,7 @@ export const AuditWorkspace: React.FC = () => {
       const normalizeStatus = (s: string): string => {
         const u = s?.toUpperCase().trim() || "";
         if (["MISMATCHED", "MISMATCH", "DIFFER", "DIFFERENT"].includes(u)) {
-            return "CHANGED";
+          return "CHANGED";
         }
         return s?.trim() || "";
       };

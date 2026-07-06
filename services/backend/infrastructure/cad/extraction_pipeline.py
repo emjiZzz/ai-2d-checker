@@ -1,6 +1,6 @@
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 from ...logger import logger
@@ -38,8 +38,8 @@ class ExtractionPipeline:
             return
 
         # Update statuses to processing
-        job.status = "processing"
-        job.started_at = datetime.utcnow()
+        job.status = "in_progress"
+        job.started_at = datetime.now(timezone.utc)
         await job.save()
 
         drawing.status = "processing"
@@ -150,7 +150,7 @@ class ExtractionPipeline:
             total_duration = time.time() - start_time
             
             job.status = "completed"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             job.conversion_duration_seconds = conversion_duration
             job.parsing_duration_seconds = parsing_duration
             job.total_duration_seconds = total_duration
@@ -161,10 +161,10 @@ class ExtractionPipeline:
             }
             await job.save()
 
-            drawing.status = "completed"
+            drawing.status = "extracted"
             drawing.entity_counts = counts
             drawing.metadata = sanitize_utf8(metadata)
-            drawing.updated_at = datetime.utcnow()
+            drawing.updated_at = datetime.now(timezone.utc)
             await drawing.save()
 
             logger.info(
@@ -190,16 +190,16 @@ class ExtractionPipeline:
         Roll back/update records to failed status cleanly.
         """
         job.status = "failed"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         job.error_message = error_msg
         job.diagnostics = {
             "traceback": traceback_str,
-            "failed_at": datetime.utcnow().isoformat()
+            "failed_at": datetime.now(timezone.utc).isoformat()
         }
         await job.save()
 
         drawing.status = "failed"
-        drawing.updated_at = datetime.utcnow()
+        drawing.updated_at = datetime.now(timezone.utc)
         await drawing.save()
 
     def _render_pdf_background(self, pdf_path: Path, drawing_id: str, metadata: Dict[str, Any]) -> None:
@@ -215,7 +215,7 @@ class ExtractionPipeline:
             page = doc[0]
             
             # Save rendering to safe destination path inside storage directory
-            from .path_resolver import get_storage_root
+            from services.backend.infrastructure.storage.path_resolver import get_storage_root
             render_dir = get_storage_root() / "renderings"
             render_dir.mkdir(parents=True, exist_ok=True)
             output_png_path = render_dir / f"{drawing_id}.png"

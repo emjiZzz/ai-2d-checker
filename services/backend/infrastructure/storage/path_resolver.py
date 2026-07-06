@@ -21,7 +21,7 @@ def bootstrap_storage() -> bool:
         "reports",
         "logs/backend",
         "logs/app",
-    ]
+    ]  
     
     try:
         STORAGE_ROOT.mkdir(parents=True, exist_ok=True)

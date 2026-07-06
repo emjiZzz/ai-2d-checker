@@ -98,8 +98,17 @@ class EntityMapper:
         # Dimensions contain geometric definition points and overlay texts
         text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
         measurement = entity.dxf.actual_measurement if hasattr(entity.dxf, "actual_measurement") else None
+        
+        if (not text or "<>" in text) and measurement is not None:
+            meas_str = f"{measurement:.2f}".rstrip('0').rstrip('.')
+            text = meas_str if not text else text.replace("<>", meas_str)
+            
+        text = EntityMapper._clean_mtext_content(text)
+            
         def_point = entity.dxf.defpoint if hasattr(entity.dxf, "defpoint") else [0,0,0]
         text_point = entity.dxf.text_midpoint if hasattr(entity.dxf, "text_midpoint") else [0,0,0]
+        if text_point[0] == 0 and text_point[1] == 0:
+            text_point = def_point
         dim_type = entity.dxf.dimtype if hasattr(entity.dxf, "dimtype") else 0
         
         return {

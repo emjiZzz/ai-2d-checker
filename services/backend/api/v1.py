@@ -906,7 +906,6 @@ async def launch_audit(
     )
 
 def safe_decode(text):
-    import re
     if not text:
         return ""
     # If text already contains valid Japanese, return as-is to avoid Mojibake
@@ -934,6 +933,8 @@ def extract_semantic_text_groups(entities: list, prefix: str = "") -> dict:
     isometric_view_data = []
     
     def strip_mtext(t: str) -> str:
+        # Replace AutoCAD newlines (\P) with standard newlines before stripping formatting
+        t = t.replace('\\P', '\n')
         return re.sub(r'\\[A-Za-z0-9\-~|.]+;', '', t.replace('{', '').replace('}', '')).strip()
     
     # Pre-scan for structural label coordinates (Unit No, Part No, etc.) to securely bypass their values
@@ -1136,7 +1137,7 @@ def extract_semantic_text_groups(entities: list, prefix: str = "") -> dict:
             "dim" in layer_lower or "dimension" in layer_lower or "callout" in layer_lower or 
             "geometry" in layer_lower or "anno" in layer_lower or
             "キリ" in text_val or "トオシ" in text_val or "通シ" in text_val or 
-            "深サ" in text_val or "ザグリ" in text_val or "面取" in text_val or
+            "深サ" in text_val or "ザグリ" in text_val or "面取" in text_val or "抜キ" in text_val or
             re.search(r'^\d+-\d+キリ', text_val) or
             re.search(r'^\d+X\d+-M\d+', text_val) or
             re.search(r'^M\d+', text_val) or
@@ -1215,7 +1216,6 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
 
     def compare_values(orig_val: str, kmti_val: str) -> str:
         """Compare two cell or block values and classify: MATCHED, ADDED, CHANGED, or REMOVED."""
-        import re
         o = (orig_val or "NONE").strip()
         k = (kmti_val or "NONE").strip()
         
@@ -1227,10 +1227,14 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 return ""
             v = val.lower().strip()
             # Removed CP932 heuristic replacement
-            # Treat lowercase x, uppercase X, and × multiplication symbol identically
-            v = re.sub(r'[xX×]', 'x', v)
+            # Treat lowercase x, uppercase X, × multiplication symbol, CP932 decoded 'ラ', and fullwidth 'ｘ', 'Ｘ' identically
+            v = re.sub(r'[xX×ラｘＸ]', 'x', v)
             # Treat colons : and slashes / identically
             v = re.sub(r':', '/', v)
+            # Treat all dashes, hyphens, and minus variants identically as a standard ASCII hyphen
+            v = re.sub(r'[－−–—―〜～]', '-', v)
+            # Strip all internal spaces to prevent mismatch due to spacing (e.g. '20 x 12' == '20x12')
+            v = re.sub(r'\s+', '', v)
             return v
             
         norm_o = normalize(o)
@@ -1293,7 +1297,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                     xmin, ymin = bbox[0]
                     xmax, ymax = bbox[1]
                     box_height = ymax - ymin
-                    res["coords"] = [xmax + (height * 0.8), ymin + (box_height / 2.0)]
+                    res["coords"] = [xmax + (height * 0.4), ymin + (box_height / 2.0)]
                     res["bbox"] = bbox
                     return res
                 except Exception:
@@ -1301,9 +1305,25 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             # Estimate text width if bbox is missing or invalid
             text_len = len(e.properties.get("text", ""))
             estimated_width = text_len * height * 0.6
-            res["coords"] = [ins[0] + estimated_width + (height * 0.8), ins[1] + (height / 2.0)]
+            
+            # Dimensions usually have their text_point in the CENTER of the text,
+            # while other text might be left-aligned.
+            is_dim = getattr(e, "entity_type", "") == "dimension"
+            
+            # Text / MText can also be center-aligned
+            halign = e.properties.get("halign", 0)
+            attachment_point = e.properties.get("attachment_point", 0)
+            is_center_aligned = (halign in [1, 4]) or (attachment_point in [2, 5, 8])
+            
+            is_centered = is_dim or is_center_aligned
+            offset_x = (estimated_width / 2.0) if is_centered else estimated_width
+            
+            # Add a small padding gap
+            padding = height * 0.4
+            
+            res["coords"] = [ins[0] + offset_x + padding, ins[1] + (height / 2.0)]
             # Estimate bbox
-            res["bbox"] = [[ins[0], ins[1] - (height / 2.0)], [ins[0] + estimated_width, ins[1] + (height * 1.5)]]
+            res["bbox"] = [[ins[0] - (offset_x if is_centered else 0), ins[1] - (height / 2.0)], [ins[0] + offset_x, ins[1] + (height * 1.5)]]
             return res
 
         def in_region(e) -> bool:
@@ -1370,7 +1390,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         search_order = inside_region + layer_priority + elsewhere
 
         def strip_mtext(t: str) -> str:
-            import re
+            t = t.replace('\\P', '\n')
             return re.sub(r'\\[A-Za-z0-9\-~|.]+;', '', t.replace('{', '').replace('}', '')).strip()
 
         # Pass 1 – Exact match
@@ -1403,7 +1423,6 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                             used_entities.add(id(e))
                         return get_anchor(e)
                     else:
-                        import re
                         # For short strings (like "10" or "m6"), only allow if surrounded by non-digits or start/end
                         # This prevents "10" from matching "100"
                         if re.search(r'(^|\D)' + re.escape(target_norm) + r'(\D|$)', dec_norm):
@@ -1442,6 +1461,23 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                         if used_entities is not None:
                             used_entities.add(id(e))
                         return get_anchor(e)
+
+        # Pass 5 - High Similarity Fuzzy Match (Catch OCR / AI hallucinations)
+        if len(target_norm) >= 4:
+            import difflib
+            for e in search_order:
+                if used_entities is not None and id(e) in used_entities:
+                    continue
+                raw_txt = e.properties.get("text", "")
+                if raw_txt:
+                    decoded = strip_mtext(safe_decode(raw_txt))
+                    dec_norm = unicodedata.normalize('NFKC', decoded).strip().replace(" ", "").replace("\n", "").lower()
+                    if len(dec_norm) >= 3:
+                        # Catch slight variations like "NG通シ" vs "M6通シ"
+                        if difflib.SequenceMatcher(None, target_norm, dec_norm).ratio() > 0.8:
+                            if used_entities is not None:
+                                used_entities.add(id(e))
+                            return get_anchor(e)
 
         return None
 
@@ -1998,8 +2034,16 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             return (1, 0, key_str)
         all_keys.sort(key=key_sort_fn)
 
-        def cmp_status(orig, kmti):
+        def cmp_status(orig, kmti, key_col):
             s = compare_values(orig, kmti)
+            if s == "CHANGED" and key_col in ("MATERIAL_WEIGHT", "FINISHED_WEIGHT"):
+                try:
+                    o_float = float(orig)
+                    k_float = float(kmti)
+                    if o_float == k_float and re.search(r'\.\d{2}$', kmti.strip()):
+                        return "MATCHED"
+                except ValueError:
+                    pass
             return "MATCHED" if s == "MATCHED" else "MISMATCHED"
 
         header = f"{'COLUMN':<32}| {'ORIGINAL':<20}| {'KMTI':<20}| MARKED"
@@ -2034,7 +2078,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             for label, key_col in cols:
                 orig = get_val(ref_row, key_col)
                 kmti = get_val(rev_row, key_col)
-                s = cmp_status(orig, kmti)
+                s = cmp_status(orig, kmti, key_col)
                 full_label = f"[{row_label}] {label}"
                 lines.append(f"{full_label:<32}| {orig:<20}| {kmti:<20}| {s}")
 
@@ -2046,7 +2090,6 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         Returns a dict mapping field name -> extracted value (or 'NONE').
         """
         import math
-        import re
 
         # Phase 4: Native DXF Structural Parsing (Title Block Attributes)
         # Scan for native INSERT block attributes that match Title Block fields
@@ -2396,7 +2439,9 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                                 return get_centered_coords(e)
             return None
 
-        qty, qty_coords = extract_proximity_value(["T. Q'ty", "T. Q\u2019ty", "総製作個数"], "right", 150.0, 6.0, 1.0, ["Stock", "在庫", "棚入庫"], prefer_highest_y=True)
+        qty, qty_coords = extract_proximity_value(["T. Q'ty", "T. Q\u2019ty", "総製作個数"], "below", 10.0, 30.0, 1.0, prefer_highest_y=True)
+        if qty == "NONE":
+            qty, qty_coords = extract_proximity_value(["T. Q'ty", "T. Q\u2019ty", "総製作個数"], "right", 150.0, 6.0, 1.0, ["Stock", "在庫", "入庫"], prefer_highest_y=True)
         cross_ref, cross_ref_coords = extract_proximity_value(["Cross ref No.", "共通番号"], "below", 5.0, 30.0, 1.0, ["Previous", "旧"], prefer_lowest_y=True)
         prev_dwg, prev_dwg_coords = extract_proximity_value(["Previous Dwg. No.", "旧図面番号"], "below", 5.0, 30.0, 1.0, prefer_lowest_y=True)
         designed, designed_coords = extract_proximity_value(["DESIGNED", "設計"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
@@ -2405,12 +2450,12 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         name, name_coords = extract_proximity_value(["名称", "名 称"], "right", 150.0, 6.0, 1.0, prefer_lowest_y=True)
         title, title_coords = extract_proximity_value(["TITLE", "図面名", "図 名"], "right", 150.0, 6.0, 1.0, prefer_lowest_y=True)
         job_no, job_no_coords = extract_proximity_value(["Job No.", "工事番号"], "right", 80.0, 6.0, 1.0, prefer_lowest_y=True)
-        mach_code, mach_code_coords = extract_proximity_value(["Unit Code", "Mach. code", "ユニット記号", "機番記号"], "below", 20.0, 30.0, 1.0, prefer_lowest_y=True)
+        mach_code, mach_code_coords = extract_proximity_value(["Unit Code", "Mach. code", "ユニット記号", "機番記号"], "below", 10.0, 30.0, 1.0, prefer_lowest_y=True)
         dwg_no, dwg_no_coords = extract_proximity_value(["DWG.No.", "図面番号"], "right", 100.0, 6.0, 1.0, ["Previous", "旧"], prefer_lowest_y=True)
-        unit_no, unit_no_coords = extract_proximity_value(["Unit No.", "ユニットNo."], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
-        part_no, part_no_coords = extract_proximity_value(["Part No.", "コードNo."], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
-        stock_qty, stock_qty_coords = extract_proximity_value(["Stock Q'ty", "在庫棚入庫"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
-        std_no, std_no_coords = extract_proximity_value(["Std. No.", "標準図番号"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
+        unit_no, unit_no_coords = extract_proximity_value(["Unit No.", "ユニットNo."], "below", 10.0, 30.0, 1.0, prefer_highest_y=True)
+        part_no, part_no_coords = extract_proximity_value(["Part No.", "コードNo."], "below", 10.0, 30.0, 1.0, prefer_highest_y=True)
+        stock_qty, stock_qty_coords = extract_proximity_value(["Stock Q'ty", "在庫棚入庫"], "below", 10.0, 30.0, 1.0, prefer_highest_y=True)
+        std_no, std_no_coords = extract_proximity_value(["Std. No.", "標準図番号"], "below", 10.0, 30.0, 1.0, prefer_highest_y=True)
 
         # Apply signature mapping to mapped clean values
         qty = map_signature_value(qty)
@@ -2773,7 +2818,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "     * Detect changed dimensions (e.g. if Original has 'Ø10 hole' and KMTI has 'Ø12 hole', report status as CHANGED with exact change notes).\n"
             "     * Detect symbol differences, spacing differences, and font differences.\n"
             "   - Smallest differences in symbols (e.g. 'Ø10' vs 'Ø12'), arrow alignments, text heights, or Katakana/Kanji changes ('M24' vs 'M24通シ') must be caught and reported under CHANGED status.\n"
-            "   - You must review all main dimensions (e.g. 38, 12, 105, 65, etc.). Check the Full Text lists to verify if a dimension exists in both drawings. Do not report a dimension as deleted (ghost discrepancy) if it is present in the revised drawing's text list.\n\n"
+            "   - You must review all main dimensions (e.g. 38, 12, 105, 65, etc.). Check the Full Text lists to verify if a dimension exists in both drawings. Do not report a dimension as deleted (ghost discrepancy) if it is present in the revised drawing's text list.\n"
+            "   - Hole callouts may be split across multiple lines/entities in one drawing (e.g. '2-6.6キリ' and '11ザグリ深サ6.5' separately) but merged in another drawing (e.g. '2-7キリ11ザグリ深サ6.5'). You MUST conceptually merge them based on proximity and compare them as a single logical callout. If there is a numeric difference (e.g. 2-6.6 vs 2-7), you MUST output a CHANGED marking for it, providing the exact text as it appeared in each respective drawing (e.g., original_value: '2-6.6キリ\\n11ザグリ深サ6.5', value: '2-7キリ11ザグリ深サ6.5'). Do NOT classify hole callouts as notes_section just because they contain Japanese characters; they belong to drawing_views.\n\n"
             "2. NOTES SECTION:\n"
             "   - Keep in mind that the position of notes in the drawing may not always be in one place; they are positioned depending on the free space in the drawing template.\n"
             "   - Read instructions line-by-line and preserve formatting.\n"
@@ -2789,7 +2835,8 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             "   - Compare row by row, column by column, cell by cell.\n"
             "   - Rigorously check all columns including: 'Unit No.', 'Part No.', 'T. Q'ty', 'Stock Q'ty', 'No.', 'Code', 'Dimension/Model No.', 'Material Weight (kg)', 'Finished Weight (kg)', and 'Remark'.\n"
             "   - Verify if a BOM is present in the original drawing by checking the original Full Text list. Do not report that the original drawing has no BOM if BOM keywords or material texts (e.g., 'SS400', 'Material', '材質') are present in its full text list.\n"
-            "   - Any decimal precision change (e.g., '2.6' vs '2.60'), spacing difference, material type update ('SS400' vs 'SUS304'), or row counts mismatch must be flagged as CHANGED.\n\n"
+            "   - Any decimal precision change (e.g., '2.6' vs '2.60'), spacing difference, material type update ('SS400' vs 'SUS304'), or row counts mismatch must be flagged as CHANGED.\n"
+            "   - MULTIPLICATION SIGN EQUIVALENCE RULE: When comparing dimension sizes or any text containing multiplication signs, treat 'x' (lowercase x), 'X' (uppercase X), and '×' (multiplication sign) as exactly identical. Do NOT report a change if the only difference is the casing or character of the multiplication sign (e.g., '20x12x170' is a PERFECT MATCH to '20X12X170' or '20×12×170').\n\n"
             "4. TITLE BLOCK (Metadata cross-check):\n"
             "   - You MUST extract and cross-check the following 11 exact metadata fields one-by-one between reference (Original) and revised (KMTI) drawings:\n"
             "     * QTY (located in the upper-left administrative grid under '総製作個数' / 'T. Q\'ty')\n"
@@ -2900,7 +2947,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         
         response_text = None
         # Caching re-enabled to prevent long AI processing times
-        if cache_file.exists():
+        if False:  # Caching disabled by user request
             try:
                 async with aiofiles.open(cache_file, "r", encoding="utf-8") as cf:
                     response_text = await cf.read()
@@ -2955,7 +3002,9 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                 raise _last_err or RuntimeError("All Gemini models failed without a response.")
             response_text = response.text
             try:
-                async with aiofiles.open(cache_file, "w", encoding="utf-8") as cf:
+                if False:
+                    pass
+                # async with aiofiles.open(cache_file, "w", encoding="utf-8") as cf:
                     await cf.write(response_text)
                 logger.info(f"Saved Gemini response to cache: {cache_file}")
             except Exception as cache_err:
@@ -3390,10 +3439,19 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
                             orig_coords = ec
 
                 if kmti_val != "NONE" or orig_val != "NONE":
+                    details_str = f"BOM [{row_label}] {display_label} checked: {orig_val} vs {kmti_val}"
+                    if status_val == "CHANGED" and col_key in ("MATERIAL_WEIGHT", "FINISHED_WEIGHT"):
+                        try:
+                            if float(orig_val) == float(kmti_val) and re.search(r'\.\d{2}$', kmti_val.strip()):
+                                status_val = "MATCHED"
+                                details_str = f"BOM [{row_label}] {display_label} matched: {orig_val} vs {kmti_val} (Standardized to 2 decimals)"
+                        except ValueError:
+                            pass
+
                     marking_entry = {
                         "text_content": kmti_val if kmti_val != "NONE" else orig_val,
                         "status": status_val,
-                        "details": f"BOM [{row_label}] {display_label} checked: {orig_val} vs {kmti_val}",
+                        "details": details_str,
                         "category": "bill_of_materials",
                         "original_value": orig_val if status_val == "CHANGED" else None
                     }
