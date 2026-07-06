@@ -3,7 +3,10 @@
 # Uses the successfully installed MongoDB v7.0 executable to avoid AVX issues.
 # ==============================================================================
 
-$mongod    = "C:\Program Files\MongoDB\Server\7.0\bin\mongod.exe"
+$mongod    = (Resolve-Path "C:\Program Files\MongoDB\Server\*\bin\mongod.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)
+if (-not $mongod) {
+    $mongod    = "C:\Program Files\MongoDB\Server\7.0\bin\mongod.exe"
+}
 $dataDir   = "$PSScriptRoot\storage\mongodb_data"
 $logFile   = "$PSScriptRoot\storage\mongodb_data\mongod.log"
 $port      = 27017

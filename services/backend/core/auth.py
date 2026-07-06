@@ -1,10 +1,11 @@
-import os
 import base64
 import hashlib
-import secrets
 import json
+import os
+import secrets
 from datetime import datetime, timedelta
-from typing import Dict, Any, Tuple
+from typing import Any
+
 from .encryption import encryptor
 
 # PBKDF2 Configuration
@@ -39,7 +40,7 @@ def verify_password(password: str, hashed_value: str) -> bool:
     except Exception:
         return False
 
-def create_jwt_token(payload: Dict[str, Any], expires_delta_minutes: int = 1440) -> Tuple[str, datetime]:
+def create_jwt_token(payload: dict[str, Any], expires_delta_minutes: int = 1440) -> tuple[str, datetime]:
     """
     Generates a secure, AES-256 encrypted local session token.
     Returns: (encrypted_base64_token, expires_at_datetime)
@@ -55,7 +56,7 @@ def create_jwt_token(payload: Dict[str, Any], expires_delta_minutes: int = 1440)
     encrypted = encryptor.encrypt(serialized)
     return encrypted, expires_at
 
-def verify_jwt_token(token: str) -> Dict[str, Any]:
+def verify_jwt_token(token: str) -> dict[str, Any]:
     """
     Decrypts and validates an AES-256 encrypted session token.
     Raises ValueError if invalid or expired.

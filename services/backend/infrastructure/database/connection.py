@@ -1,18 +1,19 @@
 import asyncio
-from typing import Optional
-from motor.motor_asyncio import AsyncIOMotorClient
+
 from beanie import init_beanie
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # Monkey patch AsyncIOMotorClient to prevent Beanie compatibility issues with PyMongo 4+ / Motor 3+
 if not hasattr(AsyncIOMotorClient, "append_metadata"):
     AsyncIOMotorClient.append_metadata = lambda self, *args, **kwargs: None
 from ...config import settings
-from ...logger import logger
 from ...domain.models import __all_models__
+from ...logger import logger
+
 
 class DatabaseConnectionManager:
     def __init__(self):
-        self.client: Optional[AsyncIOMotorClient] = None
+        self.client: AsyncIOMotorClient | None = None
         self.db = None
         self.connected = False
         self._lock = asyncio.Lock()
@@ -66,8 +67,8 @@ class DatabaseConnectionManager:
                     
                     # Seed initial enterprise roles & accounts
                     try:
-                        from ...domain.models.user_account import UserAccountDocument
                         from ...core.auth import hash_password
+                        from ...domain.models.user_account import UserAccountDocument
 
                         admin_exists = await UserAccountDocument.find_one(UserAccountDocument.username == "admin")
                         if not admin_exists:

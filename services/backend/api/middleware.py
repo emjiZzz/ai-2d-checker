@@ -1,9 +1,12 @@
 import time
 import uuid
+
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from ..logger import logger, correlation_id_var
+
+from ..logger import correlation_id_var, logger
+
 
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """

@@ -1,16 +1,16 @@
-import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-from ...logger import logger
+
 from ...core.security import validate_sandboxed_path
-from ...infrastructure.storage.path_resolver import get_storage_root
-from ...domain.models.drawing_document import DrawingDocument
-from ...domain.models.standard_document import StandardDocument
 from ...domain.models.audit_session import AuditSession
 from ...domain.models.audit_violation import AuditViolation
+from ...domain.models.drawing_document import DrawingDocument
+from ...domain.models.standard_document import StandardDocument
+from ...infrastructure.storage.path_resolver import get_storage_root
+from ...logger import logger
 from .pdf_exporter import PDFComplianceExporter
 from .xlsx_exporter import XLSXComplianceExporter
+
 
 class ReportGenerator:
     """
@@ -28,7 +28,7 @@ class ReportGenerator:
             clean = clean.replace("..", ".")
         return clean.strip("_")
 
-    async def generate_reports(self, session_id: str) -> Dict[str, Path]:
+    async def generate_reports(self, session_id: str) -> dict[str, Path]:
         """
         Generates and saves sandboxed XLSX and PDF compliance logs.
         Returns:

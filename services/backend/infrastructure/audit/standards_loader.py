@@ -1,14 +1,15 @@
-import os
 import hashlib
+import os
 import shutil
 from pathlib import Path
-from typing import Optional, Tuple
-from ...logger import logger
+
 from ...config import settings
 from ...core.security import validate_sandboxed_path
-from ...domain.models.standard_document import StandardDocument
 from ...domain.models.standard_chunk import StandardChunk
+from ...domain.models.standard_document import StandardDocument
+from ...logger import logger
 from .standards_parser import StandardsParser
+
 
 class StandardsLoader:
     """
@@ -33,11 +34,11 @@ class StandardsLoader:
         src_file_path: Path,
         name: str,
         scope: str = "client_specific",
-        client_name: Optional[str] = None,
-        category: Optional[str] = None,
-        description: Optional[str] = None,
+        client_name: str | None = None,
+        category: str | None = None,
+        description: str | None = None,
         max_size_mb: int = 50
-    ) -> Tuple[StandardDocument, bool]:
+    ) -> tuple[StandardDocument, bool]:
         """
         Validates, duplicates, parses, and persists a standard file.
         Returns:

@@ -1,51 +1,52 @@
-import time
-import os
-import uuid
 import hashlib
-import aiofiles
+import os
+import time
+import uuid
 from pathlib import Path
-from fastapi import APIRouter, Depends, status, HTTPException, File, UploadFile, Form, Header
+
+import aiofiles
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from typing import List, Optional
-from .dependencies import get_auth_token
-from ..infrastructure.audit.report_generator import ReportGenerator
-from .schemas import (
-    StandardResponse,
-    SystemStatusResponse,
-    DatabaseHealthDetails,
-    StorageHealthDetails,
-    DrawingResponse,
-    JobResponse,
-    UploadResponse,
-    StandardDocumentResponse,
-    LaunchAuditRequest,
-    AuditSessionResponse,
-    UpdateAuditSessionRequest,
-    AuditViolationResponse,
-    ClientResponse,
-    CreateClientRequest
-)
-from ..infrastructure.database.health import check_database_health
-from ..infrastructure.storage.storage_health import get_storage_diagnostics
-from ..infrastructure.storage.cleanup import purge_temp_files, purge_cache_files
-from ..infrastructure.storage.path_resolver import get_storage_root
+
+from ..config import settings
 from ..core.security import validate_sandboxed_path
-from ..infrastructure.cad.processing_queue import processing_queue
-from ..infrastructure.cad.diagnostics import CADDiagnostics
-from ..domain.models.drawing_document import DrawingDocument
-from ..domain.models.extraction_job import ExtractionJob
-from ..domain.models.standard_document import StandardDocument
-from ..domain.models.standard_chunk import StandardChunk
 from ..domain.models.audit_session import AuditSession
 from ..domain.models.audit_violation import AuditViolation
-from ..domain.models.extracted_entity import ExtractedEntity
 from ..domain.models.client import ClientDocument
-from ..infrastructure.rendering.geometry_serializer import GeometrySerializer
-from ..infrastructure.audit.standards_loader import StandardsLoader
+from ..domain.models.drawing_document import DrawingDocument
+from ..domain.models.extracted_entity import ExtractedEntity
+from ..domain.models.extraction_job import ExtractionJob
+from ..domain.models.standard_chunk import StandardChunk
+from ..domain.models.standard_document import StandardDocument
 from ..infrastructure.audit.audit_pipeline import audit_queue
 from ..infrastructure.audit.diagnostics import AuditDiagnostics
-from ..config import settings
+from ..infrastructure.audit.report_generator import ReportGenerator
+from ..infrastructure.audit.standards_loader import StandardsLoader
+from ..infrastructure.cad.diagnostics import CADDiagnostics
+from ..infrastructure.cad.processing_queue import processing_queue
+from ..infrastructure.database.health import check_database_health
+from ..infrastructure.rendering.geometry_serializer import GeometrySerializer
+from ..infrastructure.storage.cleanup import purge_cache_files, purge_temp_files
+from ..infrastructure.storage.path_resolver import get_storage_root
+from ..infrastructure.storage.storage_health import get_storage_diagnostics
 from ..logger import logger
+from .dependencies import get_auth_token
+from .schemas import (
+    AuditSessionResponse,
+    AuditViolationResponse,
+    ClientResponse,
+    CreateClientRequest,
+    DatabaseHealthDetails,
+    DrawingResponse,
+    JobResponse,
+    LaunchAuditRequest,
+    StandardDocumentResponse,
+    StandardResponse,
+    StorageHealthDetails,
+    SystemStatusResponse,
+    UpdateAuditSessionRequest,
+    UploadResponse,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -185,10 +186,10 @@ async def upload_drawing(file: UploadFile = File(...)):
     filename = file.filename or ""
     file_ext = filename.split(".")[-1].lower() if "." in filename else ""
     
-    if file_ext not in ("dwg", "dxf", "pdf"):
+    if file_ext not in ("dwg", "dxf", "pdf", "step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file format. Only proprietary .dwg, open .dxf drawings, or .pdf files are accepted."
+            detail="Unsupported file format. Only proprietary .dwg, open .dxf drawings, .pdf files, 3D .step/.iges models, or iCAD .icd / SolidWorks sldprt/sldasm models are accepted."
         )
 
     # Stream upload to temp folder within the secure sandbox
@@ -355,7 +356,7 @@ async def upload_drawing(file: UploadFile = File(...)):
 
 @router.get(
     "/drawings",
-    response_model=StandardResponse[List[DrawingResponse]],
+    response_model=StandardResponse[list[DrawingResponse]],
     summary="List all registered drawing documents",
     dependencies=[Depends(get_auth_token)]
 )
@@ -505,6 +506,30 @@ async def get_drawing_rendering(id: str):
     return FileResponse(str(rendering_path), media_type="image/png")
 
 @router.get(
+    "/drawings/{id}/gltf",
+    summary="Get 3D converted GLTF file of STEP/IGES model",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_drawing_gltf(id: str):
+    drawing = await DrawingDocument.get(id)
+    if not drawing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drawing document not found for ID: {id}"
+        )
+    gltf_path = get_storage_root() / "temp" / f"model_{id}.gltf"
+    if not gltf_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GLTF asset not found for this 3D model."
+        )
+    return FileResponse(
+        str(gltf_path),
+        media_type="model/gltf+json",
+        filename=f"{drawing.file_name}.gltf"
+    )
+
+@router.get(
     "/jobs/{id}",
     response_model=StandardResponse[JobResponse],
     summary="Retrieve status of an ExtractionJob",
@@ -566,9 +591,9 @@ async def upload_standard(
     file: UploadFile = File(..., description="PDF, TXT, or Markdown standard document"),
     name: str = Form(..., description="Unique title identifier of the standard"),
     scope: str = Form("client_specific", description="Scope of standard: 'universal' or 'client_specific'"),
-    client_name: Optional[str] = Form(None, description="Associated client name if scope is client_specific"),
-    category: Optional[str] = Form(None, description="Optional category label (e.g. Dimensions)"),
-    description: Optional[str] = Form(None, description="Optional detail context summary")
+    client_name: str | None = Form(None, description="Associated client name if scope is client_specific"),
+    category: str | None = Form(None, description="Optional category label (e.g. Dimensions)"),
+    description: str | None = Form(None, description="Optional detail context summary")
 ):
     """
     Saves the uploaded engineering standard file, verifies limits,
@@ -639,7 +664,7 @@ async def upload_standard(
 
 @router.get(
     "/standards",
-    response_model=StandardResponse[List[StandardDocumentResponse]],
+    response_model=StandardResponse[list[StandardDocumentResponse]],
     summary="List all registered engineering standards documents",
     dependencies=[Depends(get_auth_token)]
 )
@@ -710,7 +735,7 @@ async def delete_standard(id: str):
     summary="Update metadata fields of a registered engineering standard",
     dependencies=[Depends(get_auth_token)]
 )
-async def update_standard(id: str, name: Optional[str] = None, category: Optional[str] = None, description: Optional[str] = None):
+async def update_standard(id: str, name: str | None = None, category: str | None = None, description: str | None = None):
     """
     Updates the editable metadata fields (name, category, description) of an existing standard.
     """
@@ -749,8 +774,41 @@ async def update_standard(id: str, name: Optional[str] = None, category: Optiona
 
 
 @router.get(
+    "/standards/{id}/chunks",
+    response_model=StandardResponse[list[dict]],
+    summary="Get all vectorized chunks for a standard",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_standard_chunks(id: str):
+    """
+    Fetches all StandardChunk segments parsed for a specific standard from MongoDB.
+    """
+    doc = await StandardDocument.get(id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Standard document not found for ID: {id}"
+        )
+    chunks = await StandardChunk.find(StandardChunk.standard_id == id).sort(StandardChunk.chunk_index).to_list()
+    res = [
+        {
+            "id": str(c.id),
+            "standard_id": c.standard_id,
+            "chunk_index": c.chunk_index,
+            "content": c.content,
+            "section_header": c.section_header,
+            "metadata": c.metadata,
+            "created_at": c.created_at.isoformat()
+        }
+        for c in chunks
+    ]
+    return StandardResponse(success=True, data=res)
+
+
+
+@router.get(
     "/clients",
-    response_model=StandardResponse[List[ClientResponse]],
+    response_model=StandardResponse[list[ClientResponse]],
     summary="List all registered client directories",
     dependencies=[Depends(get_auth_token)]
 )
@@ -838,7 +896,7 @@ async def delete_client(name: str):
 async def launch_audit(
     request: LaunchAuditRequest, 
     token: str = Depends(get_auth_token),
-    x_session_token: Optional[str] = Header(None, alias="X-Session-Token")
+    x_session_token: str | None = Header(None, alias="X-Session-Token")
 ):
     """
     Registers a new AuditSession document in database in 'queued' state and pushes the task to
@@ -970,7 +1028,7 @@ async def get_audit_session(id: str):
 
 @router.get(
     "/audits/sessions/{id}/violations",
-    response_model=StandardResponse[List[AuditViolationResponse]],
+    response_model=StandardResponse[list[AuditViolationResponse]],
     summary="Retrieve list of engineering standard violations detected",
     dependencies=[Depends(get_auth_token)]
 )
@@ -1082,11 +1140,11 @@ async def get_audit_diagnostics(id: str):
 
 @router.get(
     "/audits/sessions",
-    response_model=StandardResponse[List[AuditSessionResponse]],
+    response_model=StandardResponse[list[AuditSessionResponse]],
     summary="List all audit sessions",
     dependencies=[Depends(get_auth_token)]
 )
-async def list_audit_sessions(is_deleted: bool = False, username: Optional[str] = None):
+async def list_audit_sessions(is_deleted: bool = False, username: str | None = None):
     """
     Fetches all AuditSession documents from MongoDB matching filters sorted by created_at descending.
     """
@@ -1132,7 +1190,7 @@ async def empty_trash_sessions():
     """
     Permanently deletes all audit sessions from MongoDB that are marked as is_deleted=True.
     """
-    trashed_sessions = await AuditSession.find(AuditSession.is_deleted == True).to_list()
+    trashed_sessions = await AuditSession.find(AuditSession.is_deleted).to_list()
     count = len(trashed_sessions)
     for session in trashed_sessions:
         await session.delete()
@@ -1254,12 +1312,20 @@ async def update_audit_session_remarks(id: str, request: UpdateAuditSessionReque
 # ====================================================
 
 from datetime import datetime
-from ..core.auth import hash_password, verify_password, create_jwt_token
+
+from ..core.auth import create_jwt_token, hash_password, verify_password
 from ..domain.models.user_account import UserAccountDocument
 from ..domain.models.user_session import UserSessionDocument
-from .dependencies import get_current_user, require_role
-from .schemas import LoginRequest, LoginResponse, UserAccountResponse, CreateUserRequest, UpdateUserRequest
 from ..infrastructure.database.connection import db_manager
+from .dependencies import get_current_user, require_role
+from .schemas import (
+    CreateUserRequest,
+    LoginRequest,
+    LoginResponse,
+    UpdateUserRequest,
+    UserAccountResponse,
+)
+
 
 @router.post(
     "/auth/login",
@@ -1338,7 +1404,7 @@ async def get_my_profile(current_user: UserAccountDocument = Depends(get_current
 
 @router.get(
     "/admin/users",
-    response_model=StandardResponse[List[UserAccountResponse]],
+    response_model=StandardResponse[list[UserAccountResponse]],
     summary="List all registered enterprise accounts",
     dependencies=[Depends(require_role("admin"))]
 )

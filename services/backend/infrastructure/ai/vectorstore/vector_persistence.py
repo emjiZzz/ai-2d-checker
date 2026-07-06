@@ -1,8 +1,7 @@
-import os
 from pathlib import Path
-from typing import List, Dict, Any
-from ....logger import logger
+
 from ....config import settings
+
 
 class VectorPersistence:
     """

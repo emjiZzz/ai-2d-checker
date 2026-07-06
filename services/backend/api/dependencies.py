@@ -1,5 +1,7 @@
 from fastapi import Depends, Header, HTTPException, status
+
 from ..core.security import verify_api_token
+
 
 def get_auth_token(token: str = Depends(verify_api_token)) -> str:
     """
@@ -9,8 +11,8 @@ def get_auth_token(token: str = Depends(verify_api_token)) -> str:
     return token
 
 async def get_current_user(x_session_token: str = Header(..., alias="X-Session-Token", description="Active session token")) -> "UserAccountDocument":
-    from ..domain.models.user_account import UserAccountDocument
     from ..core.auth import verify_jwt_token
+    from ..domain.models.user_account import UserAccountDocument
     try:
         payload = verify_jwt_token(x_session_token)
         username = payload.get("username")

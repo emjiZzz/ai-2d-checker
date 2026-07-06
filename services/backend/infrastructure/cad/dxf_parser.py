@@ -1,17 +1,20 @@
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
+
 import ezdxf
-from ...logger import logger
+
 from ...core.security import validate_sandboxed_path
+from ...logger import logger
 from .entity_mapper import EntityMapper
+
 
 class DXFParser:
     """
     Parses a DXF file using ezdxf, extracting layers, geometry, dimensions, blocks,
     and metadata inside a secure path sandbox.
     """
-    def parse_file(self, file_path: Path) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
+    def parse_file(self, file_path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int], dict[str, Any]]:
         """
         Parses a canonical sandboxed DXF file.
         Returns:

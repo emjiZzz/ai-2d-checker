@@ -1,6 +1,7 @@
-from typing import List
+
 from ....logger import logger
 from ..embeddings.local_embedding_model import LocalEmbeddingModel
+
 
 class EmbeddingProvider:
     """
@@ -11,7 +12,7 @@ class EmbeddingProvider:
     def __init__(self):
         self._model = LocalEmbeddingModel()
         
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """
         Generates dense vector embeddings for semantic search.
         """

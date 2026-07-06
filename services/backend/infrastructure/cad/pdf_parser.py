@@ -1,14 +1,16 @@
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
+
 from ...logger import logger
+
 
 class PDFParser:
     """
     Parses vector structures, shapes, lines, text blocks, and annotations
     from a standard engineering PDF drawing using PyMuPDF (fitz) or pdfplumber.
     """
-    def parse_file(self, file_path: Path) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
+    def parse_file(self, file_path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int], dict[str, Any]]:
         logger.info(f"Initiating PDF structure parser for: {file_path}")
         start_time = time.time()
         
@@ -38,7 +40,7 @@ class PDFParser:
         }
 
         try:
-            import fitz # PyMuPDF
+            import fitz  # PyMuPDF
             doc = fitz.open(str(file_path))
             pdf_metadata["pages"] = len(doc)
             pdf_metadata["title"] = doc.metadata.get("title") or file_path.name
@@ -52,7 +54,7 @@ class PDFParser:
                 # 1. Extract vector geometry paths
                 drawings = page.get_drawings()
                 for i, draw in enumerate(drawings):
-                    draw_type = draw.get("type")
+                    draw.get("type")
                     color = draw.get("color")
                     # Convert color to standard hex RGB
                     color_hex = f"#{int(color[0]*255):02x}{int(color[1]*255):02x}{int(color[2]*255):02x}" if color else "#00e5ff"

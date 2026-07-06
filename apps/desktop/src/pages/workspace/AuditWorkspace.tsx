@@ -2,9 +2,11 @@ import React, { useState, useEffect } from "react";
 import { useWorkspaceStore, DrawingItem } from "../../stores/workspaceStore";
 import { useConnectionStore } from "../../stores/connectionStore";
 import { DrawingCanvas } from "../../components/review/DrawingCanvas";
+import { ThreeDViewer } from "../../components/review/ThreeDViewer";
 import { useReviewStore } from "../../stores/reviewStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useAuditStore } from "../../stores/auditStore";
+import { useNavStore } from "../../stores/navStore";
 import {
   CheckCircle2,
   Play,
@@ -12,14 +14,10 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
-  Compass,
   Loader,
   Upload,
   Trash2,
   AlertTriangle,
-  Bookmark,
-  History,
-  Settings as SettingsIcon,
   ChevronRight,
   ChevronLeft,
   FolderOpen,
@@ -32,7 +30,8 @@ import {
   BarChart2,
   Briefcase,
   FileText,
-  ChevronDown
+  ChevronDown,
+  RotateCcw
 } from "lucide-react";
 
 import { StandardsManager } from "../../components/StandardsManager";
@@ -65,6 +64,51 @@ const UploadZone: React.FC<UploadZoneProps> = ({
 }) => {
   const [isDragActive, setIsDragActive] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const { currentNav } = useNavStore();
+
+  const [elapsed, setElapsed] = React.useState(0);
+  const [tipIndex, setTipIndex] = React.useState(0);
+
+  const tips = [
+    "Delaunay Mesher: Generating 3D surface mesh nodes...",
+    "Stitching B-Rep boundary curves & topological vertices...",
+    "Mapping harmonize color groups and materials...",
+    "Integrating solid body volume & mass attributes...",
+    "Writing high-fidelity glTF buffer data structures...",
+    "Redacting metadata elements for secure sandboxing...",
+    "Indexing standard coordinate geometries...",
+    "Optimizing geometric coordinate boundaries..."
+  ];
+
+  React.useEffect(() => {
+    let timer: any;
+    if (uploadState === "processing") {
+      setElapsed(0);
+      timer = setInterval(() => {
+        setElapsed((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setElapsed(0);
+    }
+    return () => clearInterval(timer);
+  }, [uploadState]);
+
+  React.useEffect(() => {
+    let tipTimer: any;
+    if (uploadState === "processing") {
+      setTipIndex(0);
+      tipTimer = setInterval(() => {
+        setTipIndex((prev) => (prev + 1) % tips.length);
+      }, 3500);
+    }
+    return () => clearInterval(tipTimer);
+  }, [uploadState]);
+
+  const formatElapsed = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}m ${s}s`;
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -103,7 +147,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.dwg,.dxf"
+        accept={currentNav === "3d-workspace" ? ".step,.stp,.iges,.igs,.icd,.sldprt,.sldasm" : ".pdf,.dwg,.dxf"}
         onChange={handleFileInput}
         style={{ display: "none" }}
       />
@@ -118,7 +162,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({
               Drag & drop or <span className="browse-link">browse</span>
             </p>
             <p className="dropzone-sub-text">
-              DWG, DXF, PDF (max. 50MB)
+              {currentNav === "3d-workspace" ? "STEP, IGES, ICD, SolidWorks (No size limit)" : "DWG, DXF, PDF (No size limit)"}
             </p>
           </div>
         </div>
@@ -133,7 +177,19 @@ const UploadZone: React.FC<UploadZoneProps> = ({
             <span className="active-status-title">
               {uploadState === "validating" && "Scanning signature..."}
               {uploadState === "uploading" && `Uploading... ${progress}%`}
-              {uploadState === "processing" && "Ingesting CAD layout..."}
+              {uploadState === "processing" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ fontWeight: 600, color: "var(--accent-purple, #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                    <span>Ingesting CAD layout...</span>
+                    <span style={{ fontSize: "0.75rem", background: "rgba(168, 85, 247, 0.15)", padding: "2px 6px", borderRadius: "4px", fontFamily: "monospace", letterSpacing: "0.5px" }}>
+                      {formatElapsed(elapsed)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "0.7rem", color: "#9ca3af", fontWeight: 400, minHeight: "18px", transition: "all 0.5s ease" }} className="animate-pulse">
+                    ⚡ {tips[tipIndex]}
+                  </div>
+                </div>
+              )}
             </span>
             <span className="active-filename-sub">{fileName}</span>
           </div>
@@ -164,7 +220,7 @@ export const AuditWorkspace: React.FC = () => {
   const apiToken = useConnectionStore((s) => s.apiToken);
 
   // Selected workspace navigation sub-view
-  const [currentNav, setCurrentNav] = useState<"workspace" | "standards" | "history" | "settings">("workspace");
+  const { currentNav, setCurrentNav } = useNavStore();
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   // Local drawing catalog for selections
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
@@ -542,57 +598,7 @@ export const AuditWorkspace: React.FC = () => {
 
   return (
     <div className="workspace-container">
-      {/* 1. LEFT SIDEBAR (ENGINEERING NAVIGATION) */}
-      <aside
-        className="workspace-sidebar"
-        style={{ width: '60px', flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', borderRight: '1px solid var(--border-color)', zIndex: 10 }}
-      >
-        {/* ── NAV ITEMS ── */}
-        <nav className="sidebar-nav" style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
-          {([
-            { key: 'workspace', icon: <Compass size={22} />, label: 'Audit Workspace' },
-            // Standards Manuals: admin-only — completely hidden from regular users
-            ...(isAdmin ? [{ key: 'standards' as const, icon: <Bookmark size={22} />, label: 'Standards Manuals' }] : []),
-            { key: 'history', icon: <History size={22} />, label: 'Drawing History' },
-            { key: 'settings', icon: <SettingsIcon size={22} />, label: 'Audit Settings' },
-          ] as const).map(({ key, icon, label }) => (
-            <button
-              key={key}
-              className={`nav-item ${currentNav === key ? 'active' : ''}`}
-              onClick={() => setCurrentNav(key)}
-              data-tooltip={label}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '44px',
-                height: '44px',
-                margin: '0 auto',
-                borderRadius: '8px',
-                border: 'none',
-                background: currentNav === key ? 'rgba(128, 128, 128, 0.15)' : 'transparent',
-                color: currentNav === key ? 'var(--text-primary)' : 'var(--text-muted)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (currentNav !== key) {
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                  e.currentTarget.style.background = 'rgba(128, 128, 128, 0.08)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (currentNav !== key) {
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                  e.currentTarget.style.background = 'transparent';
-                }
-              }}
-            >
-              {icon}
-            </button>
-          ))}
-        </nav>
-      </aside>
+      {/* DYNAMIC WORKSPACE PORT */}
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
       {/* Standards Manuals — admin-only panel */}
@@ -1069,6 +1075,7 @@ export const AuditWorkspace: React.FC = () => {
                     <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
                       Stage 1: Version Ingestion
                     </h3>
+
                     <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
                       <span className="compatibility-indicator-dot"></span>
                       <span className="compatibility-text">
@@ -1306,88 +1313,88 @@ export const AuditWorkspace: React.FC = () => {
               {/* Viewport Panels */}
               {/* ── STANDARD SPLIT-VIEW MODE ── */}
               <div className="split-viewports">
-                  {/* Left Viewport (Old) */}
-                  <div className="viewport-panel">
-                    <div className="viewport-header">
-                      <div className="viewport-label">Original Drawing</div>
-                      {oldDrawing && (
-                        <div className="ingested-file-pill ref">
-                          <span className="pill-filename" title={oldDrawing.file_name}>
-                            {oldDrawing.file_name}
-                          </span>
-                          <button className="pill-clear-btn" onClick={() => clearUpload("old")} title="Remove reference drawing">
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="cad-canvas-mock" ref={containerRefOld}>
-                      {oldDrawing ? (
-                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                          <DrawingCanvas
-                            layers={oldLayers}
-                            width={oldSize.width}
-                            height={oldSize.height}
-                            drawing={oldDrawing}
-                          />
-                        </div>
-                      ) : (
-                        <UploadZone
-                          side="old"
-                          uploadState={oldUploadState}
-                          progress={oldUploadProgress}
-                          fileName={oldFileName}
-                          fileSize={oldFileSize}
-                          error={oldError}
-                          activeDrawing={oldDrawing}
-                          uploadDrawingFile={uploadDrawingFile}
-                          clearUpload={clearUpload}
-                        />
-                      )}
-                    </div>
+                {/* Left Viewport (Original / Old) */}
+                <div className="viewport-panel">
+                  <div className="viewport-header">
+                    <div className="viewport-label">Original Drawing</div>
+                    {oldDrawing && (
+                      <div className="ingested-file-pill ref">
+                        <span className="pill-filename" title={oldDrawing.file_name}>
+                          {oldDrawing.file_name}
+                        </span>
+                        <button className="pill-clear-btn" onClick={() => clearUpload("old")} title="Remove reference drawing">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Right Viewport (New) */}
-                  <div className="viewport-panel">
-                    <div className="viewport-header">
-                      <div className="viewport-label">KMTI Drawing</div>
-                      {newDrawing && (
-                        <div className="ingested-file-pill rev">
-                          <span className="pill-filename" title={newDrawing.file_name}>
-                            {newDrawing.file_name}
-                          </span>
-                          <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="cad-canvas-mock" ref={containerRefNew}>
-                      {newDrawing ? (
-                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                          <DrawingCanvas
-                            layers={newLayers}
-                            width={newSize.width}
-                            height={newSize.height}
-                            drawing={newDrawing}
-                          />
-                        </div>
-                      ) : (
-                        <UploadZone
-                          side="new"
-                          uploadState={newUploadState}
-                          progress={newUploadProgress}
-                          fileName={newFileName}
-                          fileSize={newFileSize}
-                          error={newError}
-                          activeDrawing={newDrawing}
-                          uploadDrawingFile={uploadDrawingFile}
-                          clearUpload={clearUpload}
+                  <div className="cad-canvas-mock" ref={containerRefOld}>
+                    {oldDrawing ? (
+                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                        <DrawingCanvas
+                          layers={oldLayers}
+                          width={oldSize.width}
+                          height={oldSize.height}
+                          drawing={oldDrawing}
                         />
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <UploadZone
+                        side="old"
+                        uploadState={oldUploadState}
+                        progress={oldUploadProgress}
+                        fileName={oldFileName}
+                        fileSize={oldFileSize}
+                        error={oldError}
+                        activeDrawing={oldDrawing}
+                        uploadDrawingFile={uploadDrawingFile}
+                        clearUpload={clearUpload}
+                      />
+                    )}
                   </div>
                 </div>
+
+                {/* Right Viewport (KMTI / New) */}
+                <div className="viewport-panel">
+                  <div className="viewport-header">
+                    <div className="viewport-label">KMTI Drawing</div>
+                    {newDrawing && (
+                      <div className="ingested-file-pill rev">
+                        <span className="pill-filename" title={newDrawing.file_name}>
+                          {newDrawing.file_name}
+                        </span>
+                        <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="cad-canvas-mock" ref={containerRefNew}>
+                    {newDrawing ? (
+                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                        <DrawingCanvas
+                          layers={newLayers}
+                          width={newSize.width}
+                          height={newSize.height}
+                          drawing={newDrawing}
+                        />
+                      </div>
+                    ) : (
+                      <UploadZone
+                        side="new"
+                        uploadState={newUploadState}
+                        progress={newUploadProgress}
+                        fileName={newFileName}
+                        fileSize={newFileSize}
+                        error={newError}
+                        activeDrawing={newDrawing}
+                        uploadDrawingFile={uploadDrawingFile}
+                        clearUpload={clearUpload}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </main>
 
@@ -1518,6 +1525,273 @@ export const AuditWorkspace: React.FC = () => {
                       <div className="card-footer-row">
                         <span className="confidence-badge">Confidence: {(v.confidence * 100).toFixed(0)}%</span>
                         <span className="focus-action-btn">Focus on Drawing →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {currentNav === "3d-workspace" && (
+        <div className="dual-stage-layout 3d-layout">
+          {/* CENTER VIEWPORT: 1 main 3D viewer for checking */}
+          <main className="stage1-center-panel" style={{ display: "flex", flexDirection: "column", position: "relative" }}>
+            <div className="card settings-card upload-station-card" style={{ marginBottom: "12px", padding: "10px 16px", zIndex: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
+                    Stage 1: 3D Model Checking Ingestion
+                  </h3>
+                  
+                  {newDrawing && (
+                    <span className="format-badge-pill rev-format" style={{ background: "rgba(168, 85, 247, 0.15)", border: "1px solid rgba(168, 85, 247, 0.3)", color: "#c084fc", fontSize: "0.75rem", padding: "4px 8px", borderRadius: "6px" }}>
+                      ACTIVE 3D: {newDrawing.file_name}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="cad-viewer-container" style={{ flexGrow: 1, display: "flex", flexDirection: "column", minHeight: "500px", position: "relative", borderRadius: "12px", overflow: "hidden", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 1 }} ref={containerRefNew}>
+                <ThreeDViewer
+                  drawing={newDrawing}
+                  width={newSize.width}
+                  height={newSize.height}
+                />
+              </div>
+
+              {(!newDrawing || !["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(newDrawing?.format?.toLowerCase() || "")) && (
+                <div style={{
+                  position: "absolute",
+                  top: 0, left: 0, width: "100%", height: "100%",
+                  zIndex: 5,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(9, 9, 11, 0.65)",
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)"
+                }}>
+                  <div style={{ width: "400px", background: "rgba(255,255,255,0.03)", padding: "30px", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 20px 40px rgba(0,0,0,0.4)" }}>
+                    <h2 style={{ textAlign: "center", color: "#e4e4e7", fontSize: "1.2rem", marginBottom: "20px" }}>3D Model Ingestion</h2>
+                    <UploadZone
+                      side="new"
+                      uploadState={newUploadState}
+                      progress={newUploadProgress}
+                      fileName={newFileName}
+                      fileSize={newFileSize}
+                      error={newError}
+                      activeDrawing={newDrawing}
+                      uploadDrawingFile={uploadDrawingFile}
+                      clearUpload={clearUpload}
+                    />
+                    
+                    <div style={{ marginTop: "20px", display: "flex", justifyContent: "center" }}>
+                      <button
+                        onClick={() => {
+                          const store = useWorkspaceStore.getState();
+                          store.setNewDrawing({
+                            id: "demo_step_3d",
+                            file_name: "bracket_v2_machined.step",
+                            format: "step",
+                            file_path: "uploads/demo_step_3d.step",
+                            entity_counts: { FACE: 42, SOLID: 1 },
+                            metadata: { face_count: 42, volume_mm3: 27100, surface_area_mm2: 6500, bounds_min: [-40, -40, -40], bounds_max: [40, 40, 40] },
+                            created_at: new Date().toISOString()
+                          });
+                          useWorkspaceStore.setState({
+                            compatibilityStatus: "Compatible",
+                            violations: [
+                              {
+                                id: "v_3d_01",
+                                severity: "high",
+                                category: "Dimensional Tolerance",
+                                description: "Pillar height exceeds maximum mounting footprint by 1.2mm in Z-axis.",
+                                recommendation: "Reduce vertical pillar extrusion to match bracket specification standard.",
+                                confidence: 0.94,
+                                standard_reference: "ISO-2768-m",
+                                affected_entities: []
+                              },
+                              {
+                                id: "v_3d_02",
+                                severity: "medium",
+                                category: "Feature Clearance",
+                                description: "Counterbore depth leaves thin wall thickness of 0.85mm at bottom face.",
+                                recommendation: "Increase bottom pocket wall thickness to at least 1.50mm to prevent shear cracking.",
+                                confidence: 0.87,
+                                standard_reference: "ASME Y14.5",
+                                affected_entities: []
+                              }
+                            ],
+                            complianceScore: 85,
+                            auditStatus: "completed"
+                          });
+                        }}
+                        className="btn btn-secondary"
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: "0.85rem",
+                          background: "rgba(168, 85, 247, 0.15)",
+                          border: "1px solid rgba(168, 85, 247, 0.3)",
+                          color: "#c084fc",
+                          cursor: "pointer",
+                          borderRadius: "8px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          width: "100%",
+                          justifyContent: "center",
+                          transition: "all 0.2s"
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "rgba(168, 85, 247, 0.25)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "rgba(168, 85, 247, 0.15)";
+                        }}
+                      >
+                        <RotateCcw size={14} />
+                        Load 3D STEP Demo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* RIGHT PANEL: AI checking explanations and peer checking */}
+          <aside className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}>
+            <button
+              className="panel-collapse-btn"
+              onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
+              title={isRightPanelCollapsed ? "Expand AI Explanations" : "Collapse AI Explanations"}
+            >
+              {isRightPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+            <div className="panel-content-wrapper" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+              {/* Grounding Profile Selector */}
+              <div className="card settings-card" style={{ marginBottom: "20px" }}>
+                <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
+                  Stage 2 AI 3D Compliance Auditor
+                </h3>
+
+                <div className="form-group" style={{ marginTop: "12px" }}>
+                  <label className="form-label">Grounding Client Profile</label>
+                  <select
+                    className="form-input select-input"
+                    value={selectedClient || ""}
+                    onChange={(e) => setSelectedClient(e.target.value)}
+                  >
+                    <option value="" disabled>Select Target Client</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAuditTrigger}
+                  disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
+                  style={{
+                    width: "100%",
+                    marginTop: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    justifyContent: "center",
+                    padding: "10px 16px"
+                  }}
+                >
+                  <Play size={14} fill="currentColor" />
+                  <span>
+                    {auditStatus === "queued" || auditStatus === "auditing" ? "Analyzing 3D Topology..." : "Execute 3D Compliance Audit"}
+                  </span>
+                </button>
+              </div>
+
+              {/* Compliance score circle */}
+              {auditStatus === "completed" && (
+                <div className="card settings-card" style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                  <div className="compliance-circle" style={{ borderColor: complianceScore && complianceScore >= 80 ? "#10b981" : "#f59e0b" }}>
+                    <span className="compliance-val">{complianceScore}%</span>
+                    <span className="compliance-lbl">Compliance</span>
+                  </div>
+
+                  <div className="severity-bar-grid">
+                    <div className="bar-card critical">
+                      <span className="bar-val">{criticalCount}</span>
+                      <span className="bar-lbl">Critical</span>
+                    </div>
+                    <div className="bar-card high">
+                      <span className="bar-val">{highCount}</span>
+                      <span className="bar-lbl">High</span>
+                    </div>
+                    <div className="bar-card medium">
+                      <span className="bar-val">{medCount}</span>
+                      <span className="bar-lbl">Med</span>
+                    </div>
+                    <div className="bar-card low">
+                      <span className="bar-val">{lowCount}</span>
+                      <span className="bar-lbl">Low</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Violations feed */}
+              <div className="violations-feed-card card settings-card" style={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <h4 className="card-title">AI Geometrical Infractions & peer checking</h4>
+                
+                <div className="violations-list" style={{ overflowY: "auto", flexGrow: 1, marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {auditStatus === "idle" && (
+                    <div className="empty-state">Trigger 3D compliance run to check mechanical alignment against manufacturing standards.</div>
+                  )}
+                  
+                  {auditStatus === "queued" || auditStatus === "auditing" ? (
+                    <div className="empty-state">
+                      <div className="loader spin-animation"></div>
+                      <span style={{ marginTop: "12px" }}>Evaluating counterbore & step tolerances...</span>
+                    </div>
+                  ) : null}
+
+                  {auditStatus === "completed" && violations.length === 0 ? (
+                    <div className="empty-state success">
+                      <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                      <span style={{ marginTop: "12px", color: "#10b981" }}>No compliance infractions found in 3D model!</span>
+                    </div>
+                  ) : null}
+
+                  {auditStatus === "completed" && violations.map((v) => (
+                    <div
+                      key={v.id}
+                      className={`violation-card-item ${v.severity} ${selectedViolation?.id === v.id ? "selected" : ""}`}
+                      onClick={() => selectViolation(v)}
+                    >
+                      <div className="card-header-row">
+                        <span className={`sev-badge ${v.severity}`}>{v.severity.toUpperCase()}</span>
+                        <span className="clause-lbl">{v.standard_reference || "General"}</span>
+                      </div>
+
+                      <h5 className="violation-title">{v.category}</h5>
+                      <p className="violation-desc">{v.description}</p>
+
+                      <div className="recommendation-box">
+                        <strong>AI Fix Chip:</strong> {v.recommendation}
+                      </div>
+
+                      <div className="card-footer-row">
+                        <span className="confidence-badge">Confidence: {(v.confidence * 100).toFixed(0)}%</span>
+                        <span className="focus-action-btn">Highlight coordinates →</span>
                       </div>
                     </div>
                   ))}

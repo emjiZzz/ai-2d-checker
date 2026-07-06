@@ -1,7 +1,8 @@
-import os
 import secrets
 from pathlib import Path
+
 from fastapi import Header, HTTPException, status
+
 from ..config import settings
 from ..logger import logger
 
@@ -85,10 +86,18 @@ def validate_sandboxed_path(user_path: str | Path) -> Path:
     """
     Canonical absolute path resolver. Validates path stays bounded inside the storage root directory.
     Blocks all path traversal attempts (../), symlink escapes, and invalid absolute outside boundaries.
+
+    Uses ``get_storage_root()`` (from ``path_resolver``) as the single source of truth for the
+    storage root so this guard is always consistent with every other path-building helper in
+    the codebase, regardless of the process working directory.
     """
-    storage_root = Path(settings.STORAGE_ROOT).resolve()
+    # Local import prevents circular dependency:
+    #   security → path_resolver → config  (safe one-way chain)
+    from ..infrastructure.storage.path_resolver import get_storage_root
+
+    storage_root = get_storage_root()
     target_path = Path(user_path).resolve()
-    
+
     # 1. Traversal check: check target resolved absolute path starts strictly with storage_root
     try:
         # Check if target_path is inside storage_root
@@ -112,6 +121,7 @@ def validate_sandboxed_path(user_path: str | Path) -> Path:
         )
 
     return target_path
+
 
 # Secret Masking Utilities
 def mask_secret(value: str | None) -> str:

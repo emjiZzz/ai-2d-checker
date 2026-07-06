@@ -1,7 +1,8 @@
 import asyncio
-from typing import Optional
+
 from ...logger import logger
 from .audit_orchestrator import AuditOrchestrator
+
 
 class BackgroundAuditQueue:
     """
@@ -9,10 +10,10 @@ class BackgroundAuditQueue:
     """
     def __init__(self):
         self.queue: asyncio.Queue = asyncio.Queue()
-        self.worker_task: Optional[asyncio.Task] = None
+        self.worker_task: asyncio.Task | None = None
         self.orchestrator = AuditOrchestrator()
 
-    def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    def start(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
         """
         Starts the background worker queue process loop.
         """
@@ -37,7 +38,7 @@ class BackgroundAuditQueue:
             self.worker_task = None
             logger.info("Background Drawing Audit Queue worker stopped.")
 
-    async def enqueue(self, drawing_id: str, standard_id: Optional[str], session_id: str, client_name: Optional[str] = None) -> None:
+    async def enqueue(self, drawing_id: str, standard_id: str | None, session_id: str, client_name: str | None = None) -> None:
         """
         Adds a standard compliance audit task to the background queue.
         """

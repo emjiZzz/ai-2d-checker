@@ -1,5 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any
+
 from ...logger import logger
+
 
 class ReportBuilder:
     """
@@ -8,7 +10,7 @@ class ReportBuilder:
     """
     
     @staticmethod
-    def build_report_schema(session_id: str, violations: List[Any], annotations: List[Any]) -> Dict[str, Any]:
+    def build_report_schema(session_id: str, violations: list[Any], annotations: list[Any]) -> dict[str, Any]:
         """
         Compiles the full report schema.
         """

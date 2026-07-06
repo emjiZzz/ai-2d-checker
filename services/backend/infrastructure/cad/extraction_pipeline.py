@@ -1,17 +1,21 @@
 import time
 import traceback
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List
-from ...logger import logger
+from typing import Any
+
 from ...core.security import validate_sandboxed_path
-from ...infrastructure.storage.path_resolver import get_storage_root
 from ...domain.models.drawing_document import DrawingDocument
-from ...domain.models.extraction_job import ExtractionJob
 from ...domain.models.extracted_entity import ExtractedEntity
-from .oda_converter import ODAConverter
+from ...domain.models.extraction_job import ExtractionJob
+from ...infrastructure.storage.path_resolver import get_storage_root
+from ...logger import logger
 from .dxf_parser import DXFParser
+from .oda_converter import ODAConverter
 from .pdf_parser import PDFParser
+from .three_d_pipeline import ThreeDPipeline
+
+
 
 class ExtractionPipeline:
     """
@@ -39,7 +43,7 @@ class ExtractionPipeline:
 
         # Update statuses to processing
         job.status = "processing"
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(UTC)
         await job.save()
 
         drawing.status = "processing"
@@ -67,7 +71,29 @@ class ExtractionPipeline:
 
         try:
             # 2. Format conversion/handling
-            if drawing.format.lower() == "dwg":
+            if drawing.format.lower() in ("step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"):
+                logger.info(f"Drawing format is 3D model ({drawing.format}). Initializing 3D pipeline for: {input_abs_path}")
+                parser_start = time.time()
+                import asyncio
+                metadata, mesh_content = await asyncio.to_thread(ThreeDPipeline.parse_and_convert, input_abs_path)
+                parsing_duration = time.time() - parser_start
+                
+                # Write glTF 2.0 JSON to temp folder for the /gltf endpoint to serve
+                mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+                if isinstance(mesh_content, bytes):
+                    mesh_path.write_bytes(mesh_content)
+                else:
+                    mesh_path.write_text(mesh_content, encoding="utf-8")
+                
+                entities = []
+                layers = []
+                counts = {
+                    "vertices": metadata.get("vertex_count", 0),
+                    "faces": metadata["face_count"],
+                    "triangles": metadata.get("triangle_count", 0),
+                    "mesh": 1
+                }
+            elif drawing.format.lower() == "dwg":
                 logger.info(f"Drawing format is DWG. Initializing safe ODA conversion for: {input_abs_path}")
                 conv_start = time.time()
                 
@@ -101,12 +127,15 @@ class ExtractionPipeline:
             # 3. Generate High-Fidelity premium background rendering
             if drawing.format.lower() == "pdf":
                 self._render_pdf_background(input_abs_path, drawing_id, metadata)
+            elif drawing.format.lower() in ("step", "stp", "iges", "igs", "icd"):
+                # No 2D background raster needed for 3D GLTF models
+                pass
             elif dxf_file_path and dxf_file_path.exists():
                 self._render_dxf_background(dxf_file_path, drawing_id, metadata)
 
             # 4. Persist Extracted Geometry Records into MongoDB
             # Save layers as well (as an entity type)
-            bulk_entities: List[ExtractedEntity] = []
+            bulk_entities: list[ExtractedEntity] = []
             
             def sanitize_utf8(data):
                 """Strip only surrogate escape characters that would corrupt MongoDB,
@@ -150,7 +179,7 @@ class ExtractionPipeline:
             total_duration = time.time() - start_time
             
             job.status = "completed"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(UTC)
             job.conversion_duration_seconds = conversion_duration
             job.parsing_duration_seconds = parsing_duration
             job.total_duration_seconds = total_duration
@@ -164,7 +193,7 @@ class ExtractionPipeline:
             drawing.status = "completed"
             drawing.entity_counts = counts
             drawing.metadata = sanitize_utf8(metadata)
-            drawing.updated_at = datetime.utcnow()
+            drawing.updated_at = datetime.now(UTC)
             await drawing.save()
 
             logger.info(
@@ -190,19 +219,19 @@ class ExtractionPipeline:
         Roll back/update records to failed status cleanly.
         """
         job.status = "failed"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(UTC)
         job.error_message = error_msg
         job.diagnostics = {
             "traceback": traceback_str,
-            "failed_at": datetime.utcnow().isoformat()
+            "failed_at": datetime.now(UTC).isoformat()
         }
         await job.save()
 
         drawing.status = "failed"
-        drawing.updated_at = datetime.utcnow()
+        drawing.updated_at = datetime.now(UTC)
         await drawing.save()
 
-    def _render_pdf_background(self, pdf_path: Path, drawing_id: str, metadata: Dict[str, Any]) -> None:
+    def _render_pdf_background(self, pdf_path: Path, drawing_id: str, metadata: dict[str, Any]) -> None:
         try:
             import fitz
             logger.info(f"Generating high-fidelity PDF raster background for drawing {drawing_id}...")
@@ -236,20 +265,20 @@ class ExtractionPipeline:
         except Exception as e:
             logger.error(f"Failed to render PDF background: {e}", exc_info=True)
 
-    def _render_dxf_background(self, dxf_path: Path, drawing_id: str, metadata: Dict[str, Any]) -> None:
+    def _render_dxf_background(self, dxf_path: Path, drawing_id: str, metadata: dict[str, Any]) -> None:
         try:
             import matplotlib
             matplotlib.use('Agg') # Headless background thread safe execution
-            import matplotlib.pyplot as plt
             import ezdxf
-            from ezdxf.addons.drawing import RenderContext, Frontend
+            import matplotlib.pyplot as plt
+            from ezdxf.addons.drawing import Frontend, RenderContext
             from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
             
             logger.info(f"Generating high-fidelity CAD layout background for drawing {drawing_id}...")
 
             # --- Step 1: Configure ezdxf font manager (MUST happen before readfile) ---
-            from ezdxf.fonts import fonts as ezdxf_fonts
             import matplotlib.font_manager as mpl_fm
+            from ezdxf.fonts import fonts as ezdxf_fonts
 
             JAPANESE_FONT_CANDIDATES = [
                 r"C:\Windows\Fonts\msgothic.ttc",   # MS Gothic - best AutoCAD compatibility
@@ -338,7 +367,7 @@ class ExtractionPipeline:
             ax.set_axis_off()
             ax.set_aspect('equal', 'box')
             
-            from ezdxf.addons.drawing.config import Configuration, BackgroundPolicy, ColorPolicy
+            from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration
             ctx = RenderContext(doc)
             ctx.set_current_layout(layout_to_render)
             

@@ -1,6 +1,7 @@
-from typing import List
-from ...logger import logger
+
 from ...domain.models.audit_violation import AuditViolation
+from ...logger import logger
+
 
 class ConfidenceScorer:
     """
@@ -9,7 +10,7 @@ class ConfidenceScorer:
     """
 
     @staticmethod
-    def calculate_compliance_score(violations: List[AuditViolation]) -> float:
+    def calculate_compliance_score(violations: list[AuditViolation]) -> float:
         """
         Deducts points from 100.0 based on weighted infraction severities.
         Returns a value bounded in [0.0, 100.0].
@@ -33,7 +34,7 @@ class ConfidenceScorer:
         return round(final_score, 2)
 
     @staticmethod
-    def calculate_average_confidence(violations: List[AuditViolation]) -> float:
+    def calculate_average_confidence(violations: list[AuditViolation]) -> float:
         """
         Computes the statistical average of all violation confidence weights.
         If no violations exist, defaults to a high grounding confidence of 0.95.

@@ -18,13 +18,13 @@ Upload a DWG/DXF drawing file, and the app will automatically compare it against
 
 ## 🛠️ Technology Stack
 
-| What | Technology Used |
-|---|---|
-| **UI (Frontend)** | React 19 + TypeScript |
-| **Desktop Window** | Tauri v2 (Rust) |
-| **Backend Server** | Python FastAPI |
-| **Database** | MongoDB Community Server (local) |
-| **AI Engine** | Google Gemini Flash API |
+| What                     | Technology Used                     |
+| ------------------------ | ----------------------------------- |
+| **UI (Frontend)**  | React 19 + TypeScript               |
+| **Desktop Window** | Tauri v2 (Rust)                     |
+| **Backend Server** | Python FastAPI                      |
+| **Database**       | MongoDB Community Server (local)    |
+| **AI Engine**      | Google Gemini Flash API             |
 | **DWG Processing** | ODA File Converter + ezdxf + OpenCV |
 
 ---
@@ -34,6 +34,7 @@ Upload a DWG/DXF drawing file, and the app will automatically compare it against
 See the full step-by-step guide in [`README_SETUP.txt`](./README_SETUP.txt).
 
 **Summary of what you need to install:**
+
 1. Node.js v20+ and pnpm
 2. Python 3.12+
 3. Rust (via rustup) + MSVC linker (via `portable-msvc.py`)
@@ -48,21 +49,29 @@ See the full step-by-step guide in [`README_SETUP.txt`](./README_SETUP.txt).
 You need to start **two** things every time you want to run the app.
 
 ### Step 1 — Start the Backend
+
 Open a terminal in the project root and run:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\services\backend\start.ps1
 ```
+
 Wait until you see: `Uvicorn running on http://0.0.0.0:8080`
 
 ### Step 2 — Start the Desktop Window
+
 Open a **second** terminal in the project root and run:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start_desktop.ps1
 ```
+
 > ⏳ First run takes 5–10 minutes (compiling Rust). After that it's fast.
 
 ### Optional — View the API Docs
+
 After starting the backend, open this URL in your browser:
+
 ```
 http://localhost:8080/docs
 ```
@@ -119,24 +128,22 @@ pnpm run clean
 Please follow these rules to keep the codebase clean:
 
 1. **Commit messages** must follow the format: `type(scope): description`
+
    - Example: `feat(frontend): add zoom slider to canvas`
    - Example: `fix(backend): resolve MongoDB timeout on startup`
-
 2. **Branch naming**: Create branches as `feat/your-feature-name` or `fix/bug-description`
-
 3. **Pull Requests**: Always merge to `develop` first. Never push directly to `main`.
-
 4. **No cross-package imports**: Packages can only import from `config`, `types`, and `utils` — never from each other.
 
 ---
 
 ## 📖 More Documentation
 
-| Document | What it covers |
-|---|---|
-| [`README_SETUP.txt`](./README_SETUP.txt) | Full beginner installation guide |
-| [`docs/architecture.md`](./docs/architecture.md) | Security design and system architecture |
-| [`docs/env_vars.md`](./docs/env_vars.md) | All environment variable settings |
+| Document                                                    | What it covers                            |
+| ----------------------------------------------------------- | ----------------------------------------- |
+| [`README_SETUP.txt`](./README_SETUP.txt)                   | Full beginner installation guide          |
+| [`docs/architecture.md`](./docs/architecture.md)           | Security design and system architecture   |
+| [`docs/env_vars.md`](./docs/env_vars.md)                   | All environment variable settings         |
 | [`docs/storage_hierarchy.md`](./docs/storage_hierarchy.md) | How local files and folders are organized |
 
 ---

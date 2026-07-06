@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Find workspace root .env if running from workspace
@@ -55,6 +56,6 @@ class Settings:
     
     # ODA File Converter Auto-Discovery
     ODA_CONVERTER_PATH: str = _auto_detect_oda_converter()
-    MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "500"))
+    MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "10240"))
 
 settings = Settings()

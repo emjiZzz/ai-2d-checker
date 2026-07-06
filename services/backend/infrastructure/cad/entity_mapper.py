@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from typing import Any
+
 
 class EntityMapper:
     """
@@ -6,7 +7,7 @@ class EntityMapper:
     into uniform serializable Python dictionaries with structure and geometry fields.
     """
     @staticmethod
-    def map_line(entity: Any) -> Dict[str, Any]:
+    def map_line(entity: Any) -> dict[str, Any]:
         start = entity.dxf.start
         end = entity.dxf.end
         length = ((end[0] - start[0])**2 + (end[1] - start[1])**2 + (end[2] - start[2])**2)**0.5
@@ -26,7 +27,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_circle(entity: Any) -> Dict[str, Any]:
+    def map_circle(entity: Any) -> dict[str, Any]:
         center = entity.dxf.center
         radius = entity.dxf.radius
         
@@ -44,7 +45,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_arc(entity: Any) -> Dict[str, Any]:
+    def map_arc(entity: Any) -> dict[str, Any]:
         center = entity.dxf.center
         radius = entity.dxf.radius
         start_angle = entity.dxf.start_angle
@@ -66,7 +67,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_polyline(entity: Any) -> Dict[str, Any]:
+    def map_polyline(entity: Any) -> dict[str, Any]:
         points = []
         is_closed = entity.is_closed
         
@@ -94,7 +95,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_dimension(entity: Any) -> Dict[str, Any]:
+    def map_dimension(entity: Any) -> dict[str, Any]:
         # Dimensions contain geometric definition points and overlay texts
         text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
         measurement = entity.dxf.actual_measurement if hasattr(entity.dxf, "actual_measurement") else None
@@ -162,7 +163,7 @@ class EntityMapper:
         return text.strip()
 
     @staticmethod
-    def map_text(entity: Any) -> Dict[str, Any]:
+    def map_text(entity: Any) -> dict[str, Any]:
         # Text/MText maps literal strings
         dxftype = entity.dxftype()
         raw_content = entity.text if dxftype == "MTEXT" else entity.dxf.text
@@ -188,7 +189,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_block(entity: Any) -> Dict[str, Any]:
+    def map_block(entity: Any) -> dict[str, Any]:
         # INSERT entities represent block instances
         block_name = entity.dxf.name
         insert = entity.dxf.insert
@@ -209,7 +210,7 @@ class EntityMapper:
         }
 
     @classmethod
-    def map_any(cls, entity: Any) -> Dict[str, Any] | None:
+    def map_any(cls, entity: Any) -> dict[str, Any] | None:
         """
         Dynamically routes any standard ezdxf entity to its matching mapper.
         Returns mapped dictionary or None if type is not of interest.

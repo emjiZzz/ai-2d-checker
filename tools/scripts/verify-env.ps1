@@ -83,13 +83,21 @@ if (Test-Path $storageBase) {
     Log-Status "Storage Root" "FAIL" "Local 'storage/' folder does not exist. Run setup-dev.ps1."
 }
 
-# 7. Check MongoDB connection health (local port 27017)
+# 7. Check MongoDB connection health
+$mongoHost = "localhost"
+$mongoPort = 27017
+if ($envContent -match "(?m)^[^#]*MONGO_URI=mongodb://([^:/]+)(?::(\d+))?") {
+    $mongoHost = $Matches[1].Trim()
+    if ($Matches[2]) {
+        $mongoPort = [int]$Matches[2].Trim()
+    }
+}
 try {
-    $connection = New-Object System.Net.Sockets.TcpClient("localhost", 27017)
+    $connection = New-Object System.Net.Sockets.TcpClient($mongoHost, $mongoPort)
     $connection.Close()
-    Log-Status "MongoDB Port Check" "PASS" "Successfully connected to local MongoDB at localhost:27017"
+    Log-Status "MongoDB Port Check" "PASS" "Successfully connected to MongoDB at ${mongoHost}:${mongoPort}"
 } catch {
-    Log-Status "MongoDB Port Check" "WARN" "Could not connect to local MongoDB on port 27017. Ensure MongoDB Community Server is started."
+    Log-Status "MongoDB Port Check" "WARN" "Could not connect to MongoDB on ${mongoHost}:${mongoPort}. Ensure MongoDB Server is started."
 }
 
 # 8. Check ODA File Converter path configuration

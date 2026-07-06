@@ -1,6 +1,8 @@
-from typing import Any, Dict, List
-from ...logger import logger
+from typing import Any
+
 from ...domain.models.extracted_entity import ExtractedEntity
+from ...logger import logger
+
 
 class GeometrySerializer:
     """
@@ -25,12 +27,12 @@ class GeometrySerializer:
     }
 
     @staticmethod
-    def serialize_entities(entities: List[ExtractedEntity]) -> Dict[str, Any]:
+    def serialize_entities(entities: list[ExtractedEntity]) -> dict[str, Any]:
         """
         Groups and normalizes geometry.
         Returns payload: { "layers": { "LAYER_NAME": [ entities ] } }
         """
-        layers_map: Dict[str, List[Dict[str, Any]]] = {}
+        layers_map: dict[str, list[dict[str, Any]]] = {}
         
         for ent in entities:
             layer = ent.layer

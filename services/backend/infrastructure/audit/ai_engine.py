@@ -1,15 +1,25 @@
-import os
 import json
+import os
 import re
-from typing import Any, Dict, List, Optional
-import google.generativeai as genai
-from ...logger import logger
+
+try:
+    from google import genai
+    from google.genai import types as genai_types
+    _GENAI_AVAILABLE = True
+except ImportError:
+    genai = None          # type: ignore
+    genai_types = None    # type: ignore
+    _GENAI_AVAILABLE = False
+
+
 from ...config import settings
+from ...domain.models.audit_violation import AuditViolation
 from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.extracted_entity import ExtractedEntity
-from ...domain.models.standard_document import StandardDocument
 from ...domain.models.standard_chunk import StandardChunk
-from ...domain.models.audit_violation import AuditViolation
+from ...domain.models.standard_document import StandardDocument
+from ...logger import logger
+
 
 class AIEngine:
     """
@@ -19,7 +29,7 @@ class AIEngine:
     """
 
     @staticmethod
-    def _get_api_key() -> Optional[str]:
+    def _get_api_key() -> str | None:
         """
         Securely retrieves the Gemini API key from environment or encrypted configurations.
         Returns None if not configured.
@@ -36,20 +46,33 @@ class AIEngine:
         audit_session_id: str,
         drawing: DrawingDocument,
         standard: StandardDocument,
-        grounding_chunks: List[StandardChunk]
-    ) -> List[AuditViolation]:
+        grounding_chunks: list[StandardChunk],
+        lessons_learned: list[StandardChunk] | None = None
+    ) -> list[AuditViolation]:
         logger.info(f"Initiating Gemini Vision Orchestrator for drawing {drawing.file_name} under standard {standard.name}")
-        violations: List[AuditViolation] = []
+        violations: list[AuditViolation] = []
 
         api_key = cls._get_api_key()
-        if not api_key:
-            logger.warning("Gemini API key is not configured. Falling back to high-fidelity mock audit pipeline.")
+        if not api_key or not _GENAI_AVAILABLE:
+            logger.warning("Gemini API key is not configured or google-generativeai is not installed. Falling back to high-fidelity mock audit pipeline.")
             return await cls._run_mock_ai_audit(audit_session_id, drawing, standard, grounding_chunks)
 
         # 1. Fetch extracted geometries
         entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
         
-        # 2. Assemble Grounding Context (RAG)
+        # 2. Assemble Lessons Learned context (RAG — historically-resolved findings)
+        lessons_text = ""
+        if lessons_learned:
+            lessons_text = "\n=== LESSONS LEARNED FROM PAST REVIEWS ===\n"
+            lessons_text += "The following are historically-resolved compliance findings from previous audits "\
+                            "of similar drawings. Use them as additional context to guide your analysis:\n\n"
+            for lesson in lessons_learned:
+                header = lesson.section_header or "General"
+                lessons_text += f"\n--- LESSON [{header}] ---\n{lesson.content}\n"
+            lessons_text += "\n=== END LESSONS LEARNED ===\n"
+            logger.debug(f"Injecting {len(lessons_learned)} RAG lesson(s) into Gemini context window.")
+
+        # 3. Assemble Grounding Context (RAG standard chunks)
         grounding_text = ""
         for chunk in grounding_chunks:
             header = chunk.section_header or "General Standard Section"
@@ -77,6 +100,7 @@ class AIEngine:
         )
 
         prompt = (
+            f"{lessons_text}"
             f"Grounding Engineering Standard: \n{grounding_text}\n\n"
             f"Audited Drawing CAD Metadata & Structural Geometries:\n{json.dumps(cad_summary, indent=2)}\n\n"
             "Find and document compliance violations. You must output a JSON list of objects matching this exact schema:\n"
@@ -93,16 +117,21 @@ class AIEngine:
         )
 
         try:
-            # Configure and launch Gemini client
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                generation_config={"response_mime_type": "application/json"}
-            )
+            # Initialise the new google.genai Client with the API key
+            client = genai.Client(api_key=api_key)
 
-            # Spawn model execution
-            response = model.generate_content([system_instruction, prompt])
+            # Build the combined prompt as a single user message
+            full_prompt = f"{system_instruction}\n\n{prompt}"
+
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=full_prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
             raw_text = response.text.strip()
+
             
             # Clean possible markdown wrapping if returned
             if raw_text.startswith("```json"):
@@ -143,7 +172,7 @@ class AIEngine:
         return violations
 
     @staticmethod
-    def _is_reference_grounded(ref: str, grounding_chunks: List[StandardChunk]) -> bool:
+    def _is_reference_grounded(ref: str, grounding_chunks: list[StandardChunk]) -> bool:
         """
         Validates if a standard reference matches key phrases or sections inside grounding text.
         """
@@ -164,14 +193,14 @@ class AIEngine:
         audit_session_id: str,
         drawing: DrawingDocument,
         standard: StandardDocument,
-        grounding_chunks: List[StandardChunk]
-    ) -> List[AuditViolation]:
+        grounding_chunks: list[StandardChunk]
+    ) -> list[AuditViolation]:
         """
         Offline-capable mock auditing fallback when Gemini API key is missing.
         Analyzes drawing geometric coordinates and layer scopes, simulating
         the intelligence of standard comparative compliance.
         """
-        violations: List[AuditViolation] = []
+        violations: list[AuditViolation] = []
         entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
 
         # Let's perform high-fidelity standard comparison mock-checks

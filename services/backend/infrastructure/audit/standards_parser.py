@@ -1,9 +1,12 @@
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any
+
 from pypdf import PdfReader
-from ...logger import logger
+
 from ...core.security import validate_sandboxed_path
+from ...logger import logger
+
 
 class StandardsParser:
     """
@@ -12,7 +15,7 @@ class StandardsParser:
     """
 
     @staticmethod
-    def parse_file(file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def parse_file(file_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """
         Parses a Grounding Standard document based on its extension.
         Returns:
@@ -36,7 +39,7 @@ class StandardsParser:
             raise ValueError(f"Unsupported standard file extension: {ext}. Only PDF, TXT, Excel, and Markdown are supported.")
 
     @staticmethod
-    def _get_color_category(rgb_val: str) -> Optional[str]:
+    def _get_color_category(rgb_val: str) -> str | None:
         """
         Classifies a cell background hexadecimal color into standard warning/success signals.
         """
@@ -76,10 +79,10 @@ class StandardsParser:
         return None
 
     @staticmethod
-    def _parse_excel(file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def _parse_excel(file_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         logger.info(f"Parsing Style-Aware Excel Engineering Standard: {file_path.name}")
-        chunks: List[Dict[str, Any]] = []
-        global_metadata: Dict[str, Any] = {
+        chunks: list[dict[str, Any]] = []
+        global_metadata: dict[str, Any] = {
             "title": file_path.stem,
             "page_count": 1
         }
@@ -155,10 +158,10 @@ class StandardsParser:
         return chunks, global_metadata
 
     @staticmethod
-    def _parse_pdf(file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def _parse_pdf(file_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         logger.info(f"Parsing PDF Engineering Standard: {file_path.name}")
-        chunks: List[Dict[str, Any]] = []
-        global_metadata: Dict[str, Any] = {}
+        chunks: list[dict[str, Any]] = []
+        global_metadata: dict[str, Any] = {}
 
         try:
             reader = PdfReader(str(file_path))
@@ -221,16 +224,16 @@ class StandardsParser:
         return chunks, global_metadata
 
     @staticmethod
-    def _parse_text_or_markdown(file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def _parse_text_or_markdown(file_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         logger.info(f"Parsing Text/Markdown Engineering Standard: {file_path.name}")
-        chunks: List[Dict[str, Any]] = []
-        global_metadata: Dict[str, Any] = {
+        chunks: list[dict[str, Any]] = []
+        global_metadata: dict[str, Any] = {
             "title": file_path.stem,
             "page_count": 1
         }
 
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
                 content = f.read()
 
             # Split by headers (Markdown style # or capital sections)

@@ -1,6 +1,7 @@
-from typing import List
-from ...logger import logger
+
 from ...domain.models.audit_violation import AuditViolation
+from ...logger import logger
+
 
 class ViolationDetector:
     """
@@ -10,12 +11,12 @@ class ViolationDetector:
 
     @staticmethod
     def consolidate_violations(
-        rule_violations: List[AuditViolation],
-        ai_violations: List[AuditViolation]
-    ) -> List[AuditViolation]:
+        rule_violations: list[AuditViolation],
+        ai_violations: list[AuditViolation]
+    ) -> list[AuditViolation]:
         logger.info(f"Consolidating {len(rule_violations)} rule violations and {len(ai_violations)} AI violations.")
         
-        consolidated: List[AuditViolation] = []
+        consolidated: list[AuditViolation] = []
         seen_keys = set()
 
         # Merge and deduplicate

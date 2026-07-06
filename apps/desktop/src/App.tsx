@@ -156,8 +156,8 @@ function App() {
 
   const handleFileSelection = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "dwg" && ext !== "dxf") {
-      alert("Invalid format: Only CAD drawings in proprietary .dwg or open .dxf formats are supported.");
+    if (!["dwg", "dxf", "step", "stp", "iges", "igs"].includes(ext || "")) {
+      alert("Invalid format: Only CAD drawings (.dwg/.dxf) or 3D models (.step/.iges) are supported.");
       return;
     }
     await uploadDrawing(file);
@@ -427,7 +427,7 @@ function App() {
                     ref={fileInputRef}
                     onChange={handleFileSelectChange}
                     style={{ display: "none" }}
-                    accept=".dwg,.dxf"
+                    accept=".dwg,.dxf,.step,.stp,.iges,.igs"
                   />
 
                   <div className="upload-icon-container">

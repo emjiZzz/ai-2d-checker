@@ -1,14 +1,15 @@
-import os
 import base64
-import uuid
 import hashlib
+import os
 import platform
-from typing import Optional
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 from ..logger import logger
 
+
 class AES256GCM:
-    def __init__(self, key: Optional[bytes] = None):
+    def __init__(self, key: bytes | None = None):
         """
         Initialize AES-256-GCM cipher.
         If no key is provided, it derives a stable, device-bound key.

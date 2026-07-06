@@ -49,5 +49,6 @@ Write-Host "   Docs: http://127.0.0.1:$port/docs" -ForegroundColor Green
 Write-Host "   Press Ctrl+C to terminate backend process.`n" -ForegroundColor DarkCyan
 
 # Launch Uvicorn with PYTHONPATH configured for local imports
-$env:PYTHONPATH = "$PSScriptRoot;$env:PYTHONPATH"
-python -m uvicorn services.backend.main:app --host 127.0.0.1 --port $port --reload --reload-dir services/backend
+$workspaceRoot = Resolve-Path "$PSScriptRoot\..\.."
+$env:PYTHONPATH = "$workspaceRoot;$PSScriptRoot;$env:PYTHONPATH"
+python -m uvicorn services.backend.main:app --host 127.0.0.1 --port $port --reload --reload-dir "$PSScriptRoot"

@@ -1,9 +1,10 @@
 import re
-from typing import Any, Dict, List
-from ...logger import logger
+
+from ...domain.models.audit_violation import AuditViolation
 from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.extracted_entity import ExtractedEntity
-from ...domain.models.audit_violation import AuditViolation
+from ...logger import logger
+
 
 class RuleEngine:
     """
@@ -13,15 +14,15 @@ class RuleEngine:
     """
 
     @staticmethod
-    async def validate_drawing(audit_session_id: str, drawing: DrawingDocument) -> List[AuditViolation]:
+    async def validate_drawing(audit_session_id: str, drawing: DrawingDocument) -> list[AuditViolation]:
         logger.info(f"Initiating rule-based CAD compliance audit for drawing: {drawing.file_name}")
-        violations: List[AuditViolation] = []
+        violations: list[AuditViolation] = []
 
         # 1. Fetch all associated extracted graphic primitives from database
         entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
 
         # Group entities by type
-        entities_by_type: Dict[str, List[ExtractedEntity]] = {}
+        entities_by_type: dict[str, list[ExtractedEntity]] = {}
         for ent in entities:
             entities_by_type.setdefault(ent.entity_type, []).append(ent)
 
@@ -36,7 +37,7 @@ class RuleEngine:
         polylines = entities_by_type.get("polyline", [])
         dimensions = entities_by_type.get("dimension", [])
         texts = entities_by_type.get("text", [])
-        blocks = entities_by_type.get("block", [])
+        entities_by_type.get("block", [])
 
         total_geometry = len(lines) + len(circles) + len(arcs) + len(polylines)
 

@@ -1,6 +1,8 @@
-from typing import Any, Dict, List
-from ...logger import logger
+from typing import Any
+
 from ...domain.models.annotation_document import AnnotationDocument
+from ...logger import logger
+
 
 class AnnotationMapper:
     """
@@ -9,7 +11,7 @@ class AnnotationMapper:
     """
     
     @staticmethod
-    def map_annotations(annotations: List[AnnotationDocument]) -> List[Dict[str, Any]]:
+    def map_annotations(annotations: list[AnnotationDocument]) -> list[dict[str, Any]]:
         results = []
         for ann in annotations:
             results.append({

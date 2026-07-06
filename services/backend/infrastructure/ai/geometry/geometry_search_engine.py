@@ -1,6 +1,8 @@
-from typing import Any, List, Dict
+from typing import Any
+
 from ....logger import logger
 from .vector_geometry_index import VectorGeometryIndex
+
 
 class GeometrySearchEngine:
     """
@@ -10,7 +12,7 @@ class GeometrySearchEngine:
     def __init__(self):
         self.index = VectorGeometryIndex()
         
-    def find_similar_geometry(self, target_entity: Any, all_entities: List[Any]) -> List[Any]:
+    def find_similar_geometry(self, target_entity: Any, all_entities: list[Any]) -> list[Any]:
         """
         Finds geometries structurally identical or similar to the target.
         """
@@ -23,7 +25,7 @@ class GeometrySearchEngine:
         results = self.index.query(target_entity)
         return results
         
-    def detect_repeated_symbols(self, all_entities: List[Any]) -> Dict[str, List[Any]]:
+    def detect_repeated_symbols(self, all_entities: list[Any]) -> dict[str, list[Any]]:
         """
         Scans all geometries and clusters them to find un-blocked repeating patterns.
         """

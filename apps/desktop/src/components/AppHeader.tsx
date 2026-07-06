@@ -1,12 +1,14 @@
 import React from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Moon, Sun, LogOut, Minus, Square, X, Cpu } from "lucide-react";
+import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings, Box } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useThemeStore } from "../stores/themeStore";
+import { useNavStore } from "../stores/navStore";
 
 export const AppHeader: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
+  const { currentNav, setCurrentNav } = useNavStore();
 
   const handleMinimize = () => getCurrentWindow().minimize();
   const handleToggleMaximize = async () => {
@@ -49,8 +51,139 @@ export const AppHeader: React.FC = () => {
         </div>
       </div>
 
-      {/* CENTER: Draggable space */}
-      <div data-tauri-drag-region style={{ flexGrow: 1, height: "100%" }}></div>
+      {/* CENTER: Draggable space & Sleek Navigation Tabs */}
+      <div 
+        data-tauri-drag-region 
+        style={{ 
+          flexGrow: 1, 
+          height: "100%", 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center",
+          gap: "4px"
+        }}
+      >
+        {isAuthenticated && (
+          <div style={{ display: "flex", gap: "2px", height: "30px", background: "rgba(0,0,0,0.2)", borderRadius: "6px", padding: "2px", border: "1px solid var(--border-color)" }}>
+            <button
+              onClick={() => setCurrentNav("workspace")}
+              className={`header-nav-tab ${currentNav === "workspace" ? "active" : ""}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "0 12px",
+                height: "100%",
+                background: currentNav === "workspace" ? "rgba(128, 128, 128, 0.18)" : "transparent",
+                border: "none",
+                borderRadius: "4px",
+                color: currentNav === "workspace" ? "var(--text-primary)" : "var(--text-muted)",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s"
+              }}
+            >
+              <Compass size={13} />
+              2D Workspace
+            </button>
+
+            <button
+              onClick={() => setCurrentNav("3d-workspace")}
+              className={`header-nav-tab ${currentNav === "3d-workspace" ? "active" : ""}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "0 12px",
+                height: "100%",
+                background: currentNav === "3d-workspace" ? "rgba(168, 85, 247, 0.18)" : "transparent",
+                border: "none",
+                borderRadius: "4px",
+                color: currentNav === "3d-workspace" ? "#c084fc" : "var(--text-muted)",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s"
+              }}
+            >
+              <Box size={13} style={{ color: currentNav === "3d-workspace" ? "#c084fc" : "var(--text-muted)" }} />
+              3D Workspace
+            </button>
+
+            {user?.role === "admin" && (
+              <button
+                onClick={() => setCurrentNav("standards")}
+                className={`header-nav-tab ${currentNav === "standards" ? "active" : ""}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "0 12px",
+                  height: "100%",
+                  background: currentNav === "standards" ? "rgba(128, 128, 128, 0.18)" : "transparent",
+                  border: "none",
+                  borderRadius: "4px",
+                  color: currentNav === "standards" ? "var(--text-primary)" : "var(--text-muted)",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                <Bookmark size={13} />
+                Standards
+              </button>
+            )}
+
+            <button
+              onClick={() => setCurrentNav("history")}
+              className={`header-nav-tab ${currentNav === "history" ? "active" : ""}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "0 12px",
+                height: "100%",
+                background: currentNav === "history" ? "rgba(128, 128, 128, 0.18)" : "transparent",
+                border: "none",
+                borderRadius: "4px",
+                color: currentNav === "history" ? "var(--text-primary)" : "var(--text-muted)",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s"
+              }}
+            >
+              <History size={13} />
+              History
+            </button>
+
+            <button
+              onClick={() => setCurrentNav("settings")}
+              className={`header-nav-tab ${currentNav === "settings" ? "active" : ""}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "0 12px",
+                height: "100%",
+                background: currentNav === "settings" ? "rgba(128, 128, 128, 0.18)" : "transparent",
+                border: "none",
+                borderRadius: "4px",
+                color: currentNav === "settings" ? "var(--text-primary)" : "var(--text-muted)",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s"
+              }}
+            >
+              <Settings size={13} />
+              Settings
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* RIGHT: User Info & Actions */}
       <div style={{ display: "flex", alignItems: "center", height: "100%" }}>

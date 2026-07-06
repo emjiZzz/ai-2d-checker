@@ -1,7 +1,8 @@
-import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
+
 from ...logger import logger
+
 
 class PDFComplianceExporter:
     """
@@ -9,17 +10,24 @@ class PDFComplianceExporter:
     with fallback options if dependencies are missing.
     """
     @staticmethod
-    def generate_pdf(output_path: Path, session: Any, drawing: Any, standard: Any, violations: List[Any]) -> Path:
+    def generate_pdf(output_path: Path, session: Any, drawing: Any, standard: Any, violations: list[Any]) -> Path:
         logger.info(f"Generating PDF compliance report to: {output_path}")
         
         # Enforce parent directories
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         try:
-            from reportlab.lib.pagesizes import letter
             from reportlab.lib import colors
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+            from reportlab.platypus import (
+                PageBreak,
+                Paragraph,
+                SimpleDocTemplate,
+                Spacer,
+                Table,
+                TableStyle,
+            )
             
             doc = SimpleDocTemplate(str(output_path), pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
             styles = getSampleStyleSheet()

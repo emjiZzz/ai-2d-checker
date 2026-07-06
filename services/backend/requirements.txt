@@ -5,3 +5,29 @@ pydantic>=2.6.4
 motor>=3.3.2
 beanie>=1.25.0
 cryptography>=42.0.5
+aiofiles>=23.2.1
+python-multipart>=0.0.9
+
+# CAD parsing
+ezdxf>=1.3.0
+
+# PDF parsing (standards ingestion)
+pypdf>=4.0.0
+
+# PDF report generation
+reportlab>=4.0.0
+
+# Excel report generation + standards parsing
+openpyxl>=3.1.0
+
+# High-fidelity PDF rendering (optional, degrades gracefully if missing)
+pymupdf>=1.24.0
+
+# DXF background rendering (optional, degrades gracefully if missing)
+matplotlib>=3.8.0
+
+# Gemini AI Vision API (google-genai is the current maintained SDK;
+# google-generativeai is fully deprecated as of 2025 and no longer receives updates)
+google-genai>=1.0.0
+pywin32>=306
+

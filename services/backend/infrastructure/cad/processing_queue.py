@@ -1,7 +1,8 @@
 import asyncio
-from typing import Optional
+
 from ...logger import logger
 from .extraction_pipeline import ExtractionPipeline
+
 
 class BackgroundProcessingQueue:
     """
@@ -9,10 +10,10 @@ class BackgroundProcessingQueue:
     """
     def __init__(self):
         self.queue: asyncio.Queue = asyncio.Queue()
-        self.worker_task: Optional[asyncio.Task] = None
+        self.worker_task: asyncio.Task | None = None
         self.pipeline = ExtractionPipeline()
 
-    def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    def start(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
         """
         Starts the background worker queue process loop.
         """

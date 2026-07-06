@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuditStore } from "../stores/auditStore";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useConnectionStore } from "../stores/connectionStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { CopilotPanel } from "./copilot/CopilotPanel";
 import { 
   ShieldCheck, 
@@ -29,6 +30,9 @@ export const AuditConsole: React.FC = () => {
     errorMessage, 
     resetStore 
   } = useAuditStore();
+
+  const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
+  const selectViolation = useWorkspaceStore((s) => s.selectViolation);
 
   const { activeDrawing } = useDrawingStore();
   const { backendUrl, apiToken } = useConnectionStore.getState();
@@ -378,11 +382,35 @@ export const AuditConsole: React.FC = () => {
               <div className="infractions-list">
                 {filteredViolations.map((violation) => {
                   const styles = getSeverityStyles(violation.severity);
+                  const isSelected = selectedViolation?.id === violation.id;
                   return (
                     <div 
-                      className="violation-card card" 
+                      className={`violation-card card ${isSelected ? 'selected' : ''}`} 
                       key={violation.id}
-                      style={{ borderLeft: `4px solid ${styles.iconColor}` }}
+                      style={{ 
+                        borderLeft: isSelected ? `6px solid ${styles.iconColor}` : `4px solid ${styles.iconColor}`,
+                        cursor: 'pointer',
+                        transform: isSelected ? 'translateX(4px)' : 'none',
+                        boxShadow: isSelected ? `0 4px 20px rgba(${styles.iconColor === '#ef4444' ? '239, 68, 68' : styles.iconColor === '#f97316' ? '249, 115, 22' : '234, 179, 8'}, 0.2)` : 'none',
+                        background: isSelected ? 'rgba(255, 255, 255, 0.02)' : undefined,
+                        borderColor: isSelected ? styles.iconColor : undefined
+                      }}
+                      onClick={() => {
+                        selectViolation(isSelected ? null : {
+                          id: violation.id,
+                          severity: violation.severity as any,
+                          category: violation.category,
+                          description: violation.description,
+                          recommendation: violation.recommendation,
+                          affected_entities: (violation.affected_entities || []).map((e: any) => e.type || String(e)),
+                          confidence: violation.confidence,
+                          coordinates: violation.coordinates && violation.coordinates.length > 0 ? (Array.isArray(violation.coordinates[0]) ? (violation.coordinates[0] as [number, number]) : (violation.coordinates as any)) : undefined,
+                          standard_reference: violation.standard_reference || undefined,
+                          pen_type: violation.pen_type || undefined,
+                          is_resolved: violation.is_resolved,
+                          checker_remarks: violation.checker_remarks || undefined
+                        });
+                      }}
                     >
                       <div className="violation-card-top">
                         <div className="violation-title-group">

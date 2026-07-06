@@ -1,5 +1,7 @@
-from typing import Any, Dict
+from typing import Any
+
 from ...logger import logger
+
 
 class PDFGenerator:
     """
@@ -8,7 +10,7 @@ class PDFGenerator:
     """
     
     @staticmethod
-    def generate_compliance_report(session_id: str, payload: Dict[str, Any]) -> str:
+    def generate_compliance_report(session_id: str, payload: dict[str, Any]) -> str:
         """
         Takes raw report JSON and generates a PDF binary path.
         Returns the path to the generated PDF.

@@ -1,17 +1,18 @@
+from typing import Any, TypeVar
+
 from pydantic import BaseModel, Field
-from typing import Any, Optional, Generic, TypeVar
 
 T = TypeVar("T")
 
 class ErrorDetail(BaseModel):
     code: str = Field(..., description="Unique machine-readable uppercase error string")
     message: str = Field(..., description="Human-friendly descriptive error message")
-    detail: Optional[Any] = Field(None, description="Optional diagnostic error properties or traceback")
+    detail: Any | None = Field(None, description="Optional diagnostic error properties or traceback")
 
-class StandardResponse(BaseModel, Generic[T]):
+class StandardResponse[T](BaseModel):
     success: bool = Field(..., description="Indicates if the requested operation succeeded")
-    data: Optional[T] = Field(None, description="Response payload")
-    error: Optional[ErrorDetail] = Field(None, description="Populated error details if success is false")
+    data: T | None = Field(None, description="Response payload")
+    error: ErrorDetail | None = Field(None, description="Populated error details if success is false")
 
 class SystemStatusResponse(BaseModel):
     status: str = Field(..., description="E.g., healthy, degraded, offline")
@@ -23,8 +24,8 @@ class DatabaseHealthDetails(BaseModel):
     status: str
     latency_ms: float
     connected: bool
-    database_name: Optional[str] = None
-    error: Optional[str] = None
+    database_name: str | None = None
+    error: str | None = None
 
 class StorageHealthDetails(BaseModel):
     status: str
@@ -32,9 +33,10 @@ class StorageHealthDetails(BaseModel):
     storage_root: str
     disk_usage: dict
     directories: dict
-    error: Optional[str] = None
+    error: str | None = None
 
 from datetime import datetime
+
 
 class DrawingResponse(BaseModel):
     id: str
@@ -53,14 +55,14 @@ class JobResponse(BaseModel):
     id: str
     drawing_id: str
     status: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
     diagnostics: dict
-    conversion_duration_seconds: Optional[float] = None
-    parsing_duration_seconds: Optional[float] = None
-    total_duration_seconds: Optional[float] = None
+    conversion_duration_seconds: float | None = None
+    parsing_duration_seconds: float | None = None
+    total_duration_seconds: float | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 class UploadResponse(BaseModel):
     drawing: DrawingResponse
@@ -75,9 +77,9 @@ class StandardDocumentResponse(BaseModel):
     file_size_bytes: int
     format: str
     scope: str = "client_specific"
-    client_name: Optional[str] = None
-    category: Optional[str] = None
-    description: Optional[str] = None
+    client_name: str | None = None
+    category: str | None = None
+    description: str | None = None
     metadata: dict
     created_at: datetime
 
@@ -91,30 +93,30 @@ class CreateClientRequest(BaseModel):
 
 class LaunchAuditRequest(BaseModel):
     drawing_id: str
-    reference_drawing_id: Optional[str] = None
-    standard_id: Optional[str] = None
-    client_name: Optional[str] = None
+    reference_drawing_id: str | None = None
+    standard_id: str | None = None
+    client_name: str | None = None
 
 class AuditSessionResponse(BaseModel):
     id: str
     drawing_id: str
-    reference_drawing_id: Optional[str] = None
-    standard_id: Optional[str] = None
-    client_name: Optional[str] = None
+    reference_drawing_id: str | None = None
+    standard_id: str | None = None
+    client_name: str | None = None
     status: str
-    compliance_score: Optional[float] = None
-    confidence_score: Optional[float] = None
-    error_message: Optional[str] = None
+    compliance_score: float | None = None
+    confidence_score: float | None = None
+    error_message: str | None = None
     timings: dict
     diagnostics: dict
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    remarks: Optional[str] = None
-    username: Optional[str] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    remarks: str | None = None
+    username: str | None = None
     is_deleted: bool = False
-    deleted_at: Optional[datetime] = None
-    deleted_by: Optional[str] = None
+    deleted_at: datetime | None = None
+    deleted_by: str | None = None
     is_restored: bool = False
 
 class UpdateAuditSessionRequest(BaseModel):
@@ -130,12 +132,12 @@ class AuditViolationResponse(BaseModel):
     affected_entities: list
     confidence: float
     source: str
-    coordinates: Optional[list] = None
-    standard_reference: Optional[str] = None
+    coordinates: list | None = None
+    standard_reference: str | None = None
     pen_type: str
     is_resolved: bool
-    resolved_at: Optional[datetime] = None
-    checker_remarks: Optional[str] = None
+    resolved_at: datetime | None = None
+    checker_remarks: str | None = None
     created_at: datetime
 
 # PBKDF2 Auth & Session Schemas
@@ -162,7 +164,7 @@ class CreateUserRequest(BaseModel):
     role: str
 
 class UpdateUserRequest(BaseModel):
-    active: Optional[bool] = None
-    role: Optional[str] = None
-    password: Optional[str] = None
+    active: bool | None = None
+    role: str | None = None
+    password: str | None = None
 

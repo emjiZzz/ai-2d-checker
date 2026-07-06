@@ -1,9 +1,11 @@
-import time
-import sys
 import asyncio
+import sys
+import time
+
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
 from .config import settings
 from .logger import logger
 
@@ -11,13 +13,17 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Import Phase 2 Core and Infrastructure
-from .core.security import initialize_local_api_token
-from .infrastructure.storage.path_resolver import bootstrap_storage
-from .infrastructure.database.connection import db_manager
-from .infrastructure.database.indexes import bootstrap_indexes
-from .api.middleware import CorrelationIDMiddleware, RequestDurationMiddleware, ExceptionLoggingMiddleware
+from .api.middleware import (
+    CorrelationIDMiddleware,
+    ExceptionLoggingMiddleware,
+    RequestDurationMiddleware,
+)
 from .api.v1 import router as api_v1_router
+from .core.security import initialize_local_api_token
+from .infrastructure.database.connection import db_manager
 from .infrastructure.database.health import check_database_health
+from .infrastructure.database.indexes import bootstrap_indexes
+from .infrastructure.storage.path_resolver import bootstrap_storage
 from .infrastructure.storage.storage_health import get_storage_diagnostics
 
 app = FastAPI(
@@ -83,8 +89,8 @@ async def startup_event() -> None:
         logger.warning("FastAPI backend is operating in offline/disconnected fallback mode.")
 
     # E. Start Background CAD Processing Queue worker
-    from .infrastructure.cad.processing_queue import processing_queue
     from .infrastructure.audit.audit_pipeline import audit_queue
+    from .infrastructure.cad.processing_queue import processing_queue
     processing_queue.start()
     audit_queue.start()
 
@@ -95,8 +101,8 @@ async def shutdown_event() -> None:
     await db_manager.disconnect()
     
     # Graceful stop of background CAD processing worker
-    from .infrastructure.cad.processing_queue import processing_queue
     from .infrastructure.audit.audit_pipeline import audit_queue
+    from .infrastructure.cad.processing_queue import processing_queue
     await processing_queue.stop()
     await audit_queue.stop()
     

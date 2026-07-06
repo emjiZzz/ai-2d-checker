@@ -115,7 +115,7 @@ interface WorkspaceState {
 }
 
 // Configurable constants
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB default limit
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10GB (Limitless)
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   oldDrawing: null,
@@ -298,15 +298,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     // 2. Validate Extension Normalized to Lowercase
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (!extension || !["dwg", "dxf", "pdf"].includes(extension)) {
-      updateStatus("failed", 0, "Unsupported format. Only PDF, DWG, or DXF files are allowed.");
+    const is3D = ["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(extension || "");
+    const is2D = ["dwg", "dxf", "pdf"].includes(extension || "");
+    
+    if (!extension || (!is2D && !is3D)) {
+      updateStatus("failed", 0, "Unsupported format. Only 2D (PDF, DWG, DXF) or 3D (STEP, IGES, ICD, SolidWorks sldprt/sldasm) files are allowed.");
       set({ compatibilityStatus: "Unsupported" });
       return false;
     }
 
     // 3. Validate File Size Configurable Limits
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      updateStatus("failed", 0, `File exceeds the maximum limit of 50MB.`);
+      updateStatus("failed", 0, `File exceeds the maximum limit.`);
       return false;
     }
 
@@ -432,7 +435,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         // Poll job status
         let attempts = 0;
         let jobDone = false;
-        while (!jobDone && attempts < 40) {
+        while (!jobDone && attempts < 600) {
           attempts++;
           await new Promise((r) => setTimeout(r, 1200));
           
@@ -496,13 +499,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
+    const formats = ["dwg", "dxf", "pdf", "step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"];
+
     if (oldDrawing && newDrawing) {
       const extOld = oldDrawing.file_name.split(".").pop()?.toLowerCase();
       const extNew = newDrawing.file_name.split(".").pop()?.toLowerCase();
       
       if (extOld !== extNew) {
         set({ compatibilityStatus: "Mismatch" });
-      } else if (!["dwg", "dxf", "pdf"].includes(extOld || "")) {
+      } else if (!formats.includes(extOld || "")) {
         set({ compatibilityStatus: "Unsupported" });
       } else {
         set({ compatibilityStatus: "Compatible" });
@@ -511,7 +516,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // Just one loaded
       const active = oldDrawing || newDrawing;
       const ext = active?.file_name.split(".").pop()?.toLowerCase() || "";
-      if (!["dwg", "dxf", "pdf"].includes(ext)) {
+      if (!formats.includes(ext)) {
         set({ compatibilityStatus: "Unsupported" });
       } else {
         set({ compatibilityStatus: "Idle" });

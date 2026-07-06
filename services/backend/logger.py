@@ -1,10 +1,11 @@
-import sys
+import contextvars
 import json
 import logging
-import contextvars
-from datetime import datetime, timezone
+import sys
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
 from .config import settings
 
 # Thread-safe context variable for request correlation IDs
@@ -37,7 +38,7 @@ class JSONFormatter(logging.Formatter):
         clean_msg = SafeRedactor.redact(record.getMessage())
         
         log_object = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": clean_msg,

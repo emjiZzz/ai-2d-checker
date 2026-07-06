@@ -1,21 +1,22 @@
-import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
+
 from ...logger import logger
+
 
 class XLSXComplianceExporter:
     """
     Generates structured Excel audit sheets using openpyxl with resilient fallback mechanisms.
     """
     @staticmethod
-    def generate_xlsx(output_path: Path, session: Any, drawing: Any, standard: Any, violations: List[Any]) -> Path:
+    def generate_xlsx(output_path: Path, session: Any, drawing: Any, standard: Any, violations: list[Any]) -> Path:
         logger.info(f"Generating XLSX technical sheets to: {output_path}")
         
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         try:
             import openpyxl
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
             
             wb = openpyxl.Workbook()
             

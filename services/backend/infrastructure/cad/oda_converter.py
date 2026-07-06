@@ -1,12 +1,14 @@
-import os
 import asyncio
-import time
 import ctypes
+import os
 import subprocess
+import time
 from pathlib import Path
+
 from ...config import settings
-from ...logger import logger
 from ...core.security import validate_sandboxed_path
+from ...logger import logger
+
 
 def get_short_path_name(long_name: str) -> str:
     """
@@ -110,7 +112,7 @@ class ODAConverter:
                     )
                 except subprocess.TimeoutExpired as te:
                     # Reraise as asyncio.TimeoutError to keep consistent exception handling
-                    raise asyncio.TimeoutError() from te
+                    raise TimeoutError() from te
 
             # Execute blocking process execution safely in a separate thread
             result = await asyncio.to_thread(run_subprocess)
@@ -148,7 +150,7 @@ class ODAConverter:
             logger.info(f"Successfully generated converted DXF sandbox file: {actual_dxf_path}")
             return actual_dxf_path
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("ODA Conversion process timed out (exceeded 60s limit).")
             raise RuntimeError("ODA File Converter execution timed out.")
         except Exception as e:
