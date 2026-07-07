@@ -2,6 +2,7 @@ import json
 import os
 import re
 import unicodedata
+from pathlib import Path
 
 try:
     from google import genai
@@ -17,6 +18,7 @@ from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.extracted_entity import ExtractedEntity
 from ...domain.models.standard_chunk import StandardChunk
 from ...domain.models.standard_document import StandardDocument
+from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
 
 class AIEngine:
@@ -53,6 +55,87 @@ class AIEngine:
             key = os.environ.get("GEMINI_API_KEY")
         return key
 
+    @staticmethod
+    def _load_drawing_png(drawing_id: str) -> bytes | None:
+        """
+        Resolves the pre-rendered PNG from the storage/renderings directory and
+        returns its raw bytes for injection into the Gemini Vision multipart request.
+        Returns None if the rendering does not exist (non-fatal — falls back to text-only).
+        """
+        try:
+            render_path: Path = get_storage_root() / "renderings" / f"{drawing_id}.png"
+            if render_path.exists() and render_path.stat().st_size > 0:
+                png_bytes = render_path.read_bytes()
+                logger.info(f"Drawing PNG loaded for Gemini Vision: {render_path} ({len(png_bytes):,} bytes)")
+                return png_bytes
+            logger.warning(f"Drawing PNG not found at {render_path}. Proceeding with text-only audit.")
+        except Exception as e:
+            logger.warning(f"Failed to load drawing PNG for Vision (non-fatal): {e}")
+        return None
+
+    @staticmethod
+    def _calibrate_confidence(raw: float, is_grounded: bool, has_entity: bool) -> float:
+        """
+        Calibrates AI confidence scores mathematically based on grounding verification
+        and database entity linking.
+        """
+        score = raw
+        if not is_grounded:
+            score *= 0.6  # Penalize ungrounded standard references
+        if not has_entity:
+            score *= 0.8  # Penalize sheet-global or unanchored findings
+        return max(0.1, min(1.0, score))
+
+    @staticmethod
+    def _build_structured_context(entities: list, drawing: DrawingDocument) -> dict:
+        """
+        Pre-processes raw entity logs into structured engineering segments
+        to optimize LLM prompt readability and token sizes.
+        """
+        texts = [e for e in entities if e.entity_type == "text"]
+        dimensions = [e for e in entities if e.entity_type == "dimension"]
+        blocks = [e for e in entities if e.entity_type == "block"]
+        tolerances = [e for e in entities if e.entity_type == "tolerance"]
+
+        def clean_txt(ent) -> str:
+            props = ent.properties or {}
+            return (props.get("text") or props.get("value") or "").strip()
+
+        # Group and classify title block items
+        title_block_items = []
+        for txt in texts:
+            if txt.layer.lower() in ("am_bor", "border", "title", "title_block"):
+                txt_val = clean_txt(txt)
+                if txt_val:
+                    title_block_items.append(txt_val)
+
+        # Extract structured BOM cell entries
+        bom_cells = []
+        for blk in blocks:
+            attrs = blk.properties.get("attributes", {}) if blk.properties else {}
+            if attrs:
+                bom_cells.append(attrs)
+
+        return {
+            "metadata": {
+                "file_name": drawing.file_name,
+                "format": drawing.format,
+                "units": "Metric" if drawing.metadata.get("measurement", 1) == 1 else "Imperial",
+                "acad_version": drawing.metadata.get("acad_version", "unknown")
+            },
+            "layers": list(set(e.layer for e in entities)),
+            "geometry_counts": {
+                "lines": len([e for e in entities if e.entity_type == "line"]),
+                "circles": len([e for e in entities if e.entity_type == "circle"]),
+                "arcs": len([e for e in entities if e.entity_type == "arc"]),
+                "polylines": len([e for e in entities if e.entity_type == "polyline"])
+            },
+            "dimensions": [clean_txt(d) for d in dimensions if clean_txt(d)],
+            "title_block_annotations": title_block_items,
+            "bom_table_cells": bom_cells[:20],
+            "gd_and_t_frames": [clean_txt(t) for t in tolerances if clean_txt(t)]
+        }
+
     @classmethod
     async def audit_drawing(
         cls,
@@ -62,7 +145,7 @@ class AIEngine:
         grounding_chunks: list[StandardChunk],
         lessons_learned: list[StandardChunk] | None = None
     ) -> list[AuditViolation]:
-        logger.info(f"Initiating Gemini Vision Orchestrator for drawing {drawing.file_name} under standard {standard.name}")
+        logger.info(f"Initiating Dual-Pass Visual AI Grounding for drawing {drawing.file_name} under standard {standard.name}")
         violations: list[AuditViolation] = []
 
         api_key = cls._get_api_key()
@@ -70,197 +153,138 @@ class AIEngine:
             logger.warning("Gemini API key is not configured or google-generativeai is not installed. Falling back to high-fidelity mock audit pipeline.")
             return await cls._run_mock_ai_audit(audit_session_id, drawing, standard, grounding_chunks)
 
-        # 1. Fetch extracted geometries
+        # Fetch entities
         entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
-        
-        # 2. Assemble Lessons Learned context (RAG — historically-resolved findings)
+
+        # Step 3.1: Build structured context
+        structured_context = cls._build_structured_context(entities, drawing)
+
+        # Assemble Lessons Learned and Grounding
         lessons_text = ""
         if lessons_learned:
             lessons_text = "\n=== LESSONS LEARNED FROM PAST REVIEWS ===\n"
-            lessons_text += "The following are historically-resolved compliance findings from previous audits "\
-                            "of similar drawings. Use them as additional context to guide your analysis:\n\n"
             for lesson in lessons_learned:
-                header = lesson.section_header or "General"
-                lessons_text += f"\n--- LESSON [{header}] ---\n{lesson.content}\n"
-            lessons_text += "\n=== END LESSONS LEARNED ===\n"
-            logger.debug(f"Injecting {len(lessons_learned)} RAG lesson(s) into Gemini context window.")
+                lessons_text += f"[{lesson.section_header or 'General'}]: {lesson.content}\n"
+            lessons_text += "=== END LESSONS ===\n"
 
-        # 3. Assemble Grounding Context (RAG standard chunks)
         grounding_text = ""
         for chunk in grounding_chunks:
-            header = chunk.section_header or "General Standard Section"
-            grounding_text += f"\n--- SECTION: {header} ---\n{chunk.content}\n"
+            grounding_text += f"[{chunk.section_header or 'Clause'}]: {chunk.content}\n"
 
-        # 3. Assemble CAD Context
-        cad_summary = {
-            "file_name": drawing.file_name,
-            "format": drawing.format,
-            "units": "Metric" if drawing.metadata.get("measurement", 1) == 1 else "Imperial",
-            "acad_version": drawing.metadata.get("acad_version", "unknown"),
-            "total_entities": len(entities),
-            "layers": list(set(e.layer for e in entities)),
-            "entities_breakdown": {},
-            "entities": []
-        }
-        for ent in entities:
-            cad_summary["entities_breakdown"][ent.entity_type] = cad_summary["entities_breakdown"].get(ent.entity_type, 0) + 1
-            
-            # Normalize text properties to clean UTF-8 strings
-            props = {}
-            if isinstance(ent.properties, dict):
-                for k, v in ent.properties.items():
-                    if isinstance(v, str):
-                        props[k] = cls._normalize_cad_text(v)
-                    else:
-                        props[k] = v
-            else:
-                props = ent.properties
+        # Load drawing rendering PNG (Phase 1.1)
+        png_bytes = cls._load_drawing_png(str(drawing.id))
 
-            cad_summary["entities"].append({
-                "entity_id": str(ent.id),
-                "type": ent.entity_type,
-                "layer": ent.layer,
-                "properties": props
-            })
-
-        # 4. Construct System Instruction & Auditing Prompts
-        scope_instructions = (
-            "--- STRICT EVALUATION SCOPES ---\n"
-            "1. DRAWING VIEWS LAYER SCOPE\n"
-            "Isolate data capture and marker evaluation only to the following specific visual elements inside the drawing views:\n"
-            "- Origin: Coordinate base points.\n"
-            "- Alignment Views:Orientation layouts across multi-view projections.\n"
-            "- Line Attributes: Changes in stroke colors, line types (hidden, center, solid), and line weights/thickness.\n"
-            "- Dimensions: Numerical measurement strings, leader lines, and tolerances.\n"
-            "- Hole Properties: Hole callouts, countersinks, counterbores, and depths.\n"
-            "- Chamfer & Radius: Edge break treatments and corner rounding parameters.\n"
-            "- Machining Symbols: Surface finish/roughness indicators.\n"
-            "- Welding Symbols: Weld specifications, fillets, and tail notes.\n"
-            "- Geometric Tolerances: Feature control frames (GD&T metadata like parallelism, concentricity, etc.).\n"
-            "- Additional Views: Detailed views, projection arrow views, and cross-sectional cut views.\n"
-            "- Text Attributes: Text-specific properties like font family selection, text size, and character spacing.\n\n"
-            "2. NOTES LAYER SCOPE\n"
-            "Isolate text comparison markers to:\n"
-            "- Standard Notes: General default drawing instructions.\n"
-            "- Special Notes: Specific callouts or custom technical notes appended to the blueprint.\n\n"
-            "3. BILL OF MATERIALS (BOM) LAYOUT SCOPE\n"
-            "Update the comparison schema to parse and align table column fields using two distinct layouts. Ensure the system switches validation strategies based on the BOM type found:\n"
-            " 3.1 PARTS DRAWING BOM LAYOUT\n"
-            "Isolate structural row/cell evaluation exclusively to these 7 schema tracks:\n"
-            "1. No. (Item Number Anchor Key)\n"
-            "2. 材質 Code (Material Code)\n"
-            "3. 材料寸法/型式 Dimension/Model No. (Remember to sanitize 'ラ' encoding glitch to 'x')\n"
-            "4. 材料個数 (Material Quantity)\n"
-            "5. 素材重量 Kg Material Weight (kg)\n"
-            "6. 仕上重量 Kg Finished Weight (kg)\n"
-            "7. 備 考 REMARK (Only flag differences if actual content changes; ignore blank spacers or dashes)\n\n"
-            " 3.2 ASSEMBLY DRAWING BOM LAYOUT\n"
-            "Isolate structural row/cell evaluation exclusively to these 5 schema tracks:\n"
-            "1. No. (Item Number Anchor Key)\n"
-            "2. 図面番号 DWG No. / Type\n"
-            "3. 名称 TITLE\n"
-            "4. 個数 Q'ty\n"
-            "5. 備考 Remark\n\n"
-            "4. TITLE BLOCK SCOPE\n"
-            "Isolate metadata extraction and field diffing exclusively to these 10 distinct title block attributes:\n"
-            "- 総製作個数 T. Q'ty (Total Quantity)\n"
-            "- 共通番号 Cross ref No.\n"
-            "- 旧図面番号 Previous Dwg. No.\n"
-            "- 設計 DESIGNED / 作成 DRAWN\n"
-            "- 尺度 SCALE (Remember string equivalence rules: treat '1:5' and '1/5' as identical)\n"
-            "- 工事番号 Job No.\n"
-            "- 標準図番号 Std. No.\n"
-            "- 機器記号 Mach. code / ユニット記号 Unit Code\n"
-            "- 図面番号 DWG. No. / 機種 Machine Type / ユニット Unit No. / 部品 Part No. / 特性 派生 Branch\n"
-            "- 名称 TITLE\n\n"
-            "5. ISOMETRIC VIEW SCOPE\n"
-            "Isolate geometric/visual evaluation within isometric viewport blocks exclusively to:\n"
-            "- Orientation (3D angle representation)\n"
-            "- Scale\n"
-            "- Location (Relative (x,y) space placement on sheet layout)\n"
-            "--------------------------------\n"
+        # =============================================================================
+        # PASS 1: Standards & Semantic Compliance
+        # =============================================================================
+        pass1_instruction = (
+            "You are a senior engineering auditor. Compare the drawing metadata and visual details against the standard.\n"
+            "Analyze dimensions, tolerance specs, BOM formatting, and text notes completeness.\n"
+            "Return a JSON object containing a list of compliance 'violations'.\n"
+            "JSON Format Schema:\n"
+            "{\n"
+            "  \"violations\": [\n"
+            "    {\n"
+            "      \"severity\": \"critical\" | \"high\" | \"medium\" | \"low\",\n"
+            "      \"category\": \"layer_compliance\" | \"dimension_standard\" | \"notes_completeness\" | \"bom_reconciliation\" | \"title_block_completeness\",\n"
+            "      \"description\": \"Specific description of the infraction.\",\n"
+            "      \"recommendation\": \"Actionable steps to fix it.\",\n"
+            "      \"confidence\": 0.1 to 1.0,\n"
+            "      \"standard_reference\": \"Citation of the clause or page from the grounding standard.\",\n"
+            "      \"target_entity_id\": \"Provide the database entity_id of the value/text entity if you can link it, or 'SHEET_GLOBAL'.\",\n"
+            "      \"marker_shape\": \"BOX\" or \"CIRCLE\"\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "Include only items that are violations. Do not include matched or correct items."
         )
 
-        system_instruction = (
-            "You are an expert engineering auditor specialized in technical drawings, ISO drafting standards, and compliance audits.\n"
-            "Your task is to compare the extracted CAD drawing properties and coordinate features against the provided grounding standard chunks.\n"
-            f"{scope_instructions}"
-            "You must follow a strict Two-Pass comparative constraint (The Anchor-Delta Rule):\n"
-            "Pass 1 (Anchor): Find the corresponding element in the KMTI drawing from the Original drawing. If missing, status must be 'ADDED' or 'DELETED'.\n"
-            "Pass 2 (Delta): If it exists, compare their exact normalized string values.\n"
-            "  - NUMERICAL EQUIVALENCE RULE: Treat numerical strings as mathematically equivalent if they only differ by trailing decimal zeros.\n"
-            "  - BOM WEIGHT FORMAT RULE: For 'Material Weight' and 'Finished Weight' BOM fields, the KMTI drawing MUST always be formatted to exactly 2 decimal places. If Original is '3.1' and KMTI is '3.10', it is 'MATCHED'. If the KMTI drawing does NOT have exactly 2 decimal places (e.g., '3.1'), it MUST be flagged as a violation ('CHANGED') for breaking the format standard, even if mathematically equivalent to Original.\n"
-            "  - WHITESPACE IGNORANCE RULE: Ignore structural formatting differences such as newlines (\\n), tabs, or duplicate spaces. If the text content is identical when wrapped onto a single line, it MUST be 'MATCHED'.\n"
-            "  - TOLERANCE & FORMATTING EQUIVALENCE RULE: Evaluate engineering tolerances and dates mathematically or logically (e.g., '50 ±0.1' is equivalent to '50 +0.1/-0.1'; '2024.10.05' is equivalent to '24-10-05'). If they are logically identical, they MUST be 'MATCHED'.\n"
-            "  - SEMANTIC TRANSLATION RULE: If the KMTI drawing contains an accurate Japanese translation of an English note from the Original drawing (or vice versa), it MUST be evaluated as 'MATCHED'.\n"
-            "  - For all other cases, if they are identical or mathematically equivalent, the status MUST be 'MATCHED'. If they differ, it MUST be 'CHANGED'.\n"
-            "EXHAUSTIVE EVALUATION REQUIREMENT: You MUST systematically evaluate EVERY SINGLE element defined in the 'STRICT EVALUATION SCOPES' and cross-reference them against all categories in the Checking List. Do NOT skip, aggregate, or summarize elements. Every single difference found in the scope MUST have its own distinct violation marker.\n"
-            "CRITICAL EXCLUSION RULE: You must ONLY output items that are 'ADDED', 'DELETED', or 'CHANGED' in the final violations list. NEVER include 'MATCHED' items in your output.\n"
-            "STRICT DELTA ENFORCEMENT: You must flag ANY text, value, or property difference between the Original and KMTI drawing as a violation ('CHANGED'), no matter how minor, unless specifically permitted by the NUMERICAL EQUIVALENCE RULE. Do NOT forgive minor text differences (e.g., 'M24' vs 'M24通シ') - if the string characters differ, it is a strict violation.\n"
-            "You MUST set the marker_shape to 'BOX' if the target entity is text, notes, dimensions, or ANY cell within a BOM table (including numerical weights or quantities). Set it to 'CIRCLE' if the target entity is a geometric hole, a center-line, or a drill node coordinate.\n"
-            "You CANNOT invent layout coordinates. You must map every audit violation strictly to an existing entity_id from our incoming cad_summary_json (saving it under target_entity_id).\n"
-            "CRITICAL MARKER TARGETING: When an attribute, title block field, or BOM field has a violation, you MUST assign the target_entity_id to the specific entity representing the VALUE of the attribute. DO NOT assign the marker to the label/name of the attribute. The marker must only highlight the incorrect value.\n"
-            "If an issue applies to the whole drawing sheet, you must output 'SHEET_GLOBAL' for target_entity_id."
+        pass1_prompt = (
+            f"{lessons_text}\n"
+            f"Grounding Standard Chunks:\n{grounding_text}\n\n"
+            f"Drawing Metadata Context:\n{json.dumps(structured_context, indent=2)}\n\n"
+            "Identify all standard violations."
         )
 
-        prompt = (
-            f"{lessons_text}"
-            f"Grounding Engineering Standard: \n{grounding_text}\n\n"
-            f"Audited Drawing CAD Metadata & Structural Geometries:\n{json.dumps(cad_summary, indent=2)}\n\n"
-            "Find and document compliance violations."
+        # =============================================================================
+        # PASS 2: Visual Layout & Aesthetic Quality (Drawing Views / Spatial Layout)
+        # =============================================================================
+        pass2_instruction = (
+            "You are a visual drawing inspector. Inspect the physical drawing layout (the PNG image provided) for visual issues:\n"
+            "- Crossings: Dimension lines crossing object lines or other dimension lines.\n"
+            "- Clarity: Crowded dimensions, text overlapping other annotations, or truncated viewports.\n"
+            "- Missing Geometry: Circles missing dash-dot center lines, or section cuts missing view arrows.\n"
+            "- Standard views: Are orthogonal views (front, top, side) aligned projectionally?\n"
+            "Return a JSON object containing a list of compliance 'violations' using the same JSON schema as Pass 1."
         )
 
-        try:
-            # Initialise the new google.genai Client with the API key
-            client = genai.Client(api_key=api_key)
+        pass2_prompt = (
+            f"Drawing Metadata Context:\n{json.dumps(structured_context['metadata'], indent=2)}\n\n"
+            "Examine the image carefully and identify all visual and layout violations."
+        )
 
-            # Build the combined prompt as a single user message
-            full_prompt = f"{system_instruction}\n\n{prompt}"
+        client = genai.Client(api_key=api_key)
 
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=full_prompt,
-                config=genai_types.GenerateContentConfig(
-                    response_mime_type="application/json"
+        async def run_pass(instruction: str, prompt_text: str, is_visual: bool) -> list:
+            content_parts = []
+            if is_visual and png_bytes and genai_types is not None:
+                content_parts.append(
+                    genai_types.Part.from_bytes(data=png_bytes, mime_type="image/png")
                 )
-            )
-            raw_text = response.text.strip()
+            content_parts.append(genai_types.Part.from_text(text=f"{instruction}\n\n{prompt_text}"))
 
-            
-            report_data = json.loads(raw_text)
-            items = report_data.get("violations", [])
-            
-            for item in items:
-                # 5. Hallucination Filtering and Confidence Normalization
-                ref = item.get("standard_reference", "")
-                confidence = float(item.get("confidence", 0.8))
-                target_entity_id = item.get("target_entity_id", "SHEET_GLOBAL")
-                
-                # If Gemini refers to a section completely absent from the grounding text, penalize/filter it
-                if ref and not cls._is_reference_grounded(ref, grounding_chunks):
-                    logger.warning(f"AI violation reference '{ref}' is not grounded in standards chunks. Filtering out hallucination.")
-                    continue
-
-                affected = [{"entity_id": target_entity_id, "marker_shape": item.get("marker_shape", "BOX")}] if target_entity_id != "SHEET_GLOBAL" else []
-
-                violations.append(
-                    DBAuditViolation(
-                        audit_session_id=audit_session_id,
-                        severity=item.get("severity", "medium"),
-                        category=item.get("category", "unspecified_compliance"),
-                        description=item.get("description", "Infraction of engineering standards detected."),
-                        recommendation=item.get("recommendation", "Adjust drawing parameters to standard compliance."),
-                        confidence=max(0.1, min(1.0, confidence)),
-                        source="gemini_vision",
-                        standard_reference=ref,
-                        affected_entities=affected
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=content_parts,
+                    config=genai_types.GenerateContentConfig(
+                        response_mime_type="application/json"
                     )
                 )
+                res_data = json.loads(response.text.strip())
+                return res_data.get("violations", [])
+            except Exception as e:
+                logger.error(f"Pass failed: {e}")
+                return []
 
-        except Exception as e:
-            logger.error(f"Gemini Vision Orchestrator failed: {str(e)}")
-            # Fail gracefully, fallback to standard mock checks so the app remains offline-capable
-            return await cls._run_mock_ai_audit(audit_session_id, drawing, standard, grounding_chunks)
+        # Run both passes asynchronously
+        import asyncio
+        p1_task = run_pass(pass1_instruction, pass1_prompt, is_visual=True)
+        p2_task = run_pass(pass2_instruction, pass2_prompt, is_visual=True)
+        
+        p1_violations, p2_violations = await asyncio.gather(p1_task, p2_task)
+
+        # Consolidate and calibrate
+        for item in p1_violations + p2_violations:
+            ref = item.get("standard_reference", "")
+            confidence = float(item.get("confidence", 0.8))
+            target_entity_id = item.get("target_entity_id", "SHEET_GLOBAL")
+
+            # 3.1/3.3 Calibrate confidence based on standard grounding and entity matching
+            is_grounded = bool(ref) and cls._is_reference_grounded(ref, grounding_chunks)
+            has_entity = target_entity_id != "SHEET_GLOBAL" and any(str(e.id) == target_entity_id for e in entities)
+            confidence = cls._calibrate_confidence(confidence, is_grounded, has_entity)
+
+            # Hallucination filter: If standard_reference matches a standard chunk, or if it is visual/layout without standard chunk requirement
+            if ref and not is_grounded and item.get("category") != "layer_compliance":
+                logger.warning(f"AI violation reference '{ref}' is not grounded in standard chunks. Filtering out.")
+                continue
+
+            affected = [{"entity_id": target_entity_id, "marker_shape": item.get("marker_shape", "BOX")}] if target_entity_id != "SHEET_GLOBAL" else []
+
+            violations.append(
+                AuditViolation(
+                    audit_session_id=audit_session_id,
+                    severity=item.get("severity", "medium"),
+                    category=item.get("category", "unspecified_compliance"),
+                    description=item.get("description", "Infraction of engineering standards detected."),
+                    recommendation=item.get("recommendation", "Adjust drawing parameters to standard compliance."),
+                    confidence=confidence,
+                    source="gemini_vision",
+                    standard_reference=ref or "Visual Standard",
+                    affected_entities=affected
+                )
+            )
 
         return violations
 
@@ -312,7 +336,7 @@ class AIEngine:
             
             if non_standard_text_heights > 0:
                 violations.append(
-                    DBAuditViolation(
+                    AuditViolation(
                         audit_session_id=audit_session_id,
                         severity="medium",
                         category="non_standard_text_height",
@@ -326,12 +350,12 @@ class AIEngine:
 
         if has_tolerance_standard:
             # Check for general tolerance declarations in texts
-            texts_values = [e.properties.get("value", "") for e in entities if e.entity_type == "text"]
+            texts_values = [e.properties.get("text", e.properties.get("value", "")) for e in entities if e.entity_type == "text"]
             has_tolerance_decl = any(re.search(r"ISO\s*2768", val, re.IGNORECASE) for val in texts_values)
             
             if not has_tolerance_decl:
                 violations.append(
-                    DBAuditViolation(
+                    AuditViolation(
                         audit_session_id=audit_session_id,
                         severity="high",
                         category="missing_general_tolerances",
@@ -349,7 +373,7 @@ class AIEngine:
             section_ref = grounding_chunks[0].section_header or "Section 1.1"
             
         violations.append(
-            DBAuditViolation(
+            AuditViolation(
                 audit_session_id=audit_session_id,
                 severity="low",
                 category="standards_compliance_notice",

@@ -128,5 +128,40 @@ class StandardsLoader:
         if db_chunks:
             await StandardChunk.insert_many(db_chunks)
 
+        # --- PHASE 1.2: Write chunk embeddings to the local semantic vector index ---
+        # This closes the gap where RAG retrieval relied solely on MongoDB regex ($or keyword).
+        # From this point forward, newly ingested standard chunks are findable by cosine
+        # similarity, enabling true semantic retrieval in AuditOrchestrator._retrieve_lessons_learned().
+        try:
+            from ..ai.vectorstore.embedding_provider import EmbeddingProvider
+            from ..ai.vectorstore.lancedb_manager import LanceDBManager
+
+            provider = EmbeddingProvider()
+            db_manager = LanceDBManager()
+
+            texts = [c["content"] for c in chunks]
+            vectors = provider.embed_texts(texts)
+
+            vector_records = []
+            for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
+                vector_records.append({
+                    "vector": vec,
+                    "text": chunk["content"],
+                    "metadata": {
+                        "standard_id": str(doc.id),
+                        "standard_hash": standard_hash,
+                        "section_header": chunk["section_header"],
+                        "chunk_index": i,
+                        "page_number": chunk["metadata"].get("page_number", 1) if isinstance(chunk.get("metadata"), dict) else 1
+                    }
+                })
+
+            db_manager.write_embeddings("standards_reference", vector_records)
+            logger.info(f"Vector index: wrote {len(vector_records)} semantic embeddings for standard '{name}'.")
+
+        except Exception as vec_err:
+            # Non-fatal: MongoDB-backed chunks are already saved; vector index will be rebuilt on next reindex.
+            logger.warning(f"Vector indexing failed for standard '{name}' (non-fatal, continuing): {vec_err}")
+
         logger.info(f"Ingested standard standard document '{name}' with {len(db_chunks)} parsed chunks successfully.")
         return doc, False

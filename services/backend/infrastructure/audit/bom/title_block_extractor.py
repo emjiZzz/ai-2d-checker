@@ -4,7 +4,7 @@ from typing import List, Optional
 from ...utils.text import safe_decode
 from .constants import map_signature_value
 
-def extract_title_block(entities: list, all_text_list: List[str] = None) -> dict:
+def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_results: dict = None) -> dict:
     """Dynamically search the drawing text tokens for each of the 11 title block fields."""
     if all_text_list is None:
         all_text_list = [e.properties.get("text", "") for e in entities if getattr(e, "entity_type", "") == "text"]
@@ -281,21 +281,75 @@ def extract_title_block(entities: list, all_text_list: List[str] = None) -> dict
         else:
             return closest_candidate[1], closest_candidate[2]
 
-    f_qty, qty_c = extract_proximity_value(["T. Q'ty", "T. Q’ty", "総製作個数"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
+    import unicodedata
+    def _normalize_for_match(text: str) -> str:
+        if not text:
+            return ""
+        t = unicodedata.normalize('NFKC', str(text)).lower()
+        t = t.replace("%%c", "⌀").replace("%%d", "°").replace("%%p", "±")
+        return re.sub(r'\s+', '', t)
+
+    ocr_mapping = {}
+    if ocr_results:
+        ocr_mapping = {
+            "QTY": ocr_results.get("QTY"),
+            "DESIGNED": ocr_results.get("DESIGNED"),
+            "DRAWN": ocr_results.get("DRAWN"),
+            "SCALE": ocr_results.get("SCALE"),
+            "DWG NO": ocr_results.get("DWG_NO"),
+            "TITLE": ocr_results.get("TITLE")
+        }
+
+    def resolve_field(field_key: str, label_patterns: list, direction='below', dx_tol=8.0, dy_tol=25.0, dy_min=1.0, exclude_patterns=None, prefer_lowest_y=False, prefer_highest_y=False) -> tuple:
+        ocr_val = ocr_mapping.get(field_key)
+        if ocr_val is not None and str(ocr_val).strip() != "" and str(ocr_val).upper().strip() != "NONE":
+            ocr_val_str = str(ocr_val).strip()
+            norm_ocr = _normalize_for_match(ocr_val_str)
+            
+            # Ground coordinates using normalized matching
+            matched_coords = None
+            for e in entities:
+                if getattr(e, "entity_type", "") == "text":
+                    txt = e.properties.get("text", "") if getattr(e, "properties", None) else ""
+                    if txt:
+                        decoded = safe_decode(txt)
+                        if _normalize_for_match(decoded) == norm_ocr:
+                            geom = getattr(e, "geometry", {}) or {}
+                            ins = geom.get("insert") or [0, 0, 0]
+                            matched_coords = [ins[0], ins[1]]
+                            break
+                            
+            if matched_coords is not None:
+                return ocr_val_str, matched_coords
+            else:
+                # Grounding miss: keep OCR text value and query heuristic coords only
+                _, heuristic_coords = extract_proximity_value(
+                    label_patterns, direction, dx_tol, dy_tol, dy_min,
+                    exclude_patterns, prefer_lowest_y, prefer_highest_y
+                )
+                return ocr_val_str, heuristic_coords
+
+        # Fallback to spatial heuristics
+        return extract_proximity_value(
+            label_patterns, direction, dx_tol, dy_tol, dy_min,
+            exclude_patterns, prefer_lowest_y, prefer_highest_y
+        )
+
+    f_qty, qty_c = resolve_field("QTY", ["T. Q'ty", "T. Q’ty", "総製作個数"], "below", 20.0, 30.0, 1.0, prefer_highest_y=True)
     f_cross_ref, cross_ref_c = extract_proximity_value(["Cross ref No.", "共通番号"], "below", prefer_highest_y=True)
     f_prev_dwg, prev_dwg_c = extract_proximity_value(["Previous Dwg. No.", "旧図面番号"], "below", prefer_highest_y=True)
     
-    f_drawn, drawn_c = extract_proximity_value(["製図", "drawn"], "below", dx_tol=18.0, dy_tol=18.0, dy_min=0.5, exclude_patterns=["設計", "検図", "承認"])
-    f_designed, designed_c = extract_proximity_value(["設計", "designed"], "below", dx_tol=18.0, dy_tol=18.0, dy_min=0.5, exclude_patterns=["製図", "検図", "承認"])
-    f_scale, scale_c = extract_proximity_value(["SCALE", "尺度"], "right", dx_tol=45.0, dy_tol=8.0, dy_min=1.0)
+    f_drawn, drawn_c = resolve_field("DRAWN", ["製図", "drawn"], "below", dx_tol=18.0, dy_tol=18.0, dy_min=0.5, exclude_patterns=["設計", "検図", "承認"])
+    f_designed, designed_c = resolve_field("DESIGNED", ["設計", "designed"], "below", dx_tol=18.0, dy_tol=18.0, dy_min=0.5, exclude_patterns=["製図", "検図", "承認"])
+    f_scale, scale_c = resolve_field("SCALE", ["SCALE", "尺度"], "right", dx_tol=45.0, dy_tol=8.0, dy_min=1.0)
     
     f_job, job_c = extract_proximity_value(["Job No.", "工事番号"], "below", prefer_lowest_y=True)
     f_std, std_c = extract_proximity_value(["Std. No.", "標準図番号"], "below")
     f_standard, standard_c = extract_proximity_value(["Standard"], "below")
     
     f_mach, mach_c = extract_proximity_value(["Mach. code", "Unit Code", "機器記号", "ユニット記号"], "below", prefer_lowest_y=True)
-    f_dwg, dwg_c = extract_proximity_value(["DWG. No.", "図面番号", "図番"], "below", dx_tol=20.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
-    f_title, title_c = extract_proximity_value(["TITLE", "名称", "品名"], "below", dx_tol=50.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
+    f_dwg, dwg_c = resolve_field("DWG NO", ["DWG. No.", "図面番号", "図番"], "below", dx_tol=20.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
+    f_title, title_c = resolve_field("TITLE", ["TITLE", "名称", "品名"], "below", dx_tol=50.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
 
     res = {
         "QTY": {"value": f_qty, "coordinates": qty_c},

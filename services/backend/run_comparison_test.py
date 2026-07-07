@@ -7,21 +7,31 @@ import os
 # Add g:\APP DEVELOPMENT\ai-2d-checker to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from services.backend.api.v1 import perform_physical_comparison
-from services.backend.api.schemas import PhysicalComparisonRequest
-from services.backend.domain.models.drawing_document import DrawingDocument
-from services.backend.domain.models.extracted_entity import ExtractedEntity
+try:
+    from services.backend.api.routers.audits import perform_physical_comparison
+    from services.backend.api.schemas import PhysicalComparisonRequest
+    from services.backend.domain.models.drawing_document import DrawingDocument
+    from services.backend.domain.models.extracted_entity import ExtractedEntity
+except (ImportError, ModuleNotFoundError):
+    try:
+        from api.routers.audits import perform_physical_comparison
+        from api.schemas import PhysicalComparisonRequest
+        from domain.models.drawing_document import DrawingDocument
+        from domain.models.extracted_entity import ExtractedEntity
+    except Exception:
+        sys.path.append('services/backend')
+        from api.routers.audits import perform_physical_comparison
+        from api.schemas import PhysicalComparisonRequest
+        from domain.models.drawing_document import DrawingDocument
+        from domain.models.extracted_entity import ExtractedEntity
 
 async def main():
-    client = AsyncIOMotorClient('mongodb://127.0.0.1:27017')
-    await init_beanie(
-        database=client['ai_2d_checker'],
-        document_models=[DrawingDocument, ExtractedEntity]
-    )
+    from services.backend.infrastructure.database.connection import db_manager
+    await db_manager.connect()
     
     # Use CR19061U01 assembly drawings
-    ref_id = "6a0e93c965fe35366de1ceab"
-    rev_id = "6a0e93e265fe35366de1dfec"
+    ref_id = "6a4c9136d3519ef21ef800de"
+    rev_id = "6a4c914ad3519ef21ef8120f"
     
     req = PhysicalComparisonRequest(
         reference_drawing_id=ref_id,

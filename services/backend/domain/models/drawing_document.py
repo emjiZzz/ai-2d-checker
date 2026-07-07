@@ -15,6 +15,13 @@ class DrawingDocument(Document):
     status: str = Field("queued", description="Ingestion/extraction state: queued, processing, completed, failed")
     entity_counts: dict[str, int] = Field(default_factory=dict, description="Counts of lines, circles, dimensions, etc.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Extracted structural drawing metadata")
+    
+    # --- PHASE 7.1: DrawingDocument Revision Chain fields ---
+    part_number: str | None = Field(None, description="Extracted part number identifier")
+    revision_letter: str | None = Field(None, description="Drawing revision index (e.g. A, B, C)")
+    previous_revision_id: str | None = Field(None, description="Reference to previous revision DrawingDocument")
+    is_latest_revision: bool = Field(True, description="True if this is the most current revision in system")
+
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Record creation time")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Record last update time")
 
@@ -23,5 +30,7 @@ class DrawingDocument(Document):
         indexes = [
             IndexModel([("file_hash", ASCENDING)], unique=True),
             IndexModel([("created_at", ASCENDING)]),
-            IndexModel([("status", ASCENDING)])
+            IndexModel([("status", ASCENDING)]),
+            IndexModel([("part_number", ASCENDING)]),
+            IndexModel([("is_latest_revision", ASCENDING)])
         ]

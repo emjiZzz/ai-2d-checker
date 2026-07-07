@@ -1,0 +1,330 @@
+import re
+from typing import List, Dict, Any, Optional
+from ...utils.text import compare_values
+from ..bom_analyzer import BOMAnalyzer
+
+def is_empty_placeholder_remark(val: str) -> bool:
+    if not val or val == "NONE":
+        return True
+    v = val.strip()
+    v = re.sub(r'^[-\u2014\u2015\u2500\u30fc\s]*$', '', v)
+    return len(v) == 0
+
+def get_val_outer(row_dict, key_name):
+    obj = row_dict.get(key_name, {})
+    if isinstance(obj, dict):
+        return obj.get("value", "NONE") or "NONE"
+    return obj or "NONE"
+
+def get_row_key_local(row):
+    no_val = get_val_outer(row, "NO")
+    if no_val == "NONE":
+        return ""
+    return no_val.strip()
+
+def key_sort_fn_local(key_str):
+    if key_str.startswith("_ref_idx_"):
+        try:
+            return (2, int(key_str.split("_")[-1]), key_str)
+        except Exception:
+            pass
+    if key_str.startswith("_rev_idx_"):
+        try:
+            return (3, int(key_str.split("_")[-1]), key_str)
+        except Exception:
+            pass
+    try:
+        nums = re.findall(r'\d+', key_str)
+        if nums:
+            return (0, int(nums[0]), key_str)
+    except Exception:
+        pass
+    return (1, 0, key_str)
+
+def is_blank_spacer_local(row, is_assembly_drawing):
+    if not row:
+        return True
+    if is_assembly_drawing:
+        dwg = get_val_outer(row, "DWG_NO")
+        title = get_val_outer(row, "TITLE")
+        return dwg == "NONE" and title == "NONE"
+    else:
+        code = get_val_outer(row, "CODE")
+        dim = get_val_outer(row, "DIMENSION")
+        return code == "NONE" and dim == "NONE"
+
+def sanitize_title_value(val):
+    if val == "NONE" or not val:
+        return val
+    val = re.sub(
+        r'^(\s*|drawn|designed|checked|approved'
+        r'|mach\.?\s*code|unit\s*code'
+        r'|job\s*no\.?|dwg\s*no\.'
+        r'|scale)'
+        r'[\s\t]*[:\-\]+[\s\t]*',
+        '', val, flags=re.IGNORECASE
+    )
+    return val.strip()
+
+def inject_title_block_markings(
+    clean_markings: list,
+    ref_title_fields: dict,
+    rev_title_fields: dict,
+    ref_entities: list,
+    rev_entities: list
+) -> None:
+    field_labels_map = {
+        "QTY": " T. Q'ty (Total Quantity)",
+        "CROSS REF NO": " Cross ref No.",
+        "PREVIOUS DWG NO": " Previous Dwg. No.",
+        "DESIGNED": " DESIGNED",
+        "DRAWN": " DRAWN",
+        "SCALE": " SCALE",
+        "NAME": " TITLE",
+        "JOB NO": " Job No.",
+        "STD NO": " Std. No.",
+        "STANDARD": " Standard",
+        "MACHINE CODE": " Mach. code /  Unit Code",
+        "DWG NO": " DWG. No. /  Machine Type /  Unit No. /  Part No. /   Branch"
+    }
+
+    for field_key, display_label in field_labels_map.items():
+        orig_obj = ref_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
+        rev_obj = rev_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
+        
+        orig_val = sanitize_title_value(orig_obj.get("value", "NONE") if isinstance(orig_obj, dict) else orig_obj)
+        kmti_val = sanitize_title_value(rev_obj.get("value", "NONE") if isinstance(rev_obj, dict) else rev_obj)
+        kmti_coords = rev_obj.get("coordinates", None) if isinstance(rev_obj, dict) else None
+        orig_coords = orig_obj.get("coordinates", None) if isinstance(orig_obj, dict) else None
+        
+        # Equivalence checking
+        status_val = compare_values(orig_val, kmti_val)
+
+        # Fix B1 Bilateral symmetric guard for MACHINE CODE / UNIT CODE.
+        if field_key == "MACHINE CODE" and status_val in ("ADDED", "REMOVED"):
+            if orig_val == "NONE" and kmti_val != "NONE":
+                recovered = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, kmti_val, category="title_block")
+                if recovered and recovered.get("coords"):
+                    status_val = "MATCHED"
+                    orig_coords = recovered["coords"]
+            elif kmti_val == "NONE" and orig_val != "NONE":
+                recovered = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, orig_val, category="title_block")
+                if recovered and recovered.get("coords"):
+                    status_val = "MATCHED"
+                    kmti_coords = recovered["coords"]
+        
+        rev_val_raw = rev_obj.get("value", "") if isinstance(rev_obj, dict) else str(rev_obj)
+        if kmti_val and kmti_val != "NONE" and kmti_val != sanitize_title_value(rev_val_raw):
+            kmti_coords = None
+            
+        orig_val_raw = orig_obj.get("value", "") if isinstance(orig_obj, dict) else str(orig_obj)
+        if orig_val and orig_val != "NONE" and orig_val != sanitize_title_value(orig_val_raw):
+            orig_coords = None
+
+        if kmti_coords is None and kmti_val and kmti_val != "NONE":
+            exact_coords = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, kmti_val, category="title_block")
+            if exact_coords and exact_coords.get("coords"):
+                kmti_coords = exact_coords["coords"]
+        if orig_coords is None and orig_val and orig_val != "NONE":
+            exact_coords = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, orig_val, category="title_block")
+            if exact_coords and exact_coords.get("coords"):
+                orig_coords = exact_coords["coords"]
+
+        if kmti_val != "NONE" or orig_val != "NONE":
+            details_str = f"Title block {display_label.lstrip('- ')} checked: {orig_val} vs {kmti_val}"
+            if status_val == "CHANGED" and ((":" in orig_val and "/" in kmti_val) or ("/" in orig_val and ":" in kmti_val)):
+                details_str += " (Standardized based on Standard context provided)"
+            marking_entry = {
+                "text_content": kmti_val if kmti_val != "NONE" else orig_val,
+                "status": status_val,
+                "details": details_str,
+                "category": "title_block",
+                "original_value": orig_val if status_val == "CHANGED" else None
+            }
+            if kmti_coords is not None:
+                marking_entry["coordinates"] = kmti_coords
+            if orig_coords is not None:
+                marking_entry["ref_coordinates"] = orig_coords
+            clean_markings.append(marking_entry)
+
+def inject_bom_markings(
+    clean_markings: list,
+    ref_bom_rows: list,
+    rev_bom_rows: list,
+    is_assembly_drawing: bool,
+    ref_bom_bbox: Optional[tuple],
+    rev_bom_bbox: Optional[tuple],
+    ref_entities: list,
+    rev_entities: list,
+    used_ref_entities: set,
+    used_rev_entities: set
+) -> None:
+    filtered_ref = [r for r in ref_bom_rows if not is_blank_spacer_local(r, is_assembly_drawing)]
+    filtered_rev = [r for r in rev_bom_rows if not is_blank_spacer_local(r, is_assembly_drawing)]
+
+    ref_bom_map = {}
+    for idx, r in enumerate(filtered_ref):
+        k = get_row_key_local(r)
+        if not k:
+            k = f"_ref_idx_{idx}"
+        ref_bom_map[k] = r
+
+    rev_bom_map = {}
+    for idx, r in enumerate(filtered_rev):
+        k = get_row_key_local(r)
+        if not k:
+            k = f"_rev_idx_{idx}"
+        rev_bom_map[k] = r
+
+    # Build global texts sets for Fallback Global Text String Check
+    ref_bom_texts = set()
+    for r in filtered_ref:
+        for col_val_obj in r.values():
+            val = col_val_obj.get("value", "NONE") if isinstance(col_val_obj, dict) else col_val_obj
+            if val and val != "NONE" and len(val.strip()) > 1:
+                ref_bom_texts.add(val.strip().lower())
+
+    rev_bom_texts = set()
+    for r in filtered_rev:
+        for col_val_obj in r.values():
+            val = col_val_obj.get("value", "NONE") if isinstance(col_val_obj, dict) else col_val_obj
+            if val and val != "NONE" and len(val.strip()) > 1:
+                rev_bom_texts.add(val.strip().lower())
+
+    bom_keys = list(set(ref_bom_map.keys()).union(set(rev_bom_map.keys())))
+    bom_keys.sort(key=key_sort_fn_local)
+
+    for key in bom_keys:
+        rev_row = rev_bom_map.get(key, {})
+        ref_row = ref_bom_map.get(key, {})
+
+        row_label = f"Unnumbered Row" if (key.startswith("_ref_idx_") or key.startswith("_rev_idx_")) else f"Item {key}"
+
+        if is_assembly_drawing:
+            bom_cols = [
+                ("NO", "No."),
+                ("DWG_NO", " / DWG No."),
+                ("TITLE", " / TITLE"),
+                ("QTY", "Q'ty"),
+                ("REMARK", " / Remark")
+            ]
+        else:
+            bom_cols = [
+                ("NO", "No."),
+                ("CODE", " / Code"),
+                ("DIMENSION", "/ / Dimension"),
+                ("QTY", " / Q'ty"),
+                ("MATERIAL_WEIGHT", "Kg / Material Wt(kg)"),
+                ("FINISHED_WEIGHT", "Kg / Finished Wt(kg)"),
+                ("REMARK", " / Remark")
+            ]
+
+        for col_key, display_label in bom_cols:
+            rev_cell = rev_row.get(col_key, {"value": "NONE", "coordinates": None})
+            orig_cell = ref_row.get(col_key, {"value": "NONE", "coordinates": None})
+
+            orig_val = orig_cell.get("value", "NONE") if isinstance(orig_cell, dict) else orig_cell
+            kmti_val = rev_cell.get("value", "NONE") if isinstance(rev_cell, dict) else rev_cell
+            kmti_coords = rev_cell.get("coordinates", None) if isinstance(rev_cell, dict) else None
+            orig_coords = orig_cell.get("coordinates", None) if isinstance(orig_cell, dict) else None
+
+            status_val = compare_values(orig_val, kmti_val)
+
+            # Remarks Column Noise-Canceling
+            if col_key == "REMARK":
+                if is_empty_placeholder_remark(orig_val) and is_empty_placeholder_remark(kmti_val):
+                    status_val = "MATCHED"
+
+            # Safeguard 1: if the item number/row exists in both drawings, it is a change, never an addition or removal!
+            if ref_row and rev_row and status_val in ("ADDED", "REMOVED"):
+                status_val = "CHANGED"
+
+            # Safeguard 2: Fallback Global Text String Check
+            if status_val == "ADDED" and kmti_val.strip().lower() in ref_bom_texts:
+                status_val = "MATCHED"
+            elif status_val == "REMOVED" and orig_val.strip().lower() in rev_bom_texts:
+                status_val = "MATCHED"
+            elif status_val == "CHANGED":
+                if kmti_val.strip().lower() in ref_bom_texts and orig_val.strip().lower() in rev_bom_texts:
+                    status_val = "MATCHED"
+
+            # Fix B3 Exact value coordinate lookup, spatially constrained to BOM bbox.
+            if kmti_coords is None and kmti_val and kmti_val != "NONE":
+                exact_coords = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, kmti_val, category="bill_of_materials", region_bbox=rev_bom_bbox, used_entities=used_rev_entities)
+                if exact_coords and exact_coords.get("coords"):
+                    ec = exact_coords["coords"]
+                    if rev_bom_bbox and not (rev_bom_bbox[0] <= ec[0] <= rev_bom_bbox[2] and rev_bom_bbox[1] <= ec[1] <= rev_bom_bbox[3]):
+                        ec = None
+                    if ec:
+                        kmti_coords = ec
+            if orig_coords is None and orig_val and orig_val != "NONE":
+                exact_coords = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, orig_val, category="bill_of_materials", region_bbox=ref_bom_bbox, used_entities=used_ref_entities)
+                if exact_coords and exact_coords.get("coords"):
+                    ec = exact_coords["coords"]
+                    if ref_bom_bbox and not (ref_bom_bbox[0] <= ec[0] <= ref_bom_bbox[2] and ref_bom_bbox[1] <= ec[1] <= ref_bom_bbox[3]):
+                        ec = None
+                    if ec:
+                        orig_coords = ec
+
+            if kmti_val != "NONE" or orig_val != "NONE":
+                details_str = f"BOM [{row_label}] {display_label} checked: {orig_val} vs {kmti_val}"
+                if status_val == "CHANGED" and col_key in ("MATERIAL_WEIGHT", "FINISHED_WEIGHT"):
+                    try:
+                        if float(orig_val) == float(kmti_val) and re.search(r'\.\d{2}$', kmti_val.strip()):
+                            status_val = "MATCHED"
+                            details_str = f"BOM [{row_label}] {display_label} matched: {orig_val} vs {kmti_val} (Standardized to 2 decimals)"
+                    except ValueError:
+                        pass
+
+                marking_entry = {
+                    "text_content": kmti_val if kmti_val != "NONE" else orig_val,
+                    "status": status_val,
+                    "details": details_str,
+                    "category": "bill_of_materials",
+                    "original_value": orig_val if status_val == "CHANGED" else None
+                }
+                if kmti_coords is not None:
+                    marking_entry["coordinates"] = kmti_coords
+                if orig_coords is not None:
+                    marking_entry["ref_coordinates"] = orig_coords
+                    
+                # Spatial boundary filter (Stray BOM marker over Title Block area)
+                if kmti_coords is not None and kmti_coords[1] < 60.0:
+                    continue
+                    
+                clean_markings.append(marking_entry)
+
+def generate_auto_matched_markings(
+    clean_markings: list,
+    rev_geom: str,
+    rev_notes: str,
+    rev_iso_text: str
+) -> None:
+    from .hallucination_guardrails import is_admin_bom_marking
+
+    changed_or_removed_ids = set()
+    for m in clean_markings:
+        if m.get("entity_id"):
+            changed_or_removed_ids.add(m.get("entity_id"))
+
+    all_rev_formatted = rev_geom.split('\n') + rev_notes.split('\n')
+    for line in all_rev_formatted:
+        line = line.strip()
+        if not line:
+            continue
+        
+        match = re.match(r'^\[ID:\s*([^,\]]+)[^\]]*\]\s*(.*)$', line)
+        if match:
+            entity_id = match.group(1).strip()
+            text_content = match.group(2).strip()
+            
+            if entity_id not in changed_or_removed_ids:
+                # Skip administrative/title block markers from being auto-matched
+                if not is_admin_bom_marking({"text_content": text_content, "category": "drawing_views"}):
+                    clean_markings.append({
+                        "entity_id": entity_id,
+                        "text_content": text_content,
+                        "status": "MATCHED",
+                        "details": "Element verified and matches reference.",
+                        "category": "drawing_views"
+                    })

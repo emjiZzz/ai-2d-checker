@@ -328,6 +328,37 @@ class EntityMapper:
             }
         }
 
+    @staticmethod
+    def map_hatch(entity: Any) -> dict[str, Any]:
+        pattern_name = entity.dxf.pattern_name if hasattr(entity.dxf, "pattern_name") else "ANSI31"
+        associative = entity.dxf.associativity if hasattr(entity.dxf, "associativity") else 0
+
+        # Extract boundary paths (points)
+        boundary_paths = []
+        try:
+            for path in entity.paths:
+                if hasattr(path, "edges"):
+                    for edge in path.edges:
+                        if hasattr(edge, "start") and edge.start:
+                            boundary_paths.append([edge.start[0], edge.start[1]])
+        except Exception:
+            pass
+
+        return {
+            "entity_type": "hatch",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "pattern_name": pattern_name,
+                "is_solid": bool(entity.dxf.solid_fill) if hasattr(entity.dxf, "solid_fill") else False,
+                "associative": bool(associative)
+            },
+            "geometry": {
+                "boundary_points": boundary_paths[:20]  # Limit to 20 points to prevent DB bloating
+            }
+        }
+
     @classmethod
     def map_any(cls, entity: Any) -> dict[str, Any] | None:
         """
@@ -355,6 +386,8 @@ class EntityMapper:
                 return cls.map_leader(entity)
             elif dxftype == "MULTILEADER":
                 return cls.map_multileader(entity)
+            elif dxftype == "HATCH":
+                return cls.map_hatch(entity)
             elif dxftype in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
                 return cls.map_text(entity)
             elif dxftype == "INSERT":

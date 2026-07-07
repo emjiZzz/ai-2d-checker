@@ -245,6 +245,22 @@ class DXFParser:
             for entity in layout_entities:
                 process_entity(entity, layout.name)
 
+        # Extract XREFs from block definitions (XREF detection - Phase 4.4)
+        for block in doc.blocks:
+            if hasattr(block, "is_xref") and block.is_xref:
+                entities.append({
+                    "entity_type": "xref",
+                    "layer": "0",
+                    "properties": {
+                        "handle": block.block_record.dxf.handle if hasattr(block.block_record, "dxf") else "XREF",
+                        "name": block.name,
+                        "xref_path": block.xref_path if hasattr(block, "xref_path") else "",
+                        "is_unresolved": block.is_xref_unresolved if hasattr(block, "is_xref_unresolved") else False
+                    },
+                    "geometry": {}
+                })
+                counts["xref"] = counts.get("xref", 0) + 1
+
         # 4. Extract standard metadata headers
         metadata = {
             "ezdxf_version": ezdxf.__version__,

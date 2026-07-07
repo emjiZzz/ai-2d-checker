@@ -86,6 +86,70 @@ class PDFComplianceExporter:
             )
             story.append(Paragraph(summary_text, body_style))
             story.append(Spacer(1, 15))
+
+            # --- PHASE 9.1: Visual annotation overlay in PDF ---
+            # Try to generate an annotated drawing image overlay using PIL
+            annotated_img_path = None
+            try:
+                from PIL import Image, ImageDraw
+                from ...infrastructure.storage.path_resolver import get_storage_root
+                
+                render_path = Path(get_storage_root()) / "renderings" / f"{drawing.id}.png"
+                if render_path.exists() and render_path.stat().st_size > 0:
+                    img = Image.open(render_path)
+                    # Convert to RGB to ensure we can draw colored annotations
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    draw = ImageDraw.Draw(img)
+                    
+                    # Read render_bounds to map coordinate vectors to pixel spaces
+                    bounds = drawing.metadata.get("render_bounds")
+                    if bounds and len(bounds) == 4:
+                        xmin, ymin, xmax, ymax = bounds
+                        width_val, height_val = img.size
+                        dx = xmax - xmin
+                        dy = ymax - ymin
+                        
+                        def to_pixel(x, y):
+                            px = int((x - xmin) / dx * width_val) if dx > 0 else 0
+                            # AutoCAD y goes up, image y goes down
+                            py = int((1.0 - (y - ymin) / dy) * height_val) if dy > 0 else 0
+                            return px, py
+
+                        for v in violations:
+                            coords = getattr(v, "coordinates", None)
+                            if coords and len(coords) >= 2:
+                                try:
+                                    p1 = to_pixel(coords[0][0], coords[0][1])
+                                    p2 = to_pixel(coords[1][0], coords[1][1])
+                                    draw.rectangle([p1, p2], outline="red", width=5)
+                                except Exception:
+                                    pass
+                            elif coords and len(coords) == 1:
+                                try:
+                                    px, py = to_pixel(coords[0][0], coords[0][1])
+                                    r = 25  # Highlight circle radius
+                                    draw.ellipse([px - r, py - r, px + r, py + r], outline="red", width=5)
+                                except Exception:
+                                    pass
+
+                    # Save to export folder
+                    annotated_img_path = output_path.parent / f"annotated_{drawing.id}.png"
+                    img.save(str(annotated_img_path))
+                    logger.info(f"Phase 9.1: Generated visual red-lining overlay at {annotated_img_path}")
+            except Exception as pil_err:
+                logger.warning(f"PIL drawing overlay generation failed (non-fatal): {pil_err}")
+
+            if annotated_img_path and annotated_img_path.exists():
+                try:
+                    from reportlab.platypus import Image as RLImage
+                    story.append(Paragraph("Visual Annotations Map", h2_style))
+                    # Resize to fit the ReportLab page layout nicely
+                    story.append(RLImage(str(annotated_img_path), width=480, height=360))
+                    story.append(Spacer(1, 15))
+                except Exception as img_err:
+                    logger.warning(f"Failed to append image to ReportLab story: {img_err}")
             
             # 3. Violations Listing
             story.append(Paragraph("Detailed Violations Register", h2_style))

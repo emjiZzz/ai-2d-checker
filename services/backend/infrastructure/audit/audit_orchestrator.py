@@ -222,27 +222,19 @@ class AuditOrchestrator:
         }
 
         try:
-            # 1. Fetch keyword matches from MongoDB, limit to top_k results
-            matched: list[StandardChunk] = await StandardChunk.find(query_filter).limit(top_k).to_list()
-            logger.info(
-                f"RAG MongoDB: Retrieved {len(matched)} lesson chunk(s) from "
-                f"{len(standard_ids)} standard(s) for drawing '{drawing.file_name}'."
-            )
-            
-            # 2. Fetch semantic matches from our new Local Vector Index!
+            matched: list[StandardChunk] = []
+
+            # 1. Fetch semantic matches from our Local Vector Index first! (Primary - Phase 6.1)
             try:
                 engine = RetrievalEngine()
                 # Query vector database with drawing file name or top keywords
                 query_text = f"{drawing.file_name} " + " ".join(unique_keywords[:5])
-                vector_matches = engine.query(query_text, top_k=top_k)
+                vector_matches = engine.query(query_text, top_k=top_k, collection_name="standards_reference")
                 logger.info(f"RAG Vector Index: Retrieved {len(vector_matches)} semantic match(es).")
-                
+
                 # Convert vector matches (dict) to StandardChunk models
                 for vm in vector_matches:
                     meta = vm.get("metadata", {})
-                    # Prevent duplicates
-                    if any(c.content == vm["text"] for c in matched):
-                        continue
                     matched.append(
                         StandardChunk(
                             id=meta.get("chunk_id", "vector_chunk"),
@@ -253,8 +245,22 @@ class AuditOrchestrator:
                         )
                     )
             except Exception as vec_err:
-                logger.warning(f"RAG vector index query failed (non-fatal): {vec_err}")
-                
+                logger.warning(f"RAG vector index query failed (non-fatal, continuing): {vec_err}")
+
+            # 2. MongoDB keyword query fallback (Secondary - Phase 6.1)
+            # If we got fewer than top_k semantic results, back-fill using keyword matches
+            if len(matched) < top_k:
+                remaining_k = top_k - len(matched)
+                try:
+                    fallback_chunks = await StandardChunk.find(query_filter).limit(remaining_k).to_list()
+                    logger.info(f"RAG MongoDB Fallback: Retrieved {len(fallback_chunks)} matching chunk(s).")
+                    for fc in fallback_chunks:
+                        # Prevent duplicate content
+                        if not any(c.content == fc.content for c in matched):
+                            matched.append(fc)
+                except Exception as mongo_err:
+                    logger.warning(f"MongoDB fallback chunk lookup failed: {mongo_err}")
+
             return matched[:top_k]
         except Exception as rag_err:
             # Non-fatal: if RAG retrieval fails, the audit continues without lessons

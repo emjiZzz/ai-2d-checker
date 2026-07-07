@@ -370,6 +370,15 @@ export const AuditWorkspace: React.FC = () => {
   const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({});
   const [aiScanError, setAiScanError] = useState<string | null>(null);
 
+  // Reset comparison state when drawings are cleared or changed
+  useEffect(() => {
+    if (!oldDrawing || !newDrawing) {
+      setAiChecklistResults({});
+      setAiScanProgress("idle");
+      setAiScanError(null);
+    }
+  }, [oldDrawing, newDrawing]);
+
   const toggleChecklistPanel = (key: string) => {
     setExpandedChecklistPanels(prev => ({ ...prev, [key]: !prev[key] }));
   };

@@ -18,6 +18,7 @@ class AuditViolation(Document):
     coordinates: list[list[float]] | None = Field(None, description="Visual boundary coordinates: [[x1, y1], [x2, y2]] or coordinates of affected points")
     standard_reference: str | None = Field(None, description=" Grounding text or section identifier in the standard document")
     pen_type: str = Field("ai_red", description="Virtual pen color: ai_green, ai_red, checker_blue, resolved_green, resolved_pink")
+    resolution_type: str | None = Field(None, description="Resolution classification: confirmed or rejected_hallucination")
     is_resolved: bool = Field(False, description="Whether the violation has been verified as resolved")
     resolved_at: datetime | None = Field(None, description="Timestamp when the violation was verified as resolved")
     checker_remarks: str | None = Field(None, description="Supervisor or checker feedback comment")

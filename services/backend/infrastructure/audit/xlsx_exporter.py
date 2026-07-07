@@ -66,7 +66,7 @@ class XLSXComplianceExporter:
             ws_detail = wb.create_sheet(title="Audit Violations Register")
             ws_detail.views.sheetView[0].showGridLines = True
             
-            headers = ["VIOLATION ID", "LAYER", "SEVERITY", "COORDINATES", "DESCRIPTION", "CONFIDENCE SCORE", "REMEDIATION STEPS"]
+            headers = ["VIOLATION ID", "LAYER", "SEVERITY", "COORDINATES", "STANDARD REFERENCE", "DESCRIPTION", "CONFIDENCE SCORE", "REMEDIATION STEPS"]
             for col_idx, h in enumerate(headers):
                 cell = ws_detail.cell(row=1, column=col_idx+1, value=h)
                 cell.font = header_font
@@ -77,18 +77,20 @@ class XLSXComplianceExporter:
                 row = 2 + idx
                 severity = getattr(v, "severity", "medium").upper()
                 layer = getattr(v, "layer", "0")
-                coords = f"{getattr(v, 'coordinates', [0,0])}"
+                coords = f"{getattr(v, 'coordinates', 'SHEET_GLOBAL')}"
+                standard_ref = getattr(v, "standard_reference", "N/A") or "N/A"
                 desc = getattr(v, "description", "")
                 conf = f"{getattr(v, 'confidence', 1.0) * 100:.0f}%"
-                remediation = f"Review design rules on layer '{layer}'. Check standard parameters."
+                remediation = getattr(v, "recommendation", "") or f"Review design rules on layer '{layer}'."
                 
                 ws_detail.cell(row=row, column=1, value=f"V-{idx+1}").font = bold_font
                 ws_detail.cell(row=row, column=2, value=layer).font = regular_font
                 ws_detail.cell(row=row, column=3, value=severity).font = bold_font
                 ws_detail.cell(row=row, column=4, value=coords).font = regular_font
-                ws_detail.cell(row=row, column=5, value=desc).font = regular_font
-                ws_detail.cell(row=row, column=6, value=conf).font = regular_font
-                ws_detail.cell(row=row, column=7, value=remediation).font = regular_font
+                ws_detail.cell(row=row, column=5, value=standard_ref).font = regular_font
+                ws_detail.cell(row=row, column=6, value=desc).font = regular_font
+                ws_detail.cell(row=row, column=7, value=conf).font = regular_font
+                ws_detail.cell(row=row, column=8, value=remediation).font = regular_font
                 
                 # Apply borders
                 for col_idx in range(len(headers)):

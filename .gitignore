@@ -58,3 +58,7 @@ pnpm-debug.log*
 
 # === Scratch / Debug Scripts ===
 scratch/
+tools/_archive_root_scripts/
+
+# === Large installer binaries (download via README_SETUP.txt instead) ===
+tools/installer/*.exe
