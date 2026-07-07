@@ -258,7 +258,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_tolerance(entity: Any) -> Dict[str, Any]:
+    def map_tolerance(entity: Any) -> dict[str, Any]:
         content = ""
         if hasattr(entity.dxf, "content") and entity.dxf.content:
             content = entity.dxf.content
@@ -281,7 +281,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_leader(entity: Any) -> Dict[str, Any]:
+    def map_leader(entity: Any) -> dict[str, Any]:
         vertices = []
         if hasattr(entity, "vertices"):
             vertices = [[v[0], v[1], v[2]] for v in entity.vertices]
@@ -300,7 +300,7 @@ class EntityMapper:
         }
 
     @staticmethod
-    def map_multileader(entity: Any) -> Dict[str, Any]:
+    def map_multileader(entity: Any) -> dict[str, Any]:
         text = ""
         if hasattr(entity, "context") and hasattr(entity.context, "text"):
             text = entity.context.text
