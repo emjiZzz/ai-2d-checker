@@ -96,7 +96,7 @@ class DXFParser:
                 active_layout = pl
                 viewports = vp_candidates
                 break
-        def project_point(x: float, y: float) -> Tuple[float, float, float]:
+        def project_point(x: float, y: float) -> tuple[float, float, float]:
             for vp in viewports:
                 cx, cy = vp.dxf.center.x, vp.dxf.center.y
                 w, h = vp.dxf.width, vp.dxf.height
