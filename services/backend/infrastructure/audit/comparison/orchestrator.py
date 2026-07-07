@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import asyncio
 from datetime import datetime, UTC
 from google.genai import types
 
@@ -130,7 +131,6 @@ async def perform_drawing_comparison(
             missing_crops["revision"] = rev_crop
 
     if missing_crops:
-        import asyncio
         from .gemini_client import execute_title_block_ocr
         try:
             ocr_res = await asyncio.to_thread(execute_title_block_ocr, api_key, missing_crops)
@@ -252,7 +252,7 @@ async def perform_drawing_comparison(
     contents.append(prompt)
 
     # Call Gemini Cascade Fallback
-    response_text = execute_gemini_cascade(api_key, system_instruction, contents)
+    response_text = await asyncio.to_thread(execute_gemini_cascade, api_key, system_instruction, contents)
     parsed = json.loads(response_text)
     logger.info("Successfully parsed structured Gemini 2.5 Pro comparison results.")
 
