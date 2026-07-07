@@ -23,6 +23,7 @@ out/
 
 # === Runtime Local Storage (NEVER commit raw or metadata files) ===
 /storage/
+services/storage/uploads/
 
 # === Environment & Local Configs ===
 .env
