@@ -1,0 +1,250 @@
+import traceback
+from pathlib import Path
+from typing import Any
+from ...logger import logger
+
+def render_dxf_background(dxf_path: Path, drawing_id: str, metadata: dict[str, Any], entities: list[dict[str, Any]]) -> None:
+    try:
+        import matplotlib
+        matplotlib.use('Agg') # Headless background thread safe execution
+        import ezdxf
+        import matplotlib.pyplot as plt
+        from ezdxf.addons.drawing import Frontend, RenderContext
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+        
+        logger.info(f"Generating high-fidelity CAD layout background for drawing {drawing_id}...")
+
+        # --- Step 1: Configure ezdxf font manager (MUST happen before readfile) ---
+        import matplotlib.font_manager as mpl_fm
+        from ezdxf.fonts import fonts as ezdxf_fonts
+
+        JAPANESE_FONT_CANDIDATES = [
+            r"C:\Windows\Fonts\msgothic.ttc",   # MS Gothic - best AutoCAD compatibility
+            r"C:\Windows\Fonts\YuGothR.ttc",    # Yu Gothic Regular
+            r"C:\Windows\Fonts\meiryo.ttc",     # Meiryo
+            r"C:\Windows\Fonts\MSMINCHO.TTF",   # MS Mincho
+        ]
+
+        jp_font_path = None
+        for candidate in JAPANESE_FONT_CANDIDATES:
+            if Path(candidate).exists():
+                jp_font_path = candidate
+                logger.info(f"Japanese font found: {candidate}")
+                break
+
+        if jp_font_path:
+            # Scan Windows Fonts so ezdxf's font manager can locate TTF/TTC files
+            ezdxf_fm = ezdxf_fonts.font_manager
+            ezdxf_fm.scan_folder(Path(r"C:\Windows\Fonts"))
+            jp_font_filename = Path(jp_font_path).name
+            ezdxf_fm._fallback_font_name = jp_font_filename
+
+            # Override SHX font mappings: Japanese CAD files use txt.shx + bigfont (extfont2/gothicj)
+            # ezdxf cannot render BigFont SHX glyphs — substitute with MS Gothic TTF instead
+            for shx_name in ["TXT", "TXT.SHX", "EXTFONT2", "EXTFONT2.SHX",
+                              "GOTHICJ", "GOTHICJ.SHX", "ROMANS", "ROMANS.SHX",
+                              "SIMPLEX", "SIMPLEX.SHX", "CHINESET", "CHINESET.SHX"]:
+                ezdxf_fonts.SHX_FONTS[shx_name] = jp_font_filename
+
+            # Also configure matplotlib to use the same Japanese font
+            mpl_fm.fontManager.addfont(jp_font_path)
+            prop = mpl_fm.FontProperties(fname=jp_font_path)
+            jp_font_name = prop.get_name()
+            matplotlib.rcParams['font.sans-serif'] = [jp_font_name, 'DejaVu Sans', 'sans-serif']
+            matplotlib.rcParams['font.family'] = 'sans-serif'
+            logger.info(f"Japanese font '{jp_font_name}' registered for ezdxf + matplotlib rendering.")
+        else:
+            logger.warning("No Japanese font found. CJK characters may render as boxes.")
+
+        matplotlib.rcParams['axes.unicode_minus'] = False
+
+        # --- Step 2: Load DXF with byte-preserving encoding and CJK transcoding ---
+        doc = None
+        try:
+            doc = ezdxf.readfile(str(dxf_path), encoding="latin-1")
+            logger.info(f"DXF loaded for background rendering with latin-1. Header codepage: {doc.header.get('$DWGCODEPAGE')}")
+        except Exception as read_err:
+            logger.warning(f"Latin-1 rendering load failed: {str(read_err)}")
+            try:
+                doc = ezdxf.readfile(str(dxf_path))
+            except Exception as e:
+                raise ValueError(f"Unable to read DXF file for rendering: {str(e)}")
+
+        # Deep CJK transcoding of entities inside doc before rendering
+        doc_encoding = getattr(doc, "encoding", "cp932") or "cp932"
+        if doc_encoding.lower() in ("ansi_932", "cp932", "ms932", "shift_jis", "sjis"):
+            doc_encoding = "cp932"
+            
+        def transcode_str(s: str) -> str:
+            if not s:
+                return ""
+            decoded = s
+            try:
+                b = s.encode('latin1')
+                for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
+                    if not enc:
+                        continue
+                    try:
+                        decoded = b.decode(enc)
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            
+            # Replace all CP932 decoded multiplication signs with standard x
+            decoded = decoded.replace('\uff97', 'x')
+            decoded = decoded.replace('\u30e9', 'x')
+            decoded = decoded.replace('×', 'x')
+            decoded = decoded.replace('ラ', 'x')
+            return decoded
+            
+        # Transcode all layouts (Model & Paper Space)
+        for layout in doc.layouts:
+            for entity in layout:
+                dxftype = entity.dxftype()
+                if dxftype in ("TEXT", "MTEXT"):
+                    if hasattr(entity, "text"):
+                        entity.text = transcode_str(entity.text)
+                    if hasattr(entity.dxf, "text"):
+                        entity.dxf.text = transcode_str(entity.dxf.text)
+                elif dxftype == "DIMENSION":
+                    if hasattr(entity.dxf, "text"):
+                        entity.dxf.text = transcode_str(entity.dxf.text)
+                elif dxftype == "INSERT":
+                    if hasattr(entity.dxf, "name"):
+                        entity.dxf.name = transcode_str(entity.dxf.name)
+
+        # Transcode all blocks definitions
+        for block in doc.blocks:
+            for entity in block:
+                dxftype = entity.dxftype()
+                if dxftype in ("TEXT", "MTEXT"):
+                    if hasattr(entity, "text"):
+                        entity.text = transcode_str(entity.text)
+                    if hasattr(entity.dxf, "text"):
+                        entity.dxf.text = transcode_str(entity.dxf.text)
+
+        # --- Step 3: Override text styles in the document to use MS Gothic TTF ---
+        # This forces ezdxf to render text using the TTF font instead of the missing SHX bigfont files
+        if jp_font_path:
+            for style in doc.styles:
+                font = style.dxf.get('font', '')
+                bigfont = style.dxf.get('bigfont', '')
+                if font.upper().endswith('.SHX') or bigfont:
+                    style.dxf.font = jp_font_filename
+                    style.dxf.bigfont = ''
+                    logger.info(f"Overriding DXF style '{style.dxf.get('name', '?')}': {font!r}+{bigfont!r} -> {jp_font_filename}")
+
+        
+        # --- Step 4: Select best layout to render (Paper Space preferred over Model Space, but ONLY if it contains a viewport) ---
+        paperspace_layouts = [l for l in doc.layouts if l.name.lower() != 'model' and len(l) > 0]
+        layout_to_render = None
+        for pl in paperspace_layouts:
+            # Check if this paper space layout actually contains a viewport that looks into model space
+            # Ignore viewport id=1 as it's the paper space background itself
+            if any(e.dxftype() == "VIEWPORT" and e.dxf.id != 1 for e in pl):
+                layout_to_render = pl
+                logger.info(f"Rendering Paper Space layout (contains viewport): {layout_to_render.name}")
+                break
+        
+        if not layout_to_render:
+            layout_to_render = doc.modelspace()
+            logger.info("No valid Paper Space layouts with viewports found. Defaulting to Model Space rendering.")
+
+        # --- Brighten dark colors for visibility on dark UI background ---
+        # AutoCAD Color 5 (Blue) and Color 8 (Dark Gray) are nearly invisible on a dark canvas.
+        for layer in doc.layers:
+            if layer.color == 5:
+                layer.color = 4  # Change Blue to Cyan
+            elif layer.color == 8:
+                layer.color = 9  # Change Dark Gray to Light Gray
+        
+        for entity in doc.entitydb.values():
+            if hasattr(entity, 'dxf') and hasattr(entity.dxf, 'color'):
+                if entity.dxf.color == 5:
+                    entity.dxf.color = 4
+                elif entity.dxf.color == 8:
+                    entity.dxf.color = 9
+
+        fig = plt.figure(figsize=(24, 18), dpi=350)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_axis_off()
+        ax.set_aspect('equal', 'box')
+        
+        from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration
+        ctx = RenderContext(doc)
+        ctx.set_current_layout(layout_to_render)
+        
+        # Configure ezdxf to NOT draw a background rectangle so it remains completely transparent
+        # Also swap Black lines to White so they are visible on the dark React canvas grid
+        config = Configuration(
+            background_policy=BackgroundPolicy.OFF,
+            color_policy=ColorPolicy.COLOR_SWAP_BW
+        )
+        
+        # Keep figure transparent to let the frontend React grid show through perfectly
+        fig.patch.set_alpha(0.0)
+        ax.patch.set_alpha(0.0)
+        
+        backend = MatplotlibBackend(ax)
+        # Render the selected layout (with automatic viewport projection!)
+        Frontend(ctx, backend, config=config).draw_layout(layout_to_render, finalize=True)
+        
+        # Extract the exact tight bounds generated by Matplotlib's autoscale
+        xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
+        
+        metadata["render_bounds"] = [float(xmin), float(ymin), float(xmax), float(ymax)]
+        
+        # Adjust figure size dynamically to match rendering aspect ratio exactly with zero padding
+        dx = xmax - xmin
+        dy = ymax - ymin
+        aspect = dx / dy if dy > 0 else 1.333
+        fig.set_size_inches(24.0, 24.0 / aspect)
+        
+        # Save rendering to safe destination path inside storage directory
+        from services.backend.infrastructure.storage.path_resolver import get_storage_root
+        render_dir = get_storage_root() / "renderings"
+        render_dir.mkdir(parents=True, exist_ok=True)
+        output_png_path = render_dir / f"{drawing_id}.png"
+        
+        fig.savefig(
+            str(output_png_path),
+            dpi=350,
+            transparent=True,
+            facecolor='none',
+            edgecolor='none'
+        )
+        plt.close(fig)
+        logger.info(f"High-fidelity CAD background rendering successfully saved to: {output_png_path}")
+    except Exception as render_e:
+        logger.error(f"High-fidelity rendering generation failed: {str(render_e)}\n{traceback.format_exc()}")
+        
+        # Fallback: compute bounds manually from extracted entities if Matplotlib failed (e.g. missing block definitions)
+        if "render_bounds" not in metadata and entities:
+            logger.info("Computing fallback render_bounds from extracted entities.")
+            min_x = float("inf")
+            min_y = float("inf")
+            max_x = float("-inf")
+            max_y = float("-inf")
+            has_valid_point = False
+            for e in entities:
+                if "geometry" in e and "points" in e["geometry"]:
+                    for pt in e["geometry"]["points"]:
+                        min_x = min(min_x, pt[0])
+                        min_y = min(min_y, pt[1])
+                        max_x = max(max_x, pt[0])
+                        max_y = max(max_y, pt[1])
+                        has_valid_point = True
+            
+            if has_valid_point and min_x < max_x and min_y < max_y:
+                metadata["render_bounds"] = [min_x, min_y, max_x, max_y]
+                metadata["render_aspect"] = (max_x - min_x) / (max_y - min_y)
+                logger.info(f"Fallback render_bounds computed: {metadata['render_bounds']}")
+        # Ensure figure resources are cleaned up
+        try:
+            import matplotlib.pyplot as plt
+            plt.close('all')
+        except Exception:
+            pass
