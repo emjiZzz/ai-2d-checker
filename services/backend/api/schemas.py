@@ -1,4 +1,4 @@
-from typing import Any, TypeVar
+from typing import Any, TypeVar, Optional
 
 from pydantic import BaseModel, Field
 
