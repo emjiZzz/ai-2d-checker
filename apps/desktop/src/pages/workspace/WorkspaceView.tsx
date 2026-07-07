@@ -22,6 +22,8 @@ import { useConnectionStore } from "../../stores/connectionStore";
 import { useReviewStore } from "../../stores/reviewStore";
 import { DrawingCanvas } from "../../components/review/DrawingCanvas";
 import { ThreeDViewer } from "../../components/review/ThreeDViewer";
+import { computeBounds } from "../../utils/spatialBounds";
+import { generateComparisonMarkings } from "../../utils/markerGenerator";
 
 // ─── UPLOAD ZONE ─────────────────────────────────────────────────────────────
 interface UploadZoneProps {
@@ -326,7 +328,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
     if (!oldDrawing || !newDrawing) return;
 
     setAiScanProgress("comparing");
-    setAiScanError(null); // Clear any previous error on new scan
+    setAiScanError(null);
 
     try {
       const headers: Record<string, string> = {
@@ -367,7 +369,6 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
       setAiChecklistResults(data.data);
       setAiScanProgress("completed");
 
-      // Auto-expand all panels by default to show rich, visually appealing discrepancy metrics
       setExpandedChecklistPanels({
         drawing_views: true,
         notes_section: true,
@@ -377,223 +378,16 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
         other_engineering_references: true
       });
 
-      // DYNAMIC VISUAL MARKINGS DIRECTLY ON THE CANVAS!
       try {
         const cleanCadText = (text: string): string => {
           if (!text) return "";
           let clean = text;
-          // Replace CP932 decoded multiplication sign "×" with standard lowercase "x"
           clean = clean.replace(/×/g, "x");
           clean = clean.replace(/[{}]/g, "");
-          // Aggressively strip ALL AutoCAD MTEXT formatting codes (fonts, colors, alignment, etc.)
           clean = clean.replace(/\\[A-Za-z0-9\-~|.]+;/g, "");
           clean = clean.replace(/\\P/g, " ");
-          // Fallback strip for any remaining \L or \l formatting tags
           clean = clean.replace(/\\[LlOo]/g, "");
           return clean.trim();
-        };
-
-        const normalizeStr = (str: string) => {
-          let s = str.toLowerCase().trim();
-          s = s.replace(/%%c/g, "⌀").replace(/%%d/g, "°").replace(/%%p/g, "±");
-          s = s.replace(/ラ/g, "x");
-          s = s.replace(/×/g, "x");
-          s = s.replace(/:/g, "/");
-          return s
-            .replace(/[\s\(\)\[\]\{\}\:\;\,\-\_\.\/\引\（\）－−–—―〜～]/g, "")
-            .trim();
-        };
-
-        const findAllFuzzyMatches = (
-          searchTerm: string,
-          entities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[],
-          preferModelSpace: boolean = false,
-          allowNumberMismatch: boolean = false,
-          minScore: number = 0
-        ): { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] => {
-          if (!searchTerm) return [];
-
-          if (searchTerm.includes('\n')) {
-            const lines = searchTerm.split('\n').map(l => l.trim()).filter(l => l.length > 1);
-            const seen = new Set<string>();
-            const combined: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] = [];
-            for (const line of lines) {
-              const lineMatches = findAllFuzzyMatches(line, entities, preferModelSpace, true, minScore);
-              for (const m of lineMatches) {
-                const key = `${m.x.toFixed(2)},${m.y.toFixed(2)}`;
-                if (!seen.has(key)) {
-                  seen.add(key);
-                  combined.push(m);
-                }
-              }
-            }
-            return combined;
-          }
-
-          const normSearch = normalizeStr(searchTerm);
-          if (!normSearch) return [];
-
-          const matches: { ent: any; score: number }[] = [];
-          const extractNumbers = (s: string) => {
-            const m = s.match(/\d+/g);
-            return m ? m.join("") : "";
-          };
-          const searchNumbers = extractNumbers(normSearch);
-
-          for (const ent of entities) {
-            const normEnt = normalizeStr(ent.text);
-            if (!normEnt) continue;
-
-            let score = 0;
-            if (ent.text.trim() === searchTerm.trim()) {
-              score = 105;
-            } else if (normEnt === normSearch) {
-              score = 100;
-            } else if (
-              normEnt.replace(/^[0-9]+-/, "") === normSearch ||
-              normSearch.replace(/^[0-9]+-/, "") === normEnt ||
-              normEnt.replace(/^[crmoo⌀]/i, "") === normSearch ||
-              normSearch.replace(/^[crmoo⌀]/i, "") === normEnt
-            ) {
-              score = 90;
-            } else {
-              const cleanSearchNum = normSearch.replace(/^[0-9]+-/, "").replace(/^[crmoo⌀]/i, "");
-              const cleanEntNum = normEnt.replace(/^[0-9]+-/, "").replace(/^[crmoo⌀]/i, "");
-              const fSearch = parseFloat(cleanSearchNum);
-              const fEnt = parseFloat(cleanEntNum);
-              if (!isNaN(fSearch) && !isNaN(fEnt) && fSearch === fEnt) {
-                score = 90;
-              } else if (!isNaN(fSearch) && !isNaN(parseFloat(normEnt)) && fSearch === parseFloat(normEnt)) {
-                score = 90;
-              }
-            }
-
-            if (score < 90) {
-              const stripLeadDigits = (s: string) => s.replace(/^\d+/, "");
-              const strippedSearch = stripLeadDigits(normSearch);
-              const strippedEnt = stripLeadDigits(normEnt);
-              if (strippedSearch.length >= 2 && strippedSearch === strippedEnt) {
-                score = 85;
-              } else if (normSearch.includes(normEnt) || normEnt.includes(normSearch)) {
-                const minLen = Math.min(normEnt.length, normSearch.length);
-                const maxLen = Math.max(normEnt.length, normSearch.length);
-                const ratio = minLen / maxLen;
-                if (minLen >= 2) {
-                  score = 50 + ratio * 30;
-                }
-              } else {
-                const searchChars = new Set(normSearch.split(""));
-                const entChars = new Set(normEnt.split(""));
-                let intersection = 0;
-                searchChars.forEach(c => { if (entChars.has(c)) intersection++; });
-                const jaccard = intersection / Math.max(searchChars.size, entChars.size);
-                if (jaccard > 0.60) {
-                  score = jaccard * 70;
-                } else if (allowNumberMismatch && jaccard > 0.40) {
-                  score = jaccard * 70;
-                }
-              }
-            }
-
-            if (searchNumbers && !allowNumberMismatch) {
-              const entNumbers = extractNumbers(normEnt);
-              if (entNumbers && entNumbers !== searchNumbers) {
-                score = 0;
-              }
-            }
-
-            const spaceBonus = (preferModelSpace && ent.layoutSpace === 'Model') ? 5 : 0;
-            const effectiveScore = score + spaceBonus;
-
-            if (score > 40) {
-              matches.push({ ent, score: effectiveScore });
-            }
-          }
-
-          if (matches.length === 0) return [];
-          const maxScore = Math.max(...matches.map(m => m.score));
-          const threshold = maxScore >= 100 ? 100 : (maxScore - 5);
-          const finalThreshold = Math.max(threshold, minScore);
-          return matches.filter(m => m.score >= finalThreshold).map(m => m.ent);
-        };
-
-        const isCoordinateTick = (text: string): boolean => {
-          const t = (text || "").trim().toUpperCase();
-          if (!t) return true;
-          if (t.length === 1 && t >= 'A' && t <= 'Z') return true;
-          const num = parseInt(t, 10);
-          if (!isNaN(num) && num.toString() === t && num >= 1 && num <= 24) return true;
-          return false;
-        };
-
-        const isStaticLabelOrHeader = (text: string): boolean => {
-          const t = (text || "").trim().toLowerCase();
-          if (!t) return true;
-
-          const exactStaticTerms = new Set([
-            "no.", "no", "and.", "and", "g", "h", "a", "b", "c", "d", "e", "f", "例", "（例）", "こえ", "下", "符号"
-          ]);
-          if (exactStaticTerms.has(t)) return true;
-
-          const staticTerms = [
-            "tolerances", "unless", "otherwise", "specified", "drawings", "表示外公差",
-            "finish", "symbol", "roughness", "range", "仕上げ記号", "面粗さ",
-            "dimension", "parallelism", "squareness", "length", "寸法区分", "平行度", "直角度",
-            "machining", "fabrication", "general", "over", "including",
-            "example", "design chg", "chg no", "年月日", "訂正書", "担当", "name", "y/m/d",
-            "material", "code", "材質", "寸法", "型式", "個数", "qty", "weight", "重量", "remark", "備考",
-            "dwg no", "dwg. no", "図面番号", "title", "名称", "prev. dwg", "previous dwg",
-            "scale", "尺度", "date", "日付", "approved", "承認", "checked", "検図", "designed", "設計", "drawn", "製図",
-            "job no", "工事番号", "std no", "標準図番号", "mach. code", "機器記号", "unit no", "ユニット",
-            "total quantity", "t. q'ty", "総製作個数", "common", "共通番号", "cross ref"
-          ];
-
-          return staticTerms.some(term => t.includes(term));
-        };
-
-        let newXMin = 0, newXMax = 1000, newYMin = 0, newYMax = 1000;
-        let oldXMin = 0, oldXMax = 1000, oldYMin = 0, oldYMax = 1000;
-
-        const isEngineeringDataEntity = (
-          ent: { text: string; x: number; y: number; layer?: string; eType?: string },
-          drawing: any
-        ): boolean => {
-          const isStructuralAnnotation = ent.eType === 'tolerance' || ent.eType === 'leader' || ent.eType === 'multileader' || ent.eType === 'attrib' || ent.eType === 'insert' || ent.eType === 'mtext' || ent.eType === 'block' || ent.eType === 'dimension' ||
-            /^\d*[-]?[CR]\d+(\.\d+)?$/i.test(ent.text.trim().replace(/\s/g, '')) ||
-            /^[\u2460-\u2473\u3251-\u325f\u32b1-\u32bf]$/.test(ent.text.trim()) ||
-            /^\(\d{1,2}\)$/.test(ent.text.trim()) ||
-            /^[\u25bd\u25bf\u25b3\u25b2\u2299\u25ef\u25a1]$/.test(ent.text.trim());
-
-          if (!isStructuralAnnotation) {
-            if (isStaticLabelOrHeader(ent.text)) return false;
-
-            const tClean = ent.text.trim().replace(/\s/g, '').toLowerCase();
-            const isToleranceRange = /^\d+(\.\d+)?[sS]?(~|〜|-)\d+(\.\d+)?[sS]?$/.test(tClean);
-            const isSurfaceFinish = /^\d+(\.\d+)?[sS]$/.test(tClean);
-            if (isToleranceRange || isSurfaceFinish || ["表示外公差", "寸法区分", "平行度", "直角度", "許容差", "仕上ゲ記号", "表面粗さ", "普通寸法許容差", "角度", "長さ", "表示外"].some(kw => ent.text.includes(kw)) || ["~", "〜", "±"].includes(tClean)) return false;
-          }
-
-          const isOld = oldDrawing && drawing?.id === oldDrawing.id;
-          const xmin = isOld ? oldXMin : newXMin;
-          const xmax = isOld ? oldXMax : newXMax;
-          const ymin = isOld ? oldYMin : newYMin;
-          const ymax = isOld ? oldYMax : newYMax;
-
-          const width = xmax - xmin;
-          const height = ymax - ymin;
-          if (width <= 0 || height <= 0) return true;
-
-          const pctX = (ent.x - xmin) / width;
-          const pctY = 1.0 - (ent.y - ymin) / height;
-
-          if (pctX < 0.045 || pctX > 0.98 || pctY < 0.045 || pctY > 0.98) return false;
-
-          const isNearMargin = pctX < 0.12 || pctX > 0.88 || pctY < 0.12 || pctY > 0.88;
-          if (!isStructuralAnnotation && isNearMargin && isCoordinateTick(ent.text)) return false;
-
-          if (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02) return false;
-
-          return true;
         };
 
         const isDuplicateEntity = (
@@ -605,7 +399,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
           return list.some(ent => ent.text === text && Math.hypot(ent.x - x, ent.y - y) < 1.0);
         };
 
-        const textEntities: { text: string; x: number; y: number; handle?: string; bbox?: any; height?: number; layoutSpace?: string; layer?: string; eType?: string }[] = [];
+        const textEntities: any[] = [];
         if (newLayers) {
           Object.entries(newLayers).forEach(([layerName, entities]: any) => {
             if (Array.isArray(entities)) {
@@ -635,7 +429,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
           });
         }
 
-        const refTextEntities: { text: string; x: number; y: number; handle?: string; bbox?: any; height?: number; layoutSpace?: string; layer?: string; eType?: string }[] = [];
+        const refTextEntities: any[] = [];
         if (oldLayers) {
           Object.entries(oldLayers).forEach(([layerName, entities]: any) => {
             if (Array.isArray(entities)) {
@@ -665,159 +459,17 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
           });
         }
 
-        const computeBounds = (entities: { text: string; x: number; y: number; layer?: string }[]) => {
-          if (entities.length === 0) return { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
-          const xs = entities.map(e => e.x);
-          const ys = entities.map(e => e.y);
-          return { xMin: Math.min(...xs), xMax: Math.max(...xs), yMin: Math.min(...ys), yMax: Math.max(...ys) };
-        };
+        const bounds = computeBounds(textEntities);
+        const refBounds = computeBounds(refTextEntities);
 
-        if (textEntities.length > 0) {
-          const bounds = computeBounds(textEntities);
-          newXMin = bounds.xMin; newXMax = bounds.xMax; newYMin = bounds.yMin; newYMax = bounds.yMax;
-        }
-        if (refTextEntities.length > 0) {
-          const bounds = computeBounds(refTextEntities);
-          oldXMin = bounds.xMin; oldXMax = bounds.xMax; oldYMin = bounds.yMin; oldYMax = bounds.yMax;
-        }
-
-        const mappedMarkings: any[] = [];
-        const rawMarkings = data.data.canvas_markings || [];
-
-        const refTextEntitiesWithMarkers = new Set<string>();
-        const getCoordKey = (x: number, y: number) => `${x.toFixed(2)},${y.toFixed(2)}`;
-
-        rawMarkings.forEach((marking: any, index: number) => {
-          const preferModel = (marking.category === 'drawing_views' || !marking.category);
-          const searchTerm = marking.text_content;
-
-          let matches: any[] = [];
-          let refMatches: any[] = [];
-          let usedDirectIdMapping = false;
-
-          if (marking.entity_id) {
-            const id = marking.entity_id.trim();
-            if (id.startsWith('REV-')) {
-              const handle = id.replace('REV-', '');
-              const found = textEntities.find(e => e.handle === handle);
-              if (found) { matches = [found]; usedDirectIdMapping = true; }
-            } else if (id.startsWith('REF-')) {
-              const handle = id.replace('REF-', '');
-              const found = refTextEntities.find(e => e.handle === handle);
-              if (found) { refMatches = [found]; usedDirectIdMapping = true; }
-            }
-          }
-
-          if (!usedDirectIdMapping) {
-            const isShortAnnotation = searchTerm && searchTerm.trim().length <= 6 && !searchTerm.includes('\n');
-            const exactMatchFilter = (entities: typeof textEntities) =>
-              entities.filter(e => e.text.trim().toLowerCase() === searchTerm.trim().toLowerCase());
-
-            matches = isShortAnnotation && exactMatchFilter(textEntities).length > 0
-              ? exactMatchFilter(textEntities)
-              : findAllFuzzyMatches(searchTerm, textEntities, preferModel);
-            refMatches = isShortAnnotation && exactMatchFilter(refTextEntities).length > 0
-              ? exactMatchFilter(refTextEntities)
-              : findAllFuzzyMatches(searchTerm, refTextEntities, preferModel);
-          }
-
-          const rawMatchesCount = matches.length;
-          const rawRefMatchesCount = refMatches.length;
-
-          if (marking.category !== "title_block" && marking.category !== "bill_of_materials") {
-            matches = matches.filter(m => isEngineeringDataEntity(m, newDrawing));
-            refMatches = refMatches.filter(m => isEngineeringDataEntity(m, oldDrawing));
-          }
-
-          const maxInstances = Math.max(matches.length, refMatches.length, 1);
-
-          for (let i = 0; i < maxInstances; i++) {
-            const match = matches[i] || matches[0];
-            const refMatch = refMatches[i] || refMatches[0];
-
-            let coordinates: [number, number] | undefined = undefined;
-            let bbox: any = undefined;
-            if (match) {
-              const h = match.height || 3.0;
-              if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) {
-                bbox = match.bbox;
-                try {
-                  const [[, ymin], [xmax, ymax]] = match.bbox;
-                  const hVal = match.height || (ymax - ymin) || 3.0;
-                  coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
-                } catch {
-                  coordinates = [match.x + h * 0.8, match.y + h * 0.5] as [number, number];
-                }
-              } else {
-                coordinates = [match.x + h * 0.8, match.y + h * 0.5] as [number, number];
-              }
-            } else if (marking.coordinates && i === 0 && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
-              coordinates = [marking.coordinates[0], marking.coordinates[1]] as [number, number];
-            }
-
-            let ref_coordinates: [number, number] | undefined = undefined;
-            let ref_bbox: any = undefined;
-            if (refMatch) {
-              const h = refMatch.height || 3.0;
-              if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) {
-                ref_bbox = refMatch.bbox;
-                try {
-                  const [[, ymin], [xmax, ymax]] = refMatch.bbox;
-                  const hVal = refMatch.height || (ymax - ymin) || 3.0;
-                  ref_coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
-                } catch {
-                  ref_coordinates = [refMatch.x + h * 0.8, refMatch.y + h * 0.5] as [number, number];
-                }
-              } else {
-                ref_coordinates = [refMatch.x + h * 0.8, refMatch.y + h * 0.5] as [number, number];
-              }
-            } else if (marking.ref_coordinates && i === 0 && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
-              ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
-            }
-
-            if (match && !refMatch) {
-              let closestEnt: any = null;
-              let minDistance = Infinity;
-              refTextEntities.forEach(ent => {
-                const dist = Math.hypot(ent.x - match.x, ent.y - match.y);
-                if (dist < minDistance) { minDistance = dist; closestEnt = ent; }
-              });
-              if (closestEnt && minDistance < 50.0) {
-                const identityMatches = findAllFuzzyMatches(marking.text_content, [closestEnt], preferModel, false, 80);
-                const isLocked = refTextEntitiesWithMarkers.has(getCoordKey(closestEnt.x, closestEnt.y));
-                if (identityMatches.length > 0 && !isLocked) {
-                  const rh = closestEnt.height || 3.0;
-                  ref_coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
-                  refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
-                }
-              }
-            }
-
-            const isMatchFilteredTick = (rawMatchesCount > 0 && matches.length === 0) || (rawRefMatchesCount > 0 && refMatches.length === 0);
-            if (!coordinates && !isMatchFilteredTick) continue;
-
-            let penType = "resolved_green";
-            if (marking.status === "REMOVED") penType = "ai_red";
-            else if (marking.status === "CHANGED") penType = "ai_orange";
-            else if (marking.status === "ADDED") penType = "checker_blue";
-
-            mappedMarkings.push({
-              id: `phys_chk_${index}_inst_${i}_${Date.now()}`,
-              severity: marking.status === "MATCHED" ? "low" : "high",
-              category: marking.category || "Physical Checklist",
-              description: marking.text_content,
-              recommendation: marking.details || "Automatic verification match",
-              affected_entities: [],
-              confidence: 1.0,
-              coordinates,
-              ref_coordinates,
-              bbox,
-              ref_bbox,
-              pen_type: penType,
-              is_resolved: marking.status === "MATCHED",
-              original_value: marking.original_value
-            });
-          }
+        const mappedMarkings = generateComparisonMarkings({
+          rawMarkings: data.data.canvas_markings || [],
+          textEntities,
+          refTextEntities,
+          drawing: newDrawing,
+          oldDrawing,
+          bounds,
+          refBounds
         });
 
         useWorkspaceStore.setState({ violations: mappedMarkings });
@@ -832,6 +484,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
       setAiScanProgress("idle");
     }
   };
+
 
   const parseTabularContent = (content: string) => {
     if (!content) return [];
