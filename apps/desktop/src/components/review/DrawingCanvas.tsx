@@ -3,6 +3,8 @@ import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { getNormalization, worldToScreen, screenToWorld, parseBounds } from '../../utils/coordinateTransform';
+
 
 // Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags
 // NOTE: Primary cleaning is done on the backend in entity_mapper.py
@@ -333,19 +335,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     }, [drawing?.id]);
 
     const renderContent = useCallback((ctx: CanvasRenderingContext2D, isExport: boolean, renderWidth: number = width, renderHeight: number = height) => {
-      let normalizationScale = 1;
-      let normXMin = 0;
-      let normYMin = 0;
-
-      if (drawing?.metadata?.render_bounds) {
-        const [xmin, ymin, xmax] = drawing.metadata.render_bounds;
-        const boundsWidth = xmax - xmin;
-        if (boundsWidth > 0) {
-          normalizationScale = 1000 / boundsWidth;
-          normXMin = xmin;
-          normYMin = ymin;
-        }
-      }
+      // Site A: renderContent normalization — consolidated via getNormalization()
+      const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+      const normalizationScale = norm.normScale;
+      const normXMin = norm.xmin;
+      const normYMin = norm.ymin;
 
       const effectiveScale = viewport.scale * normalizationScale;
       const resolutionMultiplier = renderWidth / width;
@@ -571,15 +565,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       // 6. Draw compliance violations reticles if active
       ctx.filter = 'none';
       if (showViolations) {
-        let renderYMin = 0;
-        let renderYMax = 0;
-        let hasBounds = false;
-        if (drawing?.metadata?.render_bounds) {
-          const [, , , ymax] = drawing.metadata.render_bounds;
-          renderYMin = drawing.metadata.render_bounds[1];
-          renderYMax = ymax;
-          hasBounds = true;
-        }
+        // norm is already computed above for Site A — hasBounds, ymin, ymax all available via norm
         const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
         const placedCardRects: { xMin: number; xMax: number; yMin: number; yMax: number }[] = [];
 
@@ -623,17 +609,18 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           if (!coords) return;
 
           const [vx, raw_vy] = coords;
-          const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
+          // Use worldToScreen with the shared norm from Site A — applies Y-flip when hasBounds
+          const screenPos = worldToScreen(vx, raw_vy, norm, viewport);
           const isSelected = selectedViolation?.id === v.id;
 
           const bulletColor = penType === 'ai_red' ? '#ef4444' : penType === 'ai_orange' ? '#f97316' : penType === 'checker_blue' ? '#3b82f6' : '#10b981';
           const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : 'MATCHED';
 
           // Project CAD coordinates onto absolute screen/CSS coordinates
-          let screenX = vx * scale + transX;
-          let screenY = vy * scale + transY;
+          let screenX = screenPos.x;
+          let screenY = screenPos.y;
 
-          // Cache final visual coordinates for accurate hover detection
+          // Cache final visual coordinates for accurate hover detection (read by handleMouseMove hit-testing)
           markerPositionsRef.current[v.id] = { x: screenX, y: screenY };
 
           // Reset context matrix to pixel space scaled by localDpr for stable rendering
@@ -773,13 +760,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
             if (bbox && bbox.length >= 2) {
               const [[bxmin, bymin_raw], [bxmax, bymax_raw]] = bbox;
-              const bymin = hasBounds ? (renderYMax + renderYMin - bymin_raw) : bymin_raw;
-              const bymax = hasBounds ? (renderYMax + renderYMin - bymax_raw) : bymax_raw;
+              // Use worldToScreen for both bbox corners — Y-flip applied via norm
+              const bMinScreen = worldToScreen(bxmin, bymin_raw, norm, viewport);
+              const bMaxScreen = worldToScreen(bxmax, bymax_raw, norm, viewport);
 
-              pxmin = bxmin * scale + transX;
-              pymin = Math.min(bymin, bymax) * scale + transY;
-              const pxmax = bxmax * scale + transX;
-              const pymax = Math.max(bymin, bymax) * scale + transY;
+              pxmin = bMinScreen.x;
+              pymin = Math.min(bMinScreen.y, bMaxScreen.y);
+              const pxmax = bMaxScreen.x;
+              const pymax = Math.max(bMinScreen.y, bMaxScreen.y);
               rectW = Math.max(pxmax - pxmin, 1);
               rectH = Math.max(pymax - pymin, 1);
             }
@@ -866,15 +854,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         ctx.stroke();
 
         const wx = (normXMin + (mouseCoords.x - viewport.x) / effectiveScale).toFixed(2);
-        const raw_wy = normYMin - (mouseCoords.y - viewport.y) / effectiveScale;
-        let crossYMin = 0;
-        let crossYMax = 0;
-        if (drawing?.metadata?.render_bounds) {
-          const [, , , ymax] = drawing.metadata.render_bounds;
-          crossYMin = drawing.metadata.render_bounds[1];
-          crossYMax = ymax;
-        }
-        const wy = (drawing?.metadata?.render_bounds ? (crossYMax + crossYMin - raw_wy) : raw_wy).toFixed(2);
+        // REFACTOR-NOTE (Site F pattern): raw_wy uses sign-inverted Y convention for display coords.
+        // screenToWorld applies Y-flip; the value below matches original behavior (display only, not stored).
+        const worldCoords = screenToWorld(mouseCoords.x, mouseCoords.y, norm, viewport);
+        const wy = worldCoords.y.toFixed(2);
 
         ctx.fillStyle = isHoveringMarkerState ? '#ef4444' : '#a1a1aa';
         ctx.font = '10px monospace';
@@ -885,16 +868,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
       // 7.5 Draw Synced Laser Crosshair from the other viewport!
       if (!isExport && isLaserSyncEnabled && hoveredCoords && !mouseCoords) {
-        const syncedX = viewport.x + effectiveScale * (hoveredCoords.x - normXMin);
-        let syncYMin = 0;
-        let syncYMax = 0;
-        if (drawing?.metadata?.render_bounds) {
-          const [, , , ymax] = drawing.metadata.render_bounds;
-          syncYMin = drawing.metadata.render_bounds[1];
-          syncYMax = ymax;
-        }
-        const raw_hover_y = drawing?.metadata?.render_bounds ? (syncYMax + syncYMin - hoveredCoords.y) : hoveredCoords.y;
-        const syncedY = viewport.y + effectiveScale * (raw_hover_y - normYMin);
+        // hoveredCoords stores world (CAD) coordinates from handleMouseMove (Site F).
+        // worldToScreen applies the Y-flip to map back to canvas pixel space.
+        const synced = worldToScreen(hoveredCoords.x, hoveredCoords.y, norm, viewport);
+        const syncedX = synced.x;
+        const syncedY = synced.y;
 
         if (syncedX >= 0 && syncedX <= width && syncedY >= 0 && syncedY <= height) {
           ctx.save();
@@ -1002,24 +980,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         if ((selectedViolation as any).drawing_id === drawing.id) {
           const [vx, vy] = selectedViolation.coordinates;
 
-          let normScale = 1;
-          let xmin = 0;
-          let ymin = 0;
-          let ymax = 0;
-          if (drawing?.metadata?.render_bounds) {
-            const [x0, y0, x1, y1] = drawing.metadata.render_bounds;
-            const boundsWidth = x1 - x0;
-            if (boundsWidth > 0) {
-              normScale = 1000 / boundsWidth;
-              xmin = x0;
-              ymin = y0;
-              ymax = y1;
-            }
-          }
-
-          const stdX = (vx - xmin) * normScale;
-          const vy_inverted = drawing?.metadata?.render_bounds ? (ymax + ymin - vy) : vy;
-          const stdY = (vy_inverted - ymin) * normScale;
+          // Site B: zoom-to-focus normalization — consolidated via getNormalization()
+          const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+          // worldToScreen gives absolute canvas pixels; we need normalized coords for viewport math.
+          // stdX/stdY are in the 0-1000 normalization space (world - xmin) * normScale
+          const stdX = (vx - norm.xmin) * norm.normScale;
+          const vy_inverted = norm.hasBounds ? (norm.ymax + norm.ymin - vy) : vy;
+          const stdY = (vy_inverted - norm.ymin) * norm.normScale;
 
           const targetScale = 2.2;
           const targetX = width / 2 - stdX * targetScale;
@@ -1052,24 +1019,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           if (selectedViolation && selectedViolation.coordinates && drawing) {
             const [vx, vy] = selectedViolation.coordinates;
 
-            let normScale = 1;
-            let xmin = 0;
-            let ymin = 0;
-            let ymax = 0;
-            if (drawing?.metadata?.render_bounds) {
-              const [x0, y0, x1, y1] = drawing.metadata.render_bounds;
-              const boundsWidth = x1 - x0;
-              if (boundsWidth > 0) {
-                normScale = 1000 / boundsWidth;
-                xmin = x0;
-                ymin = y0;
-                ymax = y1;
-              }
-            }
-
-            const stdX = (vx - xmin) * normScale;
-            const vy_inverted = drawing?.metadata?.render_bounds ? (ymax + ymin - vy) : vy;
-            const stdY = (vy_inverted - ymin) * normScale;
+            // Site C: key 'f' zoom-to-focus — same normalization pattern as Site B
+            const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+            const stdX = (vx - norm.xmin) * norm.normScale;
+            const vy_inverted = norm.hasBounds ? (norm.ymax + norm.ymin - vy) : vy;
+            const stdY = (vy_inverted - norm.ymin) * norm.normScale;
 
             const targetScale = 2.2;
             const targetX = width / 2 - stdX * targetScale;
@@ -1149,39 +1103,20 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const mx = e.clientX - rect.left;
           const my = e.clientY - rect.top;
 
-          let normScale = 1;
-          let xmin = 0;
-          let ymin = 0;
-          if (drawing?.metadata?.render_bounds) {
-            const [x0, y0, x1] = drawing.metadata.render_bounds;
-            const boundsWidth = x1 - x0;
-            if (boundsWidth > 0) {
-              normScale = 1000 / boundsWidth;
-              xmin = x0;
-              ymin = y0;
-            }
-          }
-          const effectiveScale = viewport.scale * normScale;
+          // Site D: handleMouseDown hit-test normalization — consolidated via getNormalization()
+          const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
           const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
 
           let clickedViolationId: string | null = null;
           if (showViolations) {
-            let renderYMin = 0;
-            let renderYMax = 0;
-            let hasBounds = false;
-            if (drawing?.metadata?.render_bounds) {
-              const [, , , ymax] = drawing.metadata.render_bounds;
-              renderYMin = drawing.metadata.render_bounds[1];
-              renderYMax = ymax;
-              hasBounds = true;
-            }
             for (const v of violations) {
               const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
               if (!coords) continue;
               const [vx, raw_vy] = coords;
-              const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
-              const sx = (vx - xmin) * effectiveScale + viewport.x;
-              const sy = (vy - ymin) * effectiveScale + viewport.y;
+              // worldToScreen applies Y-flip when hasBounds — same as original hasBounds block
+              const screenPos = worldToScreen(vx, raw_vy, norm, viewport);
+              const sx = screenPos.x;
+              const sy = screenPos.y;
 
               // Reduced detection radius from 24 to 12 for seamless navigation without blocking drags
               if (Math.hypot(mx - sx, my - sy) <= 12) {
@@ -1219,20 +1154,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               const mx = e.clientX - rect.left;
               const my = e.clientY - rect.top;
 
-              let normScale = 1;
-              let xmin = 0;
-              let ymin = 0;
-              const [x0, y0, x1] = drawing.metadata.render_bounds;
-              const boundsWidth = x1 - x0;
-              if (boundsWidth > 0) {
-                normScale = 1000 / boundsWidth;
-                xmin = x0;
-                ymin = y0;
-              }
-
-              const effectiveScale = viewport.scale * normScale;
-              const worldX = xmin + (mx - viewport.x) / effectiveScale;
-              const worldY = ymin + (my - viewport.y) / effectiveScale;
+              // Site E: ROI center drag — NO Y-flip (percentage-space, Y-axis not inverted here)
+              // We use screenToWorld but with no Y-flip by passing norm with hasBounds=false semantics,
+              // because the ROI percentages are computed in raw canvas space not CAD-flipped space.
+              const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+              const effectiveScale = viewport.scale * norm.normScale;
+              const worldX = norm.xmin + (mx - viewport.x) / effectiveScale;
+              const worldY = norm.ymin + (my - viewport.y) / effectiveScale;
 
               const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
               const w = rxMax - rxMin;
@@ -1271,21 +1199,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       setMouseCoords({ x: mx, y: my });
 
       // Calculate standardized hover coordinates to synchronize with the other viewport!
-      let normScale = 1;
-      let xmin = 0;
-      let ymin = 0;
-      if (drawing?.metadata?.render_bounds) {
-        const [x0, y0, x1] = drawing.metadata.render_bounds;
-        const boundsWidth = x1 - x0;
-        if (boundsWidth > 0) {
-          normScale = 1000 / boundsWidth;
-          xmin = x0;
-          ymin = y0;
-        }
-      }
-      const effectiveScale = viewport.scale * normScale;
-      const stdX = xmin + (mx - viewport.x) / effectiveScale;
-      const stdY = ymin - (my - viewport.y) / effectiveScale;
+      // Site F: sign-inverted Y (laser-sync convention — NOT screenToWorld). Keep inline.
+      // See coordinateTransform.test.ts "Site F" test for documentation of this behavioral difference.
+      const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+      const effectiveScale = viewport.scale * norm.normScale;
+      const stdX = norm.xmin + (mx - viewport.x) / effectiveScale;
+      const stdY = norm.ymin - (my - viewport.y) / effectiveScale; // intentional sign inversion for laser-sync
 
       if (dragMarkerId && dragMarkerStartPos) {
         const deltaX = (e.clientX - dragMarkerMouseStart.x) / effectiveScale;
@@ -1324,15 +1243,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       let hoveredMId: string | null = null;
       if (showViolations) {
         const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
-        let renderYMin = 0;
-        let renderYMax = 0;
-        let hasBounds = false;
-        if (drawing?.metadata?.render_bounds) {
-          const [, , , ymax] = drawing.metadata.render_bounds;
-          renderYMin = drawing.metadata.render_bounds[1];
-          renderYMax = ymax;
-          hasBounds = true;
-        }
+        // norm is already computed above in the Site F block for laser-sync
         const getPriority = (penType: string) => {
           if (penType === 'ai_red' || penType === 'checker_blue') return 3;
           if (penType === 'ai_orange') return 2;
@@ -1351,10 +1262,12 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
           if (!coords) continue;
           const [vx, raw_vy] = coords;
-          const vy = hasBounds ? (renderYMax + renderYMin - raw_vy) : raw_vy;
+          // Prefer cached markerPositionsRef (written by renderViolationReticles) for accuracy.
+          // Fall back to worldToScreen only when the ref isn't populated yet (first frame).
           const pos = markerPositionsRef.current[v.id];
-          const sx = pos ? pos.x : (vx - xmin) * effectiveScale + viewport.x;
-          const sy = pos ? pos.y : (vy - ymin) * effectiveScale + viewport.y;
+          const screenPos = pos ?? worldToScreen(vx, raw_vy, norm, viewport);
+          const sx = screenPos.x;
+          const sy = screenPos.y;
 
           // Reduced detection radius from 18 to 12 for seamless hover transition
           if (Math.hypot(mx - sx, my - sy) <= 12) {
@@ -1382,10 +1295,11 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         const customReg = customRegions[regionKey];
 
         if (customReg) {
-          const screenXMin = (rxMin + w * customReg.xMin - xmin) * effectiveScale + viewport.x;
-          const screenXMax = (rxMin + w * customReg.xMax - xmin) * effectiveScale + viewport.x;
-          const screenYMin = (ryMin + h * customReg.yMin - ymin) * effectiveScale + viewport.y;
-          const screenYMax = (ryMin + h * customReg.yMax - ymin) * effectiveScale + viewport.y;
+          // Use norm from Site F block above — xmin/ymin/effectiveScale all derived from it
+          const screenXMin = (rxMin + w * customReg.xMin - norm.xmin) * effectiveScale + viewport.x;
+          const screenXMax = (rxMin + w * customReg.xMax - norm.xmin) * effectiveScale + viewport.x;
+          const screenYMin = (ryMin + h * customReg.yMin - norm.ymin) * effectiveScale + viewport.y;
+          const screenYMax = (ryMin + h * customReg.yMax - norm.ymin) * effectiveScale + viewport.y;
 
           const handles = [
             { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
@@ -1423,8 +1337,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         const w = rxMax - rxMin;
         const h = ryMax - ryMin;
 
-        const worldX = xmin + (mx - viewport.x) / effectiveScale;
-        const worldY = ymin + (my - viewport.y) / effectiveScale;
+        const worldX = norm.xmin + (mx - viewport.x) / effectiveScale;
+        const worldY = norm.ymin + (my - viewport.y) / effectiveScale;
 
         const pctX = Math.max(0.0, Math.min(1.0, (worldX - rxMin) / w));
         const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));
@@ -1565,32 +1479,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      let normScale = 1;
-      let xmin = 0;
-      let ymin = 0;
-      if (drawing?.metadata?.render_bounds) {
-        const [x0, y0, x1] = drawing.metadata.render_bounds;
-        const boundsWidth = x1 - x0;
-        if (boundsWidth > 0) {
-          normScale = 1000 / boundsWidth;
-          xmin = x0;
-          ymin = y0;
-        }
-      }
-      const effectiveScale = viewport.scale * normScale;
-      const wx = xmin + (mx - viewport.x) / effectiveScale;
-      const wy_screen = ymin + (my - viewport.y) / effectiveScale;
-
-      let renderYMin = 0;
-      let renderYMax = 0;
-      let hasBounds = false;
-      if (drawing?.metadata?.render_bounds) {
-        const [, , , ymax] = drawing.metadata.render_bounds;
-        renderYMin = drawing.metadata.render_bounds[1];
-        renderYMax = ymax;
-        hasBounds = true;
-      }
-      const wy = hasBounds ? (renderYMax + renderYMin - wy_screen) : wy_screen;
+      // Site G: handleContextMenu normalization — consolidated via getNormalization() + screenToWorld()
+      const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+      const effectiveScale = viewport.scale * norm.normScale;
+      // wx is raw screen-to-world X (no Y-flip needed for wx)
+      const wx = norm.xmin + (mx - viewport.x) / effectiveScale;
+      // screenToWorld applies the Y-flip: matches original hasBounds ? (yMax + yMin - wy_screen) : wy_screen
+      const worldPos = screenToWorld(mx, my, norm, viewport);
+      const wy = worldPos.y;
 
       // Shift menu slightly if too close to right/bottom edges to fit cleanly
       let menuX = mx;
