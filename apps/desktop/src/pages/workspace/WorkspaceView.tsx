@@ -650,11 +650,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ currentNav }) => {
                   </span>
                 </div>
                 {aiScanProgress === "idle" && (
-                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <div className="flex gap-1.5 items-center">
                     <button
-                      className="btn btn-primary"
+                      className="flex items-center gap-1.5 text-[0.7rem] px-3 py-1.5 rounded-md font-semibold text-black bg-gradient-to-r from-accent-cyan to-indigo-400 hover:brightness-110 transition-all hover:shadow-[0_0_12px_rgba(0,229,255,0.35)] cursor-pointer"
                       onClick={runPhysicalComparisonAI}
-                      style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px", borderRadius: "6px" }}
                     >
                       <Play size={12} fill="currentColor" />
                       RUN COMPARISON
