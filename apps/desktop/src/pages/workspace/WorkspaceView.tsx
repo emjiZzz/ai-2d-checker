@@ -110,7 +110,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({
 
   return (
     <div
-      className={`upload-zone-wrapper ${isDragActive ? "drag-active" : ""} ${uploadState}`}
+      className={`upload-dropzone-container ${side} ${uploadState} ${isDragActive ? "dragging" : ""}`}
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
@@ -127,58 +127,65 @@ const UploadZone: React.FC<UploadZoneProps> = ({
       />
 
       {uploadState === "idle" && (
-        <div className="upload-idle-state" onClick={triggerFileInput}>
-          <div className="upload-icon-circle">
-            <svg style={{ width: "22px", height: "22px" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <div className="dropzone-idle-view" onClick={triggerFileInput}>
+          <div className="dropzone-icon-circle">
+            <svg style={{ width: "14px", height: "14px" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
             </svg>
           </div>
-          <span className="upload-primary-text">Drag & drop CAD file here</span>
-          <span className="upload-secondary-text">or <span className="browse-link">browse file system</span></span>
-          <span className="upload-formats-text">
-            Supports {currentNav === "3d-workspace" ? "STEP, IGES, ICD, SolidWorks" : "DWG, DXF, PDF"}
-          </span>
+          <p className="dropzone-main-text">
+            Drag & drop or <span className="browse-link">browse</span>
+          </p>
+          <p className="dropzone-sub-text">
+            {currentNav === "3d-workspace" ? "STEP, IGES, ICD, SolidWorks (No size limit)" : "DWG, DXF, PDF (No size limit)"}
+          </p>
         </div>
       )}
 
       {uploadState === "uploading" && (
-        <div className="upload-processing-state">
-          <Loader className="spin-animation loader-icon" />
-          <span className="progress-percentage-label">{progress}%</span>
-          <span className="upload-status-primary">Uploading CAD Draft...</span>
-          <span className="upload-status-secondary">{fileName}</span>
-          <div className="progress-bar-track">
-            <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
+        <div className="dropzone-active-view">
+          <div className="pulsing-loader-wrapper">
+            <Loader className="spin-animation loader-icon" size={14} />
+          </div>
+          <div className="active-details-wrapper">
+            <span className="active-status-title">Uploading CAD Draft ({progress}%)</span>
+            <span className="active-filename-sub">{fileName}</span>
+          </div>
+          <div className="dropzone-progress-bar-bg">
+            <div className="dropzone-progress-bar-fill" style={{ width: `${progress}%` }}></div>
           </div>
         </div>
       )}
 
       {(uploadState === "processing" || uploadState === "validating") && (
-        <div className="upload-processing-state ingesting">
-          <div className="loader spin-animation"></div>
-          <span className="upload-status-primary">
-            {uploadState === "validating" ? "Reconstructing Vector Entities..." : "Aligning Geometrical Checkpoints..."}
-          </span>
-          <span className="upload-status-secondary">{fileName}</span>
-          <span className="elapsed-timer">Elapsed: {elapsed}s</span>
-          <div className="tip-carousel-card">
+        <div className="dropzone-active-view">
+          <div className="pulsing-loader-wrapper">
+            <Loader className="spin-animation loader-icon" size={14} />
+          </div>
+          <div className="active-details-wrapper">
+            <span className="active-status-title">
+              {uploadState === "validating" ? "Reconstructing Vector Entities..." : "Aligning Geometrical Checkpoints..."}
+            </span>
+            <span className="active-filename-sub">{fileName}</span>
+            <span className="active-filename-sub" style={{ marginTop: "4px", opacity: 0.8 }}>Elapsed: {elapsed}s</span>
+          </div>
+          <div className="tip-carousel-card" style={{ marginTop: "10px", background: "rgba(255, 255, 255, 0.02)", padding: "6px 12px", borderRadius: "6px", border: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: "6px" }}>
             <Sparkles size={11} className="tip-sparkle-icon" />
-            <span className="tip-carousel-text">{tips[tipIndex]}</span>
+            <span className="tip-carousel-text" style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{tips[tipIndex]}</span>
           </div>
         </div>
       )}
 
       {uploadState === "failed" && (
-        <div className="upload-error-state">
-          <div className="error-icon-circle">!</div>
-          <span className="error-primary-text">Pipeline Processing Failure</span>
-          <p className="error-description-box">{error || "An unknown ingestion pipeline error occurred. Please verify your vector formats."}</p>
+        <div className="dropzone-failed-view">
+          <div className="failed-icon-circle">!</div>
+          <span className="failed-status-title">Pipeline Processing Failure</span>
+          <p className="failed-error-desc">{error || "An unknown ingestion pipeline error occurred. Please verify your vector formats."}</p>
           <span className="retry-link-label" onClick={triggerFileInput}>Retry browse</span>
         </div>
       )}
     </div>
   );
-
 };
 
 interface WorkspaceViewProps {
