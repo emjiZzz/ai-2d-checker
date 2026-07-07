@@ -24,11 +24,22 @@ export interface ViolationItem {
   affected_entities: string[];
   confidence: number;
   coordinates?: [number, number];
+  ref_coordinates?: [number, number];
   standard_reference?: string;
   pen_type?: string;
   is_resolved?: boolean;
   resolved_at?: string | null;
-  checker_remarks?: string | null;
+  original_value?: string;
+}
+
+export interface UndoAction {
+  type: "move" | "delete";
+  violationId: string;
+  oldCoords?: [number, number];
+  newCoords?: [number, number];
+  oldRefCoords?: [number, number];
+  newRefCoords?: [number, number];
+  violation?: ViolationItem;
 }
 
 export type UploadState = "idle" | "dragging" | "validating" | "uploading" | "processing" | "completed" | "failed";
@@ -79,6 +90,8 @@ interface WorkspaceState {
   auditStatus: "idle" | "queued" | "auditing" | "completed" | "failed";
   complianceScore: number | null;
   violations: ViolationItem[];
+  deletedViolationsStack: ViolationItem[];
+  undoStack: UndoAction[];
   selectedViolation: ViolationItem | null;
   auditError: string | null;
   
@@ -110,6 +123,16 @@ interface WorkspaceState {
   createClient: (name: string) => Promise<boolean>;
   deleteClient: (name: string) => Promise<boolean>;
   setSelectedClient: (name: string | null) => void;
+
+  // Undo Actions
+  pushDeletedViolation: (violation: ViolationItem) => void;
+  popAndRestoreViolation: () => void;
+  pushUndoAction: (action: UndoAction) => void;
+  undoLastAction: () => void;
+  
+  // Navigation State
+  currentNav: "workspace" | "standards" | "history" | "settings";
+  setCurrentNav: (nav: "workspace" | "standards" | "history" | "settings") => void;
   
   resetWorkspace: () => void;
 }
@@ -147,12 +170,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   auditStatus: "idle",
   complianceScore: null,
   violations: [],
+  deletedViolationsStack: [],
+  undoStack: [],
   selectedViolation: null,
   auditError: null,
 
   // Client States
   clients: [],
   selectedClient: null,
+
+  // Navigation State
+  currentNav: "workspace",
+  setCurrentNav: (nav) => set({ currentNav: nav }),
 
   setOldDrawing: (drawing) => {
     set({ oldDrawing: drawing });
@@ -596,13 +625,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             if (violationsRes.ok && violationsData.success) {
               set({
                 violations: violationsData.data,
-                complianceScore: session.compliance_score || 85.0,
+                // Use ?? null so a genuine score of 0 is never overwritten with a fake default.
+                // A null score renders as "Score Pending / N/A" in the UI.
+                complianceScore: session.compliance_score ?? null,
                 auditStatus: "completed",
               });
             } else {
               set({
                 violations: [],
-                complianceScore: session.compliance_score || 85.0,
+                // Violations fetch failed — preserve null so the UI shows "Score Pending" rather
+                // than a fictitious passing score.
+                complianceScore: session.compliance_score ?? null,
                 auditStatus: "completed",
               });
             }
@@ -707,6 +740,61 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setSelectedClient: (name) => set({ selectedClient: name }),
 
+  pushDeletedViolation: (v) => set((state) => {
+    const action: UndoAction = {
+      type: "delete",
+      violationId: v.id,
+      violation: v
+    };
+    return {
+      deletedViolationsStack: [...state.deletedViolationsStack, v],
+      undoStack: [...state.undoStack, action]
+    };
+  }),
+
+  popAndRestoreViolation: () => {
+    const stack = get().deletedViolationsStack;
+    if (stack.length === 0) return;
+    const last = stack[stack.length - 1];
+    set({
+      deletedViolationsStack: stack.slice(0, -1),
+      violations: [...get().violations, last],
+      undoStack: get().undoStack.filter(act => !(act.type === "delete" && act.violationId === last.id))
+    });
+  },
+
+  pushUndoAction: (action) => set((state) => ({
+    undoStack: [...state.undoStack, action]
+  })),
+
+  undoLastAction: () => {
+    const stack = get().undoStack;
+    if (stack.length === 0) return;
+    const last = stack[stack.length - 1];
+    const newStack = stack.slice(0, -1);
+    
+    if (last.type === "delete" && last.violation) {
+      set({
+        undoStack: newStack,
+        violations: [...get().violations, last.violation],
+        deletedViolationsStack: get().deletedViolationsStack.filter(v => v.id !== last.violationId)
+      });
+    } else if (last.type === "move") {
+      set({
+        undoStack: newStack,
+        violations: get().violations.map(v => {
+          if (v.id === last.violationId) {
+            const updated = { ...v };
+            if (last.oldCoords) updated.coordinates = last.oldCoords;
+            if (last.oldRefCoords) updated.ref_coordinates = last.oldRefCoords;
+            return updated;
+          }
+          return v;
+        })
+      });
+    }
+  },
+
   resetWorkspace: () => {
     // Clear uploads
     get().clearUpload("old");
@@ -719,6 +807,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       auditStatus: "idle",
       complianceScore: null,
       violations: [],
+      deletedViolationsStack: [],
+      undoStack: [],
       selectedViolation: null,
       auditError: null,
     });

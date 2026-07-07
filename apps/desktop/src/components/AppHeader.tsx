@@ -270,6 +270,16 @@ export const AppHeader: React.FC = () => {
           background: #e81123 !important;
           color: white !important;
         }
+        .nav-header-btn {
+          border: 1px solid transparent !important;
+        }
+        .nav-header-btn:hover {
+          color: var(--text-primary) !important;
+          background: rgba(255, 255, 255, 0.04) !important;
+        }
+        .nav-header-btn:active {
+          transform: scale(0.97);
+        }
       `}</style>
     </div>
   );

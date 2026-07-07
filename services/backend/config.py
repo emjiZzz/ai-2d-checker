@@ -53,6 +53,7 @@ class Settings:
     
     # Secrets
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
     
     # ODA File Converter Auto-Discovery
     ODA_CONVERTER_PATH: str = _auto_detect_oda_converter()

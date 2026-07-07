@@ -99,8 +99,17 @@ class EntityMapper:
         # Dimensions contain geometric definition points and overlay texts
         text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
         measurement = entity.dxf.actual_measurement if hasattr(entity.dxf, "actual_measurement") else None
+        
+        if (not text or "<>" in text) and measurement is not None:
+            meas_str = f"{measurement:.2f}".rstrip('0').rstrip('.')
+            text = meas_str if not text else text.replace("<>", meas_str)
+            
+        text = EntityMapper._clean_mtext_content(text)
+            
         def_point = entity.dxf.defpoint if hasattr(entity.dxf, "defpoint") else [0,0,0]
         text_point = entity.dxf.text_midpoint if hasattr(entity.dxf, "text_midpoint") else [0,0,0]
+        if text_point[0] == 0 and text_point[1] == 0:
+            text_point = def_point
         dim_type = entity.dxf.dimtype if hasattr(entity.dxf, "dimtype") else 0
         
         return {
@@ -164,14 +173,38 @@ class EntityMapper:
 
     @staticmethod
     def map_text(entity: Any) -> dict[str, Any]:
-        # Text/MText maps literal strings
+        # Text/MText/Attributes maps literal strings
         dxftype = entity.dxftype()
-        raw_content = entity.text if dxftype == "MTEXT" else entity.dxf.text
+        
+        # 'text' attribute exists on MTEXT, ATTRIB, ATTDEF, whereas standard TEXT uses dxf.text
+        if dxftype in ("MTEXT", "ATTRIB", "ATTDEF"):
+            raw_content = entity.text if hasattr(entity, "text") else getattr(entity.dxf, "text", "")
+        else:
+            raw_content = entity.dxf.text if hasattr(entity.dxf, "text") else ""
+            
         insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0,0,0]
         height = entity.dxf.height if hasattr(entity.dxf, "height") else 2.5
+        rotation = entity.dxf.rotation if hasattr(entity.dxf, "rotation") else 0.0
 
         # Clean MTEXT control codes and decode bytes if necessary
         text_content = EntityMapper._clean_mtext_content(raw_content) if raw_content else ""
+
+        # Compute exact bounding box bounds in model space coordinates
+        bbox_coords = None
+        try:
+            from ezdxf import bbox
+            box = bbox.extents([entity])
+            bbox_coords = [
+                [float(box.extmin.x), float(box.extmin.y)],
+                [float(box.extmax.x), float(box.extmax.y)]
+            ]
+        except Exception:
+            pass
+
+        # Alignments & attachment points
+        halign = entity.dxf.halign if hasattr(entity.dxf, "halign") else 0
+        valign = entity.dxf.valign if hasattr(entity.dxf, "valign") else 0
+        attachment_point = entity.dxf.attachment_point if hasattr(entity.dxf, "attachment_point") else 0
         
         return {
             "entity_type": "text",
@@ -181,7 +214,12 @@ class EntityMapper:
                 "color": entity.dxf.color,
                 "text": text_content,
                 "height": height,
-                "is_multiline": dxftype == "MTEXT"
+                "is_multiline": dxftype == "MTEXT",
+                "rotation": rotation,
+                "halign": halign,
+                "valign": valign,
+                "attachment_point": attachment_point,
+                "bbox": bbox_coords
             },
             "geometry": {
                 "insert": [insert[0], insert[1], insert[2]]
@@ -195,6 +233,15 @@ class EntityMapper:
         insert = entity.dxf.insert
         rotation = entity.dxf.rotation if hasattr(entity.dxf, "rotation") else 0.0
         
+        attributes = {}
+        if hasattr(entity, "attribs"):
+            for attrib in entity.attribs:
+                if hasattr(attrib.dxf, "tag") and hasattr(attrib.dxf, "text"):
+                    # Clean MTEXT control codes and decode bytes if necessary
+                    raw_content = attrib.text if hasattr(attrib, "text") else getattr(attrib.dxf, "text", "")
+                    clean_text = EntityMapper._clean_mtext_content(raw_content) if raw_content else ""
+                    attributes[attrib.dxf.tag] = clean_text
+        
         return {
             "entity_type": "block",
             "layer": entity.dxf.layer,
@@ -202,10 +249,82 @@ class EntityMapper:
                 "handle": entity.dxf.handle,
                 "color": entity.dxf.color,
                 "block_name": block_name,
-                "rotation": rotation
+                "rotation": rotation,
+                "attributes": attributes
             },
             "geometry": {
                 "insert": [insert[0], insert[1], insert[2]]
+            }
+        }
+
+    @staticmethod
+    def map_tolerance(entity: Any) -> Dict[str, Any]:
+        content = ""
+        if hasattr(entity.dxf, "content") and entity.dxf.content:
+            content = entity.dxf.content
+        elif hasattr(entity.dxf, "text") and entity.dxf.text:
+            content = entity.dxf.text
+        insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0, 0, 0]
+        
+        return {
+            "entity_type": "tolerance",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "text": content,
+                "rotation": entity.dxf.get("rotation", 0.0) if hasattr(entity.dxf, "get") else 0.0,
+            },
+            "geometry": {
+                "insert": [insert[0], insert[1], insert[2]]
+            }
+        }
+
+    @staticmethod
+    def map_leader(entity: Any) -> Dict[str, Any]:
+        vertices = []
+        if hasattr(entity, "vertices"):
+            vertices = [[v[0], v[1], v[2]] for v in entity.vertices]
+        
+        return {
+            "entity_type": "leader",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "has_arrowhead": entity.dxf.get("has_arrowhead", 1) if hasattr(entity.dxf, "get") else 1
+            },
+            "geometry": {
+                "vertices": vertices
+            }
+        }
+
+    @staticmethod
+    def map_multileader(entity: Any) -> Dict[str, Any]:
+        text = ""
+        if hasattr(entity, "context") and hasattr(entity.context, "text"):
+            text = entity.context.text
+        elif hasattr(entity.dxf, "text"):
+            text = entity.dxf.text
+            
+        vertices = []
+        # MultiLeaders are complex, we extract basic location/vertices if possible
+        if hasattr(entity, "leaders"):
+            for leader in entity.leaders:
+                if hasattr(leader, "vertices"):
+                    vertices.extend([[v[0], v[1], v[2]] for v in leader.vertices])
+                    
+        return {
+            "entity_type": "multileader",
+            "layer": entity.dxf.layer,
+            "properties": {
+                "handle": entity.dxf.handle,
+                "color": entity.dxf.color,
+                "text": text
+            },
+            "geometry": {
+                "vertices": vertices,
+                "insert": entity.dxf.insert if hasattr(entity.dxf, "insert") else [0, 0, 0]
             }
         }
 
@@ -230,7 +349,13 @@ class EntityMapper:
                 return cls.map_polyline(entity)
             elif dxftype == "DIMENSION":
                 return cls.map_dimension(entity)
-            elif dxftype in ("TEXT", "MTEXT"):
+            elif dxftype == "TOLERANCE":
+                return cls.map_tolerance(entity)
+            elif dxftype == "LEADER":
+                return cls.map_leader(entity)
+            elif dxftype == "MULTILEADER":
+                return cls.map_multileader(entity)
+            elif dxftype in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
                 return cls.map_text(entity)
             elif dxftype == "INSERT":
                 return cls.map_block(entity)

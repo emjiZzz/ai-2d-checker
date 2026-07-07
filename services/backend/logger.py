@@ -86,7 +86,9 @@ def setup_logger() -> logging.Logger:
     logger.addHandler(console_handler)
     
     # 2. Production-hardened Rotating JSON File Handler
-    log_file = log_dir / "backend.log"
+    import os
+    pid = os.getpid()
+    log_file = log_dir / f"backend_{pid}.log"
     file_handler = RotatingFileHandler(
         log_file,
         maxBytes=5 * 1024 * 1024,  # 5 Megabytes

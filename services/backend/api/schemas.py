@@ -168,3 +168,55 @@ class UpdateUserRequest(BaseModel):
     role: str | None = None
     password: str | None = None
 
+class PhysicalComparisonRequest(BaseModel):
+    reference_drawing_id: str
+    drawing_id: str
+
+class ZoneComparisonResult(BaseModel):
+    status: str
+    differenceSummary: str
+    extractedContent: Optional[str] = None
+    discrepancyDetails: Optional[str] = None
+
+class BomRowComparison(BaseModel):
+    row: int
+    col: str
+    original: str
+    kmti: str
+    diffType: str
+
+from typing import Literal
+
+class CategoryComparison(BaseModel):
+    status: Literal["MATCHED", "CHANGED", "ADDED", "REMOVED", "MISSING"]
+    difference_summary: str = Field(..., description="High-level engineering discrepancy summary.")
+    reference_content: Optional[str] = Field(None, description="Extracted content from the reference drawing.")
+    revision_content: Optional[str] = Field(None, description="Extracted content from the revision drawing.")
+    engineering_discrepancy_details: Optional[str] = Field(None, description="Actionable checklist feedback.")
+
+class CanvasMarking(BaseModel):
+    text_content: str = Field(..., description="The exact text string in the revised KMTI drawing to locate and highlight.")
+    status: Literal["MATCHED", "CHANGED", "ADDED", "REMOVED"] = Field(..., description="Audit status for this specific text marking.")
+    details: str = Field(..., description="Short explanation of the check result for this element.")
+    category: Literal["drawing_views", "notes_section", "bill_of_materials", "title_block", "isometric_view"] = Field(
+        default="drawing_views",
+        description="The checklist category this text belongs to."
+    )
+    entity_id: Optional[str] = Field(default=None, description="The precise [ID: <handle>] extracted from the provided text string (e.g. '1B2A'). For ADDED or CHANGED items, use the REV-ID. For REMOVED items, use the REF-ID. Mandatory if present.")
+    coordinates: Optional[list[float]] = Field(default=None, description="Optional physical coordinate [x, y] of the text element on the sheet.")
+    ref_coordinates: Optional[list[float]] = Field(default=None, description="Optional physical coordinate [x, y] of the text element on the reference sheet.")
+    bbox: Optional[list[list[float]]] = Field(default=None, description="Optional bounding box of the text element.")
+    ref_bbox: Optional[list[list[float]]] = Field(default=None, description="Optional bounding box of the text element on the reference sheet.")
+    original_value: Optional[str] = Field(default=None, description="The original value from the reference drawing, if changed.")
+
+class PhysicalComparisonResponse(BaseModel):
+    drawing_views: CategoryComparison
+    notes_section: CategoryComparison
+    bill_of_materials: CategoryComparison
+    title_block: CategoryComparison
+    isometric_view: CategoryComparison
+    other_engineering_references: CategoryComparison
+    canvas_markings: list[CanvasMarking] = Field(default_factory=list, description="Visual checklist coordinates mapping items.")
+
+
+

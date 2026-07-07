@@ -31,9 +31,13 @@ import {
   Briefcase,
   FileText,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  Download
 } from "lucide-react";
 
+import { jsPDF } from "jspdf";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import { StandardsManager } from "../../components/StandardsManager";
 
 // Helper utility to parse ISO datetime strings from backend reliably as UTC
@@ -222,12 +226,50 @@ export const AuditWorkspace: React.FC = () => {
   // Selected workspace navigation sub-view
   const { currentNav, setCurrentNav } = useNavStore();
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   // Local drawing catalog for selections
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
+
+  // Sidebar drag-to-resize states
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(400);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(400);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  // Draggable Sidebar Panels resizing logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        const newWidth = Math.max(250, Math.min(600, e.clientX));
+        setLeftSidebarWidth(newWidth);
+      }
+      if (isResizingRight) {
+        const newWidth = Math.max(250, Math.min(600, window.innerWidth - e.clientX));
+        setRightSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingLeft, isResizingRight]);
 
   // Canvas size and container references
   const containerRefOld = React.useRef<HTMLDivElement>(null);
   const containerRefNew = React.useRef<HTMLDivElement>(null);
+  const drawingCanvasRefOld = React.useRef<DrawingCanvasRef>(null);
+  const drawingCanvasRefNew = React.useRef<DrawingCanvasRef>(null);
   const [oldSize, setOldSize] = useState({ width: 480, height: 400 });
   const [newSize, setNewSize] = useState({ width: 480, height: 400 });
 
@@ -242,35 +284,14 @@ export const AuditWorkspace: React.FC = () => {
           headers["Authorization"] = `Bearer ${apiToken}`;
         }
 
-        // Load drawings
+        // Load drawings — bind exclusively to live database records.
+        // An empty database must surface as an empty state, never a phantom catalog.
         const dwgRes = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
         const dwgData = await dwgRes.json();
         if (dwgRes.ok && dwgData.success) {
-          // If no drawings returned, mock a standard list so the user is wowed immediately!
-          if (dwgData.data && dwgData.data.length > 0) {
-            setDrawings(dwgData.data);
-          } else {
-            setDrawings([
-              {
-                id: "dwg_01",
-                file_name: "floor_layout_v1_reference.dwg",
-                file_path: "uploads/dwg_01.dwg",
-                format: "dwg",
-                entity_counts: { LINE: 1204, CIRCLE: 480, TEXT: 125, DIMENSION: 94 },
-                metadata: { extmin: [0, 0], extmax: [400, 300] },
-                created_at: new Date(Date.now() - 3600 * 1000).toISOString()
-              },
-              {
-                id: "dwg_02",
-                file_name: "floor_layout_v2_revision.dwg",
-                file_path: "uploads/dwg_02.dwg",
-                format: "dwg",
-                entity_counts: { LINE: 1225, CIRCLE: 478, TEXT: 132, DIMENSION: 95 },
-                metadata: { extmin: [0, 0], extmax: [400, 300] },
-                created_at: new Date().toISOString()
-              }
-            ]);
-          }
+          // Bind strictly to the dynamic payload returned from the ingestion pipeline.
+          // drawings.length === 0 is the correct signal for the empty-state import prompt.
+          setDrawings(dwgData.data && dwgData.data.length > 0 ? dwgData.data : []);
         }
 
         // Load standards list
@@ -321,12 +342,9 @@ export const AuditWorkspace: React.FC = () => {
     fetchClients
   } = useWorkspaceStore();
 
-  // Connect to reviewStore for synchronized viewport control
   const {
     viewport: reviewViewport,
-    setViewport: setReviewViewport,
-    isLaserSyncEnabled,
-    toggleLaserSync
+    setViewport: setReviewViewport
   } = useReviewStore();
 
   // Auth: read current user role to enforce access gates
@@ -349,42 +367,972 @@ export const AuditWorkspace: React.FC = () => {
   // Automated AI Physical Comparison State
   const [aiScanProgress, setAiScanProgress] = useState<"idle" | "scanning_ref" | "extracting" | "scanning_rev" | "comparing" | "completed">("idle");
   const [aiChecklistResults, setAiChecklistResults] = useState<Record<string, any>>({});
-  const [bomComparisonMatrix, setBomComparisonMatrix] = useState<any[]>([]);
   const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({});
+  const [aiScanError, setAiScanError] = useState<string | null>(null);
 
   const toggleChecklistPanel = (key: string) => {
     setExpandedChecklistPanels(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const runPhysicalComparisonAI = async () => {
-    setAiScanProgress("scanning_ref");
-    await new Promise(r => setTimeout(r, 1200));
-    setAiScanProgress("extracting");
-    await new Promise(r => setTimeout(r, 1200));
-    setAiScanProgress("scanning_rev");
-    await new Promise(r => setTimeout(r, 1200));
+    if (!oldDrawing || !newDrawing) return;
+
     setAiScanProgress("comparing");
-    await new Promise(r => setTimeout(r, 1800));
-    
-    // Set Mock Data
-    setAiChecklistResults({
-      views: { status: "MATCHED", log: "No topological differences detected." },
-      notes: { status: "ADDED", log: "Notes detected in KMTI drawing but absent in Original.", extractedText: "1. ALL DIMENSIONS ARE IN INCHES.\n2. TOLERANCES: X.XX ± 0.01\n3. MATERIAL: ALUMINUM 6061-T6." },
-      bom: { status: "CHANGED", log: "Discrepancy detected in row data precision." },
-      titleBlock: { status: "MATCHED", log: "Administrative metadata aligns." },
-      isometric: { status: "MATCHED", log: "Isometric view projection verified." }
-    });
+    setAiScanError(null); // Clear any previous error on new scan
 
-    setBomComparisonMatrix([
-      { row: 1, col: "Part No", original: "1001-A", kmti: "1001-A", diffType: "MATCHED" },
-      { row: 1, col: "Finished Weight", original: "2.6", kmti: "2.60", diffType: "CHANGED" },
-      { row: 2, col: "Part No", original: "1002-B", kmti: "1002-B", diffType: "MATCHED" },
-      { row: 2, col: "Finished Weight", original: "1.8", kmti: "1.8", diffType: "MATCHED" },
-    ]);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      };
+      if (apiToken) {
+        headers["Authorization"] = `Bearer ${apiToken}`;
+      }
 
-    setAiScanProgress("completed");
-    setExpandedChecklistPanels({ notes: true, bom: true }); // auto-expand issues
+      const res = await fetch(`${backendUrl}/api/v1/audits/physical-comparison`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          reference_drawing_id: oldDrawing.id,
+          drawing_id: newDrawing.id
+        })
+      });
+
+      if (!res.ok) {
+        let errMsg = `Comparison API returned status ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.detail) {
+            errMsg = errData.detail;
+          } else if (errData && errData.error && errData.error.message) {
+            errMsg = errData.error.message;
+          }
+        } catch (_) { }
+        throw new Error(errMsg);
+      }
+
+      const data = await res.json();
+      if (!data.success || !data.data) {
+        throw new Error(data.error?.message || "Comparison failed");
+      }
+
+      setAiChecklistResults(data.data);
+      setAiScanProgress("completed");
+
+      // Auto-expand all panels by default to show rich, visually appealing discrepancy metrics
+      setExpandedChecklistPanels({
+        drawing_views: true,
+        notes_section: true,
+        bill_of_materials: true,
+        title_block: true,
+        isometric_view: true,
+        other_engineering_references: true
+      });
+
+      // DYNAMIC VISUAL MARKINGS DIRECTLY ON THE CANVAS!
+      try {
+        const cleanCadText = (text: string): string => {
+          if (!text) return "";
+          let clean = text;
+          // Replace CP932 decoded multiplication sign "×" with standard lowercase "x"
+          clean = clean.replace(/×/g, "x");
+          clean = clean.replace(/[{}]/g, "");
+          // Aggressively strip ALL AutoCAD MTEXT formatting codes (fonts, colors, alignment, etc.)
+          clean = clean.replace(/\\[A-Za-z0-9\-~|.]+;/g, "");
+          clean = clean.replace(/\\P/g, " ");
+          // Fallback strip for any remaining \L or \l formatting tags
+          clean = clean.replace(/\\[LlOo]/g, "");
+          return clean.trim();
+        };
+
+        const normalizeStr = (str: string) => {
+          let s = str.toLowerCase().trim();
+          s = s.replace(/%%c/g, "⌀").replace(/%%d/g, "°").replace(/%%p/g, "±");
+          // Replace CP932 decoded multiplication sign "ラ" with standard lowercase "x"
+          s = s.replace(/ラ/g, "x");
+          s = s.replace(/×/g, "x");
+          s = s.replace(/:/g, "/");
+          return s
+            .replace(/[\s\(\)\[\]\{\}\:\;\,\-\_\.\/\引\（\）－−–—―〜～]/g, "")
+            .trim();
+        };
+
+        // findFuzzyMatch removed to satisfy strict TypeScript unused variable compiler rules
+
+        const findAllFuzzyMatches = (
+          searchTerm: string,
+          entities: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[],
+          preferModelSpace: boolean = false,
+          allowNumberMismatch: boolean = false,
+          minScore: number = 0
+        ): { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] => {
+          if (!searchTerm) return [];
+
+          // Fix F1: multi-line search terms (e.g. a \n-joined TITLE field merged from two stacked
+          // rows) cannot match single-line CAD entities. Split on \n and run per-line searches,
+          // returning the deduplicated union so both rows get their own marker pin.
+          if (searchTerm.includes('\n')) {
+            const lines = searchTerm.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+            const seen = new Set<string>();
+            const combined: { text: string; x: number; y: number; bbox?: any; height?: number; layoutSpace?: string; layer?: string }[] = [];
+            for (const line of lines) {
+              // Always allow number mismatch for split lines because partial lines won't match the whole entity's numbers
+              const lineMatches = findAllFuzzyMatches(line, entities, preferModelSpace, true, minScore);
+              for (const m of lineMatches) {
+                const key = `${m.x.toFixed(2)},${m.y.toFixed(2)}`;
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  combined.push(m);
+                }
+              }
+            }
+            return combined;
+          }
+
+          const normSearch = normalizeStr(searchTerm);
+          if (!normSearch) return [];
+
+          const matches: { ent: any; score: number }[] = [];
+          const extractNumbers = (s: string) => {
+            const m = s.match(/\d+/g);
+            return m ? m.join("") : "";
+          };
+          const searchNumbers = extractNumbers(normSearch);
+
+          for (const ent of entities) {
+            const normEnt = normalizeStr(ent.text);
+            if (!normEnt) continue;
+
+            let score = 0;
+            if (ent.text.trim() === searchTerm.trim()) {
+              score = 105;
+            } else if (normEnt === normSearch) {
+              score = 100;
+            } else if (
+              normEnt.replace(/^[0-9]+-/, "") === normSearch ||
+              normSearch.replace(/^[0-9]+-/, "") === normEnt ||
+              normEnt.replace(/^[crmoo⌀]/i, "") === normSearch ||
+              normSearch.replace(/^[crmoo⌀]/i, "") === normEnt
+            ) {
+              score = 90;
+            } else {
+              // Try parsing as numbers to handle floating point variations (e.g. "C1" vs "1.00")
+              const cleanSearchNum = normSearch.replace(/^[0-9]+-/, "").replace(/^[crmoo⌀]/i, "");
+              const cleanEntNum = normEnt.replace(/^[0-9]+-/, "").replace(/^[crmoo⌀]/i, "");
+              const fSearch = parseFloat(cleanSearchNum);
+              const fEnt = parseFloat(cleanEntNum);
+              if (!isNaN(fSearch) && !isNaN(fEnt) && fSearch === fEnt) {
+                score = 90;
+              } else if (!isNaN(fSearch) && !isNaN(parseFloat(normEnt)) && fSearch === parseFloat(normEnt)) {
+                score = 90;
+              }
+            }
+
+            if (score < 90) {
+              const stripLeadDigits = (s: string) => s.replace(/^\d+/, "");
+              const strippedSearch = stripLeadDigits(normSearch);
+              const strippedEnt = stripLeadDigits(normEnt);
+              if (strippedSearch.length >= 2 && strippedSearch === strippedEnt) {
+                score = 85;
+              } else if (normSearch.includes(normEnt) || normEnt.includes(normSearch)) {
+                const minLen = Math.min(normEnt.length, normSearch.length);
+                const maxLen = Math.max(normEnt.length, normSearch.length);
+                const ratio = minLen / maxLen;
+                if (minLen >= 2) {
+                  score = 50 + ratio * 30;
+                }
+              } else {
+                const searchChars = new Set(normSearch.split(""));
+                const entChars = new Set(normEnt.split(""));
+                let intersection = 0;
+                searchChars.forEach(c => { if (entChars.has(c)) intersection++; });
+                const jaccard = intersection / Math.max(searchChars.size, entChars.size);
+                if (jaccard > 0.60) {
+                  score = jaccard * 70;
+                } else if (allowNumberMismatch && jaccard > 0.40) { // For multi-line notes, reduce threshold
+                  score = jaccard * 70;
+                }
+              }
+            }
+
+            if (searchNumbers && !allowNumberMismatch) {
+              const entNumbers = extractNumbers(normEnt);
+              if (entNumbers && entNumbers !== searchNumbers) {
+                score = 0;
+              }
+            }
+
+            const spaceBonus = (preferModelSpace && ent.layoutSpace === 'Model') ? 5 : 0;
+            const effectiveScore = score + spaceBonus;
+
+            if (score > 40) {
+              matches.push({ ent, score: effectiveScore });
+            }
+          }
+
+          if (matches.length === 0) return [];
+          const maxScore = Math.max(...matches.map(m => m.score));
+          const threshold = maxScore >= 100 ? 100 : (maxScore - 5);
+          const finalThreshold = Math.max(threshold, minScore);
+          return matches.filter(m => m.score >= finalThreshold).map(m => m.ent);
+        };
+
+
+
+        const isCoordinateTick = (text: string): boolean => {
+          const t = (text || "").trim().toUpperCase();
+          if (!t) return true;
+          // Single letters A-Z
+          if (t.length === 1 && t >= 'A' && t <= 'Z') return true;
+          // Simple numbers 1 to 24
+          const num = parseInt(t, 10);
+          if (!isNaN(num) && num.toString() === t && num >= 1 && num <= 24) return true;
+          return false;
+        };
+
+        const isStaticLabelOrHeader = (text: string): boolean => {
+          const t = (text || "").trim().toLowerCase();
+          if (!t) return true;
+
+          // Short terms requiring exact matches to avoid false positives inside regular values/words
+          const exactStaticTerms = new Set([
+            "no.", "no", "and.", "and", "g", "h", "a", "b", "c", "d", "e", "f", "例", "（例）", "こえ", "下", "符号"
+          ]);
+          if (exactStaticTerms.has(t)) return true;
+
+          // Descriptive terms that safely support substring matching
+          const staticTerms = [
+            "tolerances", "unless", "otherwise", "specified", "drawings", "表示外公差",
+            "finish", "symbol", "roughness", "range", "仕上げ記号", "面粗さ",
+            "dimension", "parallelism", "squareness", "length", "寸法区分", "平行度", "直角度",
+            "machining", "fabrication", "general", "over", "including",
+            "example", "design chg", "chg no", "年月日", "訂正書", "担当", "name", "y/m/d",
+            "material", "code", "材質", "寸法", "型式", "個数", "qty", "weight", "重量", "remark", "備考",
+            "dwg no", "dwg. no", "図面番号", "title", "名称", "prev. dwg", "previous dwg",
+            "scale", "尺度", "date", "日付", "approved", "承認", "checked", "検図", "designed", "設計", "drawn", "製図",
+            "job no", "工事番号", "std no", "標準図番号", "mach. code", "機器記号", "unit no", "ユニット",
+            "total quantity", "t. q'ty", "総製作個数", "common", "共通番号", "cross ref"
+          ];
+
+          return staticTerms.some(term => t.includes(term));
+        };
+
+        let newXMin = 0, newXMax = 1000, newYMin = 0, newYMax = 1000;
+        let oldXMin = 0, oldXMax = 1000, oldYMin = 0, oldYMax = 1000;
+
+        const isEngineeringDataEntity = (
+          ent: { text: string; x: number; y: number; layer?: string; eType?: string },
+          drawing: any
+        ): boolean => {
+
+          // ── Structural annotation fast-path (Fix 4) ─────────────────────────────────
+          const isNativeStructural = ent.eType === 'tolerance' || ent.eType === 'leader' || ent.eType === 'multileader' || ent.eType === 'attrib' || ent.eType === 'insert' || ent.eType === 'mtext' || ent.eType === 'block' || ent.eType === 'dimension';
+          // Chamfer/radius: "C1", "2-C1", "4-C1", "R5", "3XR2"
+          const tCleanAnnotation = ent.text.trim();
+          const isChamferOrRadius = /^\d*[-]?[CR]\d+(\.\d+)?$/i.test(tCleanAnnotation.replace(/\s/g, ''));
+          // Balloon tags: circled Unicode numbers ①–⑳, or parenthesised integers (1)–(99)
+          const isBalloonTag = /^[\u2460-\u2473\u3251-\u325f\u32b1-\u32bf]$/.test(tCleanAnnotation) ||
+            /^\(\d{1,2}\)$/.test(tCleanAnnotation);
+          // GD&T / machining surface symbols: ▽ ∇ ▲ △ ⊙ ◯ □
+          const isGdtOrMachining = /^[\u25bd\u25bf\u25b3\u25b2\u2299\u25ef\u25a1]$/.test(tCleanAnnotation);
+
+          // For structural annotations: skip isStaticLabelOrHeader AND isCoordinateTick entirely.
+          // Fall through directly to layer / spatial zone checks below.
+          const isStructuralAnnotation = isNativeStructural || isChamferOrRadius || isBalloonTag || isGdtOrMachining;
+
+          if (!isStructuralAnnotation) {
+            // Standard path: reject static label headers and coordinate tick marks
+            if (isStaticLabelOrHeader(ent.text)) return false;
+
+            const tClean = ent.text.trim().replace(/\s/g, '').toLowerCase();
+            const isToleranceRange = /^\d+(\.\d+)?[sS]?(~|〜|-)\d+(\.\d+)?[sS]?$/.test(tClean);
+            const isSurfaceFinish = /^\d+(\.\d+)?[sS]$/.test(tClean);
+            const toleranceSymbols = ["~", "〜", "±"];
+            const isToleranceKw = ["表示外公差", "寸法区分", "平行度", "直角度", "許容差", "仕上ゲ記号", "表面粗さ", "普通寸法許容差", "角度", "長さ", "表示外"].some(kw => ent.text.includes(kw));
+            const isToleranceSymbol = toleranceSymbols.includes(tClean);
+            if (isToleranceRange || isSurfaceFinish || isToleranceKw || isToleranceSymbol) return false;
+          }
+
+          // ── Layer filters (Removed in Phase 6.1) ──────────────────────────────────
+          // Layer filters for title blocks and waku frames were overly aggressive and
+          // blocked true INSERT and ATTRIB data from being audited.
+
+
+          // ── Spatial region checks ────────────────────────────────────────────────────
+          const isOld = oldDrawing && drawing?.id === oldDrawing.id;
+          const xmin = isOld ? oldXMin : newXMin;
+          const xmax = isOld ? oldXMax : newXMax;
+          const ymin = isOld ? oldYMin : newYMin;
+          const ymax = isOld ? oldYMax : newYMax;
+
+          const width = xmax - xmin;
+          const height = ymax - ymin;
+          if (width <= 0 || height <= 0) return true;
+
+          const pctX = (ent.x - xmin) / width;
+          const pctY = 1.0 - (ent.y - ymin) / height;
+
+          if (pctX < 0.045 || pctX > 0.98 || pctY < 0.045 || pctY > 0.98) return false;
+
+          const isNearMargin = pctX < 0.12 || pctX > 0.88 || pctY < 0.12 || pctY > 0.88;
+          // isCoordinateTick is only applied on the standard path — structural annotations skip it
+          if (!isStructuralAnnotation && isNearMargin && isCoordinateTick(ent.text)) return false;
+
+          // Hard exclusion: Tolerance/Surface Roughness table (bottom-left)
+          const inToleranceTableZone = (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02);
+          if (inToleranceTableZone) return false;
+
+          const defaultRegions = {
+            views: { xMin: 0.04, xMax: 0.68, yMin: 0.12, yMax: 0.88 },
+            notes: { xMin: 0.04, xMax: 0.38, yMin: 0.18, yMax: 0.62 },
+            bom: { xMin: 0.62, xMax: 0.98, yMin: 0.04, yMax: 0.44 },
+            title: { xMin: 0.38, xMax: 0.98, yMin: 0.72, yMax: 0.98 },
+            titleUpperLeft: { xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 },
+            iso: { xMin: 0.62, xMax: 0.98, yMin: 0.42, yMax: 0.74 }
+          };
+          const targetMetadata = (isOld ? oldDrawing?.metadata : drawing?.metadata) || {};
+          const regions = targetMetadata.regions || defaultRegions;
+          const inside = (px: number, py: number, box: { xMin: number; xMax: number; yMin: number; yMax: number }) =>
+            px >= box.xMin && px <= box.xMax && py >= box.yMin && py <= box.yMax;
+
+          const inViews = inside(pctX, pctY, regions.views);
+          const inNotes = inside(pctX, pctY, regions.notes);
+          const inBom = inside(pctX, pctY, regions.bom);
+          const inIso = inside(pctX, pctY, regions.iso);
+          const inTitle = inside(pctX, pctY, regions.title);
+          const inTitleUL = inside(pctX, pctY, regions.titleUpperLeft);
+
+          // Total Qty label pass-through (must be in upper-left quadrant)
+          const isTotalQtyText = ["総製作個数", "t. q'ty", "t. qty", "total quantity"].some(x => ent.text.toLowerCase().includes(x));
+          if (inTitleUL && isTotalQtyText) return true;
+
+          // Fix 6: Block pure integers in upper-left title block — they are T.Q'ty values,
+          // not engineering data. Without this, "1" from T.Q'ty collides with BOM No.=1.
+          if (inTitleUL && /^\d+$/.test(ent.text.trim())) return false;
+
+          return inViews || inNotes || inBom || inIso || inTitle;
+        };
+
+        const isDuplicateEntity = (
+          list: { text: string; x: number; y: number }[],
+          text: string,
+          x: number,
+          y: number
+        ): boolean => {
+          return list.some(ent => ent.text === text && Math.hypot(ent.x - x, ent.y - y) < 1.0);
+        };
+
+        const textEntities: { text: string; x: number; y: number; handle?: string; bbox?: any; height?: number; layoutSpace?: string; layer?: string; eType?: string }[] = [];
+        if (newLayers) {
+          Object.entries(newLayers).forEach(([layerName, entities]: any) => {
+            if (Array.isArray(entities)) {
+              entities.forEach((ent: any) => {
+                const eType = ent.type || ent.entity_type;
+                if (eType === 'text' || eType === 'mtext' || eType === 'tolerance' || eType === 'multileader' || eType === 'attrib' || eType === 'insert' || eType === 'block' || eType === 'dimension') {
+                  const geo = ent.geometry || {};
+                  let rawText = geo.text || geo.content || ent.properties?.text || '';
+
+                  // Flatten block attributes into searchable text
+                  if (eType === 'block' && ent.properties?.attributes) {
+                    rawText = Object.values(ent.properties.attributes).join(' ');
+                  }
+
+                  const textVal = cleanCadText(rawText);
+                  if (textVal && (geo.location || geo.insert || geo.text_point)) {
+                    const [tx, ty] = geo.location || geo.insert || geo.text_point;
+                    const cleanedText = textVal.trim();
+                    if (!isDuplicateEntity(textEntities, cleanedText, tx, ty)) {
+                      textEntities.push({
+                        text: cleanedText,
+                        x: tx,
+                        y: ty,
+                        handle: ent.properties?.handle,
+                        bbox: ent.properties?.bbox,
+                        height: ent.properties?.height,
+                        layoutSpace: ent.properties?.layout_space || 'Model',
+                        layer: layerName,
+                        eType: eType
+                      });
+                    }
+                  }
+                } else if (eType === 'block') {
+                  const attrs = ent.properties?.attributes;
+                  if (attrs && typeof attrs === 'object') {
+                    const geo = ent.geometry || {};
+                    const [bx, by] = geo.insert || [0, 0];
+                    Object.values(attrs).forEach((rawVal: any) => {
+                      const textVal = cleanCadText(String(rawVal));
+                      if (textVal) {
+                        const cleanedText = textVal.trim();
+                        if (!isDuplicateEntity(textEntities, cleanedText, bx, by)) {
+                          textEntities.push({
+                            text: cleanedText,
+                            x: bx,
+                            y: by,
+                            handle: ent.properties?.handle,
+                            bbox: ent.properties?.bbox,
+                            height: ent.properties?.height || 3.0,
+                            layoutSpace: ent.properties?.layout_space || 'Model',
+                            layer: layerName,
+                            eType: 'block'
+                          });
+                        }
+                      }
+                    });
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        const refTextEntities: { text: string; x: number; y: number; handle?: string; bbox?: any; height?: number; layoutSpace?: string; layer?: string; eType?: string }[] = [];
+        if (oldLayers) {
+          Object.entries(oldLayers).forEach(([layerName, entities]: any) => {
+            if (Array.isArray(entities)) {
+              entities.forEach((ent: any) => {
+                const eType = ent.type || ent.entity_type;
+                if (eType === 'text' || eType === 'mtext' || eType === 'tolerance' || eType === 'multileader' || eType === 'attrib' || eType === 'insert' || eType === 'block' || eType === 'dimension') {
+                  const geo = ent.geometry || {};
+                  let rawText = geo.text || geo.content || ent.properties?.text || '';
+
+                  // Flatten block attributes into searchable text
+                  if (eType === 'block' && ent.properties?.attributes) {
+                    rawText = Object.values(ent.properties.attributes).join(' ');
+                  }
+
+                  const textVal = cleanCadText(rawText);
+                  if (textVal && (geo.location || geo.insert || geo.text_point)) {
+                    const [tx, ty] = geo.location || geo.insert || geo.text_point;
+                    const cleanedText = textVal.trim();
+                    if (!isDuplicateEntity(refTextEntities, cleanedText, tx, ty)) {
+                      refTextEntities.push({
+                        text: cleanedText,
+                        x: tx,
+                        y: ty,
+                        handle: ent.properties?.handle,
+                        bbox: ent.properties?.bbox,
+                        height: ent.properties?.height,
+                        layoutSpace: ent.properties?.layout_space || 'Model',
+                        layer: layerName,
+                        eType: eType
+                      });
+                    }
+                  }
+                } else if (eType === 'block') {
+                  const attrs = ent.properties?.attributes;
+                  if (attrs && typeof attrs === 'object') {
+                    const geo = ent.geometry || {};
+                    const [bx, by] = geo.insert || [0, 0];
+                    Object.values(attrs).forEach((rawVal: any) => {
+                      const textVal = cleanCadText(String(rawVal));
+                      if (textVal) {
+                        const cleanedText = textVal.trim();
+                        if (!isDuplicateEntity(refTextEntities, cleanedText, bx, by)) {
+                          refTextEntities.push({
+                            text: cleanedText,
+                            x: bx,
+                            y: by,
+                            handle: ent.properties?.handle,
+                            bbox: ent.properties?.bbox,
+                            height: ent.properties?.height || 3.0,
+                            layoutSpace: ent.properties?.layout_space || 'Model',
+                            layer: layerName,
+                            eType: 'block'
+                          });
+                        }
+                      }
+                    });
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        const computeBounds = (entities: { text: string; x: number; y: number; layer?: string }[]) => {
+          if (entities.length === 0) return { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
+
+          // 1. Try to anchor using the frame/waku layers if they exist
+          const wakuEntities = entities.filter(ent => {
+            const layerStr = (ent.layer || "").toLowerCase();
+            return ["waku", "border", "frame", "grid", "template", "form", "cosa", "legend", "admin", "block", "table"].some(x => layerStr.includes(x));
+          });
+
+          // Use frame text if found; otherwise, fall back to all text
+          const sourceEntities = wakuEntities.length > 0 ? wakuEntities : entities;
+
+          // 2. Statistical Outlier Rejection (IQR method)
+          const getCleanBounds = (vals: number[]) => {
+            if (vals.length < 4) return { min: Math.min(...vals), max: Math.max(...vals) };
+            const sorted = [...vals].sort((a, b) => a - b);
+            const q1 = sorted[Math.floor(sorted.length * 0.25)];
+            const q3 = sorted[Math.floor(sorted.length * 0.75)];
+            const iqr = q3 - q1;
+
+            // Use 2.0 as multiplier to be slightly forgiving but strictly drop extreme stray outliers
+            const lowerBound = q1 - 2.0 * iqr;
+            const upperBound = q3 + 2.0 * iqr;
+
+            const cleanVals = vals.filter(v => v >= lowerBound && v <= upperBound);
+
+            // Fallback to absolute min/max if the IQR filter somehow rejected everything
+            if (cleanVals.length === 0) return { min: Math.min(...vals), max: Math.max(...vals) };
+
+            return { min: Math.min(...cleanVals), max: Math.max(...cleanVals) };
+          };
+
+          const xs = sourceEntities.map(e => e.x);
+          const ys = sourceEntities.map(e => e.y);
+
+          const xBounds = getCleanBounds(xs);
+          const yBounds = getCleanBounds(ys);
+
+          return { xMin: xBounds.min, xMax: xBounds.max, yMin: yBounds.min, yMax: yBounds.max };
+        };
+
+        if (textEntities.length > 0) {
+          const bounds = computeBounds(textEntities);
+          newXMin = bounds.xMin;
+          newXMax = bounds.xMax;
+          newYMin = bounds.yMin;
+          newYMax = bounds.yMax;
+        }
+
+        if (refTextEntities.length > 0) {
+          const bounds = computeBounds(refTextEntities);
+          oldXMin = bounds.xMin;
+          oldXMax = bounds.xMax;
+          oldYMin = bounds.yMin;
+          oldYMax = bounds.yMax;
+        }
+
+        const mappedMarkings: any[] = [];
+        const rawMarkings = data.data.canvas_markings || [];
+
+        const textEntitiesWithMarkers = new Set<string>();
+        const refTextEntitiesWithMarkers = new Set<string>();
+        const getCoordKey = (x: number, y: number) => `${x.toFixed(2)},${y.toFixed(2)}`;
+
+        rawMarkings.forEach((marking: any, index: number) => {
+          const preferModel = (marking.category === 'drawing_views' || !marking.category);
+
+          // Fix F2 is handled inside findAllFuzzyMatches (\n splitting).
+          // Do NOT pre-strip multi-line text_content here — pass full string directly.
+          const searchTerm = marking.text_content;
+
+          let matches: any[] = [];
+          let refMatches: any[] = [];
+          let usedDirectIdMapping = false;
+
+          // Phase 1: Precision Entity ID Mapping
+          if (marking.entity_id) {
+            const id = marking.entity_id.trim();
+            if (id.startsWith('REV-')) {
+              const handle = id.replace('REV-', '');
+              const found = textEntities.find(e => e.handle === handle);
+              if (found) { matches = [found]; usedDirectIdMapping = true; }
+            } else if (id.startsWith('REF-')) {
+              const handle = id.replace('REF-', '');
+              const found = refTextEntities.find(e => e.handle === handle);
+              if (found) { refMatches = [found]; usedDirectIdMapping = true; }
+            } else {
+              // Fallback if AI omitted prefix
+              const foundRev = textEntities.find(e => e.handle === id);
+              if (foundRev) { matches = [foundRev]; usedDirectIdMapping = true; }
+              const foundRef = refTextEntities.find(e => e.handle === id);
+              if (foundRef) { refMatches = [foundRef]; usedDirectIdMapping = true; }
+            }
+          }
+
+          // Phase 2: Fallback to Fuzzy Search if ID mapping yielded zero matches
+          if (!usedDirectIdMapping) {
+            // Short-string exact-match pre-pass for structural annotations (chamfer, balloon,
+            // GD&T, weld symbols). These are ≤6-char strings like "C1", "①", "▽", "M24".
+            // The fuzzy scorer returns near-zero confidence for such short strings, so we
+            // run a case-insensitive exact search first and skip fuzzy if hits are found.
+            const isShortAnnotation = searchTerm && searchTerm.trim().length <= 6 && !searchTerm.includes('\n');
+            const exactMatchFilter = (entities: typeof textEntities) =>
+              entities.filter(e => e.text.trim().toLowerCase() === searchTerm.trim().toLowerCase());
+
+            matches = isShortAnnotation && exactMatchFilter(textEntities).length > 0
+              ? exactMatchFilter(textEntities)
+              : findAllFuzzyMatches(searchTerm, textEntities, preferModel);
+            refMatches = isShortAnnotation && exactMatchFilter(refTextEntities).length > 0
+              ? exactMatchFilter(refTextEntities)
+              : findAllFuzzyMatches(searchTerm, refTextEntities, preferModel);
+
+            // For CHANGED, REMOVED, or ADDED markings, if one of the drawings has zero matches, do a fallback fuzzy pass that ignores numbers!
+            if (marking.status === 'CHANGED' || marking.status === 'REMOVED' || marking.status === 'ADDED') {
+              if (matches.length === 0) {
+                matches = isShortAnnotation
+                  ? findAllFuzzyMatches(searchTerm, textEntities, preferModel)
+                  : findAllFuzzyMatches(searchTerm, textEntities, preferModel, true);
+              }
+              if (refMatches.length === 0) {
+                refMatches = isShortAnnotation
+                  ? findAllFuzzyMatches(searchTerm, refTextEntities, preferModel)
+                  : findAllFuzzyMatches(searchTerm, refTextEntities, preferModel, true);
+              }
+            }
+          }
+
+          const rawMatchesCount = matches.length;
+          const rawRefMatchesCount = refMatches.length;
+
+          // Bypass strict spatial boundaries filters for Title Block and BOM markings
+          if (marking.category !== "title_block" && marking.category !== "bill_of_materials") {
+            matches = matches.filter(m => isEngineeringDataEntity(m, newDrawing));
+            refMatches = refMatches.filter(m => isEngineeringDataEntity(m, oldDrawing));
+          } else {
+            // ENFORCE strict spatial placement for BOM and Title Block so they don't claim matching values
+            // (like the number "1") located in the drawing views.
+            const enforceZone = (m: any, isOld: boolean) => {
+              const xmin = isOld ? oldXMin : newXMin;
+              const xmax = isOld ? oldXMax : newXMax;
+              const ymin = isOld ? oldYMin : newYMin;
+              const ymax = isOld ? oldYMax : newYMax;
+              const width = xmax - xmin;
+              const height = ymax - ymin;
+              if (width <= 0 || height <= 0) return true;
+              const pctX = (m.x - xmin) / width;
+              const pctY = 1.0 - (m.y - ymin) / height;
+
+              if (marking.category === "bill_of_materials") {
+                // BOM is top-right (roughly x > 0.5, y < 0.5)
+                return pctX >= 0.50 && pctY <= 0.50;
+              }
+              if (marking.category === "title_block") {
+                // Title is bottom-right or upper-left
+                const inTitle = pctX >= 0.35 && pctY >= 0.65;
+                const inTitleUL = pctX <= 0.35 && pctY <= 0.35;
+                return inTitle || inTitleUL;
+              }
+              return true;
+            };
+
+            // Apply the spatial constraints to prevent category bleeding
+            const zoneMatches = matches.filter(m => enforceZone(m, false));
+            if (zoneMatches.length > 0) matches = zoneMatches; // Fallback to all if strict zone fails
+
+            const zoneRefMatches = refMatches.filter(m => enforceZone(m, true));
+            if (zoneRefMatches.length > 0) refMatches = zoneRefMatches;
+          }
+
+          const maxInstances = Math.max(matches.length, refMatches.length, 1);
+
+          for (let i = 0; i < maxInstances; i++) {
+            const match = matches[i] || matches[0];
+            const refMatch = refMatches[i] || refMatches[0];
+
+            let coordinates: [number, number] | undefined = undefined;
+            let bbox: any = undefined;
+            if (match) {
+              const h = match.height || 3.0;
+              if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) {
+                bbox = match.bbox;
+                try {
+                  const [[, ymin], [xmax, ymax]] = match.bbox;
+                  const hVal = match.height || (ymax - ymin) || 3.0;
+                  // Shift to the RIGHT: xmax + hVal * 0.8
+                  coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
+                } catch (err) {
+                  coordinates = [match.x + h * 0.8, match.y + h * 0.5] as [number, number];
+                }
+              } else {
+                coordinates = [match.x + h * 0.8, match.y + h * 0.5] as [number, number];
+              }
+            } else if (marking.coordinates && i === 0 && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
+              coordinates = [marking.coordinates[0], marking.coordinates[1]] as [number, number];
+            }
+
+            let ref_coordinates: [number, number] | undefined = undefined;
+            let ref_bbox: any = undefined;
+            if (refMatch) {
+              const h = refMatch.height || 3.0;
+              if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) {
+                ref_bbox = refMatch.bbox;
+                try {
+                  const [[, ymin], [xmax, ymax]] = refMatch.bbox;
+                  const hVal = refMatch.height || (ymax - ymin) || 3.0;
+                  // Shift to the RIGHT: xmax + hVal * 0.8
+                  ref_coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
+                } catch (err) {
+                  ref_coordinates = [refMatch.x + h * 0.8, refMatch.y + h * 0.5] as [number, number];
+                }
+              } else {
+                ref_coordinates = [refMatch.x + h * 0.8, refMatch.y + h * 0.5] as [number, number];
+              }
+            } else if (marking.ref_coordinates && i === 0 && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
+              ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
+            }
+
+            // Fix F1 — proximity counterpart text-identity validation.
+            // Before accepting a closest-entity result as the ref_coordinates counterpart, verify
+            // that the entity's text actually fuzzy-matches the marking text. If the closest entity
+            // is a completely different string (score < 80), reject the assignment rather than
+            // placing a marker over the wrong entity on the original drawing canvas.
+            if (match && !refMatch) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              refTextEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - match.x, ent.y - match.y);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                // Identity guard: only accept if the closest entity's text meaningfully matches
+                // the marking text — prevents cross-panel MATCHED/ADDED asymmetry caused by
+                // spatially adjacent but semantically unrelated entities.
+                const identityMatches = findAllFuzzyMatches(marking.text_content, [closestEnt], preferModel, false, 80);
+                const isLocked = refTextEntitiesWithMarkers.has(getCoordKey(closestEnt.x, closestEnt.y));
+                if (identityMatches.length > 0 && !isLocked) {
+                  const rh = closestEnt.height || 3.0;
+                  ref_coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+                  if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
+                    ref_bbox = closestEnt.bbox;
+                    try {
+                      const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
+                      const hVal = closestEnt.height || (bymax - bymin) || 3.0;
+                      ref_coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
+                    } catch { }
+                  }
+                  refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+                } else {
+                  console.warn(
+                    `[F1-Guard] Proximity counterpart rejected for "${marking.text_content}": ` +
+                    `nearest entity "${closestEnt.text}" at dist=${minDistance.toFixed(1)} failed identity check.`
+                  );
+                }
+              }
+            }
+
+            if (refMatch && !match) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              textEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - refMatch.x, ent.y - refMatch.y);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                // Identity guard (symmetric): same protection for the new drawing side.
+                const identityMatches = findAllFuzzyMatches(marking.text_content, [closestEnt], preferModel);
+                if (identityMatches.length > 0) {
+                  const rh = closestEnt.height || 3.0;
+                  coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+                  if (closestEnt.bbox && Array.isArray(closestEnt.bbox) && closestEnt.bbox.length >= 2) {
+                    bbox = closestEnt.bbox;
+                    try {
+                      const [[, bymin], [bxmax, bymax]] = closestEnt.bbox;
+                      const hVal = closestEnt.height || (bymax - bymin) || 3.0;
+                      coordinates = [bxmax + hVal * 0.8, bymin + ((bymax - bymin) / 2.0)] as [number, number];
+                    } catch { }
+                  }
+                  textEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+                } else {
+                  console.warn(
+                    `[F1-Guard] Proximity counterpart rejected for "${marking.text_content}": ` +
+                    `nearest entity "${closestEnt.text}" at dist=${minDistance.toFixed(1)} failed identity check.`
+                  );
+                }
+              }
+            }
+
+            // Skip fallback coordinates if potential matches were strictly filtered out as margin ticks
+            const isMatchFilteredTick = (rawMatchesCount > 0 && matches.length === 0) || (rawRefMatchesCount > 0 && refMatches.length === 0);
+
+            // Strict coordinate guard: if text-entity resolution fails and coordinates cannot be
+            // determined from the real drawing data, suppress the marker entirely.
+            // A pin at a guessed/fractional position is structurally worse than no pin.
+            if (!coordinates && !isMatchFilteredTick) {
+              console.warn(
+                `[ComparisonMarker] Coordinate resolution missed for text item "${marking.text_content}" ` +
+                `(category: ${marking.category ?? 'unknown'}). Marker suppressed to prevent misaligned placement.`
+              );
+              continue;
+            }
+            if (!ref_coordinates && !isMatchFilteredTick) {
+              console.warn(
+                `[ComparisonMarker] Ref-coordinate resolution missed for text item "${marking.text_content}" ` +
+                `(category: ${marking.category ?? 'unknown'}). Ref marker suppressed to prevent misaligned placement.`
+              );
+            }
+
+            if (match) {
+              textEntitiesWithMarkers.add(getCoordKey(match.x, match.y));
+              if (marking.text_content && marking.text_content.includes("\n")) {
+                const lines = marking.text_content.split("\n");
+                lines.forEach((line: string) => {
+                  const lineMatches = findAllFuzzyMatches(line.trim(), textEntities, preferModel);
+                  lineMatches.forEach((lm: any) => {
+                    textEntitiesWithMarkers.add(getCoordKey(lm.x, lm.y));
+                  });
+                });
+              }
+            } else if (marking.coordinates && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              textEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - marking.coordinates[0], ent.y - marking.coordinates[1]);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                textEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+              }
+            }
+
+            if (refMatch) {
+              refTextEntitiesWithMarkers.add(getCoordKey(refMatch.x, refMatch.y));
+              if (marking.text_content && marking.text_content.includes("\n")) {
+                const lines = marking.text_content.split("\n");
+                lines.forEach((line: string) => {
+                  const lineMatches = findAllFuzzyMatches(line.trim(), refTextEntities, preferModel);
+                  lineMatches.forEach((lm: any) => {
+                    refTextEntitiesWithMarkers.add(getCoordKey(lm.x, lm.y));
+                  });
+                });
+              }
+            } else if (marking.ref_coordinates && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
+              let closestEnt: any = null;
+              let minDistance = Infinity;
+              refTextEntities.forEach(ent => {
+                const dist = Math.hypot(ent.x - marking.ref_coordinates[0], ent.y - marking.ref_coordinates[1]);
+                if (dist < minDistance) {
+                  minDistance = dist;
+                  closestEnt = ent;
+                }
+              });
+              if (closestEnt && minDistance < 50.0) {
+                refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
+              }
+            }
+
+            let penType = "resolved_green";
+            if (marking.status === "REMOVED") {
+              penType = "ai_red";
+            } else if (marking.status === "CHANGED") {
+              penType = "ai_orange";
+            } else if (marking.status === "ADDED") {
+              penType = "checker_blue";
+            }
+
+            const coordStr = coordinates ? `${coordinates[0].toFixed(2)},${coordinates[1].toFixed(2)}` : null;
+            const refCoordStr = ref_coordinates ? `${ref_coordinates[0].toFixed(2)},${ref_coordinates[1].toFixed(2)}` : null;
+
+            const isDuplicate = mappedMarkings.some(m => {
+              if (m.description !== marking.text_content) return false;
+              let coordsMatch = true;
+              if (coordStr) {
+                if (!m.coordinates) coordsMatch = false;
+                else {
+                  const mCoordStr = `${m.coordinates[0].toFixed(2)},${m.coordinates[1].toFixed(2)}`;
+                  if (mCoordStr !== coordStr) coordsMatch = false;
+                }
+              } else if (m.coordinates) {
+                coordsMatch = false;
+              }
+
+              let refCoordsMatch = true;
+              if (refCoordStr) {
+                if (!m.ref_coordinates) refCoordsMatch = false;
+                else {
+                  const mRefCoordStr = `${m.ref_coordinates[0].toFixed(2)},${m.ref_coordinates[1].toFixed(2)}`;
+                  if (mRefCoordStr !== refCoordStr) refCoordsMatch = false;
+                }
+              } else if (m.ref_coordinates) {
+                refCoordsMatch = false;
+              }
+
+              return coordsMatch && refCoordsMatch;
+            });
+
+            if (isDuplicate) continue;
+
+            mappedMarkings.push({
+              id: `phys_chk_${index}_inst_${i}_${Date.now()}`,
+              severity: marking.status === "MATCHED" ? "low" : "high",
+              category: marking.category || "Physical Checklist",
+              description: marking.text_content,
+              recommendation: marking.details || "Automatic verification match",
+              affected_entities: [],
+              confidence: 1.0,
+              coordinates,
+              ref_coordinates,
+              bbox,
+              ref_bbox,
+              pen_type: penType,
+              is_resolved: marking.status === "MATCHED",
+              original_value: marking.original_value
+            });
+
+            // Cross-panel entity claiming — Fix 7: always runs for ADDED and REMOVED regardless
+            // of whether ref_coordinates/coordinates was already resolved by the F1 proximity guard.
+            // Previously the !ref_coordinates condition caused the claim to be skipped when F1
+            // had already set ref_coordinates, leaving the ORIGINAL entity unclaimed and allowing
+            // the catch-all green sweep to place a ghost MATCHED marker on it.
+            if (marking.status === "ADDED") {
+              // Claim the nearest ORIGINAL entity by proximity — prevents ghost green on ORIGINAL.
+              let nearestRef: any = null;
+              let nearestRefDist = Infinity;
+              const addedAnchorX = match?.x ?? (coordinates ? coordinates[0] : null);
+              const addedAnchorY = match?.y ?? (coordinates ? coordinates[1] : null);
+              if (addedAnchorX !== null && addedAnchorY !== null) {
+                refTextEntities.forEach(ent => {
+                  const dist = Math.hypot(ent.x - addedAnchorX!, ent.y - addedAnchorY!);
+                  if (dist < nearestRefDist) { nearestRefDist = dist; nearestRef = ent; }
+                });
+                if (nearestRef && nearestRefDist < 80.0) {
+                  refTextEntitiesWithMarkers.add(getCoordKey(nearestRef.x, nearestRef.y));
+                }
+              }
+            } else if (marking.status === "REMOVED") {
+              // Claim the nearest KMTI entity by proximity — prevents ghost green on KMTI.
+              let nearestNew: any = null;
+              let nearestNewDist = Infinity;
+              const removedAnchorX = refMatch?.x ?? (ref_coordinates ? ref_coordinates[0] : null);
+              const removedAnchorY = refMatch?.y ?? (ref_coordinates ? ref_coordinates[1] : null);
+              if (removedAnchorX !== null && removedAnchorY !== null) {
+                textEntities.forEach(ent => {
+                  const dist = Math.hypot(ent.x - removedAnchorX!, ent.y - removedAnchorY!);
+                  if (dist < nearestNewDist) { nearestNewDist = dist; nearestNew = ent; }
+                });
+                if (nearestNew && nearestNewDist < 80.0) {
+                  textEntitiesWithMarkers.add(getCoordKey(nearestNew.x, nearestNew.y));
+                }
+              }
+            }
+          }
+        });
+
+        // Set visual markings directly in useWorkspaceStore
+        useWorkspaceStore.setState({ violations: mappedMarkings });
+        // Enable violations layer visible on DrawingCanvas
+        useReviewStore.setState({ showViolations: true, isPhysicalComparisonEnabled: true });
+
+      } catch (err) {
+        console.warn("Visual checklist canvas overlay loading failed:", err);
+      }
+    } catch (err: any) {
+      console.error("AI Physical Comparison failed:", err);
+      const rawMsg: string = err?.message || String(err);
+      // Extract the human-readable part — strip JSON blobs and redundant tech noise
+      const isOverload = rawMsg.includes('503') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('high demand') || rawMsg.includes('overloaded');
+      const friendlyMsg = isOverload
+        ? 'The Gemini AI service is temporarily overloaded (503). All model fallbacks were exhausted. Please wait 30–60 seconds and try again.'
+        : rawMsg.replace(/\. Please verify.*$/i, '').trim();
+      setAiScanError(friendlyMsg);
+      setAiScanProgress("idle");
+    }
   };
+
 
   // Interactive search & filter controls for premium History Archive
   const [historySearchQuery, setHistorySearchQuery] = useState("");
@@ -557,48 +1505,649 @@ export const AuditWorkspace: React.FC = () => {
     await runAudit(selectedClient);
   };
 
+  const exportToPDF = async () => {
+    try {
+      const imgDataNew = drawingCanvasRefNew.current?.exportImage(7016, 4960);
+      if (!imgDataNew) {
+        alert("Drawing canvas elements not found or failed to render.");
+        return;
+      }
+
+      const imgDataOld = oldDrawing ? drawingCanvasRefOld.current?.exportImage(7016, 4960) : null;
+
+      // Create PDF in standard A4 landscape format
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4"
+      });
+
+      let pageAdded = false;
+
+      if (imgDataOld) {
+        pdf.addImage(imgDataOld, "PNG", 0, 0, 297, 210);
+        pageAdded = true;
+      }
+
+      if (imgDataNew) {
+        if (pageAdded) {
+          pdf.addPage("a4", "landscape");
+        }
+        pdf.addImage(imgDataNew, "PNG", 0, 0, 297, 210);
+      }
+
+      const filename = `${newDrawing?.file_name.replace(/\.[^/.]+$/, "") || "drawing"}_compliance_report.pdf`;
+
+      // Request user file target path using native save dialog
+      const filePath = await save({
+        filters: [{
+          name: "PDF Document",
+          extensions: ["pdf"]
+        }],
+        defaultPath: filename
+      });
+
+      if (filePath) {
+        const pdfBuffer = pdf.output("arraybuffer");
+        const uint8Array = new Uint8Array(pdfBuffer);
+        await writeFile(filePath, uint8Array);
+      }
+    } catch (err: any) {
+      console.error("PDF generation failed:", err);
+      alert(`Export Failed: ${err.message || err}`);
+    }
+  };
+
   const criticalCount = violations.filter((v) => v.severity === "critical").length;
   const highCount = violations.filter((v) => v.severity === "high").length;
   const medCount = violations.filter((v) => v.severity === "medium").length;
   const lowCount = violations.filter((v) => v.severity === "low").length;
 
-  // Calculate entity counts for delta scanner
-  const getEntitySum = (drawing: any) => {
-    if (!drawing || !drawing.entity_counts) return 0;
-    return Object.values(drawing.entity_counts).reduce((sum: number, count: any) => sum + (Number(count) || 0), 0);
+  const parseTabularContent = (content: string) => {
+    if (!content) return [];
+    const lines = content.split('\n').filter((l: string) => l.trim());
+    const headerLine = lines.find((l: string) => l.includes('|') && (l.includes('FIELD') || l.includes('COLUMN') || l.includes('ORIGINAL') || l.includes('ITEM')));
+    const dataLines = lines.filter((l: string) => l.includes('|') && !l.match(/^-+$/) && l !== headerLine);
+
+    return dataLines.map((line: string) => {
+      const parts = line.split('|').map((p: string) => p.trim());
+      let cleanedParts = [...parts];
+      if (cleanedParts[0] === '') cleanedParts.shift();
+      if (cleanedParts[cleanedParts.length - 1] === '') cleanedParts.pop();
+
+      const field = cleanedParts[0] || '';
+      const original = cleanedParts[1] || '';
+      const kmti = cleanedParts[2] || '';
+      const rawStatus = cleanedParts[3] || '';
+
+      // Fix F2: Single Source of Truth Status Vocabulary Normalizer Map
+      // Normalize the Gemini-generated status vocabulary to the canonical set used by
+      // the canvas marker pen_type assignments. "MISMATCHED" from the prompt template maps to
+      // "CHANGED" on the canvas (ai_orange). Without this, the sidebar shows red while the canvas
+      // shows orange for the exact same entity discrepancy.
+      const normalizeStatus = (s: string): string => {
+        const u = s?.toUpperCase().trim() || "";
+        if (["MISMATCHED", "MISMATCH", "DIFFER", "DIFFERENT"].includes(u)) {
+          return "CHANGED";
+        }
+        return s?.trim() || "";
+      };
+      const status = normalizeStatus(rawStatus);
+
+      const statusUpper = status.toUpperCase();
+      const isMatch = statusUpper.includes('MATCHED') && !statusUpper.includes('MIS');
+
+      return { field, original, kmti, status, isMatch };
+    });
   };
-
-  const oldEntityCount = getEntitySum(oldDrawing);
-  const newEntityCount = getEntitySum(newDrawing);
-  const entityDelta = newEntityCount - oldEntityCount;
-
-  // Coordinate Shift / Scale Mismatch Diagnostics
-  let hasAlignmentDisparity = false;
-  if (oldDrawing?.metadata?.render_bounds && newDrawing?.metadata?.render_bounds) {
-    const [oldXmin, oldYmin, oldXmax, oldYmax] = oldDrawing.metadata.render_bounds;
-    const [newXmin, newYmin, newXmax, newYmax] = newDrawing.metadata.render_bounds;
-
-    const oldW = oldXmax - oldXmin;
-    const oldH = oldYmax - oldYmin;
-    const newW = newXmax - newXmin;
-    const newH = newYmax - newYmin;
-
-    const oldCx = (oldXmin + oldXmax) / 2;
-    const oldCy = (oldYmin + oldYmax) / 2;
-    const newCx = (newXmin + newXmax) / 2;
-    const newCy = (newYmin + newYmax) / 2;
-
-    const dimMismatch = Math.abs(oldW - newW) / Math.max(oldW, 1) > 0.1 || Math.abs(oldH - newH) / Math.max(oldH, 1) > 0.1;
-    const centerMismatch = Math.abs(oldCx - newCx) / Math.max(oldW, 1) > 0.1 || Math.abs(oldCy - newCy) / Math.max(oldH, 1) > 0.1;
-
-    if (dimMismatch || centerMismatch) {
-      hasAlignmentDisparity = true;
-    }
-  }
 
   return (
     <div className="workspace-container">
-      {/* DYNAMIC WORKSPACE PORT */}
+      {/* 1. LEFT SIDEBAR: DOCKED PHYSICAL CHECKLIST DECK (Only when currentNav === "workspace" and drawing pair is uploaded) */}
+      <style>{`
+        .checklist-dock::-webkit-scrollbar,
+        .checklist-dock *::-webkit-scrollbar {
+          display: none !important;
+        }
+        .checklist-dock {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        .panel-collapse-btn.left {
+          left: auto;
+          right: -18px;
+          border-left: none;
+          border-right: 1px solid var(--border-color);
+          border-radius: 0 8px 8px 0;
+          box-shadow: 3px 0 8px rgba(0,0,0,0.2);
+        }
+        .panel-collapse-btn.left:hover {
+          left: auto;
+          right: -24px;
+          box-shadow: 3px 0 15px rgba(0, 229, 255, 0.25);
+        }
+      `}</style>
+      <aside
+        className={`workspace-sidebar checklist-dock ${isLeftPanelCollapsed ? 'collapsed' : ''} ${isResizingLeft ? 'resizing' : ''}`}
+        style={{
+          width: currentNav === "workspace" && oldDrawing && newDrawing ? (isLeftPanelCollapsed ? '0px' : `${leftSidebarWidth}px`) : '0px',
+          minWidth: currentNav === "workspace" && oldDrawing && newDrawing ? (isLeftPanelCollapsed ? '0px' : `${leftSidebarWidth}px`) : '0px',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'rgba(9, 9, 11, 0.7)',
+          borderRight: currentNav === "workspace" && oldDrawing && newDrawing && !isLeftPanelCollapsed ? '1px solid var(--border-color)' : 'none',
+          zIndex: 10,
+          overflow: 'visible',
+          transition: isResizingLeft ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '4px 0 24px rgba(0, 0, 0, 0.3)'
+        }}
+      >
+        {currentNav === "workspace" && oldDrawing && newDrawing && (
+          <>
+            <button
+              className="panel-collapse-btn left"
+              onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
+              title={isLeftPanelCollapsed ? "Expand Drawings Comparison Results" : "Collapse Drawings Comparison Results"}
+            >
+              {isLeftPanelCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+            <div
+              className="panel-content-wrapper"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                width: "100%",
+                flex: 1,
+                minHeight: 0,
+                padding: "16px",
+                opacity: isLeftPanelCollapsed ? 0 : 1,
+                pointerEvents: isLeftPanelCollapsed ? "none" : "auto",
+                transition: "opacity 0.2s ease",
+                overflowY: "auto",
+                boxSizing: "border-box"
+              }}
+            >
+              {/* Checklist header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
+                  <span style={{ fontSize: "0.85rem", fontWeight: 500, letterSpacing: "0.05em", color: "#e4e4e7" }}>
+                    DRAWINGS COMPARISON RESULTS
+                  </span>
+                </div>
+                {aiScanProgress === "idle" && (
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={runPhysicalComparisonAI}
+                      style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px", borderRadius: "6px" }}
+                    >
+                      <Play size={12} fill="currentColor" />
+                      RUN COMPARISON
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* AI Scan Progress Sequence */}
+              {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "16px 0" }}>
+                  <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)", background: "rgba(255,255,255,0.02)", padding: "10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                      <span>1. SCAN ORIGINAL</span>
+                      {aiScanProgress === "scanning_ref" && <span style={{ fontSize: "0.6rem" }}>SCANNING...</span>}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                      <span>2. EXTRACT DATA</span>
+                      {aiScanProgress === "extracting" && <span style={{ fontSize: "0.6rem" }}>EXTRACTING...</span>}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                      <span>3. SCAN KMTI</span>
+                      {aiScanProgress === "scanning_rev" && <span style={{ fontSize: "0.6rem" }}>SCANNING...</span>}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
+                      <span>4. COMPARE MATCHES</span>
+                      {aiScanProgress === "comparing" && <span style={{ fontSize: "0.6rem" }}>COMPARING...</span>}
+                    </div>
+                  </div>
+                  <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      background: "var(--accent-cyan)",
+                      width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
+                      transition: "width 0.5s ease"
+                    }}></div>
+                  </div>
+                </div>
+              )}
+
+              {/* AI Error Banner — shown when comparison fails (e.g. 503 overload) */}
+              {aiScanError && aiScanProgress === "idle" && (
+                <div style={{
+                  display: "flex", alignItems: "flex-start", gap: "10px",
+                  background: "rgba(245, 158, 11, 0.08)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  borderRadius: "8px", padding: "10px 12px", margin: "8px 0",
+                  animation: "fadeIn 0.25s ease"
+                }}>
+                  <span style={{ fontSize: "1rem", flexShrink: 0, marginTop: "1px" }}>⚠️</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em", marginBottom: "4px" }}>
+                      AI COMPARISON FAILED
+                    </div>
+                    <div style={{ fontSize: "0.65rem", color: "#a1a1aa", lineHeight: 1.5 }}>
+                      {aiScanError}
+                    </div>
+                    <button
+                      onClick={() => { setAiScanError(null); runPhysicalComparisonAI(); }}
+                      style={{
+                        marginTop: "8px", padding: "4px 10px", fontSize: "0.6rem", fontWeight: 700,
+                        letterSpacing: "0.06em", background: "rgba(245,158,11,0.15)",
+                        border: "1px solid rgba(245,158,11,0.4)", borderRadius: "4px",
+                        color: "#f59e0b", cursor: "pointer"
+                      }}
+                    >
+                      ↺ RETRY
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setAiScanError(null)}
+                    style={{ background: "none", border: "none", color: "#71717a", cursor: "pointer", fontSize: "1rem", padding: "0", flexShrink: 0 }}
+                    title="Dismiss"
+                  >×</button>
+                </div>
+              )}
+
+              {/* AI Results Deck */}
+              {aiScanProgress === "completed" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexGrow: 1, paddingBottom: "24px" }}>
+
+                  {/* 1. SUMMARY REPORT */}
+                  <div style={{
+                    background: "linear-gradient(135deg, rgba(30,30,40,0.5) 0%, rgba(15,15,20,0.5) 100%)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: "8px",
+                    padding: "14px",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                    backdropFilter: "blur(15px)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px"
+                  }}>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                      INSPECTION SUMMARY REPORT
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      {[
+                        { key: "drawing_views", label: "Drawing Views" },
+                        { key: "notes_section", label: "Notes" },
+                        { key: "bill_of_materials", label: "BOM" },
+                        { key: "title_block", label: "Title Block" },
+                        { key: "isometric_view", label: "Isometric View" }
+                      ].map(({ key, label }) => {
+                        const res = aiChecklistResults[key];
+                        if (!res) return null;
+                        let color = "#10b981"; // MATCHED
+                        if (res.status === "CHANGED") color = "#f59e0b";
+                        else if (res.status === "ADDED") color = "#3b82f6";
+                        else if (res.status === "REMOVED" || res.status === "MISSING") color = "#ef4444";
+                        return (
+                          <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.02)", padding: "5px 8px", borderRadius: "5px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                            <span style={{ fontSize: "0.72rem", color: "#a1a1aa", fontWeight: 400 }}>{label}</span>
+                            <span style={{ fontSize: "0.68rem", fontWeight: 600, color, letterSpacing: "0.02em" }}>{res.status}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      const keys = ["drawing_views", "notes_section", "bill_of_materials", "title_block", "isometric_view"];
+                      const total = keys.filter(k => aiChecklistResults[k]).length;
+                      const matched = keys.filter(k => aiChecklistResults[k]?.status === "MATCHED").length;
+                      const pct = total > 0 ? Math.round((matched / total) * 100) : 0;
+                      return (
+                        <div style={{ marginTop: "4px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "#e4e4e7", marginBottom: "5px", fontWeight: 500 }}>
+                            <span>Completion Parity</span>
+                            <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{pct}% MATCHED</span>
+                          </div>
+                          <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden" }}>
+                            <div style={{ height: "100%", background: "var(--accent-cyan)", width: `${pct}%`, transition: "width 0.5s ease" }}></div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {[
+                    { key: "drawing_views", label: "Drawing Views" },
+                    { key: "notes_section", label: "Notes Section" },
+                    { key: "bill_of_materials", label: "Bill of Materials" },
+                    { key: "title_block", label: "Title Block" },
+                    { key: "isometric_view", label: "Isometric View" },
+                    { key: "other_engineering_references", label: "Other Engineering References" }
+                  ].map(({ key, label }) => {
+                    const result = aiChecklistResults[key];
+                    if (!result) return null;
+
+                    const isExpanded = expandedChecklistPanels[key];
+
+                    let badgeColor = "#10b981"; // MATCHED
+                    if (result.status === "ADDED") badgeColor = "#3b82f6";
+                    else if (result.status === "CHANGED") badgeColor = "#f59e0b";
+                    else if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#ef4444";
+
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          background: "rgba(22,22,26,0.7)",
+                          border: "1px solid rgba(255,255,255,0.06)",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          transition: "all 0.2s ease-in-out",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                        }}
+                      >
+                        <div
+                          onClick={() => toggleChecklistPanel(key)}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "12px 14px",
+                            cursor: "pointer",
+                            userSelect: "none",
+                            background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent",
+                            borderBottom: isExpanded ? "1px solid rgba(255,255,255,0.05)" : "none",
+                            transition: "background 0.2s ease"
+                          }}
+                        >
+                          <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "#ffffff", letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                            {label}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{
+                              fontSize: "0.72rem", fontWeight: 500, padding: "3px 8px", borderRadius: "5px",
+                              color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}12`,
+                              letterSpacing: "0.04em"
+                            }}>
+                              {result.status}
+                            </span>
+                            {isExpanded ? <ChevronDown size={14} color="#a1a1aa" /> : <ChevronRight size={14} color="#a1a1aa" />}
+                          </div>
+                        </div>
+
+                        {/* Expanded Data Panel */}
+                        {isExpanded && (
+                          <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", gap: "14px" }}>
+
+                            {/* Difference Summary */}
+                            {result.difference_summary && (
+                              <div>
+                                <div style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>DIFFERENCE SUMMARY</div>
+                                <div style={{ fontSize: "0.85rem", color: "#e4e4e7", lineHeight: "1.5", fontWeight: 100 }}>{result.difference_summary}</div>
+                              </div>
+                            )}
+
+                            {/* Comparative Contents Box */}
+                            {(result.reference_content || result.revision_content) && (() => {
+                              const isTabular = (result.reference_content && result.reference_content.includes('|')) ||
+                                (result.revision_content && result.revision_content.includes('|'));
+
+                              if (isTabular) {
+                                const tableRows = parseTabularContent(result.reference_content || result.revision_content);
+                                const diffRows = tableRows.filter(row => !row.isMatch);
+
+                                return (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                    <div style={{ fontSize: "0.8rem", fontWeight: 650, color: "var(--accent-cyan)", marginBottom: "4px", letterSpacing: "0.05em" }}>COMPARATIVE CONTENTS</div>
+                                    {diffRows.length === 0 ? (
+                                      <div style={{
+                                        padding: "14px",
+                                        textAlign: "center",
+                                        color: "#10b981",
+                                        background: "rgba(16, 185, 129, 0.06)",
+                                        border: "1px dashed rgba(16, 185, 129, 0.25)",
+                                        borderRadius: "8px",
+                                        fontSize: "0.78rem",
+                                        fontWeight: 500
+                                      }}>
+                                        ✨ Perfect Match! All fields are identical.
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                        {diffRows.map((row, idx) => {
+                                          let badgeColor = "#ef4444"; // default: Removed/Mismatched
+                                          let badgeBg = "rgba(239, 68, 68, 0.08)";
+                                          let statusText = row.status || "MISMATCHED";
+
+                                          // Fix 8 — derive badge colour from the matching canvas violation
+                                          // (which uses canvas_markings as its source of truth) rather than
+                                          // from the Gemini free-text table. This synchronises sidebar and
+                                          // canvas so both always show the same status colour.
+                                          const matchingViolation = violations.find(v => {
+                                            const desc = v.description ? v.description.trim() : "";
+                                            const matchesText = desc === row.kmti || desc === row.original ||
+                                              desc.toLowerCase().includes((row.kmti || "").toLowerCase()) ||
+                                              (row.kmti || "").toLowerCase().includes(desc.toLowerCase());
+                                            const vCat = v.category ? v.category.toLowerCase().replace(/_/g, "") : "";
+                                            const pKey = key.toLowerCase().replace(/_/g, "");
+                                            const matchesCategory = vCat === pKey || vCat.includes(pKey) || pKey.includes(vCat);
+                                            return matchesText && matchesCategory;
+                                          });
+
+                                          if (matchingViolation) {
+                                            // Source of truth: use pen_type from the canvas marking
+                                            const pt = matchingViolation.pen_type || "";
+                                            if (pt === "ai_orange") {
+                                              badgeColor = "#f97316"; statusText = "CHANGED"; badgeBg = "rgba(249, 115, 22, 0.08)";
+                                            } else if (pt === "checker_blue") {
+                                              badgeColor = "#3b82f6"; statusText = "ADDED"; badgeBg = "rgba(59, 130, 246, 0.08)";
+                                            } else if (pt === "ai_red") {
+                                              badgeColor = "#ef4444"; statusText = "REMOVED"; badgeBg = "rgba(239, 68, 68, 0.08)";
+                                            } else if (pt === "resolved_green" || pt === "ai_green") {
+                                              badgeColor = "#10b981"; statusText = "MATCHED"; badgeBg = "rgba(16, 185, 129, 0.08)";
+                                            }
+                                          } else {
+                                            // Fallback: derive from normalised row.status text
+                                            if (statusText.toUpperCase().includes("CHANGE")) {
+                                              badgeColor = "#f97316"; badgeBg = "rgba(249, 115, 22, 0.08)";
+                                            } else if (statusText.toUpperCase().includes("ADD")) {
+                                              badgeColor = "#3b82f6"; badgeBg = "rgba(59, 130, 246, 0.08)";
+                                            }
+                                          }
+
+                                          const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id);
+
+                                          return (
+                                            <div
+                                              key={idx}
+                                              onClick={() => {
+                                                if (matchingViolation) {
+                                                  selectViolation(matchingViolation);
+                                                  const coords = matchingViolation.coordinates || matchingViolation.ref_coordinates;
+                                                  if (coords) {
+                                                    const [vx, vy] = coords;
+                                                    setReviewViewport({
+                                                      x: 240 - vx * 1.5,
+                                                      y: 200 - vy * 1.5,
+                                                      scale: 1.5
+                                                    });
+                                                  }
+                                                }
+                                              }}
+                                              style={{
+                                                background: isSelected ? "rgba(0, 229, 255, 0.06)" : "rgba(255,255,255,0.02)",
+                                                border: isSelected ? "1px solid var(--accent-cyan)" : "1px solid rgba(255,255,255,0.06)",
+                                                borderRadius: "8px",
+                                                padding: "10px 12px",
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: "8px",
+                                                boxShadow: isSelected ? "0 0 10px rgba(0, 229, 255, 0.2)" : "0 2px 8px rgba(0,0,0,0.15)",
+                                                cursor: matchingViolation ? "pointer" : "default",
+                                                transition: "all 0.2s ease"
+                                              }}
+                                            >
+                                              {/* Header row: Title + Status Tag */}
+                                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+                                                <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
+                                                  <span style={{
+                                                    width: "7px",
+                                                    height: "7px",
+                                                    borderRadius: "50%",
+                                                    backgroundColor: badgeColor,
+                                                    boxShadow: `0 0 6px ${badgeColor}`,
+                                                    flexShrink: 0
+                                                  }} />
+                                                  <span style={{ fontSize: "0.78rem", fontWeight: 650, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                    {row.field}
+                                                  </span>
+                                                </div>
+                                                <span style={{
+                                                  fontSize: "0.62rem",
+                                                  fontWeight: 700,
+                                                  padding: "2px 6px",
+                                                  borderRadius: "4px",
+                                                  color: badgeColor,
+                                                  background: badgeBg,
+                                                  border: `1px solid ${badgeColor}33`,
+                                                  letterSpacing: "0.04em",
+                                                  textTransform: "uppercase",
+                                                  flexShrink: 0
+                                                }}>
+                                                  {statusText}
+                                                </span>
+                                              </div>
+
+                                              {/* Content row: Unified diff arrow view */}
+                                              <div style={{ display: "flex", flexDirection: "column", gap: "6px", background: "rgba(0,0,0,0.15)", padding: "8px", borderRadius: "6px" }}>
+                                                <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "8px" }}>
+                                                  {/* Original */}
+                                                  <div
+                                                    title={row.original}
+                                                    style={{
+                                                      fontSize: "0.72rem",
+                                                      color: "#94a3b8",
+                                                      fontFamily: "'JetBrains Mono', monospace",
+                                                      textDecoration: statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS") ? "line-through" : "none",
+                                                      whiteSpace: "nowrap",
+                                                      overflowX: "auto",
+                                                      scrollbarWidth: "none",
+                                                      padding: "2px 4px",
+                                                      borderRadius: "3px",
+                                                      background: statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS") ? "rgba(239, 68, 68, 0.05)" : "transparent"
+                                                    }}
+                                                  >
+                                                    {row.original || "-"}
+                                                  </div>
+
+                                                  {/* Arrow */}
+                                                  <span style={{ color: "rgba(255,255,255,0.25)", fontSize: "0.75rem" }}>➔</span>
+
+                                                  {/* KMTI */}
+                                                  <div
+                                                    title={row.kmti}
+                                                    style={{
+                                                      fontSize: "0.72rem",
+                                                      color: "#e2e8f0",
+                                                      fontFamily: "'JetBrains Mono', monospace",
+                                                      fontWeight: 500,
+                                                      whiteSpace: "nowrap",
+                                                      overflowX: "auto",
+                                                      scrollbarWidth: "none",
+                                                      padding: "2px 4px",
+                                                      borderRadius: "3px",
+                                                      background: statusText.toUpperCase().includes("ADD") || statusText.toUpperCase().includes("CHANGE") ? "rgba(16, 185, 129, 0.08)" : "transparent"
+                                                    }}
+                                                  >
+                                                    {row.kmti || "-"}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                    <div style={{ fontSize: "0.8rem", fontWeight: 650, color: "var(--accent-cyan)", marginBottom: "4px", letterSpacing: "0.05em" }}>COMPARATIVE CONTENTS</div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                                      <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", padding: "10px", borderRadius: "6px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+                                        <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.02em" }}>Original Drawing</div>
+                                        <div style={{ fontSize: "0.78rem", color: "#94a3b8", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "'JetBrains Mono', monospace", lineHeight: "1.4", wordBreak: "break-all" }}>
+                                          {result.reference_content || "-"}
+                                        </div>
+                                      </div>
+                                      <div style={{ background: "rgba(0,229,255,0.01)", border: "1px solid rgba(0,229,255,0.1)", padding: "10px", borderRadius: "6px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+                                        <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--accent-cyan)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.02em" }}>KMTI Drawing</div>
+                                        <div style={{ fontSize: "0.78rem", color: "#e2e8f0", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "'JetBrains Mono', monospace", lineHeight: "1.4", wordBreak: "break-all" }}>
+                                          {result.revision_content || "-"}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            })()}
+
+                            {/* Engineering Discrepancy Details */}
+                            {result.engineering_discrepancy_details && (
+                              <div>
+                                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>ENGINEERING DISCREPANCY DETAILS</div>
+                                <div style={{
+                                  fontSize: "0.85rem",
+                                  color: result.status === "MATCHED" ? "#a7f3d0" : "#fecaca",
+                                  background: result.status === "MATCHED" ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+                                  borderLeft: `4px solid ${badgeColor}`,
+                                  padding: "8px 12px",
+                                  borderRadius: "0 6px 6px 0",
+                                  lineHeight: "1.5",
+                                  fontWeight: 400
+                                }}>
+                                  {result.engineering_discrepancy_details}
+                                </div>
+                              </div>
+                            )}
+
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </aside>
+
+      {currentNav === "workspace" && oldDrawing && newDrawing && (
+        <div
+          className={`left-resize-divider ${isResizingLeft ? 'active' : ''}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizingLeft(true);
+          }}
+          style={{
+            width: '6px',
+            cursor: 'ew-resize',
+            background: isResizingLeft ? 'rgba(0, 229, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+            borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+            zIndex: 30,
+            transition: 'background 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      )}
 
       {/* 2. DYNAMIC WORKSPACE PORT */}
       {/* Standards Manuals — admin-only panel */}
@@ -1067,248 +2616,54 @@ export const AuditWorkspace: React.FC = () => {
           {/* CENTER VIEWPORT (STAGE 1: COPY-TRACE COMPARISON ENGINE) */}
           <main className="stage1-center-panel">
             {/* Top Drawing Selection and Upload Box */}
-            {/* Split Screen Upload Ingestion Station */}
-            <div className="card settings-card upload-station-card" style={{ marginBottom: "12px", padding: "10px 16px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                    <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
-                      Stage 1: Version Ingestion
-                    </h3>
+            <div className="cad-viewer-container">
+              {/* Toolbar */}
+              <div className="viewer-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "8px 16px" }}>
+                {/* LEFT: Card Title */}
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <h3 className="card-title" style={{ margin: 0, fontSize: "0.85rem", color: "var(--accent-cyan)", borderLeft: "3px solid var(--accent-cyan)", paddingLeft: "8px" }}>
+                    Stage 1: Drawing Pair Ingestion
+                  </h3>
+                </div>
 
-                    <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
-                      <span className="compatibility-indicator-dot"></span>
-                      <span className="compatibility-text">
-                        {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
-                        {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
-                        {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
-                        {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
-                      </span>
-                    </div>
-
-                    {/* File Format Badges */}
-                    {oldDrawing && (
-                      <span className="format-badge-pill ref-format">
-                        REF: {oldDrawing.file_name.split(".").pop()?.toUpperCase()}
-                      </span>
-                    )}
-                    {newDrawing && (
-                      <span className="format-badge-pill rev-format">
-                        REV: {newDrawing.file_name.split(".").pop()?.toUpperCase()}
-                      </span>
-                    )}
-
-                    {/* Delta Complexity Pill */}
-                    {oldDrawing && newDrawing && (
-                      <span className="complexity-delta-pill">
-                        REF: {oldEntityCount.toLocaleString()} ↔ REV: {newEntityCount.toLocaleString()} Entities ({entityDelta >= 0 ? `+${entityDelta.toLocaleString()}` : entityDelta.toLocaleString()})
-                      </span>
-                    )}
+                {/* RIGHT: Compatibility Badge & Zoom Controls side-by-side */}
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div className={`compatibility-badge-status ${compatibilityStatus.toLowerCase()}`} style={{ padding: "3px 8px", fontSize: "0.62rem" }}>
+                    <span className="compatibility-indicator-dot"></span>
+                    <span className="compatibility-text">
+                      {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
+                      {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↔ ${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
+                      {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
+                      {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
+                    </span>
                   </div>
 
-                  {/* Laser Sync Controller Switch */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500" }}>Laser Sync:</span>
+                  <div className="toolbar-group">
                     <button
-                      onClick={toggleLaserSync}
-                      className={`laser-sync-toggle-switch ${isLaserSyncEnabled ? "active" : "inactive"}`}
-                      title={isLaserSyncEnabled ? "Disable Synchronized Crosshairs" : "Enable Synchronized Crosshairs"}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        position: "relative",
-                        width: "36px",
-                        height: "18px",
-                        borderRadius: "10px",
-                        background: isLaserSyncEnabled ? "rgba(0, 255, 204, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                        border: isLaserSyncEnabled ? "1px solid rgba(0, 255, 204, 0.4)" : "1px solid rgba(255, 255, 255, 0.1)",
-                        cursor: "pointer",
-                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                        padding: 0,
-                        outline: "none"
-                      }}
+                      className="toolbar-btn"
+                      onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.min(25, reviewViewport.scale * 1.25) })}
+                      title="Zoom In"
                     >
-                      <span
-                        className="laser-sync-dot"
-                        style={{
-                          display: "block",
-                          width: "10px",
-                          height: "10px",
-                          borderRadius: "50%",
-                          background: isLaserSyncEnabled ? "#00ffcc" : "#a1a1aa",
-                          boxShadow: isLaserSyncEnabled ? "0 0 8px #00ffcc" : "none",
-                          position: "absolute",
-                          left: isLaserSyncEnabled ? "22px" : "4px",
-                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                        }}
-                      />
+                      <ZoomIn size={14} />
+                    </button>
+                    <button
+                      className="toolbar-btn"
+                      onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.max(0.1, reviewViewport.scale / 1.25) })}
+                      title="Zoom Out"
+                    >
+                      <ZoomOut size={14} />
+                    </button>
+                    <button
+                      className="toolbar-btn"
+                      onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
+                      title="Reset Viewport"
+                    >
+                      <Maximize size={14} />
                     </button>
                   </div>
                 </div>
-
-                {/* Bounds Scanner Warning */}
-                {hasAlignmentDisparity && (
-                  <div className="alignment-mismatch-banner">
-                    <span className="warning-icon">⚠️</span>
-                    <span className="warning-text">Alignment warning: Scale or coordinate shift detected between viewports (bounds mismatch &gt; 10%). Direct alignment mapping may require offset adjustment.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="cad-viewer-container">
-              {/* Toolbar */}
-              <div className="viewer-toolbar">
-                <div className="toolbar-group">
-                  <button
-                    className="toolbar-btn"
-                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.min(25, reviewViewport.scale * 1.25) })}
-                    title="Zoom In"
-                  >
-                    <ZoomIn size={14} />
-                  </button>
-                  <button
-                    className="toolbar-btn"
-                    onClick={() => setReviewViewport({ ...reviewViewport, scale: Math.max(0.1, reviewViewport.scale / 1.25) })}
-                    title="Zoom Out"
-                  >
-                    <ZoomOut size={14} />
-                  </button>
-                  <button
-                    className="toolbar-btn"
-                    onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
-                    title="Reset Viewport"
-                  >
-                    <Maximize size={14} />
-                  </button>
-                </div>
-
-                <div className="toolbar-divider"></div>
               </div>
 
-              {/* Automated AI Physical Comparison & KMTI Checklist */}
-              {oldDrawing && newDrawing && (
-                <div className="physical-checklist-deck-container" style={{ marginBottom: "12px", background: "rgba(9, 9, 11, 0.6)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "16px", backdropFilter: "blur(12px)", boxShadow: "0 4px 30px rgba(0, 0, 0, 0.4)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
-                      <span style={{ fontSize: "0.85rem", fontWeight: 700, letterSpacing: "0.05em", color: "#e4e4e7" }}>
-                        AI PHYSICAL COMPARISON & KMTI CHECKLIST
-                      </span>
-                    </div>
-                    {aiScanProgress === "idle" && (
-                      <button
-                        className="btn btn-primary"
-                        onClick={runPhysicalComparisonAI}
-                        style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.7rem", padding: "6px 12px" }}
-                      >
-                        <Play size={12} fill="currentColor" />
-                        RUN AI COMPARISON
-                      </button>
-                    )}
-                  </div>
-
-                  {/* AI Scan Progress Sequence */}
-                  {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "20px 0" }}>
-                      <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)" }}>
-                        <span style={{ color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>1. SCAN ORIGINAL</span>
-                        <span style={{ color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>2. EXTRACT DATA</span>
-                        <span style={{ color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>3. SCAN KMTI</span>
-                        <span style={{ color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>4. COMPARE MATCHES</span>
-                      </div>
-                      <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                        <div style={{ 
-                          height: "100%", 
-                          background: "var(--accent-cyan)", 
-                          width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
-                          transition: "width 0.5s ease"
-                        }}></div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* AI Results Deck */}
-                  {aiScanProgress === "completed" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {Object.entries(aiChecklistResults).map(([key, result]) => {
-                        const isExpanded = expandedChecklistPanels[key];
-                        let badgeColor = "#10b981"; // MATCHED
-                        if (result.status === "ADDED") badgeColor = "#3b82f6";
-                        if (result.status === "CHANGED") badgeColor = "#f59e0b";
-                        if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#f43f5e";
-
-                        return (
-                          <div key={key} style={{ background: "rgba(20,20,22,0.6)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden" }}>
-                            <div 
-                              onClick={() => toggleChecklistPanel(key)}
-                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", cursor: "pointer" }}
-                            >
-                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f4f4f5", textTransform: "uppercase" }}>
-                                {key === "bom" ? "Bill of Materials (BOM)" : key === "titleBlock" ? "Title Block" : key}
-                              </span>
-                              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                                <span style={{
-                                  fontSize: "0.6rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
-                                  color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}15`
-                                }}>
-                                  {result.status}
-                                </span>
-                                {isExpanded ? <ChevronDown size={14} color="#71717a" /> : <ChevronRight size={14} color="#71717a" />}
-                              </div>
-                            </div>
-                            
-                            {/* Expanded Data Panel */}
-                            {isExpanded && (
-                              <div style={{ padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.2)" }}>
-                                <div style={{ fontSize: "0.65rem", color: "#a1a1aa", marginBottom: "8px" }}>{result.log}</div>
-                                
-                                {result.extractedText && (
-                                  <div style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.2)", padding: "8px", borderRadius: "4px", fontSize: "0.65rem", color: "#60a5fa", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
-                                    {result.extractedText}
-                                  </div>
-                                )}
-
-                                {key === "bom" && bomComparisonMatrix.length > 0 && (
-                                  <div style={{ overflowX: "auto", marginTop: "8px" }}>
-                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.65rem", fontFamily: "monospace", textAlign: "left" }}>
-                                      <thead>
-                                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#a1a1aa" }}>
-                                          <th style={{ padding: "4px 8px" }}>Row</th>
-                                          <th style={{ padding: "4px 8px" }}>Column</th>
-                                          <th style={{ padding: "4px 8px" }}>Original Value</th>
-                                          <th style={{ padding: "4px 8px" }}>KMTI Value</th>
-                                          <th style={{ padding: "4px 8px" }}>Delta</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {bomComparisonMatrix.map((row, idx) => (
-                                          <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: row.diffType === "CHANGED" ? "rgba(245,158,11,0.05)" : "transparent" }}>
-                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.row}</td>
-                                            <td style={{ padding: "6px 8px", color: "#e4e4e7" }}>{row.col}</td>
-                                            <td style={{ padding: "6px 8px", color: "#71717a" }}>{row.original}</td>
-                                            <td style={{ padding: "6px 8px", color: row.diffType === "CHANGED" ? "#f59e0b" : "#e4e4e7" }}>{row.kmti}</td>
-                                            <td style={{ padding: "6px 8px" }}>
-                                              <span style={{ color: row.diffType === "CHANGED" ? "#f59e0b" : "#10b981", fontWeight: 700 }}>
-                                                {row.diffType}
-                                              </span>
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Viewport Panels */}
               {/* ── STANDARD SPLIT-VIEW MODE ── */}
@@ -1332,6 +2687,7 @@ export const AuditWorkspace: React.FC = () => {
                     {oldDrawing ? (
                       <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
                         <DrawingCanvas
+                          ref={drawingCanvasRefOld}
                           layers={oldLayers}
                           width={oldSize.width}
                           height={oldSize.height}
@@ -1354,17 +2710,48 @@ export const AuditWorkspace: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Right Viewport (KMTI / New) */}
+                {/* Right Viewport (New) */}
                 <div className="viewport-panel">
                   <div className="viewport-header">
                     <div className="viewport-label">KMTI Drawing</div>
                     {newDrawing && (
-                      <div className="ingested-file-pill rev">
-                        <span className="pill-filename" title={newDrawing.file_name}>
-                          {newDrawing.file_name}
-                        </span>
-                        <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
-                          <Trash2 size={10} />
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <div className="ingested-file-pill rev">
+                          <span className="pill-filename" title={newDrawing.file_name}>
+                            {newDrawing.file_name}
+                          </span>
+                          <button className="pill-clear-btn" onClick={() => clearUpload("new")} title="Remove revision drawing">
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                        <button
+                          className="btn btn-primary"
+                          onClick={exportToPDF}
+                          title="Export drawing pair as PDF"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontSize: "0.68rem",
+                            padding: "3px 10px",
+                            borderRadius: "6px",
+                            background: "rgba(0, 229, 255, 0.1)",
+                            border: "1px solid rgba(0, 229, 255, 0.3)",
+                            color: "var(--accent-cyan)",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "var(--accent-cyan)";
+                            e.currentTarget.style.color = "#09090b";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(0, 229, 255, 0.1)";
+                            e.currentTarget.style.color = "var(--accent-cyan)";
+                          }}
+                        >
+                          <Download size={10} />
+                          <span>PDF</span>
                         </button>
                       </div>
                     )}
@@ -1373,6 +2760,7 @@ export const AuditWorkspace: React.FC = () => {
                     {newDrawing ? (
                       <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
                         <DrawingCanvas
+                          ref={drawingCanvasRefNew}
                           layers={newLayers}
                           width={newSize.width}
                           height={newSize.height}
@@ -1398,8 +2786,36 @@ export const AuditWorkspace: React.FC = () => {
             </div>
           </main>
 
+          {/* Right divider */}
+          {!isRightPanelCollapsed && (
+            <div
+              className={`right-resize-divider ${isResizingRight ? 'active' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingRight(true);
+              }}
+              style={{
+                width: '6px',
+                cursor: 'ew-resize',
+                background: isResizingRight ? 'rgba(0, 229, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+                borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+                borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+                zIndex: 30,
+                transition: 'background 0.2s ease',
+                flexShrink: 0
+              }}
+            />
+          )}
+
           {/* RIGHT VIEWPORT (STAGE 2: AI COMPLIANCE AUDITOR) */}
-          <aside className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}>
+          <aside
+            className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""} ${isResizingRight ? "resizing" : ""}`}
+            style={{
+              width: isRightPanelCollapsed ? '0px' : `${rightSidebarWidth}px`,
+              minWidth: isRightPanelCollapsed ? '0px' : `${rightSidebarWidth}px`,
+              transition: isResizingRight ? 'none' : 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+          >
             <button
               className="panel-collapse-btn"
               onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
@@ -2392,7 +3808,7 @@ export const AuditWorkspace: React.FC = () => {
         .panel-content-wrapper {
           display: flex;
           flex-direction: column;
-          width: 400px;
+          width: 100%;
           flex: 1;
           min-height: 0;
           padding: 20px;
@@ -3298,6 +4714,14 @@ export const AuditWorkspace: React.FC = () => {
         @keyframes spin-icon-anim {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+
+        .left-resize-divider:hover,
+        .left-resize-divider.active,
+        .right-resize-divider:hover,
+        .right-resize-divider.active {
+          background: rgba(0, 229, 255, 0.4) !important;
+          box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
         }
       `}</style>
     </div>
