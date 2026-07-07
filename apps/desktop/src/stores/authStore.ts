@@ -144,37 +144,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     const { backendUrl, apiToken } = useConnectionStore.getState();
 
-    try {
-      const headers: Record<string, string> = {
-        "Accept": "application/json",
-        "X-Session-Token": sessionToken,
-      };
-      if (apiToken) {
-        headers["Authorization"] = `Bearer ${apiToken}`;
-      }
+    const headers: Record<string, string> = {
+      "Accept": "application/json",
+      "X-Session-Token": sessionToken,
+    };
+    if (apiToken) {
+      headers["Authorization"] = `Bearer ${apiToken}`;
+    }
 
-      const response = await fetch(`${backendUrl}/api/v1/auth/me`, {
+    let response;
+    try {
+      response = await fetch(`${backendUrl}/api/v1/auth/me`, {
         headers,
       });
-
-      const resData = await response.json();
-
-      if (response.ok && resData.success) {
-        set({
-          user: resData.data,
-          sessionToken,
-          isAuthenticated: true,
-          isLoading: false,
-        });
-        return true;
-      } else {
-        // Token has expired or is invalid
-        get().logout();
-        set({ isLoading: false });
-        return false;
-      }
     } catch (err) {
-      // Offline fallback: load cached details if they exist to keep session alive local-first
+      // Offline fallback: load cached details only on actual network/connection failure
       const username = localStorage.getItem("ai_2d_session_username");
       const role = localStorage.getItem("ai_2d_session_role") as "admin" | "user";
       if (username && role) {
@@ -195,5 +179,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false });
       return false;
     }
+
+    try {
+      const resData = await response.json();
+      if (response.ok && resData.success) {
+        set({
+          user: resData.data,
+          sessionToken,
+          isAuthenticated: true,
+          isLoading: false,
+        });
+        return true;
+      } else {
+        // Token has expired or is invalid
+        get().logout();
+        set({ isLoading: false });
+        return false;
+      }
+    } catch (parseErr) {
+      // Treat server JSON syntax/parsing errors as invalid sessions and log out
+      get().logout();
+      set({ isLoading: false });
+      return false;
+    }
+
   },
 }));
