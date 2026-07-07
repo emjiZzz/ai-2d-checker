@@ -10,6 +10,7 @@ import { WorkspaceView } from "./WorkspaceView";
 import { HistoryView } from "./HistoryView";
 import { SettingsView } from "./SettingsView";
 import { StandardsView } from "./StandardsView";
+import "./AuditWorkspace.css";
 
 export const AuditWorkspace: React.FC = () => {
   const backendUrl = useConnectionStore((s) => s.backendUrl);
