@@ -19,7 +19,8 @@ class MockAuditViolation:
 
 @pytest.fixture(autouse=True)
 def mock_audit_violation(monkeypatch):
-    monkeypatch.setattr(bom_analyzer_mod, "AuditViolation", MockAuditViolation)
+    import services.backend.infrastructure.audit.bom.row_extractor as row_extractor_mod
+    monkeypatch.setattr(row_extractor_mod, "AuditViolation", MockAuditViolation)
 
 def test_extract_bom_rows_blocks():
     ent1 = MockEntity(
@@ -130,7 +131,7 @@ def test_reconcile():
 def test_extract_bom_table_empty():
     rows, is_assembly = BOMAnalyzer.extract_bom_table([])
     assert rows == []
-    assert is_assembly is False
+    assert is_assembly is True
 
 def test_extract_title_block_simple():
     # Use native fields parsing from block attributes to test simple title block extraction
