@@ -156,15 +156,33 @@ async def perform_drawing_comparison(
     # Run comparative overlays checks
     title_block_table = build_title_block_table(ref_title_fields, rev_title_fields)
 
-    # Compute bounding boxes for visual overlap warnings
-    ref_bom_bbox_raw = BOMAnalyzer.compute_bom_bbox(ref_entities)
-    rev_bom_bbox_raw = BOMAnalyzer.compute_bom_bbox(rev_entities)
-    rev_title_bbox_raw = BOMAnalyzer.compute_title_block_bbox(rev_entities)
+    # Compute bounding boxes for visual overlap warnings and spatial constraints
+    from ..bom.table_extractor import extract_dynamic_regions
+    ref_regions = extract_dynamic_regions(ref_entities)
+    rev_regions = extract_dynamic_regions(rev_entities)
+
+    ref_bom_bbox_raw = ref_regions.get("bom")
+    rev_bom_bbox_raw = rev_regions.get("bom")
+    ref_title_bbox_raw = ref_regions.get("title")
+    rev_title_bbox_raw = rev_regions.get("title")
+    ref_notes_bbox_raw = ref_regions.get("notes")
+    rev_notes_bbox_raw = rev_regions.get("notes")
+    ref_iso_bbox_raw = ref_regions.get("iso")
+    rev_iso_bbox_raw = rev_regions.get("iso")
+    ref_views_bbox_raw = ref_regions.get("views")
+    rev_views_bbox_raw = rev_regions.get("views")
 
     # Validate regions via BoundingBox2D DTOs
     ref_bom_bbox = BoundingBox2D.from_tuple(ref_bom_bbox_raw).to_tuple() if ref_bom_bbox_raw else None
     rev_bom_bbox = BoundingBox2D.from_tuple(rev_bom_bbox_raw).to_tuple() if rev_bom_bbox_raw else None
+    ref_title_bbox = BoundingBox2D.from_tuple(ref_title_bbox_raw).to_tuple() if ref_title_bbox_raw else None
     rev_title_bbox = BoundingBox2D.from_tuple(rev_title_bbox_raw).to_tuple() if rev_title_bbox_raw else None
+    ref_notes_bbox = BoundingBox2D.from_tuple(ref_notes_bbox_raw).to_tuple() if ref_notes_bbox_raw else None
+    rev_notes_bbox = BoundingBox2D.from_tuple(rev_notes_bbox_raw).to_tuple() if rev_notes_bbox_raw else None
+    ref_iso_bbox = BoundingBox2D.from_tuple(ref_iso_bbox_raw).to_tuple() if ref_iso_bbox_raw else None
+    rev_iso_bbox = BoundingBox2D.from_tuple(rev_iso_bbox_raw).to_tuple() if rev_iso_bbox_raw else None
+    ref_views_bbox = BoundingBox2D.from_tuple(ref_views_bbox_raw).to_tuple() if ref_views_bbox_raw else None
+    rev_views_bbox = BoundingBox2D.from_tuple(rev_views_bbox_raw).to_tuple() if rev_views_bbox_raw else None
 
     logger.info(f"Spatial regions - ref BOM bbox: {ref_bom_bbox} | rev BOM bbox: {rev_bom_bbox} | rev Title bbox: {rev_title_bbox}")
     
@@ -186,12 +204,10 @@ async def perform_drawing_comparison(
         x, y = geom['insert'][0], geom['insert'][1]
         return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
 
-    ref_title_bbox_raw = BOMAnalyzer.compute_title_block_bbox(ref_entities)
+    ref_tolerance_bbox_raw = ref_regions.get("tolerance")
+    rev_tolerance_bbox_raw = rev_regions.get("tolerance")
     
-    from ..bom.spatial_utils import compute_tolerance_table_bbox, compute_drawing_bounds
-    ref_tolerance_bbox_raw = compute_tolerance_table_bbox(ref_entities)
-    rev_tolerance_bbox_raw = compute_tolerance_table_bbox(rev_entities)
-    
+    from ..bom.spatial_utils import compute_drawing_bounds
     ref_global_bounds = compute_drawing_bounds(ref_entities)
     rev_global_bounds = compute_drawing_bounds(rev_entities)
 
@@ -280,7 +296,12 @@ async def perform_drawing_comparison(
     resolve_marking_coordinates(
         clean_markings, id_to_rev_entity, id_to_ref_entity,
         rev_entities, ref_entities, rev_bom_rows, ref_bom_rows,
-        rev_title_fields, ref_title_fields, rev_bom_bbox, ref_bom_bbox,
+        rev_title_fields, ref_title_fields, 
+        rev_bom_bbox, ref_bom_bbox,
+        rev_title_bbox, ref_title_bbox,
+        rev_notes_bbox, ref_notes_bbox,
+        rev_iso_bbox, ref_iso_bbox,
+        rev_views_bbox, ref_views_bbox,
         used_rev_entities, used_ref_entities
     )
 

@@ -91,7 +91,7 @@ export const useReviewStore = create<ReviewState>((set) => ({
 
   showViolations: true,
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
-  showMarkerLabels: true,
+  showMarkerLabels: false,
   toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
   showMinimap: true,
   toggleMinimap: () => set((state) => ({ showMinimap: !state.showMinimap })),

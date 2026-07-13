@@ -83,6 +83,7 @@ export interface RenderFrame {
   resolutionMultiplier: number;
   viewport: { x: number; y: number; scale: number };
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
+  isNeonModeActive?: boolean;
 }
 
 export interface RenderEntitiesParams {
@@ -267,7 +268,9 @@ export const renderViolationReticles = ({
   const { ctx, isExport, renderWidth, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
   // Critical constraint: explicit filter reset to clear any Neon-CAD filter applied earlier in the pass
-  ctx.filter = 'none';
+  if (frame.isNeonModeActive && !isExport) {
+    ctx.filter = 'none';
+  }
 
   if (!showViolations) return;
 
@@ -298,6 +301,9 @@ export const renderViolationReticles = ({
 
     if (!visibleMarkerTypes[markerType]) return;
 
+    // Level-of-Detail (LOD): Skip entirely if zoomed way out, unless it's the actively selected violation
+    if (viewport.scale < 0.1 && selectedViolation?.id !== v.id) return;
+
     let coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
     let bbox: any = isOldDrawing ? (v as any).ref_bbox : (v as any).bbox;
     if (!coords) return;
@@ -306,7 +312,7 @@ export const renderViolationReticles = ({
     const screenPos = worldToScreen(vx, raw_vy, norm, viewport);
     const isSelected = selectedViolation?.id === v.id;
 
-    const bulletColor = penType === 'ai_red' ? '#ef4444' : penType === 'ai_orange' ? '#f97316' : penType === 'checker_blue' ? '#3b82f6' : '#10b981';
+    const bulletColor = penType === 'ai_red' ? '#ff2850' : penType === 'ai_orange' ? '#ff9600' : penType === 'checker_blue' ? '#00ffff' : '#39ff14';
     const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : 'MATCHED';
 
     let screenX = screenPos.x;
@@ -319,7 +325,11 @@ export const renderViolationReticles = ({
     const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
     ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
 
-    const SHOW_MARKER_TARGETS = (showMarkerLabels && hoveredMarkerId === v.id) || isSelected;
+    const isHoveredOrSelected = hoveredMarkerId === v.id || isSelected;
+    // Level-of-Detail (LOD): Hide detailed text cards when zoomed out, unless explicitly hovered/selected
+    const lodSkipCard = viewport.scale < 0.3 && !isHoveredOrSelected;
+    
+    const SHOW_MARKER_TARGETS = (showMarkerLabels && !lodSkipCard) || isHoveredOrSelected;
     if (SHOW_MARKER_TARGETS) {
       const displayVal = (isOldDrawing && v.original_value) ? v.original_value : (v.description || "");
       const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
@@ -425,55 +435,11 @@ export const renderViolationReticles = ({
         ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
         ctx.fillText(subValueText, labelX + 8 * resolutionMultiplier, labelY + 65 * resolutionMultiplier);
       }
-    }
+    } // <-- Added missing closing brace
 
-    if (v.category !== 'drawing_views') {
-      let pxmin = screenX - 10 * resolutionMultiplier;
-      let pymin = screenY - 10 * resolutionMultiplier;
-      let rectW = 20 * resolutionMultiplier;
-      let rectH = 20 * resolutionMultiplier;
-
-      if (bbox && bbox.length >= 2) {
-        const [[bxmin, bymin_raw], [bxmax, bymax_raw]] = bbox;
-        const bMinScreen = worldToScreen(bxmin, bymin_raw, norm, viewport);
-        const bMaxScreen = worldToScreen(bxmax, bymax_raw, norm, viewport);
-
-        pxmin = bMinScreen.x;
-        pymin = Math.min(bMinScreen.y, bMaxScreen.y);
-        const pxmax = bMaxScreen.x;
-        const pymax = Math.max(bMinScreen.y, bMaxScreen.y);
-        rectW = Math.max(pxmax - pxmin, 1);
-        rectH = Math.max(pymax - pymin, 1);
-      }
-
-      ctx.beginPath();
-      ctx.rect(pxmin, pymin, rectW, rectH);
-      ctx.fillStyle = isSelected
-        ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
-        : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.12)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.12)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)');
-      ctx.fill();
-      ctx.strokeStyle = bulletColor;
-      ctx.lineWidth = 1.5 * resolutionMultiplier;
-      ctx.stroke();
-
-      if (isSelected) {
-        ctx.beginPath();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.2 * resolutionMultiplier;
-        ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
-        ctx.rect(pxmin - 4 * resolutionMultiplier, pymin - 4 * resolutionMultiplier, rectW + 8 * resolutionMultiplier, rectH + 8 * resolutionMultiplier);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    } else {
-      const radius = 12 * resolutionMultiplier;
-      ctx.beginPath();
-      ctx.fillStyle = isSelected
-        ? (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.25)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.25)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(16, 185, 129, 0.25)')
-        : (penType === 'ai_red' ? 'rgba(239, 68, 68, 0.08)' : penType === 'ai_orange' ? 'rgba(249, 115, 22, 0.08)' : penType === 'checker_blue' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(16, 185, 129, 0.08)');
-      ctx.arc(screenX, screenY, radius * 1.6, 0, 2 * Math.PI);
-      ctx.fill();
-
+    const radius = (v.category === 'drawing_views' ? 4 : 2.5) * resolutionMultiplier * viewport.scale;
+    
+    if (statusLabel === 'MATCHED') {
       ctx.beginPath();
       ctx.strokeStyle = bulletColor;
       ctx.lineWidth = 3 * resolutionMultiplier;
@@ -492,11 +458,31 @@ export const renderViolationReticles = ({
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.2 * resolutionMultiplier;
         ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
-        ctx.arc(screenX, screenY, radius * 1.8, 0, 2 * Math.PI);
+        ctx.arc(screenX, screenY, size * 1.5, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    } else {
+      ctx.beginPath();
+      ctx.fillStyle = isSelected
+        ? (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.7)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.7)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.7)' : 'rgba(57, 255, 20, 0.7)')
+        : (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.4)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.4)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.4)' : 'rgba(57, 255, 20, 0.4)');
+      
+      // Draw the neon dot centered at the exact coordinate
+      ctx.arc(screenX, screenY, radius, 0, 2 * Math.PI);
+      ctx.fill();
+
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2 * resolutionMultiplier;
+        ctx.setLineDash([2 * resolutionMultiplier, 2 * resolutionMultiplier]);
+        ctx.arc(screenX, screenY, radius + 4 * resolutionMultiplier, 0, 2 * Math.PI);
         ctx.stroke();
         ctx.setLineDash([]);
       }
     }
+
 
     ctx.restore();
   });

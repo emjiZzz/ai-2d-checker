@@ -5,79 +5,93 @@ from .constants import map_signature_value
 
 def extract_dynamic_regions(entities: list) -> dict:
     """
-    Determines sheet boundary and title block/BOM regions dynamically.
+    Determines absolute geometric boundaries for template zones dynamically based on layer and content heuristics.
+    Falls back to percentage-based bounds derived from the global sheet boundaries if discovery fails.
     """
-    lines = []
-    for e in entities:
-        if getattr(e, "entity_type", "") == "line":
-            geo = getattr(e, "geometry", {})
-            if "start" in geo and "end" in geo:
-                lines.append((geo["start"], geo["end"]))
-        elif getattr(e, "entity_type", "") == "polyline":
-            geo = getattr(e, "geometry", {})
-            if "vertices" in geo:
-                pts = geo["vertices"]
-                for i in range(len(pts) - 1):
-                    lines.append((pts[i], pts[i+1]))
-            elif "points" in geo:
-                pts = geo["points"]
-                for i in range(len(pts) - 1):
-                    lines.append((pts[i], pts[i+1]))
+    from .constants import ZONE_KEYWORDS
+    from .spatial_utils import compute_drawing_bounds
 
+    # 1. Get canonical sheet bounds
+    sheet_bounds = compute_drawing_bounds(entities)
+    
+    # Legacy fallbacks based on percentages
     default_regions = {
         "views":         { "xMin": 0.04, "xMax": 0.68, "yMin": 0.12, "yMax": 0.88 },
         "notes":         { "xMin": 0.04, "xMax": 0.38, "yMin": 0.18, "yMax": 0.62 },
         "bom":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.04, "yMax": 0.44 },
         "title":         { "xMin": 0.38, "xMax": 0.98, "yMin": 0.72, "yMax": 0.98 },
         "tolerance":     { "xMin": 0.02, "xMax": 0.40, "yMin": 0.65, "yMax": 0.98 },
-        "titleUpperLeft":{ "xMin": 0.02, "xMax": 0.35, "yMin": 0.02, "yMax": 0.35 },
         "iso":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.42, "yMax": 0.74 }
     }
 
-    if not lines:
-        return default_regions
+    result = {}
+    if sheet_bounds:
+        min_x, min_y, max_x, max_y = sheet_bounds
+        w = max_x - min_x
+        h = max_y - min_y
+        for z, pct in default_regions.items():
+            result[z] = (min_x + pct["xMin"]*w, min_y + pct["yMin"]*h, min_x + pct["xMax"]*w, min_y + pct["yMax"]*h)
+    else:
+        for z in default_regions:
+            result[z] = (0.0, 0.0, 1000.0, 1000.0)
 
-    min_x = min(min(p1[0], p2[0]) for p1, p2 in lines)
-    max_x = max(max(p1[0], p2[0]) for p1, p2 in lines)
-    min_y = min(min(p1[1], p2[1]) for p1, p2 in lines)
-    max_y = max(max(p1[1], p2[1]) for p1, p2 in lines)
+    # 2. Heuristic Scoring
+    zone_points = {z: [] for z in ZONE_KEYWORDS}
+    
+    for e in entities:
+        if getattr(e, "entity_type", "") not in ["line", "polyline", "text", "mtext"]:
+            continue
+            
+        layer = (getattr(e, "layer", "") or "").lower()
+        
+        # Check text content if available
+        text_val = ""
+        if getattr(e, "entity_type", "") in ["text", "mtext"]:
+            raw = e.properties.get("text", "") if getattr(e, "properties", None) else ""
+            if raw:
+                # simple decode for keyword matching
+                text_val = str(raw).lower()
 
-    width = max_x - min_x
-    height = max_y - min_y
-    if width <= 0 or height <= 0:
-        return default_regions
+        scores = {z: 0 for z in ZONE_KEYWORDS}
+        
+        for z, keywords in ZONE_KEYWORDS.items():
+            for kw in keywords:
+                if kw in layer:
+                    scores[z] += 2
+                if text_val and kw in text_val:
+                    scores[z] += 3
 
-    tr_lines = [l for l in lines if (l[0][0]-min_x)/width > 0.6 and (l[0][1]-min_y)/height < 0.5]
-    br_lines = [l for l in lines if (l[0][0]-min_x)/width > 0.4 and (l[0][1]-min_y)/height > 0.6]
-    bl_lines = [l for l in lines if (l[0][0]-min_x)/width < 0.4 and (l[0][1]-min_y)/height > 0.6]
+        max_score = max(scores.values())
+        if max_score > 0:
+            # Check for tie
+            winners = [z for z, s in scores.items() if s == max_score]
+            if len(winners) == 1:
+                winner = winners[0]
+                # extract coords
+                if getattr(e, "entity_type", "") in ["line"]:
+                    geo = getattr(e, "geometry", {})
+                    if "start" in geo: zone_points[winner].append(geo["start"][:2])
+                    if "end" in geo: zone_points[winner].append(geo["end"][:2])
+                elif getattr(e, "entity_type", "") in ["polyline"]:
+                    geo = getattr(e, "geometry", {})
+                    pts = geo.get("vertices") or geo.get("points") or []
+                    for pt in pts: zone_points[winner].append(pt[:2])
+                elif getattr(e, "entity_type", "") in ["text", "mtext"]:
+                    geo = getattr(e, "geometry", {})
+                    if "insert" in geo: zone_points[winner].append(geo["insert"][:2])
 
-    def get_bounds(quad_lines, default_box):
-        if not quad_lines:
-            return default_box
-        qx_min = min(min(p1[0], p2[0]) for p1, p2 in quad_lines)
-        qx_max = max(max(p1[0], p2[0]) for p1, p2 in quad_lines)
-        qy_min = min(min(p1[1], p2[1]) for p1, p2 in quad_lines)
-        qy_max = max(max(p1[1], p2[1]) for p1, p2 in quad_lines)
-        return {
-            "xMin": max(0.0, (qx_min - min_x) / width - 0.01),
-            "xMax": min(1.0, (qx_max - min_x) / width + 0.01),
-            "yMin": max(0.0, (qy_min - min_y) / height - 0.01),
-            "yMax": min(1.0, (qy_max - min_y) / height + 0.01)
-        }
-
-    bom_bounds = get_bounds(tr_lines, default_regions["bom"])
-    title_bounds = get_bounds(br_lines, default_regions["title"])
-    tolerance_bounds = get_bounds(bl_lines, default_regions["tolerance"])
-
-    return {
-        "views":         default_regions["views"],
-        "notes":         default_regions["notes"],
-        "bom":           bom_bounds,
-        "title":         title_bounds,
-        "tolerance":     tolerance_bounds,
-        "titleUpperLeft":default_regions["titleUpperLeft"],
-        "iso":           default_regions["iso"]
-    }
+    # 3. Robust Bounding Box with 5th-95th Percentile Clipping
+    for z, pts in zone_points.items():
+        if len(pts) >= 4:  # require a minimum number of points to form a reliable cluster
+            xs = sorted([p[0] for p in pts])
+            ys = sorted([p[1] for p in pts])
+            idx5 = max(0, int(len(xs) * 0.05))
+            idx95 = min(len(xs) - 1, int(len(xs) * 0.95))
+            if idx95 >= idx5:
+                # Ensure we have a valid bounding box, expand slightly by 10 units for padding
+                result[z] = (xs[idx5] - 10.0, ys[idx5] - 10.0, xs[idx95] + 10.0, ys[idx95] + 10.0)
+                
+    return result
 
 def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> Tuple[list, bool]:
     """Auto-detect drawing type (Parts vs Assembly) and extract all BOM rows.
@@ -182,15 +196,13 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> T
     w_sheet = max_x_sheet - min_x_sheet
     h_sheet = max_y_sheet - min_y_sheet
 
-    bom_box = regions["bom"]
-    bom_x_min = min_x_sheet + bom_box["xMin"] * w_sheet
-    bom_x_max = min_x_sheet + bom_box["xMax"] * w_sheet
-    bom_y_min = min_y_sheet + bom_box["yMin"] * h_sheet
-    bom_y_max = min_y_sheet + bom_box["yMax"] * h_sheet
+    bom_box = regions.get("bom", (0, 0, max_x_sheet, max_y_sheet))
+    bom_x_min, bom_y_min, bom_x_max, bom_y_max = bom_box
     
     # Adjust absolute threshold for scale changes
     if bom_coord_scale == 2.0:
-        bom_x_min = min_x_sheet + 0.58 * w_sheet
+        bom_width = bom_x_max - bom_x_min
+        bom_x_min = bom_x_max - (bom_width * 0.42)
 
     bom_filtered = [t for t in bom_texts if bom_x_min <= t[0] <= bom_x_max and bom_y_min <= t[1] <= bom_y_max]
     

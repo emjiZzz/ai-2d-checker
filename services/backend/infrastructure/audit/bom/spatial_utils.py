@@ -113,6 +113,13 @@ def find_drawing_text_coordinates(
     for e in search_order:
         if used_entities is not None and id(e) in used_entities:
             continue
+            
+        # Safeguard: Do not match short strings or pure numbers (like quantities) outside their designated region
+        # otherwise it will hallucinate and match geometric dimensions on the CAD drawing.
+        is_short_or_numeric = len(target_norm) < 4 or target_norm.isnumeric()
+        if region_bbox and e in elsewhere and is_short_or_numeric:
+            continue
+            
         raw_txt = e.properties.get("text", "") if getattr(e, "properties", None) else ""
         if raw_txt:
             decoded = strip_mtext(safe_decode(raw_txt))
@@ -125,8 +132,11 @@ def find_drawing_text_coordinates(
     for e in search_order:
         if used_entities is not None and id(e) in used_entities:
             continue
-        if len(target_norm) < 3 and region_bbox and e in elsewhere:
+            
+        is_short_or_numeric = len(target_norm) < 4 or target_norm.isnumeric()
+        if region_bbox and e in elsewhere and is_short_or_numeric:
             continue
+            
         raw_txt = e.properties.get("text", "") if getattr(e, "properties", None) else ""
         if raw_txt:
             decoded = strip_mtext(safe_decode(raw_txt))
@@ -217,89 +227,32 @@ def _title_region(fields: dict, entities: list) -> Optional[tuple]:
 def compute_bom_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
     """Compute the absolute geometric bounding box for the BOM region."""
     from .table_extractor import extract_dynamic_regions
-    regions = extract_dynamic_regions(entities)
-    
-    xs = []
-    ys = []
-    for e in entities:
-        if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None):
-            ins = e.geometry.get("insert") or [0, 0, 0]
-            xs.append(ins[0])
-            ys.append(ins[1])
-            
-    if not xs:
-        return None
-        
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    w, h = max_x - min_x, max_y - min_y
-    
-    bom_box = regions["bom"]
-    return (
-        min_x + bom_box["xMin"] * w,
-        min_y + bom_box["yMin"] * h,
-        min_x + bom_box["xMax"] * w,
-        min_y + bom_box["yMax"] * h
-    )
+    return extract_dynamic_regions(entities).get("bom")
+
+def compute_notes_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
+    """Compute the absolute geometric bounding box for the Notes region."""
+    from .table_extractor import extract_dynamic_regions
+    return extract_dynamic_regions(entities).get("notes")
+
+def compute_iso_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
+    """Compute the absolute geometric bounding box for the ISO region."""
+    from .table_extractor import extract_dynamic_regions
+    return extract_dynamic_regions(entities).get("iso")
+
+def compute_views_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
+    """Compute the absolute geometric bounding box for the Drawing Views region."""
+    from .table_extractor import extract_dynamic_regions
+    return extract_dynamic_regions(entities).get("views")
 
 def compute_title_block_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
     """Compute the absolute geometric bounding box for the Title Block region."""
     from .table_extractor import extract_dynamic_regions
-    regions = extract_dynamic_regions(entities)
-    
-    xs = []
-    ys = []
-    for e in entities:
-        if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None):
-            ins = e.geometry.get("insert") or [0, 0, 0]
-            xs.append(ins[0])
-            ys.append(ins[1])
-            
-    if not xs:
-        return None
-        
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    w, h = max_x - min_x, max_y - min_y
-    
-    title_box = regions["title"]
-    return (
-        min_x + title_box["xMin"] * w,
-        min_y + title_box["yMin"] * h,
-        min_x + title_box["xMax"] * w,
-        min_y + title_box["yMax"] * h
-    )
+    return extract_dynamic_regions(entities).get("title")
 
 def compute_tolerance_table_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
     """Compute the absolute geometric bounding box for the Tolerance Table (bottom-left) region."""
     from .table_extractor import extract_dynamic_regions
-    regions = extract_dynamic_regions(entities)
-    
-    xs = []
-    ys = []
-    for e in entities:
-        if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None):
-            ins = e.geometry.get("insert") or [0, 0, 0]
-            xs.append(ins[0])
-            ys.append(ins[1])
-            
-    if not xs:
-        return None
-        
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    w, h = max_x - min_x, max_y - min_y
-    
-    tol_box = regions.get("tolerance")
-    if not tol_box:
-        return None
-        
-    return (
-        min_x + tol_box["xMin"] * w,
-        min_y + tol_box["yMin"] * h,
-        min_x + tol_box["xMax"] * w,
-        min_y + tol_box["yMax"] * h
-    )
+    return extract_dynamic_regions(entities).get("tolerance")
 
 def compute_drawing_bounds(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
     """Compute the absolute max and min bounding box of all lines in the drawing, to represent the layout boundaries."""

@@ -39,6 +39,8 @@ export function useCanvasInteraction({
 
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
+  const dragDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mouseDownRawPosRef = useRef({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
 
@@ -207,9 +209,15 @@ export function useCanvasInteraction({
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const currentViewport = useReviewStore.getState().viewport;
+    mouseDownRawPosRef.current = { x: e.clientX, y: e.clientY };
+
     if (e.button === 1 || e.button === 2 || isSpacePressed) {
       setIsDragging(true);
       isDraggingRef.current = true;
+      if (dragDebounceTimerRef.current) {
+        clearTimeout(dragDebounceTimerRef.current);
+        dragDebounceTimerRef.current = null;
+      }
       setDragStart({ x: e.clientX - currentViewport.x, y: e.clientY - currentViewport.y });
       e.preventDefault();
       return;
@@ -277,6 +285,14 @@ export function useCanvasInteraction({
             }
           }
         }
+        // When entering handle mode, treat as dragging
+        setIsDragging(true);
+        isDraggingRef.current = true;
+        if (dragDebounceTimerRef.current) {
+          clearTimeout(dragDebounceTimerRef.current);
+          dragDebounceTimerRef.current = null;
+        }
+        setDragStart({ x: e.clientX - currentViewport.x, y: e.clientY - currentViewport.y });
       } else {
         setIsDragging(true);
         isDraggingRef.current = true;
@@ -457,9 +473,24 @@ export function useCanvasInteraction({
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     setIsDragging(false);
-    isDraggingRef.current = false;
+    
+    // Debounce the physical drag end so violation rendering doesn't cause a micro-stutter on release
+    if (dragDebounceTimerRef.current) clearTimeout(dragDebounceTimerRef.current);
+    dragDebounceTimerRef.current = setTimeout(() => {
+      isDraggingRef.current = false;
+      setRedrawTrigger(prev => prev + 1); // Ensure reticles pop back in
+    }, 50);
     setActiveDragHandle(null);
     setCenterDragStart(null);
+
+    // If we didn't click on a marker, and we didn't drag/pan significantly, it's a "click outside" -> deselect
+    if (!dragMarkerId && selectedViolation) {
+      const dx = e.clientX - mouseDownRawPosRef.current.x;
+      const dy = e.clientY - mouseDownRawPosRef.current.y;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        selectViolation(null);
+      }
+    }
 
     if (dragMarkerId) {
       if (!hasDragMarkerMoved) {
@@ -506,7 +537,11 @@ export function useCanvasInteraction({
 
   const handleMouseLeave = useCallback(() => {
     setIsDragging(false);
-    isDraggingRef.current = false;
+    if (dragDebounceTimerRef.current) clearTimeout(dragDebounceTimerRef.current);
+    dragDebounceTimerRef.current = setTimeout(() => {
+      isDraggingRef.current = false;
+      setRedrawTrigger(prev => prev + 1);
+    }, 50);
     setActiveDragHandle(null);
     setCenterDragStart(null);
     setHoveredHandleInfo(null);

@@ -26,6 +26,14 @@ def resolve_marking_coordinates(
     ref_title_fields: Dict[str, Any],
     rev_bom_bbox: Optional[tuple],
     ref_bom_bbox: Optional[tuple],
+    rev_title_bbox: Optional[tuple],
+    ref_title_bbox: Optional[tuple],
+    rev_notes_bbox: Optional[tuple],
+    ref_notes_bbox: Optional[tuple],
+    rev_iso_bbox: Optional[tuple],
+    ref_iso_bbox: Optional[tuple],
+    rev_views_bbox: Optional[tuple],
+    ref_views_bbox: Optional[tuple],
     used_rev_entities: set,
     used_ref_entities: set
 ) -> None:
@@ -77,10 +85,25 @@ def resolve_marking_coordinates(
             rev_ex = get_individual_bboxes(rev_bom_rows, rev_title_fields) if cat == "drawing_views" else None
             ref_ex = get_individual_bboxes(ref_bom_rows, ref_title_fields) if cat == "drawing_views" else None
             
+            def set_region_bbox(kwargs: dict, category: str, is_rev: bool):
+                bbox = None
+                if category == "bill_of_materials":
+                    bbox = rev_bom_bbox if is_rev else ref_bom_bbox
+                elif category == "title_block":
+                    bbox = rev_title_bbox if is_rev else ref_title_bbox
+                elif category == "notes_section":
+                    bbox = rev_notes_bbox if is_rev else ref_notes_bbox
+                elif category == "isometric_view":
+                    bbox = rev_iso_bbox if is_rev else ref_iso_bbox
+                elif category == "drawing_views":
+                    bbox = rev_views_bbox if is_rev else ref_views_bbox
+                if bbox:
+                    kwargs["region_bbox"] = bbox
+            
             if status_val == "ADDED":
                 if m.get("coordinates") is None and txt and txt != "NONE":
                     kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex}
-                    if cat == "bill_of_materials" and rev_bom_bbox: kwargs["region_bbox"] = rev_bom_bbox
+                    set_region_bbox(kwargs, cat, is_rev=True)
                     res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, **kwargs)
                     if res:
                         m["coordinates"] = res.get("coords")
@@ -90,7 +113,7 @@ def resolve_marking_coordinates(
                 search_txt = m.get("original_value") or txt
                 if m.get("ref_coordinates") is None and search_txt and search_txt != "NONE":
                     kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex}
-                    if cat == "bill_of_materials" and ref_bom_bbox: kwargs["region_bbox"] = ref_bom_bbox
+                    set_region_bbox(kwargs, cat, is_rev=False)
                     res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, search_txt, **kwargs)
                     if res:
                         m["ref_coordinates"] = res.get("coords")
@@ -99,7 +122,7 @@ def resolve_marking_coordinates(
             elif status_val == "CHANGED":
                 if m.get("coordinates") is None and txt and txt != "NONE":
                     kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex}
-                    if cat == "bill_of_materials" and rev_bom_bbox: kwargs["region_bbox"] = rev_bom_bbox
+                    set_region_bbox(kwargs, cat, is_rev=True)
                     res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, **kwargs)
                     if res:
                         m["coordinates"] = res.get("coords")
@@ -107,7 +130,7 @@ def resolve_marking_coordinates(
                 search_txt = m.get("original_value") or txt
                 if m.get("ref_coordinates") is None and search_txt and search_txt != "NONE":
                     kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex}
-                    if cat == "bill_of_materials" and ref_bom_bbox: kwargs["region_bbox"] = ref_bom_bbox
+                    set_region_bbox(kwargs, cat, is_rev=False)
                     res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, search_txt, **kwargs)
                     if res:
                         m["ref_coordinates"] = res.get("coords")
@@ -116,14 +139,14 @@ def resolve_marking_coordinates(
             else: # MATCHED
                 if m.get("coordinates") is None and txt and txt != "NONE":
                     kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex}
-                    if cat == "bill_of_materials" and rev_bom_bbox: kwargs["region_bbox"] = rev_bom_bbox
+                    set_region_bbox(kwargs, cat, is_rev=True)
                     res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, **kwargs)
                     if res:
                         m["coordinates"] = res.get("coords")
                         m["bbox"] = res.get("bbox")
                 if m.get("ref_coordinates") is None and txt and txt != "NONE":
                     kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex}
-                    if cat == "bill_of_materials" and ref_bom_bbox: kwargs["region_bbox"] = ref_bom_bbox
+                    set_region_bbox(kwargs, cat, is_rev=False)
                     res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, txt, **kwargs)
                     if res:
                         m["ref_coordinates"] = res.get("coords")

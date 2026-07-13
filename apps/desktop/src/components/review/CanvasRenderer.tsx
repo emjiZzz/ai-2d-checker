@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useThemeStore } from '../../stores/themeStore';
@@ -64,6 +64,10 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
   const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
   const theme = useThemeStore((s) => s.theme);
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+  const visibleViolations = useMemo(() => {
+    return violations.filter(v => !hiddenViolationIds[v.id]);
+  }, [violations, hiddenViolationIds]);
 
   // Expose canvasRef for interaction layer
   useImperativeHandle(ref, () => ({
@@ -231,8 +235,6 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
       lightBgImage,
       drawing
     });
-
-    const visibleViolations = violations.filter(v => !hiddenViolationIds[v.id]);
 
     // Only render violation reticles when not actively panning/zooming — they're static
     // during interaction and rendering them is expensive (O(violations) per frame).

@@ -3,7 +3,8 @@ import { useReviewStore } from '../stores/reviewStore';
 import { useNavStore } from '../stores/navStore';
 
 export const useGlobalShortcuts = () => {
-  const { viewport, setViewport, toggleMinimap } = useReviewStore();
+  const setViewport = useReviewStore(s => s.setViewport);
+  const toggleMinimap = useReviewStore(s => s.toggleMinimap);
   const { setCurrentNav } = useNavStore();
 
   useEffect(() => {
@@ -19,6 +20,7 @@ export const useGlobalShortcuts = () => {
 
       // Zooming and Viewport Control
       if (e.ctrlKey || e.metaKey) {
+        const viewport = useReviewStore.getState().viewport;
         switch (e.key) {
           case '=':
           case '+':
@@ -62,12 +64,20 @@ export const useGlobalShortcuts = () => {
             setCurrentNav('history');
             break;
         }
+      } else {
+        // Unmodified keys (not ctrl/meta)
+        switch (e.key) {
+          case 'm':
+          case 'M':
+            // You might want M to work without modifier too depending on preference
+            // e.preventDefault();
+            // toggleMinimap();
+            break;
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [viewport, setViewport, setCurrentNav, toggleMinimap]);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setViewport, setCurrentNav, toggleMinimap]);
 };

@@ -6,6 +6,7 @@ from .bom.table_extractor import extract_bom_table, extract_dynamic_regions, bui
 from .bom.title_block_extractor import extract_title_block
 from .bom.spatial_utils import (
     find_drawing_text_coordinates, compute_bom_bbox, compute_title_block_bbox,
+    compute_notes_bbox, compute_iso_bbox, compute_views_bbox, compute_tolerance_table_bbox
 )
 from .bom.constants import ITEM_NO_PATTERN, map_signature_value
 
@@ -21,5 +22,9 @@ class BOMAnalyzer:
     find_drawing_text_coordinates = staticmethod(find_drawing_text_coordinates)
     compute_bom_bbox = staticmethod(compute_bom_bbox)
     compute_title_block_bbox = staticmethod(compute_title_block_bbox)
+    compute_notes_bbox = staticmethod(compute_notes_bbox)
+    compute_iso_bbox = staticmethod(compute_iso_bbox)
+    compute_views_bbox = staticmethod(compute_views_bbox)
+    compute_tolerance_table_bbox = staticmethod(compute_tolerance_table_bbox)
     ITEM_NO_PATTERN = ITEM_NO_PATTERN
     map_signature_value = staticmethod(map_signature_value)

@@ -2,7 +2,10 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { fetchWithAuth } from '../../services/fetchUtils';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
-import { Map } from 'lucide-react';
+import { Map as MapIcon } from 'lucide-react';
+
+// Shared cache to prevent duplicate network requests when both Old and New panels load the same drawing
+const thumbnailCache = new Map<string, Promise<HTMLImageElement>>();
 
 interface MinimapProps {
   drawing: any;
@@ -36,18 +39,26 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
     }
 
     let active = true;
-    fetchWithAuth(`/api/v1/drawings/${drawing.id}/rendering`, { headers: { "Accept": "image/png" } })
-      .then(async (res) => {
-        if (!active) return;
-        if (res.status === 204) throw new Error('no rendering (204)');
-        if (!res.ok) throw new Error('no rendering');
-        const blob = await res.blob();
-        if (!active) return;
-        const img = new Image();
-        img.src = URL.createObjectURL(blob);
-        img.onload = () => {
-          if (active) setThumbImage(img);
-        };
+
+    if (!thumbnailCache.has(drawing.id)) {
+      const fetchPromise = fetchWithAuth(`/api/v1/drawings/${drawing.id}/rendering`, { headers: { "Accept": "image/png" } })
+        .then(async (res) => {
+          if (res.status === 204) throw new Error('no rendering (204)');
+          if (!res.ok) throw new Error('no rendering');
+          const blob = await res.blob();
+          return new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(blob);
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+          });
+        });
+      thumbnailCache.set(drawing.id, fetchPromise);
+    }
+
+    thumbnailCache.get(drawing.id)!
+      .then((img) => {
+        if (active) setThumbImage(img);
       })
       .catch(() => { /* fallback: no thumbnail, show outline only */ });
 
@@ -233,7 +244,7 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
           zIndex: 2,
         }}
       >
-        <Map size={10} /> Map
+        <MapIcon size={10} /> Map
       </div>
 
       {/* Drawing thumbnail canvas */}
@@ -273,10 +284,10 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
         ref={viewportBoxRef}
         style={{
           position: 'absolute',
-          left: `${(calculateViewportBox()).left}px`,
-          top: `${(calculateViewportBox()).top}px`,
-          width: `${(calculateViewportBox()).width}px`,
-          height: `${(calculateViewportBox()).height}px`,
+          left: `${box.left}px`,
+          top: `${box.top}px`,
+          width: `${box.width}px`,
+          height: `${box.height}px`,
           border: '2px solid #ef4444',
           boxShadow: '0 0 6px rgba(239,68,68,0.6)',
           background: 'transparent',
