@@ -172,6 +172,31 @@ class PhysicalComparisonRequest(BaseModel):
     reference_drawing_id: str
     drawing_id: str
 
+# Room workflow schemas
+class RoomCreateRequest(BaseModel):
+    name: str = Field(..., description="User-facing room label")
+    description: str | None = None
+    client_name: str | None = None
+
+class RoomResponse(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    client_name: str | None = None
+    active_old_drawing_id: str | None = None
+    active_new_drawing_id: str | None = None
+    active_audit_session_id: str | None = None
+    physical_comparison_results: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+    last_opened_at: datetime | None = None
+
+class UpdateRoomRequest(BaseModel):
+    active_old_drawing_id: str | None = None
+    active_new_drawing_id: str | None = None
+    active_audit_session_id: str | None = None
+    physical_comparison_results: dict | None = None
+
 class ZoneComparisonResult(BaseModel):
     status: str
     differenceSummary: str

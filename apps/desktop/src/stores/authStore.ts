@@ -1,6 +1,18 @@
 import { create } from "zustand";
 import { useConnectionStore } from "./connectionStore";
 
+// Guarded dynamic import, matching the pattern connectionStore.ts's
+// fetchApiToken already uses — this frontend can also run under plain
+// `vite dev` without the Tauri shell, where @tauri-apps/api/core's invoke
+// has nothing to talk to. Returns null instead of throwing in that case.
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+    return null;
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
+
 export interface UserAccount {
   id: string;
   username: string;
@@ -14,11 +26,15 @@ interface AuthState {
   sessionToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  // True only during the initial session restore on app launch. Distinct from
+  // isLoading (which covers the login form's submit spinner) so App.tsx can
+  // gate its first render without touching LoginPage's existing behavior.
+  isInitializing: boolean;
   error: string | null;
 
   // Actions
   login: (username: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   initialize: () => Promise<boolean>;
   clearError: () => void;
 }
@@ -28,6 +44,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   sessionToken: null,
   isAuthenticated: false,
   isLoading: false,
+  isInitializing: true,
   error: null,
 
   clearError: () => set({ error: null }),
@@ -61,10 +78,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const { session_token, username: resUser, role } = resData.data;
 
-      // Persist session
-      localStorage.setItem("ai_2d_session_token", session_token);
-      localStorage.setItem("ai_2d_session_username", resUser);
-      localStorage.setItem("ai_2d_session_role", role);
+      // Persist session via Tauri's AES-256-GCM-encrypted secure storage
+      // (Phase 10, frontend remediation plan) instead of plaintext localStorage.
+      try {
+        await tauriInvoke("save_session", { token: session_token, username: resUser, role });
+      } catch (persistErr: any) {
+        // Non-fatal: session still works for this run, it just won't survive
+        // a restart. Surface it in the console rather than blocking login.
+        console.warn("Failed to persist session to secure storage:", persistErr);
+      }
 
       // Verify and fetch complete profile
       const profileHeaders: Record<string, string> = {
@@ -116,17 +138,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  logout: () => {
-    localStorage.removeItem("ai_2d_session_token");
-    localStorage.removeItem("ai_2d_session_username");
-    localStorage.removeItem("ai_2d_session_role");
+  logout: async () => {
+    try {
+      await tauriInvoke("clear_session");
+    } catch (err) {
+      console.warn("Failed to clear persisted session:", err);
+    }
+
     set({
       user: null,
       sessionToken: null,
       isAuthenticated: false,
       error: null,
     });
-    
+
     // Hard reload the frontend to cleanly wipe all Zustand store memory (workspace, audit, admin)
     // preventing data leaks between user accounts.
     setTimeout(() => {
@@ -135,12 +160,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initialize: async () => {
-    const sessionToken = localStorage.getItem("ai_2d_session_token");
-    if (!sessionToken) {
-      set({ isAuthenticated: false, isLoading: false });
+    let session: { token: string; username: string; role: string } | null = null;
+    try {
+      session = await tauriInvoke("load_session");
+    } catch (err) {
+      console.warn("Failed to load persisted session:", err);
+    }
+
+    if (!session) {
+      set({ isAuthenticated: false, isLoading: false, isInitializing: false });
       return false;
     }
 
+    const sessionToken = session.token;
     set({ isLoading: true });
     const { backendUrl, apiToken } = useConnectionStore.getState();
 
@@ -159,24 +191,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
     } catch (err) {
       // Offline fallback: load cached details only on actual network/connection failure
-      const username = localStorage.getItem("ai_2d_session_username");
-      const role = localStorage.getItem("ai_2d_session_role") as "admin" | "user";
+      const { username, role } = session;
       if (username && role) {
         set({
           user: {
             id: "local",
             username,
-            role,
+            role: role as "admin" | "user",
             permissions: role === "admin" ? ["all"] : ["audit"],
             created_at: new Date().toISOString(),
           },
           sessionToken,
           isAuthenticated: true,
           isLoading: false,
+          isInitializing: false,
         });
         return true;
       }
-      set({ isLoading: false });
+      set({ isLoading: false, isInitializing: false });
       return false;
     }
 
@@ -188,20 +220,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           sessionToken,
           isAuthenticated: true,
           isLoading: false,
+          isInitializing: false,
         });
         return true;
       } else {
         // Token has expired or is invalid
-        get().logout();
-        set({ isLoading: false });
+        await get().logout();
+        set({ isLoading: false, isInitializing: false });
         return false;
       }
     } catch (parseErr) {
       // Treat server JSON syntax/parsing errors as invalid sessions and log out
-      get().logout();
-      set({ isLoading: false });
+      await get().logout();
+      set({ isLoading: false, isInitializing: false });
       return false;
     }
-
   },
 }));

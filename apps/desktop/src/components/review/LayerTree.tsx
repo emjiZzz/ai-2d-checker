@@ -6,7 +6,9 @@ interface LayerTreeProps {
 }
 
 export const LayerTree: React.FC<LayerTreeProps> = ({ availableLayers }) => {
-  const { activeLayers, toggleLayer, setAllLayers } = useReviewStore();
+  const activeLayers = useReviewStore(s => s.activeLayers);
+  const toggleLayer = useReviewStore(s => s.toggleLayer);
+  const setAllLayers = useReviewStore(s => s.setAllLayers);
 
   return (
     <div className="layer-tree bg-gray-900 p-4 rounded-lg text-white text-sm" style={{ minWidth: '250px' }}>

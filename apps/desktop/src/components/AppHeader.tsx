@@ -64,8 +64,16 @@ export const AppHeader: React.FC = () => {
         }}
       >
         {isAuthenticated && (
-          <div style={{ display: "flex", gap: "2px", height: "30px", background: "rgba(0,0,0,0.2)", borderRadius: "6px", padding: "2px", border: "1px solid var(--border-color)" }}>
+          <div 
+            role="tablist"
+            aria-label="Workspace Navigation"
+            style={{ display: "flex", gap: "2px", height: "30px", background: "rgba(0,0,0,0.2)", borderRadius: "6px", padding: "2px", border: "1px solid var(--border-color)" }}
+          >
             <button
+              role="tab"
+              aria-selected={currentNav === "workspace"}
+              aria-controls="workspace-panel"
+              tabIndex={0}
               onClick={() => setCurrentNav("workspace")}
               className={`header-nav-tab ${currentNav === "workspace" ? "active" : ""}`}
               style={{
@@ -89,6 +97,10 @@ export const AppHeader: React.FC = () => {
             </button>
 
             <button
+              role="tab"
+              aria-selected={currentNav === "3d-workspace"}
+              aria-controls="3d-workspace-panel"
+              tabIndex={0}
               onClick={() => setCurrentNav("3d-workspace")}
               className={`header-nav-tab ${currentNav === "3d-workspace" ? "active" : ""}`}
               style={{
@@ -137,6 +149,10 @@ export const AppHeader: React.FC = () => {
             )}
 
             <button
+              role="tab"
+              aria-selected={currentNav === "history"}
+              aria-controls="history-panel"
+              tabIndex={0}
               onClick={() => setCurrentNav("history")}
               className={`header-nav-tab ${currentNav === "history" ? "active" : ""}`}
               style={{
@@ -160,6 +176,10 @@ export const AppHeader: React.FC = () => {
             </button>
 
             <button
+              role="tab"
+              aria-selected={currentNav === "settings"}
+              aria-controls="settings-panel"
+              tabIndex={0}
               onClick={() => setCurrentNav("settings")}
               className={`header-nav-tab ${currentNav === "settings" ? "active" : ""}`}
               style={{

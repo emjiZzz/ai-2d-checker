@@ -215,12 +215,117 @@ def _title_region(fields: dict, entities: list) -> Optional[tuple]:
     return (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
 
 def compute_bom_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
-    """Pre-extract BOM rows dynamically to compute bounding box bounds."""
-    rows, _ = extract_bom_table(entities)
-    return _bom_region(rows, entities)
+    """Compute the absolute geometric bounding box for the BOM region."""
+    from .table_extractor import extract_dynamic_regions
+    regions = extract_dynamic_regions(entities)
+    
+    xs = []
+    ys = []
+    for e in entities:
+        if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None):
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            xs.append(ins[0])
+            ys.append(ins[1])
+            
+    if not xs:
+        return None
+        
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    w, h = max_x - min_x, max_y - min_y
+    
+    bom_box = regions["bom"]
+    return (
+        min_x + bom_box["xMin"] * w,
+        min_y + bom_box["yMin"] * h,
+        min_x + bom_box["xMax"] * w,
+        min_y + bom_box["yMax"] * h
+    )
 
 def compute_title_block_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
-    """Pre-extract title block dynamically to compute bounding box bounds."""
-    all_text_list = [e.properties.get("text", "") for e in entities if getattr(e, "entity_type", "") == "text"]
-    fields = extract_title_block(entities, all_text_list)
-    return _title_region(fields, entities)
+    """Compute the absolute geometric bounding box for the Title Block region."""
+    from .table_extractor import extract_dynamic_regions
+    regions = extract_dynamic_regions(entities)
+    
+    xs = []
+    ys = []
+    for e in entities:
+        if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None):
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            xs.append(ins[0])
+            ys.append(ins[1])
+            
+    if not xs:
+        return None
+        
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    w, h = max_x - min_x, max_y - min_y
+    
+    title_box = regions["title"]
+    return (
+        min_x + title_box["xMin"] * w,
+        min_y + title_box["yMin"] * h,
+        min_x + title_box["xMax"] * w,
+        min_y + title_box["yMax"] * h
+    )
+
+def compute_tolerance_table_bbox(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
+    """Compute the absolute geometric bounding box for the Tolerance Table (bottom-left) region."""
+    from .table_extractor import extract_dynamic_regions
+    regions = extract_dynamic_regions(entities)
+    
+    xs = []
+    ys = []
+    for e in entities:
+        if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None):
+            ins = e.geometry.get("insert") or [0, 0, 0]
+            xs.append(ins[0])
+            ys.append(ins[1])
+            
+    if not xs:
+        return None
+        
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    w, h = max_x - min_x, max_y - min_y
+    
+    tol_box = regions.get("tolerance")
+    if not tol_box:
+        return None
+        
+    return (
+        min_x + tol_box["xMin"] * w,
+        min_y + tol_box["yMin"] * h,
+        min_x + tol_box["xMax"] * w,
+        min_y + tol_box["yMax"] * h
+    )
+
+def compute_drawing_bounds(entities: List[Any]) -> Optional[Tuple[float, float, float, float]]:
+    """Compute the absolute max and min bounding box of all lines in the drawing, to represent the layout boundaries."""
+    lines = []
+    for e in entities:
+        if getattr(e, "entity_type", "") == "line":
+            geo = getattr(e, "geometry", {})
+            if "start" in geo and "end" in geo:
+                lines.append((geo["start"], geo["end"]))
+        elif getattr(e, "entity_type", "") == "polyline":
+            geo = getattr(e, "geometry", {})
+            if "vertices" in geo:
+                pts = geo["vertices"]
+                for i in range(len(pts) - 1):
+                    lines.append((pts[i], pts[i+1]))
+            elif "points" in geo:
+                pts = geo["points"]
+                for i in range(len(pts) - 1):
+                    lines.append((pts[i], pts[i+1]))
+
+    if not lines:
+        return None
+
+    min_x = min(min(p1[0], p2[0]) for p1, p2 in lines)
+    max_x = max(max(p1[0], p2[0]) for p1, p2 in lines)
+    min_y = min(min(p1[1], p2[1]) for p1, p2 in lines)
+    max_y = max(max(p1[1], p2[1]) for p1, p2 in lines)
+    
+    return (min_x, min_y, max_x, max_y)

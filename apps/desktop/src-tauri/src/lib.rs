@@ -36,6 +36,89 @@ fn get_api_token() -> Result<String, String> {
     Ok(decrypted)
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SessionPayload {
+    token: String,
+    username: String,
+    role: String,
+}
+
+/// Persists the active login session (token + username + role) as a single
+/// AES-256-GCM encrypted file under storage/secure/, replacing the three
+/// plaintext localStorage keys the frontend used previously (Phase 10,
+/// frontend remediation plan). Reuses the same device-bound key and file
+/// layout convention as get_api_token above.
+#[tauri::command]
+fn save_session(token: String, username: String, role: String) -> Result<(), String> {
+    use crate::security::{find_storage_root, encryption, logging};
+
+    let storage_root = find_storage_root()?;
+    let secure_dir = storage_root.join("secure");
+    std::fs::create_dir_all(&secure_dir)
+        .map_err(|e| format!("Failed to create secure storage directory: {}", e))?;
+
+    let payload = SessionPayload { token, username, role };
+    let json = serde_json::to_string(&payload)
+        .map_err(|e| format!("Failed to serialize session payload: {}", e))?;
+    let encrypted = encryption::encrypt(&json)
+        .map_err(|e| format!("Failed to encrypt session payload: {}", e))?;
+
+    let session_file = secure_dir.join(".session-token");
+    std::fs::write(&session_file, encrypted)
+        .map_err(|e| format!("Failed to write session file: {}", e))?;
+
+    logging::log("info", "TauriCommand", "Session persisted to secure storage.");
+    Ok(())
+}
+
+/// Loads the persisted session, if any. Returns Ok(None) when no session file
+/// exists yet (fresh install / never logged in) rather than an error, so the
+/// frontend can distinguish "not logged in" from an actual failure.
+#[tauri::command]
+fn load_session() -> Result<Option<SessionPayload>, String> {
+    use crate::security::{find_storage_root, encryption, logging};
+
+    let storage_root = find_storage_root()?;
+    let session_file = storage_root.join("secure").join(".session-token");
+
+    if !session_file.exists() {
+        return Ok(None);
+    }
+
+    let encrypted_content = std::fs::read_to_string(&session_file)
+        .map_err(|e| format!("Failed to read session file: {}", e))?;
+
+    if encrypted_content.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let decrypted = encryption::decrypt(encrypted_content.trim())
+        .map_err(|e| {
+            let err_msg = format!("Failed to decrypt session file: {}", e);
+            logging::log("warn", "TauriCommand", &err_msg);
+            err_msg
+        })?;
+
+    let payload: SessionPayload = serde_json::from_str(&decrypted)
+        .map_err(|e| format!("Failed to parse decrypted session payload: {}", e))?;
+
+    Ok(Some(payload))
+}
+
+/// Deletes the persisted session file on logout.
+#[tauri::command]
+fn clear_session() -> Result<(), String> {
+    use crate::security::find_storage_root;
+
+    let storage_root = find_storage_root()?;
+    let session_file = storage_root.join("secure").join(".session-token");
+    if session_file.exists() {
+        std::fs::remove_file(&session_file)
+            .map_err(|e| format!("Failed to remove session file: {}", e))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn log_from_frontend(level: &str, message: &str) {
     use crate::security::logging;
@@ -58,7 +141,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, get_api_token, log_from_frontend])
+        .invoke_handler(tauri::generate_handler![greet, get_api_token, save_session, load_session, clear_session, log_from_frontend])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

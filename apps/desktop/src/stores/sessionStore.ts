@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { useAuthStore } from "./authStore";
 
 interface SessionState {
-  expirationTime: number | null;
   checkIntervalId: number | null;
   
   // Actions
@@ -11,7 +10,6 @@ interface SessionState {
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
-  expirationTime: null,
   checkIntervalId: null,
 
   startExpirationMonitor: (sessionToken) => {

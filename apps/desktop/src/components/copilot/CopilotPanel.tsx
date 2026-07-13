@@ -3,7 +3,6 @@ import { useCopilotStore } from "../../stores/copilotStore";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useAuditStore } from "../../stores/auditStore";
 import { sendCopilotMessage } from "../../services/copilotService";
-import "./CopilotPanel.css";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -260,42 +259,29 @@ export const CopilotPanel: React.FC = () => {
   };
 
   return (
-    <div className="copilot-panel">
+    <div className="flex flex-col h-[calc(100vh-200px)] bg-[#121420]/85 border border-border-color rounded-2xl p-5 backdrop-blur-md shadow-2xl text-text-primary animate-slide-in-right">
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <h2 style={{ margin: 0 }}>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-[1.15rem] font-semibold text-white flex items-center gap-2 pb-1.5 mb-2">
           <span>🤖</span> AI Engineering Copilot
         </h2>
         <button
           onClick={clearSession}
           title="Clear conversation"
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: "0.7rem",
-            padding: "4px 8px",
-            borderRadius: 6,
-          }}
+          className="bg-transparent border-0 text-text-muted cursor-pointer text-[11px] py-1 px-2 rounded-md hover:bg-white/5 transition-all"
         >
           Clear
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="copilot-tabs">
+      <div className="flex gap-2 mb-4 border-b border-white/6 pb-3">
         {(["chat", "violations", "insights"] as const).map((tab) => (
           <button
             key={tab}
-            className={`copilot-tab-btn ${activeTab === tab ? "active" : ""}`}
+            className={`flex-1 bg-white/3 border border-white/4 text-text-muted text-[11px] font-semibold py-2 px-3 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/6 hover:text-text-primary ${
+              activeTab === tab ? "bg-purple-600/15 border-purple-500/35 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.1)]" : ""
+            }`}
             onClick={() => setActiveTab(tab)}
             style={{ position: "relative" }}
           >
@@ -326,23 +312,16 @@ export const CopilotPanel: React.FC = () => {
       </div>
 
       {/* Scroll area */}
-      <div className="copilot-scroll-area" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto pr-1" ref={scrollRef}>
         {/* ── CHAT TAB ── */}
         {activeTab === "chat" && (
           <>
             <ContextBanner />
 
             {messages.length === 0 && (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "24px 0",
-                  color: "var(--text-muted)",
-                  fontSize: "0.78rem",
-                }}
-              >
-                <div style={{ fontSize: "2rem", marginBottom: 10 }}>🔍</div>
-                <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>
+              <div className="text-center py-6 text-text-muted text-xs flex flex-col items-center justify-center gap-2">
+                <div className="text-3xl mb-1.5">🔍</div>
+                <div className="font-bold text-text-primary mb-1">
                   Engineering Copilot Ready
                 </div>
                 <div>Ask about violations, standards, or drawing geometry.</div>
@@ -586,9 +565,9 @@ export const CopilotPanel: React.FC = () => {
             )}
 
             {/* Ask copilot about insights */}
-            <div className="geometry-insight-card">
-              <h3>AI Geometry Analysis</h3>
-              <p>Let the copilot analyze the drawing's structure and geometry patterns.</p>
+            <div className="bg-white/3 border border-white/5 p-3 rounded-lg flex flex-col gap-2 mt-4">
+              <h3 className="text-xs font-bold text-blue-400 m-0">AI Geometry Analysis</h3>
+              <p className="text-xs text-text-muted m-0 leading-relaxed">Let the copilot analyze the drawing's structure and geometry patterns.</p>
               <button
                 onClick={() =>
                   handleSend(
@@ -596,6 +575,7 @@ export const CopilotPanel: React.FC = () => {
                   )
                 }
                 disabled={isSending || !newDrawing}
+                className="w-full bg-blue-600/15 border border-blue-600/30 text-blue-100 text-xs font-semibold py-2 px-3 rounded-md cursor-pointer hover:bg-blue-600/25 transition-colors disabled:opacity-50 disabled:pointer-events-none"
               >
                 Analyze Drawing Geometry
               </button>
@@ -605,12 +585,12 @@ export const CopilotPanel: React.FC = () => {
       </div>
 
       {/* Input area */}
-      <div className="copilot-input-container">
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div className="mt-4 pt-4 border-t border-white/6">
+        <div className="flex gap-2 items-center">
           <input
             ref={inputRef}
             type="text"
-            className="copilot-input"
+            className="flex-1 bg-black/25 border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary focus:outline-none focus:border-purple-500 focus:shadow-[0_0_10px_rgba(168,85,247,0.25)] transition-all outline-none disabled:opacity-50"
             placeholder={
               isSending ? "Copilot is thinking..." : "Ask about standards, violations, or geometry..."
             }
@@ -622,36 +602,16 @@ export const CopilotPanel: React.FC = () => {
           <button
             onClick={() => handleSend()}
             disabled={isSending || !inputText.trim()}
-            style={{
-              background:
-                isSending || !inputText.trim()
-                  ? "rgba(124,58,237,0.15)"
-                  : "rgba(124,58,237,0.8)",
-              border: "1px solid rgba(124,58,237,0.4)",
-              borderRadius: 8,
-              color: "#fff",
-              width: 36,
-              height: 36,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: isSending || !inputText.trim() ? "not-allowed" : "pointer",
-              flexShrink: 0,
-              transition: "all 0.15s ease",
-              fontSize: "1rem",
-            }}
+            className={`border border-purple-500/40 rounded-lg text-white w-9 h-9 flex items-center justify-center shrink-0 transition-all text-base ${
+              isSending || !inputText.trim()
+                ? "bg-purple-600/15 cursor-not-allowed opacity-50"
+                : "bg-purple-600 hover:brightness-110 cursor-pointer"
+            }`}
           >
             {isSending ? "⏳" : "↑"}
           </button>
         </div>
-        <div
-          style={{
-            fontSize: "0.62rem",
-            color: "var(--text-muted)",
-            marginTop: 6,
-            textAlign: "center",
-          }}
-        >
+        <div className="text-[10px] text-text-muted mt-1.5 text-center">
           Enter to send · Powered by Gemini Flash · Context-aware
         </div>
       </div>

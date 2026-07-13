@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Stray backup/scratch files (Phase 9, frontend remediation plan)
+*.bak.*
+temp_*

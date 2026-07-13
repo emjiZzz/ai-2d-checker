@@ -7,7 +7,7 @@
  * needing to assemble it.
  */
 
-import { apiClient } from "./apiClient";
+import { streamApi } from "./fetchUtils";
 import { useCopilotStore } from "../stores/copilotStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useAuditStore } from "../stores/auditStore";
@@ -115,9 +115,11 @@ export async function sendCopilotMessage(userText: string): Promise<string> {
   let fullResponse = "";
 
   try {
-    for await (const chunk of apiClient.stream("/api/v1/copilot/stream", payload)) {
-      fullResponse += chunk;
-      store.updateStreamingMessage(assistantMsgId, chunk);
+    for await (const chunk of streamApi("/api/v1/copilot/stream", payload)) {
+      if (typeof chunk === "string") {
+        fullResponse += chunk;
+        store.updateStreamingMessage(assistantMsgId, chunk);
+      }
     }
   } catch (err: any) {
     // On stream failure, replace the empty streaming message with the error

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAdminStore } from "../../stores/adminStore";
-import { useConnectionStore } from "../../stores/connectionStore";
+import { buildHeaders, baseUrl, parseOrThrow } from "../../services/fetchUtils";
 import {
   FileText,
   RefreshCw,
@@ -55,20 +55,14 @@ export const AuditHistory: React.FC = () => {
   // Fetch drawings independently to map IDs to file names
   useEffect(() => {
     const fetchDrawings = async () => {
-      const { backendUrl, apiToken } = useConnectionStore.getState();
       try {
-        const headers: Record<string, string> = { "Accept": "application/json" };
-        if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
-
-        const res = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
-        if (res.ok) {
-          const result = await res.json();
-          if (result.success && result.data) {
-            setDrawings(result.data);
-          }
+        const res = await fetch(`${baseUrl()}/api/v1/drawings`, { headers: buildHeaders() });
+        const data = await parseOrThrow<any>(res);
+        if (data?.data) {
+          setDrawings(data.data);
         }
-      } catch (e) {
-        console.warn("Failed to fetch drawings for name resolution", e);
+      } catch (err) {
+        console.warn("Failed to load drawings map", err);
       }
     };
     fetchDrawings();
@@ -109,6 +103,9 @@ export const AuditHistory: React.FC = () => {
   };
 
   const handleEmptyTrash = async () => {
+    if (!window.confirm("Are you sure you want to PERMANENTLY delete all trashed audit history? This action is irreversible.")) return;
+    
+    setLocalError(null);
     const ok = await useAdminStore.getState().emptyTrash();
     if (ok) {
       triggerNotification("Trashbin successfully emptied.");

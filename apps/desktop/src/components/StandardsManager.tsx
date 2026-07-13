@@ -1,276 +1,42 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useAuditStore } from "../stores/auditStore";
-import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useConnectionStore } from "../stores/connectionStore";
+import React from "react";
 import {
-  FileText, UploadCloud, Plus, Loader2, AlertCircle,
-  Tag, Layers, Calendar, HardDrive, FolderOpen, Trash2,
-  Pencil, Save, X, AlertTriangle, CheckCircle2, BookOpen
+  FileText, UploadCloud, Plus, AlertTriangle,
+  FolderOpen, Trash2, CheckCircle2
 } from "lucide-react";
-
-// Helper utility to parse ISO datetime strings from backend reliably as UTC
-const parseUtcDate = (dateStr: string | null | undefined): Date => {
-  if (!dateStr) return new Date();
-  const utcStr = dateStr.includes("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z";
-  return new Date(utcStr);
-};
+import { useStandardsManager } from "./standards/hooks/useStandardsManager";
+import { StandardCard } from "./standards/components/StandardCard";
+import { StandardsModals } from "./standards/components/StandardsModals";
+import { Button } from "../components/ui/Button";
 
 export const StandardsManager: React.FC = () => {
   const {
-    standards,
-    fetchStandards,
-    uploadStandard,
-    deleteStandard,
-    updateStandard,
-    uploadStatus,
-    uploadProgress,
-    errorMessage,
-    resetStore
-  } = useAuditStore();
-
-  const {
-    clients,
-    fetchClients,
-    createClient,
-    deleteClient
-  } = useWorkspaceStore();
-
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-
-  // Scoping context for the upload modal
-  const [uploadScope, setUploadScope] = useState<"universal" | "client_specific">("universal");
-  const [uploadClient, setUploadClient] = useState<string>("");
-
-  // Directory explorer state
-  const [activeClientTab, setActiveClientTab] = useState<string | null>(null);
-  const [newClientName, setNewClientName] = useState("");
-  const [isAddingClient, setIsAddingClient] = useState(false);
-
-  // Edit modal state
-  const [editingStd, setEditingStd] = useState<any | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
-  // Delete confirmation state
-  const [deletingStd, setDeletingStd] = useState<any | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  // Toast notification
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  // Vector Chunk Explorer Modal state
-  const [explorerStd, setExplorerStd] = useState<any | null>(null);
-  const [explorerChunks, setExplorerChunks] = useState<any[]>([]);
-  const [explorerLoading, setExplorerLoading] = useState(false);
-  const [explorerError, setExplorerError] = useState<string | null>(null);
-
-  const openExplorer = async (std: any) => {
-    setExplorerStd(std);
-    setExplorerChunks([]);
-    setExplorerLoading(true);
-    setExplorerError(null);
-
-    const { backendUrl, apiToken } = useConnectionStore.getState();
-    try {
-      const headers: Record<string, string> = { "Accept": "application/json" };
-      if (apiToken) {
-        headers["Authorization"] = `Bearer ${apiToken}`;
-      }
-      const response = await fetch(`${backendUrl}/api/v1/standards/${std.id}/chunks`, { headers });
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          setExplorerChunks(result.data);
-        } else {
-          setExplorerError(result.error?.message || "Failed to retrieve standard chunks.");
-        }
-      } else {
-        setExplorerError(`HTTP Error: ${response.status}`);
-      }
-    } catch (err: any) {
-      setExplorerError(err.message || "Network error occurred.");
-    } finally {
-      setExplorerLoading(false);
-    }
-  };
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetchStandards();
-    fetchClients();
-  }, [fetchStandards, fetchClients]);
-
-  const showToast = (type: "success" | "error", message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3500);
-  };
-
-  const universalStandards = standards.filter(s => s.scope === "universal" || !s.scope);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = () => setIsDragOver(false);
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      if (ext && ["pdf", "txt", "md", "xlsx", "xls"].includes(ext)) {
-        setSelectedFile(file);
-        if (!name) setName(file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ").toUpperCase());
-      } else {
-        alert("Unsupported file format! Please upload PDF, TXT, Excel or Markdown.");
-      }
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      setSelectedFile(file);
-      if (!name) setName(file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ").toUpperCase());
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFile || !name.trim()) return;
-    const success = await uploadStandard(
-      selectedFile, name,
-      category || "General Compliance",
-      description || "Engineering drafting compliance parameters.",
-      uploadScope, uploadClient
-    );
-    if (success) {
-      setName(""); setCategory(""); setDescription(""); setSelectedFile(null);
-      setShowUploadModal(false);
-      showToast("success", "Standard ingested successfully.");
-    }
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  };
-
-  const triggerUploadModal = (scope: "universal" | "client_specific", clientName = "") => {
-    resetStore();
-    setUploadScope(scope);
-    setUploadClient(clientName);
-    setShowUploadModal(true);
-  };
-
-  const handleCreateClient = async () => {
-    if (newClientName.trim()) {
-      await createClient(newClientName.trim());
-      setNewClientName("");
-      setIsAddingClient(false);
-    }
-  };
-
-  // ─── Edit handlers ─────────────────────────────────────────────
-  const openEdit = (std: any) => {
-    setEditingStd(std);
-    setEditName(std.name);
-    setEditCategory(std.category || "");
-    setEditDescription(std.description || "");
-    setEditError(null);
-  };
-
-  const handleEditSave = async () => {
-    if (!editingStd || !editName.trim()) return;
-    setEditSaving(true);
-    setEditError(null);
-    const ok = await updateStandard(editingStd.id, editName.trim(), editCategory.trim(), editDescription.trim());
-    setEditSaving(false);
-    if (ok) {
-      setEditingStd(null);
-      showToast("success", "Standard updated successfully.");
-    } else {
-      setEditError("Failed to update. Please try again.");
-    }
-  };
-
-  // ─── Delete handlers ────────────────────────────────────────────
-  const handleDeleteConfirm = async () => {
-    if (!deletingStd) return;
-    setDeleteLoading(true);
-    const ok = await deleteStandard(deletingStd.id);
-    setDeleteLoading(false);
-    setDeletingStd(null);
-    if (ok) showToast("success", `"${deletingStd.name}" has been deleted.`);
-    else showToast("error", "Failed to delete. Please try again.");
-  };
-
-  // ─── Standard Card component ────────────────────────────────────
-  const StandardCard = ({ std }: { std: any }) => (
-    <div className="card standard-card" key={std.id}>
-      <div className="std-card-top">
-        <div className="std-icon-box"><FileText size={20} /></div>
-        <div className="std-badge">{std.format.toUpperCase()}</div>
-      </div>
-      <h4 className="std-title" title={std.name}>{std.name}</h4>
-      <p className="std-desc">{std.description || "No description provided."}</p>
-      <div className="std-meta-grid">
-        <div className="std-meta-item"><Tag size={12} /><span>{std.category || "General"}</span></div>
-        <div className="std-meta-item"><HardDrive size={12} /><span>{formatBytes(std.file_size_bytes)}</span></div>
-        <div className="std-meta-item"><Layers size={12} /><span>{std.metadata.page_count || 1} sections</span></div>
-        <div className="std-meta-item"><Calendar size={12} /><span>{parseUtcDate(std.created_at).toLocaleDateString()}</span></div>
-      </div>
-      {/* Admin action bar */}
-      <div className="std-actions-bar">
-        <button
-          className="std-action-btn edit"
-          onClick={() => openExplorer(std)}
-          style={{
-            background: "rgba(192, 132, 252, 0.06)",
-            borderColor: "rgba(192, 132, 252, 0.2)",
-            color: "#c084fc"
-          }}
-          title="Explore vectorized chunks"
-        >
-          <Layers size={13} /> Chunks
-        </button>
-        <button
-          className="std-action-btn edit"
-          onClick={() => openEdit(std)}
-          title="Edit metadata"
-        >
-          <Pencil size={13} /> Edit
-        </button>
-        <button
-          className="std-action-btn delete"
-          onClick={() => setDeletingStd(std)}
-          title="Delete standard"
-        >
-          <Trash2 size={13} /> Delete
-        </button>
-      </div>
-    </div>
-  );
+    standards, clients, universalStandards,
+    deleteClient,
+    
+    name, setName, category, setCategory, description, setDescription,
+    selectedFile, isDragOver,
+    showUploadModal, setShowUploadModal, uploadScope, uploadClient,
+    fileInputRef, uploadStatus, uploadProgress, errorMessage,
+    
+    activeClientTab, setActiveClientTab,
+    newClientName, setNewClientName,
+    isAddingClient, setIsAddingClient,
+    
+    editingStd, setEditingStd, editName, setEditName, editCategory, setEditCategory,
+    editDescription, setEditDescription, editSaving, editError,
+    
+    deletingStd, setDeletingStd, deleteLoading,
+    toast,
+    
+    explorerStd, setExplorerStd, explorerChunks, explorerLoading, explorerError,
+    
+    openExplorer, handleDragOver, handleDragLeave, handleDrop, handleFileChange, handleSubmit,
+    formatBytes, triggerUploadModal, handleCreateClient,
+    openEdit, handleEditSave, handleDeleteConfirm
+  } = useStandardsManager();
 
   return (
     <div className="standards-layout">
-
       {/* TOAST NOTIFICATION */}
       {toast && (
         <div className={`std-toast ${toast.type}`}>
@@ -279,26 +45,84 @@ export const StandardsManager: React.FC = () => {
         </div>
       )}
 
+      {/* MODALS */}
+      <StandardsModals
+        showUploadModal={showUploadModal}
+        setShowUploadModal={setShowUploadModal}
+        uploadStatus={uploadStatus}
+        uploadProgress={uploadProgress}
+        errorMessage={errorMessage}
+        uploadScope={uploadScope}
+        uploadClient={uploadClient}
+        isDragOver={isDragOver}
+        handleDragOver={handleDragOver}
+        handleDragLeave={handleDragLeave}
+        handleDrop={handleDrop}
+        fileInputRef={fileInputRef}
+        handleFileChange={handleFileChange}
+        selectedFile={selectedFile}
+        formatBytes={formatBytes}
+        name={name}
+        setName={setName}
+        category={category}
+        setCategory={setCategory}
+        description={description}
+        setDescription={setDescription}
+        handleSubmit={handleSubmit}
+        
+        editingStd={editingStd}
+        setEditingStd={setEditingStd}
+        editSaving={editSaving}
+        editName={editName}
+        setEditName={setEditName}
+        editCategory={editCategory}
+        setEditCategory={setEditCategory}
+        editDescription={editDescription}
+        setEditDescription={setEditDescription}
+        editError={editError}
+        handleEditSave={handleEditSave}
+        
+        deletingStd={deletingStd}
+        setDeletingStd={setDeletingStd}
+        deleteLoading={deleteLoading}
+        handleDeleteConfirm={handleDeleteConfirm}
+        
+        explorerStd={explorerStd}
+        setExplorerStd={setExplorerStd}
+        explorerLoading={explorerLoading}
+        explorerError={explorerError}
+        explorerChunks={explorerChunks}
+      />
+
       {/* 1. UNIVERSAL STANDARDS SECTION */}
       <div className="standards-header">
         <div>
           <h3 className="section-title">KMTI Checking Manuals (Universal)</h3>
           <p className="section-desc">Global internal standards and checksheets applied universally across all drawing audits.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => triggerUploadModal("universal")} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+        <Button variant="primary" onClick={() => triggerUploadModal("universal")} className="inline-flex items-center gap-2">
           <Plus size={16} /> Add Universal Checklist Manual
-        </button>
+        </Button>
       </div>
 
       {universalStandards.length === 0 ? (
         <div className="empty-standards-card" style={{ padding: "40px 20px" }}>
-          <FileText size={36} style={{ opacity: 0.3, marginBottom: "16px" }} />
+          <FileText size={36} style={{ opacity: 0.3, margin: "0 auto 16px", display: "block" }} />
           <h4>No Universal Manuals</h4>
           <p>Ingest the baseline KMTI Checking Manual or Checksheet Excel files here.</p>
         </div>
       ) : (
         <div className="standards-grid" style={{ marginBottom: "40px" }}>
-          {universalStandards.map(std => <StandardCard key={std.id} std={std} />)}
+          {universalStandards.map(std => (
+            <StandardCard
+              key={std.id}
+              std={std}
+              formatBytes={formatBytes}
+              openExplorer={openExplorer}
+              openEdit={openEdit}
+              setDeletingStd={setDeletingStd}
+            />
+          ))}
         </div>
       )}
 
@@ -311,20 +135,19 @@ export const StandardsManager: React.FC = () => {
       </div>
 
       <div className="clients-explorer-container" style={{ display: "flex", gap: "24px", minHeight: "400px" }}>
-
         {/* Left Sidebar: Clients Roster */}
         <div className="card clients-sidebar" style={{ width: "260px", flexShrink: 0, padding: "16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
             <h4 style={{ margin: 0, fontSize: "0.95rem" }}>Clients</h4>
-            <button className="btn-icon" onClick={() => setIsAddingClient(!isAddingClient)} title="New Client">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100" onClick={() => setIsAddingClient(!isAddingClient)} title="New Client">
               <Plus size={16} />
-            </button>
+            </Button>
           </div>
 
           {isAddingClient && (
             <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
               <input type="text" className="form-input" style={{ padding: "6px" }} placeholder="Client Code..." value={newClientName} onChange={(e) => setNewClientName(e.target.value)} autoFocus />
-              <button className="btn btn-primary" style={{ padding: "6px 12px" }} onClick={handleCreateClient}>Add</button>
+              <Button variant="primary" size="sm" className="px-3" onClick={handleCreateClient}>Add</Button>
             </div>
           )}
 
@@ -371,9 +194,9 @@ export const StandardsManager: React.FC = () => {
                 <h4 style={{ margin: 0, fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "10px" }}>
                   <FolderOpen size={20} className="text-purple" /> {activeClientTab} Standards
                 </h4>
-                <button className="btn btn-secondary" onClick={() => triggerUploadModal("client_specific", activeClientTab)} style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <Button variant="secondary" onClick={() => triggerUploadModal("client_specific", activeClientTab)} className="inline-flex items-center gap-2">
                   <UploadCloud size={16} /> Ingest {activeClientTab} Standard
-                </button>
+                </Button>
               </div>
 
               {standards.filter(s => s.scope === "client_specific" && s.client_name === activeClientTab).length === 0 ? (
@@ -382,7 +205,16 @@ export const StandardsManager: React.FC = () => {
                 </div>
               ) : (
                 <div className="standards-grid">
-                  {standards.filter(s => s.scope === "client_specific" && s.client_name === activeClientTab).map(std => <StandardCard key={std.id} std={std} />)}
+                  {standards.filter(s => s.scope === "client_specific" && s.client_name === activeClientTab).map(std => (
+                    <StandardCard
+                      key={std.id}
+                      std={std}
+                      formatBytes={formatBytes}
+                      openExplorer={openExplorer}
+                      openEdit={openEdit}
+                      setDeletingStd={setDeletingStd}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -390,360 +222,6 @@ export const StandardsManager: React.FC = () => {
         </div>
       </div>
 
-      {/* UPLOAD MODAL DIALOG */}
-      {showUploadModal && (
-        <div className="modal-overlay">
-          <div className="modal-content card" style={{ maxWidth: "550px" }}>
-            <div className="modal-header">
-              <h3 className="card-title">
-                <UploadCloud size={18} className="text-purple" />
-                Ingest {uploadScope === "universal" ? "Universal Manual" : `${uploadClient} Standard`}
-              </h3>
-              <button className="close-button" onClick={() => setShowUploadModal(false)} disabled={uploadStatus === "uploading"}>&times;</button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="modal-body">
-              <div
-                className={`drag-drop-zone ${isDragOver ? "dragging" : ""} ${uploadStatus === "uploading" ? "disabled" : ""}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => uploadStatus !== "uploading" && fileInputRef.current?.click()}
-                style={{ height: "140px", marginBottom: "20px" }}
-              >
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: "none" }} accept=".pdf,.txt,.md,.xlsx,.xls" />
-                <div className="upload-icon-container">
-                  {uploadStatus === "uploading" ? <Loader2 size={24} className="spin-animation text-purple" /> : <UploadCloud size={24} className="text-purple" />}
-                </div>
-                <span className="upload-prompt" style={{ fontSize: "0.85rem" }}>
-                  {selectedFile ? `Selected: ${selectedFile.name} (${formatBytes(selectedFile.size)})` : "Drag & Drop standard reference, or browse"}
-                </span>
-                <span className="upload-specs" style={{ fontSize: "0.7rem" }}>PDF, TXT, Excel or Markdown (No size limit)</span>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Standard Title Identifier</label>
-                <input type="text" className="form-input" placeholder="e.g. ISO 128 TECHNICAL DRAWING PRINCIPLES" value={name} onChange={(e) => setName(e.target.value)} required disabled={uploadStatus === "uploading"} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Category Group</label>
-                <input type="text" className="form-input" placeholder="e.g. Dimensioning, Tolerancing, Layering" value={category} onChange={(e) => setCategory(e.target.value)} disabled={uploadStatus === "uploading"} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Context Description</label>
-                <textarea className="form-input" style={{ height: "60px", resize: "none" }} placeholder="Summarize compliance parameters inside reference standard..." value={description} onChange={(e) => setDescription(e.target.value)} disabled={uploadStatus === "uploading"} />
-              </div>
-
-              {uploadStatus === "uploading" && (
-                <div style={{ margin: "16px 0 8px 0" }}>
-                  <div className="progress-container">
-                    <div className="progress-bar-bg" style={{ height: "5px" }}>
-                      <div className="progress-bar-fill animated-gradient" style={{ width: `${uploadProgress}%`, height: "100%" }}></div>
-                    </div>
-                    <div className="progress-labels">
-                      <span>Vector database indexing...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                  </div>
-                  
-                  {uploadProgress > 30 && (
-                    <div style={{
-                      marginTop: "12px",
-                      padding: "10px 14px",
-                      background: "rgba(16, 185, 129, 0.05)",
-                      border: "1px dashed rgba(16, 185, 129, 0.25)",
-                      borderRadius: "8px",
-                      fontSize: "0.74rem",
-                      color: "#10b981",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between"
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#10b981", animation: "pulse 1s infinite" }} />
-                        <span>Semantic Shredder Quality:</span>
-                      </div>
-                      <span style={{ fontWeight: 700 }}>98.6% Align (High)</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {errorMessage && (
-                <div className="error-alert" style={{ marginTop: "12px", padding: "12px" }}>
-                  <AlertCircle size={16} />
-                  <div style={{ marginLeft: "8px", fontSize: "0.8rem" }}>
-                    <strong>Ingestion Fault:</strong> {errorMessage}
-                  </div>
-                </div>
-              )}
-
-              <div className="modal-actions" style={{ marginTop: "24px", display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)} disabled={uploadStatus === "uploading"}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={uploadStatus === "uploading" || !selectedFile || !name.trim()}>Confirm Ingestion</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT MODAL */}
-      {editingStd && (
-        <div className="modal-overlay">
-          <div className="modal-content card" style={{ maxWidth: "480px" }}>
-            <div className="modal-header">
-              <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <Pencil size={16} style={{ color: "var(--accent-cyan)" }} /> Edit Standard
-              </h3>
-              <button className="close-button" onClick={() => setEditingStd(null)} disabled={editSaving}>&times;</button>
-            </div>
-            <div className="modal-body">
-              {/* Format + file info */}
-              <div style={{ display: "flex", gap: "10px", alignItems: "center", padding: "10px 12px", background: "var(--bg-dark)", borderRadius: "8px", marginBottom: "20px", border: "1px solid var(--border-color)" }}>
-                <FileText size={16} style={{ color: "var(--accent-cyan)" }} />
-                <div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Source file · {editingStd.format.toUpperCase()} · {formatBytes(editingStd.file_size_bytes)}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-primary)", fontFamily: "monospace" }}>{editingStd.file_path.split(/[/\\]/).pop()}</div>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Standard Title</label>
-                <input type="text" className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} disabled={editSaving} autoFocus />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Category Group</label>
-                <input type="text" className="form-input" placeholder="e.g. Dimensioning, Tolerancing" value={editCategory} onChange={(e) => setEditCategory(e.target.value)} disabled={editSaving} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Context Description</label>
-                <textarea className="form-input" style={{ height: "80px", resize: "none" }} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} disabled={editSaving} />
-              </div>
-
-              {editError && (
-                <div className="error-alert" style={{ marginTop: "8px", padding: "10px" }}>
-                  <AlertCircle size={14} />
-                  <span style={{ marginLeft: "8px", fontSize: "0.78rem" }}>{editError}</span>
-                </div>
-              )}
-
-              <div className="modal-actions" style={{ marginTop: "24px", display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                <button className="btn btn-secondary" onClick={() => setEditingStd(null)} disabled={editSaving}>
-                  <X size={14} style={{ marginRight: "4px" }} /> Cancel
-                </button>
-                <button className="btn btn-primary" onClick={handleEditSave} disabled={editSaving || !editName.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {editSaving ? <Loader2 size={14} className="spin-animation" /> : <Save size={14} />}
-                  {editSaving ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE CONFIRMATION MODAL */}
-      {deletingStd && (
-        <div className="modal-overlay">
-          <div className="modal-content card" style={{ maxWidth: "420px" }}>
-            <div className="modal-header">
-              <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "10px", color: "#ef4444", borderLeftColor: "#ef4444" }}>
-                <AlertTriangle size={16} /> Confirm Deletion
-              </h3>
-              <button className="close-button" onClick={() => setDeletingStd(null)} disabled={deleteLoading}>&times;</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: "0.88rem", color: "var(--text-primary)", marginBottom: "12px" }}>
-                You are about to permanently delete:
-              </p>
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "16px",
-                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.02) 100%)",
-                border: "1px solid rgba(239, 68, 68, 0.25)",
-                borderRadius: "12px",
-                padding: "16px",
-                marginBottom: "20px",
-                boxShadow: "inset 0 0 12px rgba(239, 68, 68, 0.05)"
-              }}>
-                <div style={{
-                  width: "44px",
-                  height: "44px",
-                  borderRadius: "10px",
-                  background: "rgba(239, 68, 68, 0.15)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#ef4444",
-                  flexShrink: 0
-                }}>
-                  <FileText size={22} />
-                </div>
-                <div style={{ flexGrow: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontWeight: 700,
-                    fontSize: "0.95rem",
-                    color: "var(--text-primary)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis"
-                  }} title={deletingStd.name}>
-                    {deletingStd.name}
-                  </div>
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    marginTop: "6px"
-                  }}>
-                    <span style={{
-                      fontSize: "0.68rem",
-                      fontWeight: 700,
-                      background: "rgba(239, 68, 68, 0.2)",
-                      border: "1px solid rgba(239, 68, 68, 0.35)",
-                      color: "#ef4444",
-                      padding: "2px 8px",
-                      borderRadius: "12px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px"
-                    }}>
-                      {deletingStd.format}
-                    </span>
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.72rem" }}>•</span>
-                    <span style={{
-                      fontSize: "0.72rem",
-                      color: "var(--text-muted)",
-                      fontWeight: 500
-                    }}>
-                      {formatBytes(deletingStd.file_size_bytes)}
-                    </span>
-                  </div>
-                  <div style={{
-                    fontSize: "0.75rem",
-                    color: "rgba(239, 68, 68, 0.85)",
-                    marginTop: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontWeight: 500
-                  }}>
-                    <span style={{ display: "inline-block", width: "4px", height: "4px", borderRadius: "50%", background: "#ef4444" }}></span>
-                    All associated knowledge chunks will be removed.
-                  </div>
-                </div>
-              </div>
-              <p style={{ fontSize: "0.8rem", color: "#ef4444", marginBottom: "24px" }}>
-                ⚠ This action is irreversible. The standard and all its AI knowledge chunks will be deleted from the database.
-              </p>
-              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                <button
-                  className="btn btn-secondary"
-                  style={{ padding: "10px 24px" }}
-                  onClick={() => setDeletingStd(null)}
-                  disabled={deleteLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-danger-confirm"
-                  onClick={handleDeleteConfirm}
-                  disabled={deleteLoading}
-                >
-                  {deleteLoading ? <Loader2 size={14} className="spin-animation" /> : <Trash2 size={14} />}
-                  {deleteLoading ? "Deleting..." : "Delete Permanently"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* VECTOR CHUNK EXPLORER MODAL */}
-      {explorerStd && (
-        <div className="modal-overlay" style={{ zIndex: 1000 }}>
-          <div className="modal-content card" style={{ maxWidth: "800px", width: "90%", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: 0 }}>
-            <div className="modal-header" style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)" }}>
-              <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
-                <Layers size={18} className="text-purple" />
-                Standard Vector Chunks: {explorerStd.name}
-              </h3>
-              <button className="close-button" onClick={() => setExplorerStd(null)}>&times;</button>
-            </div>
-            
-            <div className="modal-body" style={{ flexGrow: 1, overflowY: "auto", padding: "24px", display: "flex", flexDirection: "column", gap: "16px", maxHeight: "60vh" }}>
-              <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "10px 14px", background: "var(--bg-dark)", borderRadius: "8px", border: "1px solid var(--border-color)", fontSize: "0.78rem" }}>
-                <FileText size={16} style={{ color: "#c084fc" }} />
-                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  <span style={{ color: "var(--text-muted)" }}>Signature Hash: </span>
-                  <code style={{ color: "#c084fc", fontFamily: "monospace" }}>{explorerStd.standard_hash}</code>
-                </div>
-              </div>
-
-              {explorerLoading ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
-                  <Loader2 size={36} className="spin-animation text-purple" style={{ marginBottom: "16px" }} />
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Querying local vector indexes...</span>
-                </div>
-              ) : explorerError ? (
-                <div className="error-alert" style={{ padding: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
-                  <AlertCircle size={20} />
-                  <div>
-                    <strong>Explorer Error:</strong> {explorerError}
-                  </div>
-                </div>
-              ) : explorerChunks.length === 0 ? (
-                <div className="empty-standards-card" style={{ padding: "40px 20px" }}>
-                  <AlertTriangle size={32} style={{ opacity: 0.3, marginBottom: "12px" }} />
-                  <h4>No vectorized segments found</h4>
-                  <p>Attempt standard document parsing reload or check schema status.</p>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {explorerChunks.map((chunk) => (
-                    <div 
-                      key={chunk.id} 
-                      style={{ 
-                        background: "rgba(255,255,255,0.015)", 
-                        border: "1px solid var(--border-color)", 
-                        borderRadius: "8px", 
-                        padding: "14px 18px",
-                        transition: "transform 0.15s ease",
-                        cursor: "default"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--accent-cyan)"}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", borderBottom: "1px solid rgba(255,255,255,0.03)", paddingBottom: "6px" }}>
-                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--accent-cyan)", textTransform: "uppercase" }}>
-                          Segment #{chunk.chunk_index + 1} {chunk.section_header ? `· ${chunk.section_header}` : ""}
-                        </span>
-                        {chunk.metadata?.page_number && (
-                          <span style={{ fontSize: "0.68rem", background: "var(--sidebar-item-hover)", padding: "2px 8px", borderRadius: "12px", color: "var(--text-muted)" }}>
-                            Page {chunk.metadata.page_number}
-                          </span>
-                        )}
-                      </div>
-                      <p style={{ fontSize: "0.8rem", color: "var(--text-primary)", lineHeight: "1.45", margin: 0, whiteSpace: "pre-wrap" }}>
-                        {chunk.content}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="modal-actions" style={{ padding: "16px 24px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "flex-end", margin: 0 }}>
-              <button className="btn btn-secondary" style={{ padding: "8px 20px" }} onClick={() => setExplorerStd(null)}>
-                Close Explorer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* COMPONENT SCOPED CSS STYLES */}
       <style>{`
         .standards-layout {
           animation: fadeIn 0.4s ease-out;
@@ -804,150 +282,248 @@ export const StandardsManager: React.FC = () => {
         .std-card-top {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           margin-bottom: 16px;
         }
         .std-icon-box {
-          width: 36px;
-          height: 36px;
-          border-radius: 8px;
-          background: rgba(37, 99, 235, 0.1);
-          border: 1px solid var(--border-color);
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: rgba(6, 182, 212, 0.1);
+          border: 1px solid rgba(6, 182, 212, 0.2);
           display: flex;
           align-items: center;
           justify-content: center;
           color: var(--accent-cyan);
         }
         .std-badge {
-          font-size: 0.7rem;
-          font-weight: 600;
-          padding: 2px 8px;
-          background: var(--sidebar-item-hover);
-          border: 1px solid var(--border-color);
-          border-radius: 20px;
-          color: var(--text-primary);
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.5px;
+          background: var(--bg-dark);
+          color: var(--text-muted);
+          padding: 4px 8px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
         }
         .std-title {
-          font-size: 0.95rem;
+          font-size: 1.05rem;
           font-weight: 600;
+          margin: 0 0 8px 0;
           color: var(--text-primary);
-          margin-bottom: 6px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         .std-desc {
           font-size: 0.8rem;
-          color: var(--text-muted);
+          color: var(--text-secondary);
           line-height: 1.4;
-          height: 3.2em;
-          overflow: hidden;
+          margin-bottom: 20px;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
-          margin-bottom: 16px;
+          overflow: hidden;
+          flex-grow: 1;
         }
         .std-meta-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 10px;
-          border-top: 1px solid var(--border-color);
-          padding-top: 12px;
-          margin-top: auto;
+          gap: 12px;
+          padding-top: 16px;
+          border-top: 1px dashed var(--border-color);
         }
         .std-meta-item {
           display: flex;
           align-items: center;
           gap: 6px;
+          font-size: 0.75rem;
           color: var(--text-muted);
-          font-size: 0.72rem;
         }
-        .std-meta-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .std-meta-item svg {
+          opacity: 0.7;
+        }
 
-        /* ── Admin action bar (hover-reveal) ── */
+        /* ACTIONS BAR HOVER */
         .std-actions-bar {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 12px;
+          background: rgba(9, 9, 11, 0.95);
+          backdrop-filter: blur(4px);
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
           display: flex;
           gap: 8px;
-          margin-top: 14px;
-          padding-top: 12px;
-          border-top: 1px solid var(--border-color);
           opacity: 0;
-          transform: translateY(4px);
-          transition: opacity 0.2s ease, transform 0.2s ease;
+          transform: translateY(10px);
+          transition: all 0.25s ease;
         }
         .std-action-btn {
           flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 5px;
-          padding: 6px 10px;
+          gap: 6px;
+          padding: 8px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
           border-radius: 6px;
-          font-size: 0.72rem;
-          font-weight: 600;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          font-weight: 500;
           cursor: pointer;
-          border: 1px solid transparent;
-          transition: all 0.15s ease;
+          transition: all 0.2s;
         }
-        .std-action-btn.edit {
-          background: rgba(0, 229, 255, 0.06);
-          border-color: rgba(0, 229, 255, 0.2);
-          color: var(--accent-cyan);
+        .std-action-btn:hover {
+          color: var(--text-primary);
+          background: rgba(255,255,255,0.1);
         }
         .std-action-btn.edit:hover {
-          background: var(--accent-cyan);
-          border-color: var(--accent-cyan);
-          color: var(--bg-dark);
-          box-shadow: 0 4px 12px rgba(0, 229, 255, 0.25);
-          transform: translateY(-1px);
-        }
-        .std-action-btn.delete {
-          background: rgba(239, 68, 68, 0.06);
-          border-color: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
+          border-color: rgba(6, 182, 212, 0.3);
+          color: var(--accent-cyan);
+          background: rgba(6, 182, 212, 0.1);
         }
         .std-action-btn.delete:hover {
-          background: #ef4444;
-          border-color: #ef4444;
-          color: #ffffff;
-          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
-          transform: translateY(-1px);
+          border-color: rgba(239, 68, 68, 0.3);
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.1);
         }
 
-        /* ── Danger Confirm button inside deletion modal ── */
-        .btn.btn-danger-confirm {
-          background: #ef4444;
-          color: #ffffff;
-          border: 1px solid transparent;
-          box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        /* MODAL OVERLAYS */
+        .modal-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          z-index: 1000;
           display: flex;
           align-items: center;
-          gap: 6px;
-          padding: 10px 24px;
-          border-radius: 8px;
-          font-weight: 600;
-          font-size: 0.88rem;
+          justify-content: center;
+          animation: fadeIn 0.2s ease-out;
+        }
+        .modal-content {
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border-color);
+        }
+        .modal-header h3 {
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 1.1rem;
+        }
+        .close-button {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          font-size: 1.5rem;
           cursor: pointer;
+          padding: 0 8px;
         }
-        .btn.btn-danger-confirm:hover:not(:disabled) {
-          transform: translateY(-2px);
-          background: #dc2626;
-          box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
-          border-color: rgba(239, 68, 68, 0.4);
+        .close-button:hover { color: var(--text-primary); }
+        .modal-body { padding: 20px; }
+        
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+          display: block;
+          font-size: 0.8rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+          margin-bottom: 8px;
         }
-        .btn.btn-danger-confirm:active:not(:disabled) {
-          transform: translateY(0);
-          box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+        .form-input {
+          width: 100%;
+          background: var(--bg-primary);
+          border: 1px solid var(--border-color);
+          color: var(--text-primary);
+          padding: 10px 14px;
+          border-radius: 6px;
+          font-size: 0.9rem;
+          font-family: inherit;
         }
-        .btn.btn-danger-confirm:disabled {
-          opacity: 0.6;
+        .form-input:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
+          box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.1);
+        }
+        .form-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .drag-drop-zone {
+          border: 2px dashed rgba(255,255,255,0.15);
+          border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0,0,0,0.2);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .drag-drop-zone:hover {
+          border-color: var(--accent-cyan);
+          background: rgba(6, 182, 212, 0.05);
+        }
+        .drag-drop-zone.dragging {
+          border-color: #a855f7;
+          background: rgba(168, 85, 247, 0.1);
+          transform: scale(1.02);
+        }
+        .drag-drop-zone.disabled {
+          opacity: 0.5;
           cursor: not-allowed;
-          transform: none;
-          box-shadow: none;
+          pointer-events: none;
         }
 
-        /* ── Toast ── */
+        .upload-icon-container {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: rgba(168, 85, 247, 0.1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 12px;
+        }
+
+        .upload-prompt { color: var(--text-primary); font-weight: 500; margin-bottom: 4px; }
+        .upload-specs { color: var(--text-muted); }
+
+        .progress-container {
+          background: var(--bg-dark);
+          padding: 12px;
+          border-radius: 8px;
+          border: 1px solid var(--border-color);
+        }
+        .progress-bar-bg {
+          background: rgba(255,255,255,0.1);
+          border-radius: 4px;
+          overflow: hidden;
+          margin-bottom: 8px;
+        }
+        .animated-gradient {
+          background: linear-gradient(90deg, var(--accent-cyan), #a855f7, var(--accent-cyan));
+          background-size: 200% 100%;
+          animation: gradientShift 2s linear infinite;
+        }
+        .progress-labels {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          font-weight: 500;
+        }
+
         .std-toast {
           position: fixed;
           bottom: 24px;
@@ -956,58 +532,20 @@ export const StandardsManager: React.FC = () => {
           align-items: center;
           gap: 10px;
           padding: 12px 20px;
-          border-radius: 10px;
-          font-size: 0.82rem;
-          font-weight: 500;
-          z-index: 9999;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-          animation: toastSlideIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+          border-radius: 8px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+          font-size: 0.85rem;
+          color: white;
+          z-index: 2000;
+          animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .std-toast.success { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); color: #10b981; }
-        .std-toast.error { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); color: #ef4444; }
-        @keyframes toastSlideIn {
-          from { opacity: 0; transform: translateY(16px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
+        .std-toast.success { background: #18181b; border: 1px solid rgba(16, 185, 129, 0.3); border-left: 4px solid #10b981; }
+        .std-toast.error { background: #18181b; border: 1px solid rgba(239, 68, 68, 0.3); border-left: 4px solid #ef4444; }
 
-        /* MODAL OVERLAY */
-        .modal-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0, 0, 0, 0.75);
-          backdrop-filter: blur(8px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          animation: modalFadeIn 0.25s ease-out;
-        }
-        .modal-content {
-          width: 90%;
-          border: 1px solid var(--border-color);
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-          animation: modalSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes modalSlideIn {
-          from { transform: translateY(20px) scale(0.95); opacity: 0; }
-          to { transform: translateY(0) scale(1); opacity: 1; }
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 16px;
-          margin-bottom: 16px;
-        }
-        .close-button {
-          background: none; border: none; color: var(--text-muted);
-          font-size: 1.5rem; cursor: pointer; line-height: 1;
-        }
-        .close-button:hover { color: var(--text-primary); }
-        .close-button:disabled { opacity: 0.3; cursor: not-allowed; }
-        .mt-3 { margin-top: 12px; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes gradientShift { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
       `}</style>
     </div>
   );

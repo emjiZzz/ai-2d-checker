@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuditStore } from "../stores/auditStore";
 import { useDrawingStore } from "../stores/drawingStore";
-import { useConnectionStore } from "../stores/connectionStore";
+import { buildHeaders, baseUrl, parseOrThrow } from "../services/fetchUtils";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { CopilotPanel } from "./copilot/CopilotPanel";
 import {
@@ -18,6 +18,7 @@ import {
   Filter,
   XCircle
 } from "lucide-react";
+import { Button } from "./ui/Button";
 
 export const AuditConsole: React.FC = () => {
   const {
@@ -35,7 +36,6 @@ export const AuditConsole: React.FC = () => {
   const selectViolation = useWorkspaceStore((s) => s.selectViolation);
 
   const { activeDrawing } = useDrawingStore();
-  const { backendUrl, apiToken } = useConnectionStore.getState();
 
   const [selectedDrawingId, setSelectedDrawingId] = useState("");
   const [selectedStandardId, setSelectedStandardId] = useState("");
@@ -55,16 +55,10 @@ export const AuditConsole: React.FC = () => {
 
   const fetchLocalDrawings = async () => {
     try {
-      const headers: Record<string, string> = { "Accept": "application/json" };
-      if (apiToken) {
-        headers["Authorization"] = `Bearer ${apiToken}`;
-      }
-      const response = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          setLocalDrawingsList(result.data);
-        }
+      const response = await fetch(`${baseUrl()}/api/v1/drawings`, { headers: buildHeaders() });
+      const data = await parseOrThrow<any>(response);
+      if (data?.data) {
+        setLocalDrawingsList(data.data);
       }
     } catch (err) {
       console.warn("Failed to load drawings dropdown list", err);
@@ -158,14 +152,14 @@ export const AuditConsole: React.FC = () => {
             </div>
           </div>
 
-          <button
-            className="btn btn-primary mt-4"
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "14px" }}
+          <Button
+            variant="primary"
+            className="mt-4 w-full h-14"
             onClick={handleStartAudit}
             disabled={!selectedDrawingId || !selectedStandardId}
           >
             <Play size={18} fill="#fff" /> Run Comparative Standards Compliance Audit
-          </button>
+          </Button>
         </div>
       )}
 
@@ -211,9 +205,9 @@ export const AuditConsole: React.FC = () => {
           <XCircle size={48} className="text-red" style={{ marginBottom: "16px" }} />
           <h4>Auditing Pipeline Aborted</h4>
           <p className="card-description" style={{ color: "#fca5a5" }}>{errorMessage}</p>
-          <button className="btn btn-primary mt-3" onClick={resetStore}>
+          <Button variant="primary" className="mt-3" onClick={resetStore}>
             Return & Reconfigure Run
-          </button>
+          </Button>
         </div>
       )}
 
@@ -228,16 +222,16 @@ export const AuditConsole: React.FC = () => {
               <span className="results-subtitle">Grounded on: {getStandardName(activeSession.standard_id || "")}</span>
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                className={`btn ${showCopilot ? 'btn-primary' : 'btn-secondary'}`}
+              <Button
+                variant={showCopilot ? "primary" : "secondary"}
                 onClick={() => setShowCopilot(!showCopilot)}
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                className="gap-2"
               >
                 <span>🤖</span> {showCopilot ? "Hide Copilot" : "Ask Engineering Copilot"}
-              </button>
-              <button className="btn btn-secondary" onClick={resetStore}>
+              </Button>
+              <Button variant="secondary" onClick={resetStore}>
                 Launch New Audit
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -338,36 +332,41 @@ export const AuditConsole: React.FC = () => {
                   <div className="filter-group">
                     <Filter size={14} className="text-purple" />
                     <span className="filter-label">Filter Severity:</span>
-                    <button
-                      className={`btn-filter ${severityFilter === "all" ? "active" : ""}`}
+                    <Button
+                      variant={severityFilter === "all" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("all")}
                     >
                       All
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "critical" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "critical" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("critical")}
                     >
                       Critical
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "high" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "high" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("high")}
                     >
                       High
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "medium" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "medium" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("medium")}
                     >
                       Medium
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "low" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "low" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("low")}
                     >
                       Low
-                    </button>
+                    </Button>
                   </div>
                 </div>
 

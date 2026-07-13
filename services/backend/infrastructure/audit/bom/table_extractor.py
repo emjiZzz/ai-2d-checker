@@ -29,6 +29,7 @@ def extract_dynamic_regions(entities: list) -> dict:
         "notes":         { "xMin": 0.04, "xMax": 0.38, "yMin": 0.18, "yMax": 0.62 },
         "bom":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.04, "yMax": 0.44 },
         "title":         { "xMin": 0.38, "xMax": 0.98, "yMin": 0.72, "yMax": 0.98 },
+        "tolerance":     { "xMin": 0.02, "xMax": 0.40, "yMin": 0.65, "yMax": 0.98 },
         "titleUpperLeft":{ "xMin": 0.02, "xMax": 0.35, "yMin": 0.02, "yMax": 0.35 },
         "iso":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.42, "yMax": 0.74 }
     }
@@ -48,6 +49,7 @@ def extract_dynamic_regions(entities: list) -> dict:
 
     tr_lines = [l for l in lines if (l[0][0]-min_x)/width > 0.6 and (l[0][1]-min_y)/height < 0.5]
     br_lines = [l for l in lines if (l[0][0]-min_x)/width > 0.4 and (l[0][1]-min_y)/height > 0.6]
+    bl_lines = [l for l in lines if (l[0][0]-min_x)/width < 0.4 and (l[0][1]-min_y)/height > 0.6]
 
     def get_bounds(quad_lines, default_box):
         if not quad_lines:
@@ -65,12 +67,14 @@ def extract_dynamic_regions(entities: list) -> dict:
 
     bom_bounds = get_bounds(tr_lines, default_regions["bom"])
     title_bounds = get_bounds(br_lines, default_regions["title"])
+    tolerance_bounds = get_bounds(bl_lines, default_regions["tolerance"])
 
     return {
         "views":         default_regions["views"],
         "notes":         default_regions["notes"],
         "bom":           bom_bounds,
         "title":         title_bounds,
+        "tolerance":     tolerance_bounds,
         "titleUpperLeft":default_regions["titleUpperLeft"],
         "iso":           default_regions["iso"]
     }
@@ -213,10 +217,14 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> T
     for group in rows_grouped:
         group.sort(key=lambda item: item[0])
         
-        # Strip labels or headers
+        # A valid BOM row should have multiple columns (at least No, Name, Qty)
+        if len(group) < 3:
+            continue
+            
+        # The Item Number must be at the far left of the row (first or second element)
         has_number_key = False
         number_val = None
-        for item in group:
+        for item in group[:2]:
             if re.match(r'^\d{1,3}$', item[2]):
                 has_number_key = True
                 number_val = item[2]

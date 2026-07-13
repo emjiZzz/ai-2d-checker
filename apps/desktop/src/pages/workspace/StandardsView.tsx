@@ -10,7 +10,7 @@ import { StandardsManager } from "../../components/StandardsManager";
  */
 export const StandardsView: React.FC = () => {
   return (
-    <div className="viewport-standards-manager">
+    <div className="flex-grow h-full overflow-y-auto bg-bg-dark py-8 px-8 box-border">
       <StandardsManager />
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { KeyRound, ShieldAlert, User, Cpu } from "lucide-react";
+import { Button } from "../../components/ui/Button";
 
 export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -76,13 +77,14 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
-            className="btn btn-primary login-btn"
+            variant="primary"
+            className="w-full mt-4 h-12 text-[15px]"
             disabled={isSubmitting}
           >
             {isSubmitting ? "Authenticating session..." : "Initialize Portal Access"}
-          </button>
+          </Button>
         </form>
 
         {/* Enterprise Context Footer */}

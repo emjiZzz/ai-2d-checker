@@ -33,8 +33,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   lastChecked: null,
   error: null,
   pollingIntervalId: null,
-  apiToken: null,
-
+  apiToken: (typeof window !== "undefined" && !(window as any).__TAURI_INTERNALS__) ? localStorage.getItem("ai_2d_api_token") : null,
   setBackendUrl: (url: string) => {
     // Sanitize trailing slash
     const sanitizedUrl = url.endsWith("/") ? url.slice(0, -1) : url;
@@ -54,6 +53,18 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         console.warn("Failed to retrieve API Token from Tauri shell:", err);
       }
     }
+    
+    // Fallback for standard browser development (non-Tauri)
+    if (typeof window !== "undefined") {
+      const storedToken = localStorage.getItem("ai_2d_api_token");
+      if (storedToken) {
+        set({ apiToken: storedToken });
+        return storedToken;
+      } else {
+        console.warn("API Token is missing. If you are developing in a standard browser (not Tauri), please manually set it: localStorage.setItem('ai_2d_api_token', '<token_from_.api-token>')");
+      }
+    }
+    
     return null;
   },
 

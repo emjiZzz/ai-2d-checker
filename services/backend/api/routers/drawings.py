@@ -2,7 +2,7 @@ import os
 import hashlib
 import uuid
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from ...domain.models.drawing_document import DrawingDocument
@@ -329,10 +329,7 @@ async def get_drawing_rendering(id: str):
         )
     rendering_path = get_storage_root() / "renderings" / f"{id}.png"
     if not rendering_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="High-fidelity rendering image not generated for this drawing."
-        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     return FileResponse(str(rendering_path), media_type="image/png")
 
 

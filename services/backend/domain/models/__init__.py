@@ -9,6 +9,7 @@ from .extracted_entity import ExtractedEntity
 from .extraction_job import ExtractionJob
 from .report import Report
 from .role_permissions import RolePermissionsDocument
+from .room import Room
 from .standard import Standard
 from .standard_chunk import StandardChunk
 from .standard_document import StandardDocument
@@ -32,5 +33,6 @@ __all_models__ = [
     UserAccountDocument,
     UserSessionDocument,
     RolePermissionsDocument,
-    ClientDocument
+    ClientDocument,
+    Room
 ]

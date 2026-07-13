@@ -79,7 +79,9 @@ def resolve_marking_coordinates(
             
             if status_val == "ADDED":
                 if m.get("coordinates") is None and txt and txt != "NONE":
-                    res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, category=cat, used_entities=used_rev_entities, exclude_bboxes=rev_ex)
+                    kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex}
+                    if cat == "bill_of_materials" and rev_bom_bbox: kwargs["region_bbox"] = rev_bom_bbox
+                    res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, **kwargs)
                     if res:
                         m["coordinates"] = res.get("coords")
                         m["bbox"] = res.get("bbox")
@@ -87,32 +89,42 @@ def resolve_marking_coordinates(
             elif status_val == "REMOVED":
                 search_txt = m.get("original_value") or txt
                 if m.get("ref_coordinates") is None and search_txt and search_txt != "NONE":
-                    res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, search_txt, category=cat, used_entities=used_ref_entities, exclude_bboxes=ref_ex)
+                    kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex}
+                    if cat == "bill_of_materials" and ref_bom_bbox: kwargs["region_bbox"] = ref_bom_bbox
+                    res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, search_txt, **kwargs)
                     if res:
                         m["ref_coordinates"] = res.get("coords")
                         m["ref_bbox"] = res.get("bbox")
                     
             elif status_val == "CHANGED":
                 if m.get("coordinates") is None and txt and txt != "NONE":
-                    res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, category=cat, used_entities=used_rev_entities, exclude_bboxes=rev_ex)
+                    kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex}
+                    if cat == "bill_of_materials" and rev_bom_bbox: kwargs["region_bbox"] = rev_bom_bbox
+                    res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, **kwargs)
                     if res:
                         m["coordinates"] = res.get("coords")
                         m["bbox"] = res.get("bbox")
                 search_txt = m.get("original_value") or txt
                 if m.get("ref_coordinates") is None and search_txt and search_txt != "NONE":
-                    res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, search_txt, category=cat, used_entities=used_ref_entities, exclude_bboxes=ref_ex)
+                    kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex}
+                    if cat == "bill_of_materials" and ref_bom_bbox: kwargs["region_bbox"] = ref_bom_bbox
+                    res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, search_txt, **kwargs)
                     if res:
                         m["ref_coordinates"] = res.get("coords")
                         m["ref_bbox"] = res.get("bbox")
                     
             else: # MATCHED
                 if m.get("coordinates") is None and txt and txt != "NONE":
-                    res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, category=cat, used_entities=used_rev_entities, exclude_bboxes=rev_ex)
+                    kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex}
+                    if cat == "bill_of_materials" and rev_bom_bbox: kwargs["region_bbox"] = rev_bom_bbox
+                    res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, txt, **kwargs)
                     if res:
                         m["coordinates"] = res.get("coords")
                         m["bbox"] = res.get("bbox")
                 if m.get("ref_coordinates") is None and txt and txt != "NONE":
-                    res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, txt, category=cat, used_entities=used_ref_entities, exclude_bboxes=ref_ex)
+                    kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex}
+                    if cat == "bill_of_materials" and ref_bom_bbox: kwargs["region_bbox"] = ref_bom_bbox
+                    res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, txt, **kwargs)
                     if res:
                         m["ref_coordinates"] = res.get("coords")
                         m["ref_bbox"] = res.get("bbox")

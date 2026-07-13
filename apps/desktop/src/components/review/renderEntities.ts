@@ -118,13 +118,17 @@ export const renderEntities = ({
 
   const pathBatches: Record<string, { stroke: string, width: number, path: Path2D }> = {};
 
+  // If a high-fidelity raster image is loaded, skip ALL vector entity rendering.
+  // The loop below is O(entities) and would be wasted work — the image covers everything.
+  const skipEntities = !!(bgImage && drawing?.metadata?.render_bounds);
+
   Object.entries(layers).forEach(([layerName, entities]) => {
     if (activeLayers[layerName] === false) return;
 
     entities.forEach((ent) => {
       totalEntities++;
 
-      if (bgImage && drawing?.metadata?.render_bounds) {
+      if (skipEntities) {
         return;
       }
 

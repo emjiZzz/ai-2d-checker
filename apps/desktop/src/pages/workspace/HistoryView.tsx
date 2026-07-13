@@ -137,55 +137,55 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
   return (
     <>
-      <main className="workspace-main-viewport padded" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-        <div className="subpage-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
+      <main className="flex-grow h-full min-h-0 overflow-y-auto bg-bg-dark py-8 px-8 box-border flex flex-col gap-6">
+        <div className="flex justify-between items-end flex-wrap gap-4 mb-2">
           <div>
-            <h2 className="section-title">Audit History Archive</h2>
-            <p className="section-desc">View historically logged revision comparison sessions and compliance reports.</p>
+            <h2 className="text-xl font-extrabold text-text-primary m-0 tracking-tight">Audit History Archive</h2>
+            <p className="text-xs text-text-muted mt-1 leading-relaxed">View historically logged revision comparison sessions and compliance reports.</p>
           </div>
           {sessions && sessions.length > 0 && (
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.03)", padding: "4px 10px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)" }}>
-              Total sessions loaded: <strong style={{ color: "var(--text-primary)" }}>{sessions.length}</strong>
+            <span className="text-xs text-text-muted bg-white/3 py-1 px-2.5 rounded-full border border-white/5">
+              Total sessions loaded: <strong className="text-text-primary">{sessions.length}</strong>
             </span>
           )}
         </div>
 
         {/* DYNAMIC STATISTICS SUMMARY DECK */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Card 1: Total Runs */}
-          <div className="card" style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 20px", background: "linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-cyan)", boxShadow: "0 0 12px rgba(59, 130, 246, 0.05)" }}>
+          <div className="flex items-center gap-4 p-4 md:p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-blue-500/8 border-blue-500/15 text-accent-cyan shadow-blue-500/5">
               <Database size={18} />
             </div>
             <div>
-              <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: "600" }}>Total Audit Runs</span>
-              <h3 style={{ fontSize: "1.4rem", fontWeight: "700", marginTop: "2px", color: "var(--text-primary)", fontFamily: "'JetBrains Mono', monospace" }}>
+              <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Total Audit Runs</span>
+              <h3 className="text-xl font-bold mt-0.5 text-text-primary font-mono">
                 {sessions ? sessions.length : 0}
               </h3>
             </div>
           </div>
 
           {/* Card 2: Average Compliance */}
-          <div className="card" style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 20px", background: "linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", boxShadow: "0 0 12px rgba(16, 185, 129, 0.05)" }}>
+          <div className="flex items-center gap-4 p-4 md:p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-emerald-500/8 border-emerald-500/15 text-emerald-400 shadow-emerald-500/5">
               <BarChart2 size={18} />
             </div>
             <div>
-              <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: "600" }}>Avg Compliance</span>
-              <h3 style={{ fontSize: "1.4rem", fontWeight: "700", marginTop: "2px", color: "#10b981", fontFamily: "'JetBrains Mono', monospace" }}>
+              <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Avg Compliance</span>
+              <h3 className="text-xl font-bold mt-0.5 text-emerald-400 font-mono">
                 {avgCompliance}
               </h3>
             </div>
           </div>
 
           {/* Card 3: Success Rate */}
-          <div className="card" style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 20px", background: "linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#a855f7", boxShadow: "0 0 12px rgba(168, 85, 247, 0.05)" }}>
+          <div className="flex items-center gap-4 p-4 md:p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-purple-500/8 border-purple-500/15 text-purple-400 shadow-purple-500/5">
               <TrendingUp size={18} />
             </div>
             <div>
-              <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: "600" }}>Pipeline Success</span>
-              <h3 style={{ fontSize: "1.4rem", fontWeight: "700", marginTop: "2px", color: "#a855f7", fontFamily: "'JetBrains Mono', monospace" }}>
+              <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Pipeline Success</span>
+              <h3 className="text-xl font-bold mt-0.5 text-purple-400 font-mono">
                 {successRate}
               </h3>
             </div>
@@ -193,30 +193,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </div>
 
         {/* INTERACTIVE CONTROLS BAR: SEARCH & MULTI-CRITERIA FILTERS */}
-        <div className="card" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px", padding: "14px 20px", background: "rgba(255, 255, 255, 0.01)", border: "1px solid rgba(255, 255, 255, 0.04)", borderRadius: "12px" }}>
-          <div style={{ display: "flex", flex: 1, gap: "12px", alignItems: "center", minWidth: "290px" }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white/1 border border-white/5 rounded-xl">
+          <div className="flex flex-1 gap-3 items-center min-w-[290px]">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
               <input
                 type="text"
                 placeholder="Search drawing name, remarks, or client context..."
                 value={historySearchQuery}
                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                className="form-input"
-                style={{ paddingLeft: "36px", height: "38px", background: "rgba(0, 0, 0, 0.25)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", fontSize: "0.85rem", width: "100%", transition: "all 0.2s ease" }}
+                className="w-full bg-transparent border border-border-color rounded-lg py-2 px-3.5 pl-9 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
               />
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Filter size={13} style={{ color: "var(--text-muted)" }} />
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "500" }}>Status:</span>
+          <div className="flex gap-4 items-center flex-wrap">
+            <div className="flex items-center gap-2">
+              <Filter size={13} className="text-text-muted" />
+              <span className="text-xs text-text-muted font-medium">Status:</span>
               <select
                 value={historyStatusFilter}
                 onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
-                className="form-input"
-                style={{ height: "38px", padding: "0 10px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", fontSize: "0.85rem", color: "var(--text-primary)", width: "140px", cursor: "pointer", outline: "none" }}
+                className="w-36 bg-transparent border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
               >
                 <option value="all">All Statuses</option>
                 <option value="completed">Completed</option>
@@ -225,13 +223,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               </select>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "500" }}>Compliance:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-muted font-medium">Compliance:</span>
               <select
                 value={historyScoreFilter}
                 onChange={(e) => setHistoryScoreFilter(e.target.value as any)}
-                className="form-input"
-                style={{ height: "38px", padding: "0 10px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", fontSize: "0.85rem", color: "var(--text-primary)", width: "155px", cursor: "pointer", outline: "none" }}
+                className="w-40 bg-transparent border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
               >
                 <option value="all">All Scores</option>
                 <option value="excellent">Excellent (≥ 85%)</option>
@@ -243,17 +240,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
         {/* ARCHIVE GRID / RESULTS TABLE */}
         {filteredSessions.length > 0 ? (
-          <div className="card settings-card" style={{ padding: "0px", overflow: "hidden", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: "12px", background: "var(--bg-card)" }}>
-            <table className="stats-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="bg-bg-card border border-border-color rounded-xl p-0 overflow-hidden shadow-sm">
+            <table className="w-full border-collapse">
               <thead>
-                <tr className="stats-row" style={{ background: "rgba(255, 255, 255, 0.015)", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle", width: "90px" }}>ID</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Original Drawing</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>KMTI Drawing</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Client</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Compliance Score</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Session Date</th>
-                  <th style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>Actions</th>
+                <tr className="border-b border-border-color bg-white/1">
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5 w-[90px]">ID</th>
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">Original Drawing</th>
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">KMTI Drawing</th>
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">Client</th>
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">Compliance Score</th>
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">Session Date</th>
+                  <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -261,39 +258,33 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   const isCompleted = session.status === "completed";
                   const isFailed = session.status === "failed";
                   const score = session.compliance_score;
-                  let scoreColor = "var(--text-muted)";
-                  let scoreBg = "rgba(255, 255, 255, 0.03)";
-                  let scoreBorder = "rgba(255, 255, 255, 0.05)";
+                  let scoreColor = "text-text-muted";
+                  let scoreBg = "bg-white/3";
+                  let scoreBorder = "border-white/5";
                   if (isCompleted && score !== null) {
                     if (score >= 85) {
-                      scoreColor = "#10b981";
-                      scoreBg = "rgba(16, 185, 129, 0.08)";
-                      scoreBorder = "rgba(16, 185, 129, 0.15)";
+                      scoreColor = "text-emerald-400";
+                      scoreBg = "bg-emerald-500/8";
+                      scoreBorder = "border-emerald-500/15";
                     } else if (score >= 70) {
-                      scoreColor = "#f59e0b";
-                      scoreBg = "rgba(245, 158, 11, 0.08)";
-                      scoreBorder = "rgba(245, 158, 11, 0.15)";
+                      scoreColor = "text-amber-400";
+                      scoreBg = "bg-amber-500/8";
+                      scoreBorder = "border-amber-500/15";
                     } else {
-                      scoreColor = "#ef4444";
-                      scoreBg = "rgba(239, 68, 68, 0.08)";
-                      scoreBorder = "rgba(239, 68, 68, 0.15)";
+                      scoreColor = "text-red-400";
+                      scoreBg = "bg-red-500/8";
+                      scoreBorder = "border-red-500/15";
                     }
                   }
 
                   return (
                     <tr
                       key={session.id}
-                      className="stats-row"
-                      style={{
-                        borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-                        transition: "background-color 0.2s ease"
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.01)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                      className="border-b border-border-color hover:bg-white/1 transition-colors duration-200"
                     >
                       {/* ID Column */}
-                      <td className="stats-label" style={{ textAlign: "left", padding: "14px 12px", verticalAlign: "left" }}>
-                        <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", background: "rgba(0, 229, 255, 0.05)", padding: "3px 5px", borderRadius: "6px", border: "1px solid rgba(0, 229, 255, 0.15)", letterSpacing: "0.05em", fontFamily: "'JetBrains Mono', monospace" }}>
+                      <td className="p-3.5 text-xs text-text-primary align-middle">
+                        <span className="text-[11px] font-bold text-accent-cyan bg-accent-cyan/5 py-1 px-1.5 rounded border border-accent-cyan/15 tracking-wider font-mono">
                           {(() => {
                             const prefix = "SYS";
                             const absoluteIndex = sessions!.findIndex(s => s.id === session.id);
@@ -304,27 +295,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       </td>
 
                       {/* Reference File */}
-                      <td className="stats-label" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <FileText size={14} style={{ color: session.reference_drawing_id ? "var(--text-muted)" : "rgba(255,255,255,0.15)" }} />
-                          <span style={{ color: session.reference_drawing_id ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.85rem" }}>
+                      <td className="p-3.5 text-xs text-text-primary align-middle">
+                        <div className="flex items-center gap-2">
+                          <FileText size={14} className={session.reference_drawing_id ? "text-text-muted" : "opacity-15"} />
+                          <span className={session.reference_drawing_id ? "text-text-primary" : "text-text-muted"}>
                             {session.reference_drawing_id ? getDrawingName(session.reference_drawing_id) : "—"}
                           </span>
                         </div>
                       </td>
 
                       {/* New File */}
-                      <td className="stats-label" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle", fontWeight: "600" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <FileText size={14} style={{ color: "var(--accent-cyan)" }} />
-                            <span style={{ color: "var(--text-primary)", fontSize: "0.85rem" }}>
-                              {getDrawingName(session.drawing_id)}
-                            </span>
+                      <td className="p-3.5 text-xs text-text-primary align-middle font-semibold">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <FileText size={14} className="text-accent-cyan" />
+                            <span>{getDrawingName(session.drawing_id)}</span>
                           </div>
                           {session.remarks && (
-                            <span style={{ fontSize: "0.72rem", color: "var(--accent-cyan)", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(0, 229, 255, 0.05)", border: "1px solid rgba(0, 229, 255, 0.1)", padding: "2px 8px", borderRadius: "4px", width: "fit-content", fontWeight: "normal" }}>
-                              <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "var(--accent-cyan)", display: "inline-block" }}></span>
+                            <span className="text-[10px] text-accent-cyan inline-flex items-center gap-1.5 bg-accent-cyan/5 border border-accent-cyan/10 py-0.5 px-2 rounded w-fit font-normal">
+                              <span className="w-1 h-1 rounded-full bg-accent-cyan inline-block"></span>
                               {session.remarks}
                             </span>
                           )}
@@ -332,36 +321,36 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       </td>
 
                       {/* Client Context */}
-                      <td className="stats-value" style={{ padding: "14px 16px", color: "var(--text-primary)", verticalAlign: "middle", textAlign: "left", fontFamily: "inherit" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <Briefcase size={14} style={{ color: "var(--text-muted)", opacity: 0.6 }} />
-                          <span style={{ fontSize: "0.85rem", color: session.client_name ? "var(--text-primary)" : "var(--text-muted)" }}>
+                      <td className="p-3.5 text-xs text-text-primary align-middle">
+                        <div className="flex items-center gap-2">
+                          <Briefcase size={14} className="text-text-muted opacity-60" />
+                          <span className={session.client_name ? "text-text-primary" : "text-text-muted"}>
                             {session.client_name || "Universal Standard"}
                           </span>
                         </div>
                       </td>
 
                       {/* Compliance Score */}
-                      <td className="stats-value" style={{ textAlign: "left", padding: "14px 55px", verticalAlign: "middle", fontFamily: "inherit" }}>
+                      <td className="p-3.5 text-xs text-text-primary align-middle">
                         {isCompleted ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: "6px", background: scoreBg, border: `1px solid ${scoreBorder}`, color: scoreColor, fontWeight: "800", fontSize: "0.82rem" }}>
+                          <span className={`inline-flex items-center py-0.5 px-2 rounded border font-extrabold ${scoreBg} ${scoreBorder} ${scoreColor}`}>
                             {score !== null ? `${score.toFixed(1)}%` : "N/A"}
                           </span>
                         ) : isFailed ? (
-                          <span style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.15)", color: "#ef4444", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px", borderRadius: "6px" }} title={session.error_message || "Audit pipeline failed"}>
+                          <span className="bg-red-500/8 border border-red-500/15 text-red-400 text-[10px] inline-flex items-center gap-1 py-0.5 px-2 rounded" title={session.error_message || "Audit pipeline failed"}>
                             <AlertTriangle size={12} /> Failed
                           </span>
                         ) : (
-                          <span style={{ background: "rgba(0, 229, 255, 0.05)", border: "1px solid rgba(0, 229, 255, 0.12)", color: "var(--accent-cyan)", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px", borderRadius: "6px" }}>
+                          <span className="bg-accent-cyan/5 border border-accent-cyan/12 text-accent-cyan text-[10px] inline-flex items-center gap-1 py-0.5 px-2 rounded">
                             <Loader size={12} className="spin-animation" /> Auditing...
                           </span>
                         )}
                       </td>
 
                       {/* Session Date */}
-                      <td className="stats-value" style={{ textAlign: "left", padding: "14px 16px", color: "var(--text-muted)", fontSize: "0.82rem", verticalAlign: "middle", fontFamily: "'JetBrains Mono', monospace" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Clock size={12} style={{ opacity: 0.6 }} />
+                      <td className="p-3.5 text-xs text-text-muted align-middle font-mono">
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={12} className="opacity-60" />
                           <span>
                             {parseUtcDate(session.created_at).toLocaleString(undefined, {
                               month: "short",
@@ -374,41 +363,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="stats-value" style={{ textAlign: "left", padding: "14px 16px", verticalAlign: "middle" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-start", gap: "8px" }}>
+                      <td className="p-3.5 text-xs text-text-primary align-middle">
+                        <div className="flex justify-start gap-2">
                           <button
                             onClick={() => handleOpenSession(session)}
                             disabled={session.status !== "completed"}
                             title="Open visual canvas review"
-                            className="action-icon-btn"
-                            style={{
-                              background: "rgba(128, 128, 128, 0.08)",
-                              border: "1px solid rgba(255, 255, 255, 0.05)",
-                              color: session.status === "completed" ? "var(--accent-cyan)" : "var(--text-muted)",
-                              padding: "7px",
-                              borderRadius: "6px",
-                              cursor: session.status === "completed" ? "pointer" : "not-allowed",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                            }}
-                            onMouseEnter={(e) => {
-                              if (session.status === "completed") {
-                                e.currentTarget.style.background = "rgba(0, 229, 255, 0.15)";
-                                e.currentTarget.style.borderColor = "var(--accent-cyan)";
-                                e.currentTarget.style.color = "var(--bg-dark)";
-                                e.currentTarget.style.transform = "scale(1.05)";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (session.status === "completed") {
-                                e.currentTarget.style.background = "rgba(128, 128, 128, 0.08)";
-                                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.05)";
-                                e.currentTarget.style.color = "var(--accent-cyan)";
-                                e.currentTarget.style.transform = "scale(1)";
-                              }
-                            }}
+                            className="bg-transparent border border-border-color text-text-muted p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:text-accent-cyan hover:border-accent-cyan hover:bg-accent-cyan/15 hover:scale-105 transition-all disabled:opacity-50 disabled:pointer-events-none"
                           >
                             <FolderOpen size={14} />
                           </button>
@@ -419,31 +380,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                               setIsEditModalOpen(true);
                             }}
                             title="Edit custom remarks"
-                            className="action-icon-btn"
-                            style={{
-                              background: "rgba(128, 128, 128, 0.08)",
-                              border: "1px solid rgba(255, 255, 255, 0.05)",
-                              color: "var(--text-primary)",
-                              padding: "7px",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = "rgba(245, 158, 11, 0.15)";
-                              e.currentTarget.style.borderColor = "#f59e0b";
-                              e.currentTarget.style.color = "var(--bg-dark)";
-                              e.currentTarget.style.transform = "scale(1.05)";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = "rgba(128, 128, 128, 0.08)";
-                              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.05)";
-                              e.currentTarget.style.color = "var(--text-primary)";
-                              e.currentTarget.style.transform = "scale(1)";
-                            }}
+                            className="bg-transparent border border-border-color text-text-muted p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:text-amber-500 hover:border-amber-500 hover:bg-amber-500/15 hover:scale-105 transition-all"
                           >
                             <Edit size={14} />
                           </button>
@@ -453,34 +390,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                               setIsDeleteModalOpen(true);
                             }}
                             title="Purge session record"
-                            className="action-icon-btn destructive"
-                            style={{
-                              background: "rgba(239, 68, 68, 0.05)",
-                              border: "1px solid rgba(239, 68, 68, 0.1)",
-                              color: "#ef4444",
-                              padding: "7px",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
-                              e.currentTarget.style.borderColor = "#ef4444";
-                              e.currentTarget.style.transform = "scale(1.05)";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)";
-                              e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.1)";
-                              e.currentTarget.style.transform = "scale(1)";
-                            }}
+                            className="bg-transparent border border-red-500/30 text-red-400 p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-red-500/20 hover:border-red-500 hover:scale-105 transition-all"
                           >
                             <Trash2 size={14} />
                           </button>
                           {session.is_restored && (
-                            <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "4px 8px", borderRadius: "6px", background: "rgba(16, 185, 129, 0.1)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.25)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", marginLeft: "4px", boxShadow: "0 2px 4px rgba(16, 185, 129, 0.1)" }}>
+                            <span className="text-[9px] font-extrabold py-0.5 px-1.5 rounded uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 tracking-wide flex items-center ml-1 shadow-xs">
                               Restored
                             </span>
                           )}
@@ -494,33 +409,31 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         ) : (
           /* GLASSMORPHIC EMPTY STATE FALLBACK */
-          <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 24px", textAlign: "center", background: "rgba(255, 255, 255, 0.015)", border: "1px dashed rgba(255, 255, 255, 0.08)", borderRadius: "12px", marginTop: "12px", boxShadow: "inset 0 1px 3px rgba(255,255,255,0.02)" }}>
-            <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "rgba(128, 128, 128, 0.08)", border: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", marginBottom: "18px" }}>
+          <div className="flex flex-col items-center justify-center p-12 text-center bg-white/1 border border-dashed border-white/5 rounded-xl mt-3 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-white/2 border border-white/5 flex items-center justify-center text-text-muted mb-4.5">
               <Database size={24} />
             </div>
-            <h4 style={{ fontWeight: "700", color: "var(--text-primary)", fontSize: "1.1rem", marginBottom: "8px" }}>No matching archives found</h4>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: "420px", marginBottom: "22px", lineHeight: "1.6" }}>
+            <h4 className="font-bold text-text-primary text-base mb-2">No matching archives found</h4>
+            <p className="text-text-muted text-xs max-w-[420px] mb-5.5 leading-relaxed">
               {sessions && sessions.length > 0
                 ? "No historical runs match your current query or filter selectors. Reset filters to view all sessions."
                 : "No CAD compliance runs have been archived yet. Go to the review workspace to launch your first compliance check!"}
             </p>
             {sessions && sessions.length > 0 ? (
               <button
-                className="btn btn-secondary"
+                className="inline-flex items-center justify-center py-2 px-5 rounded-lg font-semibold text-xs border border-border-color text-text-muted hover:text-text-primary hover:bg-white/5 cursor-pointer transition-all duration-200"
                 onClick={() => {
                   setHistorySearchQuery("");
                   setHistoryStatusFilter("all");
                   setHistoryScoreFilter("all");
                 }}
-                style={{ padding: "8px 24px", borderRadius: "8px", fontSize: "0.85rem", cursor: "pointer" }}
               >
                 Clear all filters
               </button>
             ) : (
               <button
-                className="btn btn-primary"
+                className="inline-flex items-center justify-center gap-2 py-2 px-5 rounded-lg font-semibold text-xs cursor-pointer transition-all bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-md hover:-translate-y-0.5 hover:shadow-lg hover:brightness-105 border border-transparent disabled:opacity-50 disabled:pointer-events-none"
                 onClick={() => setCurrentNav("workspace")}
-                style={{ padding: "10px 24px", borderRadius: "8px", fontSize: "0.85rem", cursor: "pointer", display: "inline-flex", gap: "8px", alignItems: "center" }}
               >
                 <Play size={12} /> Launch Compliance Check
               </button>
@@ -529,40 +442,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         )}
       </main>
 
-      {/* Edit Remarks Modal — moved from AuditWorkspace (was lines 3230-3280) */}
+      {/* Edit Remarks Modal */}
       {isEditModalOpen && selectedSessionForEdit && (
-        <div className="frosted-glass-modal-overlay">
-          <div className="frosted-modal-card">
-            <div className="modal-header">
-              <h3 className="modal-title">Edit Session Remarks</h3>
-              <p className="modal-subtitle">Add custom notes or checker logs for this revision audit.</p>
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-bg-sidebar border border-border-color rounded-2xl p-6 shadow-2xl w-full max-w-[480px] flex flex-col gap-4 animate-scale-up">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-base font-extrabold text-text-primary m-0">Edit Session Remarks</h3>
+              <p className="text-xs text-text-muted m-0 leading-relaxed">Add custom notes or checker logs for this revision audit.</p>
             </div>
-            <div className="modal-body" style={{ marginTop: "16px" }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ marginBottom: "8px", display: "block", fontSize: "0.8rem", color: "var(--text-muted)" }}>Remarks / Notes</label>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Remarks / Notes</label>
                 <textarea
-                  className="form-input"
-                  style={{
-                    width: "100%",
-                    height: "120px",
-                    resize: "none",
-                    padding: "10px",
-                    fontSize: "0.85rem",
-                    lineHeight: "1.4",
-                    background: "rgba(0, 0, 0, 0.2)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    borderRadius: "6px",
-                    color: "var(--text-primary)"
-                  }}
+                  className="w-full bg-transparent border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer h-[120px] resize-none"
                   value={remarksText}
                   onChange={(e) => setRemarksText(e.target.value)}
                   placeholder="Enter custom remarks for this session..."
                 />
               </div>
             </div>
-            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+            <div className="flex justify-end gap-3 mt-2">
               <button
-                className="btn-neutral-outline"
+                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs border border-border-color text-text-muted hover:text-text-primary hover:bg-white/5 cursor-pointer transition-all duration-200"
                 onClick={() => {
                   setIsEditModalOpen(false);
                   setSelectedSessionForEdit(null);
@@ -572,7 +473,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 Cancel
               </button>
               <button
-                className="btn-gradient-submit"
+                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs bg-gradient-to-r from-accent-cyan to-indigo-400 hover:brightness-110 text-black cursor-pointer transition-all duration-200 hover:shadow-[0_0_12px_rgba(0,229,255,0.3)]"
                 onClick={handleSaveRemarks}
               >
                 Save Remarks
@@ -582,31 +483,31 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal — moved from AuditWorkspace (was lines 3282-3322) */}
+      {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && selectedSessionForDelete && (
-        <div className="frosted-glass-modal-overlay">
-          <div className="frosted-modal-card destructive-card">
-            <div className="modal-header">
-              <div className="warning-icon-wrapper">
-                <AlertTriangle size={24} className="destructive-warning-icon" />
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-bg-sidebar border border-border-color rounded-2xl p-6 shadow-2xl w-full max-w-[480px] flex flex-col gap-4 animate-scale-up">
+            <div className="flex flex-col gap-1">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
+                <AlertTriangle size={20} />
               </div>
-              <h3 className="modal-title destructive-title" style={{ marginTop: "12px" }}>Purge Session Record?</h3>
-              <p className="modal-subtitle destructive-desc">
+              <h3 className="text-base font-extrabold text-red-500 m-0 mt-2">Purge Session Record?</h3>
+              <p className="text-xs text-text-muted m-0 leading-relaxed">
                 You are about to permanently delete this audit session log and all associated violations from MongoDB. This action is irreversible.
               </p>
             </div>
-            <div className="modal-body" style={{ marginTop: "16px", padding: "12px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.15)", borderRadius: "6px" }}>
-              <div style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "6px" }}>
-                <span style={{ color: "var(--text-muted)" }}>Target File: <strong style={{ color: "var(--text-primary)" }}>{getDrawingName(selectedSessionForDelete.drawing_id)}</strong></span>
+            <div className="p-3 bg-red-500/5 border border-red-500/15 rounded-lg">
+              <div className="text-xs flex flex-col gap-1.5 font-mono">
+                <span className="text-text-muted">Target: <strong className="text-text-primary">{getDrawingName(selectedSessionForDelete.drawing_id)}</strong></span>
                 {selectedSessionForDelete.reference_drawing_id && (
-                  <span style={{ color: "var(--text-muted)" }}>Reference File: <strong style={{ color: "var(--text-primary)" }}>{getDrawingName(selectedSessionForDelete.reference_drawing_id)}</strong></span>
+                  <span className="text-text-muted">Reference: <strong className="text-text-primary">{getDrawingName(selectedSessionForDelete.reference_drawing_id)}</strong></span>
                 )}
-                <span style={{ color: "var(--text-muted)" }}>Session Date: <strong style={{ color: "var(--text-primary)" }}>{parseUtcDate(selectedSessionForDelete.created_at).toLocaleString()}</strong></span>
+                <span className="text-text-muted">Date: <strong className="text-text-primary">{parseUtcDate(selectedSessionForDelete.created_at).toLocaleString()}</strong></span>
               </div>
             </div>
-            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "24px" }}>
+            <div className="flex justify-end gap-3 mt-2">
               <button
-                className="btn-neutral-outline"
+                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs border border-border-color text-text-muted hover:text-text-primary hover:bg-white/5 cursor-pointer transition-all duration-200"
                 onClick={() => {
                   setIsDeleteModalOpen(false);
                   setSelectedSessionForDelete(null);
@@ -615,7 +516,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 Keep Record
               </button>
               <button
-                className="btn-destructive-submit"
+                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs bg-red-600 hover:bg-red-700 text-white cursor-pointer transition-all duration-200 shadow-md hover:shadow-red-500/25"
                 onClick={handleDeleteConfirm}
               >
                 Purge Record
