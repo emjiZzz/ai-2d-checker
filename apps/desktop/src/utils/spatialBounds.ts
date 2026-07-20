@@ -117,8 +117,26 @@ export const isEngineeringDataEntity = ({
   const isNearMargin = pctX < 0.12 || pctX > 0.88 || pctY < 0.12 || pctY > 0.88;
   if (!isStructuralAnnotation && isNearMargin && isCoordinateTick(ent.text)) return false;
 
-  const inToleranceTableZone = (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02);
-  if (inToleranceTableZone) return false;
+  // -----------------------------------------------------------------------
+  // Safe Zone Exclusion (PRIMARY)
+  // The backend's content-aware zone_detector sends absolute CAD-coordinate
+  // bounding boxes for detected safe zones (tolerance table, etc.).
+  // If the entity falls inside ANY safe zone, exclude it immediately.
+  // This overrides the legacy percentage-based tolerance table check below.
+  // -----------------------------------------------------------------------
+  const targetMetadata = (oldDrawing && drawing?.id === oldDrawing.id) ? oldDrawing.metadata : drawing?.metadata;
+  const backendSafeZones: Array<[number, number, number, number]> = targetMetadata?.safe_zones || [];
+  if (backendSafeZones.length > 0) {
+    for (const [szXmin, szYmin, szXmax, szYmax] of backendSafeZones) {
+      if (ent.x >= szXmin && ent.x <= szXmax && ent.y >= szYmin && ent.y <= szYmax) {
+        return false; // Inside a backend-detected safe zone — skip
+      }
+    }
+  } else {
+    // Fallback: legacy hardcoded percentage-based tolerance table exclusion
+    const inToleranceTableZone = (pctX >= 0.04 && pctX <= 0.42 && pctY >= 0.70 && pctY <= 1.02);
+    if (inToleranceTableZone) return false;
+  }
 
   const defaultRegions = {
     views: { xMin: 0.04, xMax: 0.68, yMin: 0.12, yMax: 0.88 },
@@ -128,7 +146,6 @@ export const isEngineeringDataEntity = ({
     titleUpperLeft: { xMin: 0.02, xMax: 0.35, yMin: 0.02, yMax: 0.35 },
     iso: { xMin: 0.62, xMax: 0.98, yMin: 0.42, yMax: 0.74 }
   };
-  const targetMetadata = (oldDrawing && drawing?.id === oldDrawing.id) ? oldDrawing.metadata : drawing?.metadata;
   const regions = targetMetadata?.regions || defaultRegions;
   const inside = (px: number, py: number, box: { xMin: number; xMax: number; yMin: number; yMax: number }) =>
     px >= box.xMin && px <= box.xMax && py >= box.yMin && py <= box.yMax;

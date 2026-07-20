@@ -20,8 +20,9 @@ class CopilotStreamRequest(BaseModel):
 )
 async def copilot_stream(body: CopilotStreamRequest):
     """
-    Streams real-time token-by-token responses from Gemini 2.0 Flash to the
-    React Copilot panel via SSE. Accepts conversation history for multi-turn context.
+    Streams real-time token-by-token responses from the configured Gemini Flash-tier
+    model (settings.GEMINI_MODEL_FLASH, see config.py) to the React Copilot panel via
+    SSE. Accepts conversation history for multi-turn context.
     Includes offline fallback if the API key is not configured.
     """
     from ...infrastructure.ai.copilot.streaming_engine import StreamingEngine

@@ -24,6 +24,7 @@ export interface Room {
   active_new_drawing_id?: string | null;
   active_audit_session_id?: string | null;
   physical_comparison_results?: any | null;
+  comparison_method?: "deterministic" | "full_ai" | "full_ai_vision";
 }
 
 interface RoomState {
@@ -33,7 +34,7 @@ interface RoomState {
   error: string | null;
 
   fetchRooms: () => Promise<void>;
-  createRoom: (name: string, description?: string, clientName?: string) => Promise<Room | null>;
+  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: "deterministic" | "full_ai" | "full_ai_vision") => Promise<Room | null>;
   openRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: (roomId: string) => Promise<boolean>;
@@ -60,7 +61,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     }
   },
 
-  createRoom: async (name, description, clientName) => {
+  createRoom: async (name, description, clientName, comparisonMethod = "deterministic") => {
     set({ error: null });
     try {
       const res = await fetch(`${baseUrl()}/api/v1/rooms`, {
@@ -70,6 +71,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
           name,
           description: description || null,
           client_name: clientName || null,
+          comparison_method: comparisonMethod,
         })
       });
       const data = await parseAndValidate<Room>(res, RoomSchema);

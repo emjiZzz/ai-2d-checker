@@ -80,6 +80,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      flexlayout-react:
+        specifier: ^0.9.2
+        version: 0.9.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       idb-keyval:
         specifier: ^6.2.6
         version: 6.2.6
@@ -1746,6 +1749,12 @@ packages:
 
   flatted@3.4.2:
     resolution: {integrity: sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA==}
+
+  flexlayout-react@0.9.2:
+    resolution: {integrity: sha512-oz04nO1VbEbVlQMDjEY9E+Q2p3wC6rnC/Y0ebc0bNGBHPY5RiXoFl4dOz6dlxedIt8dm28aEaC1KnJrqLlrUJw==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
 
   foreground-child@3.3.1:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
@@ -4455,6 +4464,11 @@ snapshots:
       keyv: 4.5.4
 
   flatted@3.4.2: {}
+
+  flexlayout-react@0.9.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
 
   foreground-child@3.3.1:
     dependencies:

@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader, Sparkles, BookOpen } from "lucide-react";
+import { Loader, BookOpen, AlertTriangle } from "lucide-react";
 import { DrawingItem, UploadState } from "../../stores/workspaceStore";
 import { DrawingLibraryPicker } from "./DrawingLibraryPicker";
 
@@ -32,12 +32,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   const [elapsed, setElapsed] = React.useState(0);
   const [tipIndex, setTipIndex] = React.useState(0);
 
-  const tips = [
-    "Delaunay Mesher: Generating 3D surface mesh nodes...",
-    "Stitching B-Rep boundary curves & topological vertices...",
-    "Mapping harmonize color groups and materials...",
-    "Integrating solid body volume & mass attributes...",
-    "Deducing geometric tolerances from model structure...",
+  const ingestSteps = [
+    "Parsing File Structure",
+    "Extracting Vector Entities",
+    "Normalizing Coordinates",
+    "Building Spatial Index",
+    "Finalizing Ingestion",
   ];
 
   React.useEffect(() => {
@@ -48,7 +48,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         setElapsed((prev) => prev + 1);
       }, 1000);
       tipInterval = setInterval(() => {
-        setTipIndex((prev) => (prev + 1) % tips.length);
+        setTipIndex((prev) => (prev + 1) % ingestSteps.length);
       }, 4000);
     } else {
       setElapsed(0);
@@ -197,73 +197,85 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       )}
 
       {uploadState === "uploading" && (
-        <div className="w-full flex flex-col items-center text-center p-2.5">
-          <div className="w-8 h-8 rounded-full bg-bg-dark border border-border-color flex items-center justify-center mb-2.5 text-accent-cyan animate-pulse shadow-[0_0_12px_rgba(0,229,255,0.25)]">
-            <Loader className="spin-animation loader-icon" size={14} />
+        <div className="w-full flex flex-col items-center text-center p-8">
+          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-white/10 flex items-center justify-center mb-6 shadow-lg">
+            <Loader className="spin-animation text-accent-cyan" size={24} />
           </div>
-          <div className="flex flex-col mb-3">
-            <span className="text-xs font-bold text-text-primary">
-              Uploading CAD Draft ({progress}%)
-            </span>
-            <span className="text-xs text-text-muted truncate max-w-[240px]">
-              {fileName}
-            </span>
+          <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
+            <span className="text-base font-bold text-zinc-100">Uploading CAD Draft...</span>
+            <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
           </div>
-          <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent-cyan rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            ></div>
+          
+          <div className="w-full max-w-[320px]">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Network Transfer</span>
+              <span className="text-xs font-mono font-bold text-accent-cyan">{progress}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+              <div
+                className="h-full bg-accent-cyan transition-all duration-300 shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
           </div>
         </div>
       )}
 
       {(uploadState === "processing" || uploadState === "validating") && (
-        <div className="w-full flex flex-col items-center text-center p-2.5">
-          <div className="w-8 h-8 rounded-full bg-bg-dark border border-border-color flex items-center justify-center mb-2.5 text-accent-cyan animate-pulse shadow-[0_0_12px_rgba(0,229,255,0.25)]">
-            <Loader className="spin-animation loader-icon" size={14} />
+        <div className="w-full flex flex-col items-center text-center p-8">
+          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-white/10 flex items-center justify-center mb-6 shadow-lg">
+            <Loader className="spin-animation text-accent-cyan" size={24} />
           </div>
-          <div className="flex flex-col mb-3">
-            <span className="text-xs font-bold text-text-primary">
-              {uploadState === "validating"
-                ? "Reconstructing Vector Entities..."
-                : "Aligning Geometrical Checkpoints..."}
+          <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
+            <span className="text-base font-bold text-zinc-100">
+              {uploadState === "validating" ? "Validating Drawing..." : "Processing File..."}
             </span>
-            <span className="text-xs text-text-muted truncate max-w-[240px]">
-              {fileName}
-            </span>
-            <span
-              className="text-xs text-text-muted truncate max-w-[240px]"
-              style={{ marginTop: "4px", opacity: 0.8 }}
-            >
-              Elapsed: {elapsed}s
-            </span>
+            <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
           </div>
-          <div className="mt-2.5 bg-white/2 py-1.5 px-3 rounded-md border border-border-color flex items-center gap-1.5">
-            <Sparkles size={11} className="tip-sparkle-icon" />
-            <span className="text-[11px] text-text-muted">{tips[tipIndex]}</span>
+          
+          <div className="w-full max-w-[320px]">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                {uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}
+              </span>
+              <span className="text-xs font-mono font-bold text-accent-cyan">
+                {Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%
+              </span>
+            </div>
+            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+              <div
+                className="h-full bg-accent-cyan transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+                style={{ width: `${Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%` }}
+              ></div>
+            </div>
           </div>
         </div>
       )}
 
       {uploadState === "failed" && (
-        <div className="flex flex-col items-center text-center p-2.5 gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 font-extrabold text-sm animate-bounce">
-            !
+        <div className="w-full flex flex-col items-center text-center p-8 relative">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-red-500/10 rounded-full blur-[60px] pointer-events-none"></div>
+          
+          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-red-500/30 flex items-center justify-center mb-5 shadow-lg text-red-500">
+            <AlertTriangle size={28} />
           </div>
-          <span className="text-xs font-bold text-red-400">
-            Pipeline Processing Failure
-          </span>
-          <p className="text-[11px] text-text-muted max-w-[280px] leading-relaxed m-0">
-            {error ||
-              "An unknown ingestion pipeline error occurred. Please verify your vector formats."}
-          </p>
-          <span
-            className="text-accent-cyan underline font-bold cursor-pointer hover:brightness-110 text-[11px] mt-1"
-            onClick={triggerFileInput}
+          
+          <h3 className="text-xl font-bold text-zinc-100 tracking-tight mb-2 relative z-10">
+            Ingestion Failed
+          </h3>
+          
+          <div className="relative z-10 w-full max-w-[340px] bg-red-950/30 border border-red-500/20 rounded-xl p-4 shadow-xl backdrop-blur-sm mb-5">
+            <p className="text-sm text-red-200 leading-relaxed m-0 font-medium">
+              {error || "An unknown ingestion pipeline error occurred. Please verify your vector formats."}
+            </p>
+          </div>
+
+          <div 
+            className="relative z-10 text-sm font-bold bg-transparent border border-red-500/40 text-red-400 hover:bg-red-500 hover:border-red-500 hover:text-white px-6 py-2 rounded-md transition-all cursor-pointer shadow-lg"
+            onClick={(e) => { e.stopPropagation(); triggerFileInput(); }}
           >
-            Retry browse
-          </span>
+            Try Another File
+          </div>
         </div>
       )}
     </div>

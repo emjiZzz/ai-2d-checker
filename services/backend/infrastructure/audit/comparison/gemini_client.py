@@ -3,6 +3,7 @@ import json
 from google import genai
 from google.genai import types
 from ....logger import logger
+from ....config import settings
 from ....api.schemas import PhysicalComparisonResponse
 
 def execute_gemini_cascade(
@@ -13,7 +14,11 @@ def execute_gemini_cascade(
     """Executes Gemini content generation cascade with error handling and fallback logic."""
     client = genai.Client(api_key=api_key)
     
-    _model_cascade = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-flash-latest"]
+    # Driven by config.py's settings.GEMINI_MODEL_CASCADE (env-controlled: GEMINI_MODEL_PRO,
+    # GEMINI_MODEL_FLASH, GEMINI_MODEL_FALLBACK) instead of a hardcoded list — Google's
+    # Gemini deprecation cadence has been fast enough this year that a hardcoded cascade
+    # goes stale within months.
+    _model_cascade = settings.GEMINI_MODEL_CASCADE
     _last_err = None
     response = None
     
@@ -80,8 +85,12 @@ def execute_title_block_ocr(
     task_prompt = "Extract the title block fields structured according to the response schema."
     contents.append(task_prompt)
 
-    # Use same model cascade retry logic as visual comparison
-    _model_cascade = ["gemini-2.5-flash", "gemini-flash-latest"]
+    # Flash-tier only — this is a bounded structured-extraction task (a handful of
+    # labeled fields from a cropped title block image), not the open-ended reasoning
+    # the full comparison pipeline needs, so it doesn't warrant the PRO tier's
+    # cost/latency. Still env-driven via settings, same reasoning as execute_gemini_cascade.
+    _model_cascade = [settings.GEMINI_MODEL_FLASH, settings.GEMINI_MODEL_FALLBACK]
+    _model_cascade = list(dict.fromkeys(m for m in _model_cascade if m))  # dedupe, preserve order
     _last_err = None
     response = None
     

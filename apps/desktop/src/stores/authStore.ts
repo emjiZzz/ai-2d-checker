@@ -190,7 +190,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         headers,
       });
     } catch (err) {
-      // Offline fallback: load cached details only on actual network/connection failure
+      // Offline fallback: load cached details only on actual network/connection failure.
+      // Intentional UI-only trust decision — this only affects what role-gated UI renders
+      // while offline. It does NOT bypass auth: every protected backend request still goes
+      // through get_current_user's server-side session-token verification, which will reject
+      // this cached role if it doesn't match a real, valid session. Not a security bug.
       const { username, role } = session;
       if (username && role) {
         set({

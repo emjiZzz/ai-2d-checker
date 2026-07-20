@@ -53,7 +53,39 @@ class Settings:
     
     # Secrets
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+
+    # Gemini model tiers. Google churns model names/deprecations fast (gemini-2.0-flash
+    # was shut down June 1 2026; gemini-2.5-pro/flash are deprecated, "no earlier than"
+    # Oct 16 2026 but not guaranteed to hold) — so every call site in this codebase
+    # reads these instead of hardcoding a model string, and these three are the only
+    # place a model upgrade/downgrade needs to happen.
+    #   PRO      — highest-reasoning tier, used for the full-AI structured comparison
+    #              pipeline where accuracy matters more than latency/cost.
+    #   FLASH    — fast/interactive tier, used for Copilot chat streaming and title
+    #              block OCR.
+    #   FALLBACK — last-resort alias if PRO/FLASH are unavailable (rate-limited,
+    #              deprecated, or mid-outage). "gemini-flash-latest" auto-points at
+    #              whatever Google currently considers their latest stable Flash model,
+    #              so it self-heals across future deprecations without a code change.
+    GEMINI_MODEL_PRO: str = os.getenv("GEMINI_MODEL_PRO", "gemini-3.1-pro-preview")
+    GEMINI_MODEL_FLASH: str = os.getenv("GEMINI_MODEL_FLASH", "gemini-3.5-flash")
+    GEMINI_MODEL_FALLBACK: str = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-flash-latest")
+
+    @property
+    def GEMINI_MODEL_CASCADE(self) -> list[str]:
+        """
+        Ordered [PRO, FLASH, FALLBACK] cascade for call sites that want the highest
+        quality available with automatic fallback on overload/deprecation, deduped
+        while preserving order (so setting PRO == FLASH doesn't retry the same model
+        twice).
+        """
+        seen: set[str] = set()
+        cascade: list[str] = []
+        for model in (self.GEMINI_MODEL_PRO, self.GEMINI_MODEL_FLASH, self.GEMINI_MODEL_FALLBACK):
+            if model and model not in seen:
+                seen.add(model)
+                cascade.append(model)
+        return cascade
     
     # ODA File Converter Auto-Discovery
     ODA_CONVERTER_PATH: str = _auto_detect_oda_converter()

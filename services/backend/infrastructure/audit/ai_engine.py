@@ -2,7 +2,6 @@ import json
 import os
 import re
 import unicodedata
-from pathlib import Path
 
 try:
     from google import genai
@@ -18,8 +17,8 @@ from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.extracted_entity import ExtractedEntity
 from ...domain.models.standard_chunk import StandardChunk
 from ...domain.models.standard_document import StandardDocument
-from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
+from .context_builder import build_structured_context, load_drawing_png
 
 class AIEngine:
     """
@@ -56,24 +55,6 @@ class AIEngine:
         return key
 
     @staticmethod
-    def _load_drawing_png(drawing_id: str) -> bytes | None:
-        """
-        Resolves the pre-rendered PNG from the storage/renderings directory and
-        returns its raw bytes for injection into the Gemini Vision multipart request.
-        Returns None if the rendering does not exist (non-fatal — falls back to text-only).
-        """
-        try:
-            render_path: Path = get_storage_root() / "renderings" / f"{drawing_id}.png"
-            if render_path.exists() and render_path.stat().st_size > 0:
-                png_bytes = render_path.read_bytes()
-                logger.info(f"Drawing PNG loaded for Gemini Vision: {render_path} ({len(png_bytes):,} bytes)")
-                return png_bytes
-            logger.warning(f"Drawing PNG not found at {render_path}. Proceeding with text-only audit.")
-        except Exception as e:
-            logger.warning(f"Failed to load drawing PNG for Vision (non-fatal): {e}")
-        return None
-
-    @staticmethod
     def _calibrate_confidence(raw: float, is_grounded: bool, has_entity: bool) -> float:
         """
         Calibrates AI confidence scores mathematically based on grounding verification
@@ -85,56 +66,6 @@ class AIEngine:
         if not has_entity:
             score *= 0.8  # Penalize sheet-global or unanchored findings
         return max(0.1, min(1.0, score))
-
-    @staticmethod
-    def _build_structured_context(entities: list, drawing: DrawingDocument) -> dict:
-        """
-        Pre-processes raw entity logs into structured engineering segments
-        to optimize LLM prompt readability and token sizes.
-        """
-        texts = [e for e in entities if e.entity_type == "text"]
-        dimensions = [e for e in entities if e.entity_type == "dimension"]
-        blocks = [e for e in entities if e.entity_type == "block"]
-        tolerances = [e for e in entities if e.entity_type == "tolerance"]
-
-        def clean_txt(ent) -> str:
-            props = ent.properties or {}
-            return (props.get("text") or props.get("value") or "").strip()
-
-        # Group and classify title block items
-        title_block_items = []
-        for txt in texts:
-            if txt.layer.lower() in ("am_bor", "border", "title", "title_block"):
-                txt_val = clean_txt(txt)
-                if txt_val:
-                    title_block_items.append(txt_val)
-
-        # Extract structured BOM cell entries
-        bom_cells = []
-        for blk in blocks:
-            attrs = blk.properties.get("attributes", {}) if blk.properties else {}
-            if attrs:
-                bom_cells.append(attrs)
-
-        return {
-            "metadata": {
-                "file_name": drawing.file_name,
-                "format": drawing.format,
-                "units": "Metric" if drawing.metadata.get("measurement", 1) == 1 else "Imperial",
-                "acad_version": drawing.metadata.get("acad_version", "unknown")
-            },
-            "layers": list(set(e.layer for e in entities)),
-            "geometry_counts": {
-                "lines": len([e for e in entities if e.entity_type == "line"]),
-                "circles": len([e for e in entities if e.entity_type == "circle"]),
-                "arcs": len([e for e in entities if e.entity_type == "arc"]),
-                "polylines": len([e for e in entities if e.entity_type == "polyline"])
-            },
-            "dimensions": [clean_txt(d) for d in dimensions if clean_txt(d)],
-            "title_block_annotations": title_block_items,
-            "bom_table_cells": bom_cells[:20],
-            "gd_and_t_frames": [clean_txt(t) for t in tolerances if clean_txt(t)]
-        }
 
     @classmethod
     async def audit_drawing(
@@ -157,7 +88,7 @@ class AIEngine:
         entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
 
         # Step 3.1: Build structured context
-        structured_context = cls._build_structured_context(entities, drawing)
+        structured_context = build_structured_context(entities, drawing)
 
         # Assemble Lessons Learned and Grounding
         lessons_text = ""
@@ -172,7 +103,7 @@ class AIEngine:
             grounding_text += f"[{chunk.section_header or 'Clause'}]: {chunk.content}\n"
 
         # Load drawing rendering PNG (Phase 1.1)
-        png_bytes = cls._load_drawing_png(str(drawing.id))
+        png_bytes = load_drawing_png(str(drawing.id))
 
         # =============================================================================
         # PASS 1: Standards & Semantic Compliance

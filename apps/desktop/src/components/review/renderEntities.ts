@@ -105,7 +105,7 @@ export const renderEntities = ({
   lightBgImage,
   drawing
 }: RenderEntitiesParams): { totalEntities: number; drawnEntities: number } => {
-  const { ctx, isExport, renderWidth, renderHeight, scale, transX, transY, minX, minY, maxX, maxY, currentViewportScale, resolutionMultiplier } = frame;
+  const { ctx, isExport, renderWidth, renderHeight, scale, transX, transY, minX, minY, maxX, maxY, resolutionMultiplier } = frame;
 
   let totalEntities = 0;
   let drawnEntities = 0;
@@ -235,7 +235,13 @@ export const renderEntities = ({
   Object.values(pathBatches).forEach(batch => {
     ctx.beginPath();
     ctx.strokeStyle = batch.stroke;
-    ctx.lineWidth = (batch.width / currentViewportScale) * resolutionMultiplier;
+    
+    // Use the true absolute context scale (`scale` from frame) to ensure constant screen-space thickness.
+    // Enforce a minimum of 1.5px on screen for better visibility, 1.0px for exports.
+    const baseThickness = isExport ? 1.0 : 1.5;
+    const effectiveWidth = Math.max(baseThickness, batch.width);
+    ctx.lineWidth = (effectiveWidth / scale) * resolutionMultiplier;
+    
     ctx.stroke(batch.path);
   });
 
@@ -305,7 +311,6 @@ export const renderViolationReticles = ({
     if (viewport.scale < 0.1 && selectedViolation?.id !== v.id) return;
 
     let coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
-    let bbox: any = isOldDrawing ? (v as any).ref_bbox : (v as any).bbox;
     if (!coords) return;
 
     const [vx, raw_vy] = coords;

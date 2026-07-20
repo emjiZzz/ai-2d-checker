@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Play, Sparkles, ChevronRight, ChevronLeft } from "lucide-react";
+import React from "react";
+import { Play, Sparkles, File, ArrowRightLeft, Activity, CheckCircle2, CircleDashed } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { ChecklistPanel } from "./ChecklistPanel";
 import { usePhysicalComparison } from "../../hooks/usePhysicalComparison";
@@ -13,10 +13,6 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
   const oldDrawing = useWorkspaceStore(s => s.oldDrawing);
   const newDrawing = useWorkspaceStore(s => s.newDrawing);
 
-  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
-  const [leftSidebarWidth, setLeftSidebarWidth] = useState(400);
-  const [isResizingLeft, setIsResizingLeft] = useState(false);
-
   const {
     runPhysicalComparisonAI,
     aiScanProgress,
@@ -25,164 +21,167 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
     resetComparison
   } = usePhysicalComparison();
 
-  // Removed aggressive resetComparison useEffect to prevent wiping restored state
-
-  // Resize Left
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isResizingLeft) {
-        const newWidth = Math.max(250, Math.min(600, e.clientX));
-        setLeftSidebarWidth(newWidth);
-      }
-    };
-    const handleMouseUp = () => {
-      setIsResizingLeft(false);
-    };
-    if (isResizingLeft) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isResizingLeft]);
-
-
   if (!(currentNav === "workspace" && oldDrawing && newDrawing)) {
     return null;
   }
 
   return (
-    <>
-      {/* 1. LEFT SIDEBAR OR INSTRUCTIONS PANEL */}
-      <aside
-        className={`bg-bg-sidebar flex flex-col h-full overflow-visible box-border shrink-0 relative border-r z-20 ${
-          !isLeftPanelCollapsed ? "border-border-color" : "border-transparent"
-        } ${isResizingLeft ? "" : "transition-all duration-300 cubic-out"}`}
-        style={{
-          width: isLeftPanelCollapsed ? '0px' : `${leftSidebarWidth}px`,
-          minWidth: isLeftPanelCollapsed ? '0px' : `${leftSidebarWidth}px`,
-        }}
-      >
-        <Button
-          variant="ghost"
-          className="absolute top-1/2 -translate-y-1/2 w-4.5 h-12 bg-zinc-900/85 backdrop-blur-sm border border-border-color border-l-0 rounded-r-lg flex items-center justify-center cursor-pointer text-text-muted z-50 transition-all duration-200 shadow-md right-[-18px] hover:right-[-24px] hover:text-accent-cyan hover:bg-blue-600/15 hover:border-accent-cyan hover:shadow-cyan-500/25 p-0"
-          onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
-          title={isLeftPanelCollapsed ? "Expand Drawings Comparison Results" : "Collapse Drawings Comparison Results"}
-        >
-          {isLeftPanelCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </Button>
-        <div
-          className="flex flex-col w-full flex-1 min-h-0 p-4 overflow-y-auto overflow-x-hidden box-border transition-opacity duration-200"
-          style={{
-            opacity: isLeftPanelCollapsed ? 0 : 1,
-            pointerEvents: isLeftPanelCollapsed ? "none" : "auto",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Sparkles size={16} style={{ color: "var(--accent-cyan)", filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))" }} />
-              <span style={{ fontSize: "0.85rem", fontWeight: 500, letterSpacing: "0.05em", color: "#e4e4e7" }}>
-                DRAWINGS COMPARISON RESULTS
-              </span>
-            </div>
-            {aiScanProgress === "idle" && (
-              <div className="flex gap-1.5 items-center">
-                <Button
-                  variant="primary"
-                  className="gap-2 font-bold bg-gradient-to-r from-accent-cyan to-indigo-400 text-black hover:shadow-[0_0_12px_rgba(0,229,255,0.35)]"
-                  onClick={runPhysicalComparisonAI}
-                >
-                  <Play size={13} fill="currentColor" />
-                  RUN COMPARISON
-                </Button>
+    <div className="flex flex-col w-full h-full overflow-y-auto overflow-x-hidden box-border bg-bg-sidebar relative">
+
+      {/* Premium Header */}
+      <div className="sticky top-0 z-20 flex items-center justify-between p-5 border-b border-white/5 bg-bg-sidebar/90 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-accent-cyan/10 border border-accent-cyan/20">
+            <Sparkles size={18} className="text-accent-cyan" />
+          </div>
+          <span className="text-sm font-bold tracking-widest text-zinc-100 uppercase">
+            AI Comparison
+          </span>
+        </div>
+      </div>
+
+      {/* Idle / Empty State */}
+      {aiScanProgress === "idle" && (
+        <div className="flex-grow flex flex-col items-center justify-center p-10 text-center relative">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-accent-cyan/5 rounded-full blur-[80px] pointer-events-none"></div>
+
+          <div className="flex flex-col items-center gap-8 relative z-10">
+
+            {/* Icon Block */}
+            <div className="relative">
+              <div className="absolute inset-0 bg-accent-cyan/10 blur-3xl rounded-full scale-125"></div>
+              <div className="relative flex items-center justify-center gap-10">
+                <div className="relative flex flex-col items-center">
+                  <File size={72} strokeWidth={1.5} className="text-zinc-400 -rotate-6" />
+                  <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[14px] font-bold text-zinc-300 tracking-tighter -rotate-6 mt-1.5">CAD</span>
+                </div>
+                <ArrowRightLeft size={32} strokeWidth={2} className="text-accent-cyan animate-pulse" />
+                <div className="relative flex flex-col items-center">
+                  <File size={72} strokeWidth={1.5} className="text-zinc-300 rotate-6" />
+                  <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[14px] font-bold text-zinc-200 tracking-tighter rotate-6 mt-1.5">CAD</span>
+                </div>
               </div>
-            )}
+            </div>
+
+            {/* Text Block */}
+            <div className="flex flex-col items-center gap-2">
+              <h3 className="text-3xl font-bold text-zinc-100 tracking-tight">
+                Ready for Comparison
+              </h3>
+              <p className="text-[15px] text-zinc-400 max-w-[320px] leading-loose">
+                Execute the AI Engine to analyze structural and metadata differences between the original and KMTI drawing.
+              </p>
+            </div>
+
+            {/* Button */}
+            <Button
+              variant="primary"
+              className="text-sm font-bold shadow-lg transition-transform hover:scale-105 active:scale-95"
+              style={{ padding: '16px 40px', height: 'auto' }}
+              onClick={runPhysicalComparisonAI}
+            >
+              <Play size={18} className="mr-3" />
+              START COMPARISON
+            </Button>
+
+          </div>
+        </div>
+      )}
+
+      {/* Loading / Scanning State */}
+      {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
+        <div className="flex-grow flex flex-col p-8 relative">
+
+          <div className="flex items-center gap-3 mb-10 border-b border-white/10 pb-5">
+            <Activity size={24} className="text-accent-cyan animate-pulse" />
+            <h4 className="text-sm font-bold text-zinc-100 uppercase tracking-widest">Analysis in Progress</h4>
           </div>
 
-          {aiScanProgress !== "idle" && aiScanProgress !== "completed" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", margin: "16px 0" }}>
-              <div className="loader spin-animation" style={{ alignSelf: "center", marginBottom: "8px" }}></div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.65rem", fontWeight: 600, color: "var(--text-muted)", background: "rgba(255,255,255,0.02)", padding: "10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "scanning_ref" || aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
-                  <span>1. SCAN ORIGINAL</span>
-                  {aiScanProgress === "scanning_ref" && <span style={{ fontSize: "0.6rem" }}>SCANNING...</span>}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "extracting" || aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
-                  <span>2. EXTRACT DATA</span>
-                  {aiScanProgress === "extracting" && <span style={{ fontSize: "0.6rem" }}>EXTRACTING...</span>}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "scanning_rev" || aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
-                  <span>3. SCAN KMTI</span>
-                  {aiScanProgress === "scanning_rev" && <span style={{ fontSize: "0.6rem" }}>SCANNING...</span>}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", color: aiScanProgress === "comparing" ? "var(--accent-cyan)" : "inherit" }}>
-                  <span>4. COMPARE MATCHES</span>
-                  {aiScanProgress === "comparing" && <span style={{ fontSize: "0.6rem" }}>COMPARING...</span>}
-                </div>
-              </div>
-              <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                <div style={{
-                  height: "100%",
-                  background: "var(--accent-cyan)",
-                  width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "100%",
-                  transition: "width 0.5s ease"
-                }}></div>
-              </div>
-            </div>
-          )}
+          <div className="flex flex-col gap-5">
+            {[
+              { id: "scanning_ref", label: "Scanning Original Drawing", activeSteps: ["scanning_ref", "extracting", "scanning_rev", "comparing"] },
+              { id: "extracting", label: "Extracting Metadata", activeSteps: ["extracting", "scanning_rev", "comparing"] },
+              { id: "scanning_rev", label: "Scanning KMTI Drawing", activeSteps: ["scanning_rev", "comparing"] },
+              { id: "comparing", label: "Comparing Matches", activeSteps: ["comparing"] }
+            ].map((step) => {
+              const isActive = aiScanProgress === step.id;
+              const isPast = step.activeSteps.includes(aiScanProgress) && !isActive;
 
-          {aiScanError && (
-            <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", padding: "12px", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "6px", color: "#ef4444", marginBottom: "16px" }}>
-              <div style={{ flexGrow: 1 }}>
-                <div style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.05em", marginBottom: "4px" }}>
-                  AI COMPARISON FAILED
+              return (
+                <div key={step.id} className={`flex items-center gap-4 p-4 rounded-lg bg-black/30 border transition-all duration-300 ${isActive ? 'border-accent-cyan/40 shadow-lg scale-[1.02]' : 'border-transparent'}`}>
+                  <div className="flex-shrink-0">
+                    {isPast ? (
+                      <CheckCircle2 size={24} className="text-emerald-500" />
+                    ) : isActive ? (
+                      <CircleDashed size={24} className="text-accent-cyan animate-spin" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full border-2 border-white/10"></div>
+                    )}
+                  </div>
+                  <div className="flex-grow flex justify-between items-center">
+                    <span className={`text-sm ${isActive ? 'text-zinc-100 font-bold' : isPast ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      {step.label}
+                    </span>
+                    {isActive && <span className="text-xs font-semibold text-accent-cyan animate-pulse">Processing...</span>}
+                  </div>
                 </div>
-                <div style={{ fontSize: "0.65rem", color: "#a1a1aa", lineHeight: 1.5 }}>
-                  {aiScanError}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { resetComparison(); runPhysicalComparisonAI(); }}
-                  className="mt-2 text-amber-500 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20"
-                >
-                  ↺ RETRY
-                </Button>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => resetComparison()}
-                className="h-6 w-6 text-zinc-500 hover:text-zinc-100 p-0"
-              >✕</Button>
-            </div>
-          )}
+              );
+            })}
+          </div>
 
-          {aiScanProgress === "completed" && (
-            <ChecklistPanel aiChecklistResults={aiChecklistResults} />
-          )}
+          <div className="mt-12">
+            <div className="flex justify-between text-xs text-zinc-400 font-medium mb-3">
+              <span className="uppercase tracking-widest">Overall Progress</span>
+              <span>
+                {aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "95%"}
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-black/60 rounded-full overflow-hidden border border-white/5">
+              <div
+                className="h-full bg-accent-cyan shadow-[0_0_10px_rgba(0,229,255,0.5)]"
+                style={{
+                  width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "95%",
+                  transition: "width 0.4s ease-out"
+                }}
+              ></div>
+            </div>
+          </div>
         </div>
-      </aside>
+      )}
 
-      <div
-        className={`left-resize-divider ${isResizingLeft ? 'active' : ''}`}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setIsResizingLeft(true);
-        }}
-        style={{
-          width: '6px',
-          cursor: 'ew-resize',
-          background: isResizingLeft ? 'rgba(0, 229, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
-          borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
-          borderRight: '1px solid rgba(255, 255, 255, 0.05)',
-          zIndex: 30,
-          transition: 'background 0.2s ease',
-          flexShrink: 0
-        }}
-      />
-    </>
+      {/* Error State */}
+      {aiScanError && (
+        <div className="m-6 flex gap-4 items-start p-6 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
+          <div className="flex-grow">
+            <div className="text-sm font-bold tracking-widest mb-2">
+              ANALYSIS FAILED
+            </div>
+            <div className="text-sm text-red-400/80 leading-relaxed mb-4">
+              {aiScanError}
+            </div>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => { resetComparison(); runPhysicalComparisonAI(); }}
+              className="text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20 h-10 text-sm font-bold gap-2"
+            >
+              <span>↺</span> RETRY SCAN
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => resetComparison()}
+            className="h-8 w-8 text-red-400/50 hover:text-red-400 p-0 hover:bg-red-500/10 rounded-full"
+          >✕</Button>
+        </div>
+      )}
+
+      {/* Completed State */}
+      {aiScanProgress === "completed" && (
+        <ChecklistPanel aiChecklistResults={aiChecklistResults} />
+      )}
+    </div>
   );
 };

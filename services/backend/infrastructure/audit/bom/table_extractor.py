@@ -5,95 +5,72 @@ from .constants import map_signature_value
 
 def extract_dynamic_regions(entities: list) -> dict:
     """
-    Determines absolute geometric boundaries for template zones dynamically based on layer and content heuristics.
-    Falls back to percentage-based bounds derived from the global sheet boundaries if discovery fails.
-    """
-    from .constants import ZONE_KEYWORDS
-    from .spatial_utils import compute_drawing_bounds
+    Determines absolute geometric boundaries for template zones.
 
-    # 1. Get canonical sheet bounds
+    Detection Priority:
+      1. CONTENT-AWARE (Primary): Semantic anchor text detection via zone_detector.
+         Finds zones by looking for signature phrases like "tolerances unless otherwise
+         specified", "Drawn by", "Parts List", etc. Then flood-fills a bounding box
+         around all text/lines spatially clustered near each anchor.
+      2. LAYER HEURISTIC (Secondary): Scores entities by layer name keywords.
+      3. PERCENTAGE FALLBACK (Last resort): Uses percentage-based bounds derived
+         from the global sheet boundary if all else fails.
+    """
+    from .spatial_utils import compute_drawing_bounds
+    from .zone_detector import detect_zones_by_content
+
+    # -----------------------------------------------------------------------
+    # Step 1: Percentage-based fallback grid (used when anchors are not found)
+    # -----------------------------------------------------------------------
     sheet_bounds = compute_drawing_bounds(entities)
-    
-    # Legacy fallbacks based on percentages
-    default_regions = {
-        "views":         { "xMin": 0.04, "xMax": 0.68, "yMin": 0.12, "yMax": 0.88 },
-        "notes":         { "xMin": 0.04, "xMax": 0.38, "yMin": 0.18, "yMax": 0.62 },
-        "bom":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.04, "yMax": 0.44 },
-        "title":         { "xMin": 0.38, "xMax": 0.98, "yMin": 0.72, "yMax": 0.98 },
-        "tolerance":     { "xMin": 0.02, "xMax": 0.40, "yMin": 0.65, "yMax": 0.98 },
-        "iso":           { "xMin": 0.62, "xMax": 0.98, "yMin": 0.42, "yMax": 0.74 }
+    default_pct = {
+        "views":            {"xMin": 0.04, "xMax": 0.68, "yMin": 0.12, "yMax": 0.88},
+        "notes":            {"xMin": 0.04, "xMax": 0.38, "yMin": 0.18, "yMax": 0.62},
+        "bom":              {"xMin": 0.62, "xMax": 0.98, "yMin": 0.04, "yMax": 0.44},
+        "title":            {"xMin": 0.38, "xMax": 0.98, "yMin": 0.72, "yMax": 0.98},
+        "tolerance":        {"xMin": 0.02, "xMax": 0.98, "yMin": 0.70, "yMax": 0.98},  # full-width bottom strip
+        "iso":              {"xMin": 0.62, "xMax": 0.98, "yMin": 0.42, "yMax": 0.74},
+        "title_upper_left": {"xMin": 0.00, "xMax": 0.38, "yMin": 0.72, "yMax": 1.00},
     }
 
     result = {}
     if sheet_bounds:
         min_x, min_y, max_x, max_y = sheet_bounds
-        w = max_x - min_x
-        h = max_y - min_y
-        for z, pct in default_regions.items():
-            result[z] = (min_x + pct["xMin"]*w, min_y + pct["yMin"]*h, min_x + pct["xMax"]*w, min_y + pct["yMax"]*h)
+        w, h = max_x - min_x, max_y - min_y
+        for z, pct in default_pct.items():
+            result[z] = (
+                min_x + pct["xMin"] * w, min_y + pct["yMin"] * h,
+                min_x + pct["xMax"] * w, min_y + pct["yMax"] * h,
+            )
     else:
-        for z in default_regions:
+        for z in default_pct:
             result[z] = (0.0, 0.0, 1000.0, 1000.0)
 
-    # 2. Heuristic Scoring
-    zone_points = {z: [] for z in ZONE_KEYWORDS}
-    
-    for e in entities:
-        if getattr(e, "entity_type", "") not in ["line", "polyline", "text", "mtext"]:
-            continue
-            
-        layer = (getattr(e, "layer", "") or "").lower()
-        
-        # Check text content if available
-        text_val = ""
-        if getattr(e, "entity_type", "") in ["text", "mtext"]:
-            raw = e.properties.get("text", "") if getattr(e, "properties", None) else ""
-            if raw:
-                # simple decode for keyword matching
-                text_val = str(raw).lower()
+    # -----------------------------------------------------------------------
+    # Step 2: Content-aware detection (PRIMARY - overrides fallback per zone)
+    # For each zone where a semantic anchor text is found, replace the
+    # percentage guess with a precise, content-grounded bounding box.
+    # -----------------------------------------------------------------------
+    try:
+        content_zones = detect_zones_by_content(entities)
+        for zone, bbox in content_zones.items():
+            if zone == "safe_zones":
+                # Propagate safe_zones list for the orchestrator to exclude
+                result["safe_zones"] = bbox
+                continue
+            if bbox is not None:
+                # Content anchor found — use the precise bbox instead of the percentage guess
+                result[zone] = bbox
+    except Exception as e:
+        # Non-fatal: if content detection fails, we still have the percentage fallbacks
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Content-aware zone detection failed (non-fatal, using fallback): {e}"
+        )
 
-        scores = {z: 0 for z in ZONE_KEYWORDS}
-        
-        for z, keywords in ZONE_KEYWORDS.items():
-            for kw in keywords:
-                if kw in layer:
-                    scores[z] += 2
-                if text_val and kw in text_val:
-                    scores[z] += 3
-
-        max_score = max(scores.values())
-        if max_score > 0:
-            # Check for tie
-            winners = [z for z, s in scores.items() if s == max_score]
-            if len(winners) == 1:
-                winner = winners[0]
-                # extract coords
-                if getattr(e, "entity_type", "") in ["line"]:
-                    geo = getattr(e, "geometry", {})
-                    if "start" in geo: zone_points[winner].append(geo["start"][:2])
-                    if "end" in geo: zone_points[winner].append(geo["end"][:2])
-                elif getattr(e, "entity_type", "") in ["polyline"]:
-                    geo = getattr(e, "geometry", {})
-                    pts = geo.get("vertices") or geo.get("points") or []
-                    for pt in pts: zone_points[winner].append(pt[:2])
-                elif getattr(e, "entity_type", "") in ["text", "mtext"]:
-                    geo = getattr(e, "geometry", {})
-                    if "insert" in geo: zone_points[winner].append(geo["insert"][:2])
-
-    # 3. Robust Bounding Box with 5th-95th Percentile Clipping
-    for z, pts in zone_points.items():
-        if len(pts) >= 4:  # require a minimum number of points to form a reliable cluster
-            xs = sorted([p[0] for p in pts])
-            ys = sorted([p[1] for p in pts])
-            idx5 = max(0, int(len(xs) * 0.05))
-            idx95 = min(len(xs) - 1, int(len(xs) * 0.95))
-            if idx95 >= idx5:
-                # Ensure we have a valid bounding box, expand slightly by 10 units for padding
-                result[z] = (xs[idx5] - 10.0, ys[idx5] - 10.0, xs[idx95] + 10.0, ys[idx95] + 10.0)
-                
     return result
 
-def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> Tuple[list, bool]:
+def extract_bom_table(entities: list, render_bounds: Optional[list] = None, bom_bbox: Optional[tuple] = None) -> Tuple[list, bool]:
     """Auto-detect drawing type (Parts vs Assembly) and extract all BOM rows.
     Returns (extracted_rows, is_assembly) where extracted_rows is a list of dicts.
     """
@@ -116,7 +93,10 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> T
               for e in entities if getattr(e, "entity_type", "") == "text" and getattr(e, "geometry", None)]
     
     # Auto-detect dynamic coordinates bounds inside the BOM quadrant
-    regions = extract_dynamic_regions(entities)
+    if bom_bbox:
+        regions = {"bom": bom_bbox}
+    else:
+        regions = extract_dynamic_regions(entities)
     
     # Assembly drawings don't have finished weight/material weight cells.
     # Check text tokens to see if "Material Wt" or "仕上重量" is present.
@@ -124,9 +104,12 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> T
     for e in entities:
         if getattr(e, "entity_type", "") == "text":
             val = (e.properties.get("text") or e.properties.get("value") or "").strip()
-            if any(k in val.lower() for k in ["material wt", "仕上重量", "finished wt", "材質", "寸法"]):
-                is_assembly = False
-                break
+            from .spatial_utils import safe_decode, strip_mtext
+            if val:
+                decoded = strip_mtext(safe_decode(val)).lower()
+                if any(k in decoded for k in ["material wt", "仕上重量", "finished wt", "材質", "寸法"]):
+                    is_assembly = False
+                    break
 
     # Native BOM block attributes parser
     native_rows = []
@@ -199,11 +182,7 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> T
     bom_box = regions.get("bom", (0, 0, max_x_sheet, max_y_sheet))
     bom_x_min, bom_y_min, bom_x_max, bom_y_max = bom_box
     
-    # Adjust absolute threshold for scale changes
-    if bom_coord_scale == 2.0:
-        bom_width = bom_x_max - bom_x_min
-        bom_x_min = bom_x_max - (bom_width * 0.42)
-
+    # Keep full BOM width even for scale=2.0 drawings to avoid cutting table cells in half
     bom_filtered = [t for t in bom_texts if bom_x_min <= t[0] <= bom_x_max and bom_y_min <= t[1] <= bom_y_max]
     
     # Group rows dynamically by their y coordinates (with ±4mm threshold)
@@ -224,31 +203,74 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None) -> T
     # Sort each row horizontally (by x coordinate) and discard rows with no valid numbers
     extracted_rows = []
     
+    # Calculate global bounding box for the entire table to prevent column shifting 
+    # when a specific row is missing values at the end (e.g. empty Finished Weight cell).
+    valid_groups = [g for g in rows_grouped if len(g) >= 4]
+    
+    # Calculate global bounding box for the entire table to prevent column shifting 
+    # when a specific row is missing values at the end (e.g. empty Finished Weight cell).
+    # Prefer the physically detected BOM table bounding box if available and reasonable.
+    global_row_min_x = bom_bbox[0] if bom_bbox else 0.0
+    global_row_w = (bom_bbox[2] - bom_bbox[0]) if bom_bbox and (bom_bbox[2] > bom_bbox[0]) else 100.0
+    
+    if not bom_bbox or global_row_w > 800:
+        if valid_groups:
+            all_xs = [item[0] for g in valid_groups for item in g]
+            global_row_min_x = min(all_xs)
+            global_row_max_x = max(all_xs)
+            global_row_w = global_row_max_x - global_row_min_x if global_row_max_x > global_row_min_x else 100.0
+
     # Assembly drawings structure: No., DWG No., TITLE, Q'ty, Remark
     # Parts drawings structure: No., Code, Dimension, Q'ty, Material Wt, Finished Wt, Remark
     for group in rows_grouped:
         group.sort(key=lambda item: item[0])
         
-        # A valid BOM row should have multiple columns (at least No, Name, Qty)
-        if len(group) < 3:
+        # A valid BOM component row should have at least 4 elements to filter out sub-totals/headers
+        if len(group) < 4:
             continue
             
         # The Item Number must be at the far left of the row (first or second element)
+        # Matches ASCII digits (e.g. 1, 2) or single alphabetical component letters (e.g. a, b, c, d)
         has_number_key = False
         number_val = None
         for item in group[:2]:
-            if re.match(r'^\d{1,3}$', item[2]):
+            if re.match(r'^[0-9]{1,3}$|^[a-zA-Z]$', item[2]):
                 has_number_key = True
                 number_val = item[2]
                 break
                 
         if not has_number_key:
             continue
+
+        # Reject BOM column header rows that slipped through the item-number check.
+        # A header row contains label text like "No.", "Material Weight", "Q'ty", etc.
+        # as cell values — real data rows never contain these as the primary cell value.
+        BOM_HEADER_LABELS = {
+            "no.", "no", "q'ty", "qty", "quantity", "remark", "remarks", "備考",
+            "material wt", "finished wt", "material weight", "finished weight",
+            "材質", "寸法", "code", "dimension", "dimension/model no",
+            "dwg no", "dwg. no", "図面番号", "title", "名称",
+            "材料寸法", "型式", "材料個数", "素材重量", "仕上重量",
+            "material weight(kg)", "finished weight(kg)",
+        }
+        is_header_row = False
+        for item in group:
+            cell_val_lower = item[2].strip().lower().replace("　", " ").replace("  ", " ")
+            if cell_val_lower in BOM_HEADER_LABELS:
+                is_header_row = True
+                break
+            # Also catch multi-value cells that start with a header label
+            if any(cell_val_lower.startswith(lbl) for lbl in BOM_HEADER_LABELS if len(lbl) > 3):
+                is_header_row = True
+                break
+        if is_header_row:
+            continue
             
         # Parse fields based on coordinate splits inside the BOM region
-        row_min_x = min(item[0] for item in group)
-        row_max_x = max(item[0] for item in group)
-        row_w = row_max_x - row_min_x if row_max_x > row_min_x else 100.0
+        # Use the global table width rather than the individual row width, 
+        # so missing cells at the right edge don't cause remaining cells to shift left.
+        row_min_x = global_row_min_x
+        row_w = global_row_w
         
         row_data = {
             "NO": number_val,

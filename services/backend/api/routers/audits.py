@@ -27,9 +27,9 @@ from ...infrastructure.utils.text import (
     extract_semantic_text_groups,
     build_title_block_table,
 )
-from ...logger import logger
+from ...logger import logger, correlation_id_var
 from ...config import settings
-from ..dependencies import get_auth_token
+from ..dependencies import get_auth_token, get_or_404
 from ..schemas import (
     StandardResponse,
     AuditSessionResponse,
@@ -65,18 +65,15 @@ async def launch_audit(
     username = None
     try:
         if x_session_token:
-            from ...core.auth import verify_jwt_token
-            payload = verify_jwt_token(x_session_token)
+            from ...core.auth import verify_session_token
+            payload = verify_session_token(x_session_token)
             username = payload.get("username")
     except Exception:
         pass
 
-    drawing = await DrawingDocument.get(request.drawing_id)
-    if not drawing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drawing document not found: {request.drawing_id}"
-        )
+    drawing = await get_or_404(
+        DrawingDocument, request.drawing_id, f"Drawing document not found: {request.drawing_id}"
+    )
 
     # Auto-Revision Comparison Resolution
     ref_drawing_id = request.reference_drawing_id
@@ -230,12 +227,7 @@ async def empty_trash_sessions():
     dependencies=[Depends(get_auth_token)]
 )
 async def get_audit_session(id: str):
-    session = await AuditSession.get(id)
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audit session not found: {id}"
-        )
+    session = await get_or_404(AuditSession, id, f"Audit session not found: {id}")
     return StandardResponse(
         success=True,
         data=AuditSessionResponse(
@@ -270,17 +262,12 @@ async def delete_audit_session(id: str, token: str = Depends(get_auth_token)):
     """
     Soft deletes the specified audit session from MongoDB.
     """
-    session = await AuditSession.get(id)
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audit session not found: {id}"
-        )
-    
+    session = await get_or_404(AuditSession, id, f"Audit session not found: {id}")
+
     username = None
     try:
-        from ...core.auth import verify_jwt_token
-        payload = verify_jwt_token(token)
+        from ...core.auth import verify_session_token
+        payload = verify_session_token(token)
         username = payload.get("username")
     except Exception:
         pass
@@ -289,6 +276,13 @@ async def delete_audit_session(id: str, token: str = Depends(get_auth_token)):
     session.deleted_at = datetime.now(timezone.utc)
     session.deleted_by = username
     await session.save()
+    
+    # Invalidate cache for associated drawings to prevent stale comparison results
+    from ...infrastructure.audit.comparison.cache_manager import ComparisonCacheManager
+    if session.drawing_id:
+        ComparisonCacheManager.clear_cache_for_drawing(session.drawing_id)
+    if session.reference_drawing_id:
+        ComparisonCacheManager.clear_cache_for_drawing(session.reference_drawing_id)
     
     return StandardResponse(
         success=True,
@@ -347,9 +341,7 @@ async def review_violation(id: str, request: ViolationReviewRequest):
     Supervisor reviewing a violation. Confirmed findings are embedded and automatically
     written to the vector store (`lessons_learned`), updating AI memory for future audits.
     """
-    violation = await AuditViolation.get(id)
-    if not violation:
-        raise HTTPException(status_code=404, detail="Audit violation not found.")
+    violation = await get_or_404(AuditViolation, id, "Audit violation not found.")
 
     violation.is_resolved = request.is_valid
     violation.resolved_at = datetime.now(timezone.utc)
@@ -432,8 +424,9 @@ async def export_pdf_report(session_id: str):
             filename=f"AI-2D-Checker_Report_{session_id}.pdf"
         )
     except Exception as err:
-        logger.error(f"Failed to compile report for session {session_id}: {str(err)}")
-        raise HTTPException(status_code=500, detail=f"PDF compilation failed: {str(err)}")
+        corr_id = correlation_id_var.get()
+        logger.exception(f"[{corr_id}] Failed to compile report for session {session_id}: {str(err)}")
+        raise HTTPException(status_code=500, detail=f"PDF compilation failed. Reference: {corr_id}")
 
 
 @router.get(
@@ -458,8 +451,9 @@ async def export_xlsx_report(session_id: str):
             filename=f"AI-2D-Checker_Report_{session_id}.xlsx"
         )
     except Exception as err:
-        logger.error(f"Failed to compile Excel report for session {session_id}: {str(err)}")
-        raise HTTPException(status_code=500, detail=f"XLSX export failed: {str(err)}")
+        corr_id = correlation_id_var.get()
+        logger.exception(f"[{corr_id}] Failed to compile Excel report for session {session_id}: {str(err)}")
+        raise HTTPException(status_code=500, detail=f"XLSX export failed. Reference: {corr_id}")
 
 
 @router.post(
@@ -469,21 +463,26 @@ async def export_xlsx_report(session_id: str):
     dependencies=[Depends(get_auth_token)]
 )
 async def perform_physical_comparison(request: PhysicalComparisonRequest):
-    ref_drawing = await DrawingDocument.get(request.reference_drawing_id)
-    rev_drawing = await DrawingDocument.get(request.drawing_id)
-    
-    if not ref_drawing or not rev_drawing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Reference drawing or revised drawing not found."
-        )
+    ref_drawing = await get_or_404(
+        DrawingDocument, request.reference_drawing_id, "Reference drawing not found."
+    )
+    rev_drawing = await get_or_404(
+        DrawingDocument, request.drawing_id, "Revised drawing not found."
+    )
 
     ref_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.reference_drawing_id).to_list()
     rev_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.drawing_id).to_list()
 
+    method = getattr(request, "comparison_method", "deterministic")
+    logger.info(f"Physical comparison dispatched with method='{method}' for drawing {request.drawing_id}")
+
     try:
-        from ...infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
-        comparison_response = await perform_drawing_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
+        if method in ("full_ai", "full_ai_vision"):
+            from ...infrastructure.audit.comparison.full_ai_orchestrator import perform_full_ai_comparison
+            comparison_response = await perform_full_ai_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities, method=method)
+        else:
+            from ...infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
+            comparison_response = await perform_drawing_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
         return StandardResponse(success=True, data=comparison_response)
     except ValueError as val_err:
         logger.warning(f"Comparison configuration error: {val_err}")
@@ -492,10 +491,11 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             detail="Gemini API Key is not configured. Please supply a valid GEMINI_API_KEY inside the system environment."
         )
     except Exception as e:
-        logger.error(f"Structured comparison failed: {str(e)}")
+        corr_id = correlation_id_var.get()
+        logger.error(f"[{corr_id}] Structured comparison failed ({method}): {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Structured comparison failed: {str(e)}"
+            detail=f"Structured comparison failed. Reference: {corr_id}"
         )
 
 

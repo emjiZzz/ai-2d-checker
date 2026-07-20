@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  Trash2,
-  Download,
-  Map
-} from "lucide-react";
+import { Maximize, Download, Map } from "lucide-react";
+import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
+import 'flexlayout-react/style/dark.css';
+
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useReviewStore } from "../../stores/reviewStore";
 import { useComplianceReportExport } from "../../hooks/useComplianceReportExport";
@@ -21,73 +17,143 @@ interface TwoDWorkspaceProps {
   currentNav: string;
 }
 
+// defaultLayoutJson removed as it was unused and contained syntax errors or type incompatibilities
+
+const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObject<any>, currentNav: string }) => {
+  const drawing = useWorkspaceStore(s => s.oldDrawing);
+  const layers = useWorkspaceStore(s => s.oldLayers);
+  const uploadState = useWorkspaceStore(s => s.oldUploadState);
+  const progress = useWorkspaceStore(s => s.oldUploadProgress);
+  const fileName = useWorkspaceStore(s => s.oldFileName);
+  const fileSize = useWorkspaceStore(s => s.oldFileSize);
+  const error = useWorkspaceStore(s => s.oldError);
+  const uploadDrawingFile = useWorkspaceStore(s => s.uploadDrawingFile);
+  const clearUpload = useWorkspaceStore(s => s.clearUpload);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 480, height: 400 });
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    if (containerRef.current) resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden relative bg-bg-dark w-full">
+      <div className="flex-grow min-h-0 min-w-0 relative flex items-center justify-center overflow-hidden" ref={containerRef}>
+        {drawing ? (
+          <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+            <DrawingCanvas
+              ref={canvasRef}
+              layers={layers}
+              width={size.width}
+              height={size.height}
+              drawing={drawing}
+            />
+            <Minimap 
+              drawing={drawing} 
+              canvasWidth={size.width} 
+              canvasHeight={size.height} 
+            />
+          </div>
+        ) : (
+          <UploadZone
+            side="old"
+            uploadState={uploadState}
+            progress={progress}
+            fileName={fileName}
+            fileSize={fileSize}
+            error={error}
+            activeDrawing={drawing}
+            uploadDrawingFile={uploadDrawingFile}
+            clearUpload={clearUpload}
+            currentNav={currentNav}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObject<any>, currentNav: string }) => {
+  const drawing = useWorkspaceStore(s => s.newDrawing);
+  const layers = useWorkspaceStore(s => s.newLayers);
+  const uploadState = useWorkspaceStore(s => s.newUploadState);
+  const progress = useWorkspaceStore(s => s.newUploadProgress);
+  const fileName = useWorkspaceStore(s => s.newFileName);
+  const fileSize = useWorkspaceStore(s => s.newFileSize);
+  const error = useWorkspaceStore(s => s.newError);
+  const uploadDrawingFile = useWorkspaceStore(s => s.uploadDrawingFile);
+  const clearUpload = useWorkspaceStore(s => s.clearUpload);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 480, height: 400 });
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    if (containerRef.current) resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden relative bg-bg-dark w-full">
+      <div className="flex-grow min-h-0 min-w-0 relative flex items-center justify-center overflow-hidden" ref={containerRef}>
+        {drawing ? (
+          <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+            <DrawingCanvas
+              ref={canvasRef}
+              layers={layers}
+              width={size.width}
+              height={size.height}
+              drawing={drawing}
+            />
+            <Minimap 
+              drawing={drawing} 
+              canvasWidth={size.width} 
+              canvasHeight={size.height} 
+            />
+          </div>
+        ) : (
+          <UploadZone
+            side="new"
+            uploadState={uploadState}
+            progress={progress}
+            fileName={fileName}
+            fileSize={fileSize}
+            error={error}
+            activeDrawing={drawing}
+            uploadDrawingFile={uploadDrawingFile}
+            clearUpload={clearUpload}
+            currentNav={currentNav}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const oldDrawing = useWorkspaceStore(s => s.oldDrawing);
   const newDrawing = useWorkspaceStore(s => s.newDrawing);
-  const oldLayers = useWorkspaceStore(s => s.oldLayers);
-  const newLayers = useWorkspaceStore(s => s.newLayers);
   const complianceScore = useWorkspaceStore(s => s.complianceScore);
   const violations = useWorkspaceStore(s => s.violations);
-  const oldUploadState = useWorkspaceStore(s => s.oldUploadState);
-  const newUploadState = useWorkspaceStore(s => s.newUploadState);
-  const oldUploadProgress = useWorkspaceStore(s => s.oldUploadProgress);
-  const newUploadProgress = useWorkspaceStore(s => s.newUploadProgress);
-  const oldFileName = useWorkspaceStore(s => s.oldFileName);
-  const newFileName = useWorkspaceStore(s => s.newFileName);
-  const oldFileSize = useWorkspaceStore(s => s.oldFileSize);
-  const newFileSize = useWorkspaceStore(s => s.newFileSize);
-  const oldError = useWorkspaceStore(s => s.oldError);
-  const newError = useWorkspaceStore(s => s.newError);
-  const compatibilityStatus = useWorkspaceStore(s => s.compatibilityStatus);
-  const uploadDrawingFile = useWorkspaceStore(s => s.uploadDrawingFile);
-  const clearUpload = useWorkspaceStore(s => s.clearUpload);
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
 
-  const viewportScaleRef = useRef(useReviewStore.getState().viewport.scale);
-  const sliderRef = useRef<HTMLInputElement>(null);
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showMinimap = useReviewStore(s => s.showMinimap);
   const toggleMinimap = useReviewStore(s => s.toggleMinimap);
 
-  // Keep slider value current without React re-renders
-  useEffect(() => {
-    const unsub = useReviewStore.subscribe((state) => {
-      const scale = state.viewport.scale;
-      if (scale !== viewportScaleRef.current) {
-        viewportScaleRef.current = scale;
-        if (sliderRef.current) sliderRef.current.value = String(scale);
-      }
-    });
-    return unsub;
-  }, []);
-
-  const containerRefOld = useRef<HTMLDivElement>(null);
-  const containerRefNew = useRef<HTMLDivElement>(null);
   const drawingCanvasRefOld = useRef<any>(null);
   const drawingCanvasRefNew = useRef<any>(null);
-  const [oldSize, setOldSize] = useState({ width: 480, height: 400 });
-  const [newSize, setNewSize] = useState({ width: 480, height: 400 });
-
-  // Update sizes when containers resize
-  useEffect(() => {
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        if (entry.target === containerRefOld.current) {
-          setOldSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-        }
-        if (entry.target === containerRefNew.current) {
-          setNewSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-        }
-      }
-    });
-
-    if (containerRefOld.current) resizeObserver.observe(containerRefOld.current);
-    if (containerRefNew.current) resizeObserver.observe(containerRefNew.current);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [oldDrawing, newDrawing]);
 
   const { exportToPDF } = useComplianceReportExport({
     oldDrawing,
@@ -97,29 +163,148 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     canvasRefs: { old: drawingCanvasRefOld, new: drawingCanvasRefNew }
   });
 
-  const getCompatibilityBadgeClass = (status: string) => {
-    const base = "flex items-center gap-1.5 py-1 px-2.5 rounded-full text-sm font-extrabold tracking-wider uppercase bg-bg-dark border transition-all duration-300";
-    switch (status.toLowerCase()) {
-      case "idle": return `${base} text-zinc-400 border-zinc-700`;
-      case "compatible": return `${base} text-emerald-400 bg-emerald-500/8 border-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.1)]`;
-      case "mismatch": return `${base} text-orange-400 bg-orange-500/8 border-orange-500/25 animate-pulse`;
-      case "unsupported": return `${base} text-red-400 bg-red-500/8 border-red-500/25`;
-      default: return `${base} text-zinc-400 border-border-color`;
+  const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
+
+  const [model, setModel] = useState<Model | null>(null);
+
+  useEffect(() => {
+    const savedLayout = localStorage.getItem(`twod-workspace-layout-v8-${activeLayoutPreset}`);
+    if (savedLayout) {
+      try {
+        const parsed = JSON.parse(savedLayout);
+        setModel(Model.fromJson(parsed));
+        return; // Early return, layout hydrated from storage
+      } catch (e) {
+        console.error("Failed to parse saved layout", e);
+      }
+    }
+
+    // Generate layout based on preset if no saved layout exists
+    const globalOpts = {
+      tabEnableClose: true,
+      tabSetHeaderHeight: 32,
+      tabSetTabStripHeight: 32,
+      enableEdgeDock: true,
+      marginInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      splitterSize: 6,
+      tabEnableFloat: true,
+      tabEnablePopout: true
+    };
+
+    let layoutNode: any;
+
+    const oldFileName = useWorkspaceStore.getState().oldDrawing?.file_name;
+    const newFileName = useWorkspaceStore.getState().newDrawing?.file_name;
+    const hasResults = complianceScore !== null;
+
+    if (activeLayoutPreset === 'left') {
+      layoutNode = { type: "row", weight: 100, children: [
+        { type: "tabset", weight: 20, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
+        { type: "tabset", weight: 40, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+        { type: "tabset", weight: 40, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+        ...(hasResults ? [{ type: "tabset", weight: 20, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+      ]};
+    } else if (activeLayoutPreset === 'right') {
+      layoutNode = { type: "row", weight: 100, children: [
+        { type: "tabset", weight: 40, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+        { type: "tabset", weight: 40, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+        ...(hasResults ? [{ type: "tabset", weight: 20, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+      ]};
+    } else {
+      // grid default
+      layoutNode = { type: "row", weight: 100, children: [
+        { type: "tabset", weight: 20, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
+        { type: "tabset", weight: 32.5, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+        { type: "tabset", weight: 32.5, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+        ...(hasResults ? [{ type: "tabset", weight: 15, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+      ]};
+    }
+
+    const newJson: IJsonModel = { global: globalOpts, layout: layoutNode };
+    setModel(Model.fromJson(newJson));
+    localStorage.setItem(`twod-workspace-layout-v8-${activeLayoutPreset}`, JSON.stringify(newJson));
+  }, [activeLayoutPreset]);
+
+  // Rename tabs when filenames change
+  const oldFileNameStr = useWorkspaceStore(s => s.oldDrawing?.file_name);
+  const newFileNameStr = useWorkspaceStore(s => s.newDrawing?.file_name);
+  useEffect(() => {
+    if (!model) return;
+    const oldNode = model.getNodeById("originalCanvasTab");
+    if (oldNode) {
+      model.doAction(Actions.renameTab("originalCanvasTab", oldFileNameStr || "Original Drawing"));
+    }
+    const newNode = model.getNodeById("kmtiCanvasTab");
+    if (newNode) {
+      model.doAction(Actions.renameTab("kmtiCanvasTab", newFileNameStr || "KMTI Drawing"));
+    }
+  }, [model, oldFileNameStr, newFileNameStr]);
+
+  const handleModelChange = (model: Model, _action: Action) => {
+    localStorage.setItem(`twod-workspace-layout-v8-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
+  };
+
+  const prevScoreRef = useRef(complianceScore);
+  const isInitialModelLoadRef = useRef(true);
+
+  useEffect(() => {
+    if (!model) return;
+    
+    const node = model.getNodeById("rightPanelTab");
+    const hasResults = complianceScore !== null;
+
+    if (isInitialModelLoadRef.current) {
+       isInitialModelLoadRef.current = false;
+       if (!hasResults && node) {
+          model.doAction(Actions.deleteTab("rightPanelTab"));
+       }
+    } else {
+       const wasNull = prevScoreRef.current === null;
+       const isNull = !hasResults;
+       if (wasNull && !isNull && !node) {
+          model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+       } else if (!wasNull && isNull && node) {
+          model.doAction(Actions.deleteTab("rightPanelTab"));
+       }
+    }
+    prevScoreRef.current = complianceScore;
+  }, [complianceScore, model]);
+
+  const handleAction = (action: Action) => {
+    if (action.type === Actions.DELETE_TAB) {
+      const node = model?.getNodeById(action.data.node) as TabNode | undefined;
+      if (node) {
+        const component = node.getComponent();
+        if (component === "originalCanvas") {
+          useWorkspaceStore.getState().clearUpload("old");
+          return undefined; // prevent deletion
+        }
+        if (component === "kmtiCanvas") {
+          useWorkspaceStore.getState().clearUpload("new");
+          return undefined;
+        }
+      }
+    }
+    return action;
+  };
+
+  const factory = (node: TabNode) => {
+    const component = node.getComponent();
+    if (component === "leftPanel") {
+      return <TwoDLeftPanel currentNav={currentNav} />;
+    }
+    if (component === "rightPanel") {
+      return <TwoDRightPanel currentNav={currentNav} />;
+    }
+    if (component === "originalCanvas") {
+      return <OriginalDrawingPanel canvasRef={drawingCanvasRefOld} currentNav={currentNav} />;
+    }
+    if (component === "kmtiCanvas") {
+      return <KMTIDrawingPanel canvasRef={drawingCanvasRefNew} currentNav={currentNav} />;
     }
   };
 
-  const getCompatibilityDotClass = (status: string) => {
-    const base = "w-1.5 h-1.5 rounded-full";
-    switch (status.toLowerCase()) {
-      case "idle": return `${base} bg-zinc-500`;
-      case "compatible": return `${base} bg-emerald-500`;
-      case "mismatch": return `${base} bg-orange-500`;
-      case "unsupported": return `${base} bg-red-500`;
-      default: return `${base} bg-zinc-500`;
-    }
-  };
-
-  if (!hasHydrated) {
+  if (!hasHydrated || !model) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-bg-dark text-text-muted">
         <div className="flex flex-col items-center gap-3">
@@ -131,202 +316,41 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   }
 
   return (
-    <div className="flex flex-grow h-full overflow-hidden min-w-0">
-      <TwoDLeftPanel currentNav={currentNav} />
-
+    <div className="flex flex-grow h-full overflow-hidden min-w-0 bg-bg-dark">
       {currentNav === "workspace" && (
-        <div className="flex flex-grow h-full overflow-hidden min-w-0">
-          <main className="flex-grow h-full min-h-0 min-w-0 flex flex-col p-5 overflow-hidden border-r border-border-color box-border">
-            <div className="flex-grow bg-bg-sidebar border border-border-color rounded-xl flex flex-col overflow-hidden min-h-0 min-w-0 shadow-sm data-[theme=hc-dark]:shadow-md">
-              <div className="flex items-center justify-between bg-bg-dark border-b border-border-color py-2 px-4 gap-3 shrink-0 w-full">
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  <h3 className="text-sm font-bold flex items-center border-l-[3px] border-accent-cyan pl-2.5 text-text-primary m-0">
-                    Stage 1: Drawing Pair Ingestion
-                  </h3>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div className={getCompatibilityBadgeClass(compatibilityStatus)}>
-                    <span className={getCompatibilityDotClass(compatibilityStatus)}></span>
-                    <span>
-                      {compatibilityStatus === "Idle" && "Awaiting Pair Ingestion"}
-                      {compatibilityStatus === "Compatible" && `COMPATIBLE: ${oldDrawing?.file_name.split(".").pop()?.toUpperCase()} ↁE${newDrawing?.file_name.split(".").pop()?.toUpperCase()}`}
-                      {compatibilityStatus === "Mismatch" && "FORMAT MISMATCH"}
-                      {compatibilityStatus === "Unsupported" && "UNSUPPORTED EXTENSION"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        const vp = useReviewStore.getState().viewport;
-                        setReviewViewport({ ...vp, scale: Math.min(25, vp.scale * 1.25) });
-                      }}
-                      title="Zoom In"
-                    >
-                      <ZoomIn size={20} />
-                    </Button>
-                    <input
-                      ref={sliderRef}
-                      type="range"
-                      min="0.1"
-                      max="25"
-                      step="0.1"
-                      defaultValue={String(viewportScaleRef.current)}
-                      onChange={(e) => {
-                        const vp = useReviewStore.getState().viewport;
-                        setReviewViewport({ ...vp, scale: parseFloat(e.target.value) });
-                      }}
-                      className="w-24 accent-accent-cyan cursor-pointer mx-2"
-                      title="Mouse Zoom Control"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        const vp = useReviewStore.getState().viewport;
-                        setReviewViewport({ ...vp, scale: Math.max(0.1, vp.scale / 1.25) });
-                      }}
-                      title="Zoom Out"
-                    >
-                      <ZoomOut size={20} />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
-                      title="Reset Viewport"
-                    >
-                      <Maximize size={20} />
-                    </Button>
-                    <div className="w-px h-6 bg-border-color mx-1"></div>
-                    <Button
-                      variant={showMinimap ? "primary" : "outline"}
-                      size="icon"
-                      onClick={toggleMinimap}
-                      title="Toggle Interactive Minimap"
-                    >
-                      <Map size={20} />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-grow min-h-0 min-w-0 flex overflow-hidden">
-                {/* 1. LEFT CANVAS - REFERENCE DRAWING */}
-                <div className="flex-1 flex flex-col border-r border-border-color h-full overflow-hidden relative">
-                  <div className="flex justify-between items-center bg-bg-dark border-b border-border-color py-1.5 px-3 shrink-0">
-                    <div className="text-sm font-bold text-text-primary uppercase tracking-wider">Original Drawing</div>
-                    {oldDrawing && (
-                      <div className="flex items-center gap-1.5 py-0.5 px-2.5 rounded bg-bg-dark border border-border-color text-sm text-text-primary transition-all duration-200 border-l-[3px] border-l-accent-cyan">
-                        <span className="font-medium max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={oldDrawing.file_name}>
-                          {oldDrawing.file_name}
-                        </span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5 text-zinc-500 hover:text-red-500" onClick={() => clearUpload("old")} title="Remove reference drawing">
-                          <Trash2 size={10} />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-grow min-h-0 min-w-0 bg-bg-dark relative flex items-center justify-center overflow-hidden" ref={containerRefOld}>
-                    {oldDrawing ? (
-                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                        <DrawingCanvas
-                          ref={drawingCanvasRefOld}
-                          layers={oldLayers}
-                          width={oldSize.width}
-                          height={oldSize.height}
-                          drawing={oldDrawing}
-                        />
-                        <Minimap 
-                          drawing={oldDrawing} 
-                          canvasWidth={oldSize.width} 
-                          canvasHeight={oldSize.height} 
-                        />
-                      </div>
-                    ) : (
-                      <UploadZone
-                        side="old"
-                        uploadState={oldUploadState}
-                        progress={oldUploadProgress}
-                        fileName={oldFileName}
-                        fileSize={oldFileSize}
-                        error={oldError}
-                        activeDrawing={oldDrawing}
-                        uploadDrawingFile={uploadDrawingFile}
-                        clearUpload={clearUpload}
-                        currentNav={currentNav}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. RIGHT CANVAS - REVISION DRAWING */}
-                <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-                  <div className="flex justify-between items-center bg-bg-dark border-b border-border-color py-1.5 px-3 shrink-0">
-                    <div className="text-sm font-bold text-text-primary uppercase tracking-wider">KMTI Drawing</div>
-                    {newDrawing && (
-                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                        <div className="flex items-center gap-1.5 py-0.5 px-2.5 rounded bg-bg-dark border border-border-color text-sm text-text-primary transition-all duration-200 border-l-[3px] border-l-purple-500">
-                          <span className="font-medium max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={newDrawing.file_name}>
-                            {newDrawing.file_name}
-                          </span>
-                          <Button variant="ghost" size="icon" className="h-5 w-5 text-zinc-500 hover:text-red-500" onClick={() => clearUpload("new")} title="Remove revision drawing">
-                            <Trash2 size={10} />
-                          </Button>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1.5"
-                          onClick={exportToPDF}
-                          title="Export drawing pair as PDF"
-                        >
-                          <Download size={12} />
-                          <span>PDF</span>
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-grow min-h-0 min-w-0 bg-bg-dark relative flex items-center justify-center overflow-hidden" ref={containerRefNew}>
-                    {newDrawing ? (
-                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                        <DrawingCanvas
-                          ref={drawingCanvasRefNew}
-                          layers={newLayers}
-                          width={newSize.width}
-                          height={newSize.height}
-                          drawing={newDrawing}
-                        />
-                        <Minimap 
-                          drawing={newDrawing} 
-                          canvasWidth={newSize.width} 
-                          canvasHeight={newSize.height} 
-                        />
-                      </div>
-                    ) : (
-                      <UploadZone
-                        side="new"
-                        uploadState={newUploadState}
-                        progress={newUploadProgress}
-                        fileName={newFileName}
-                        fileSize={newFileSize}
-                        error={newError}
-                        activeDrawing={newDrawing}
-                        uploadDrawingFile={uploadDrawingFile}
-                        clearUpload={clearUpload}
-                        currentNav={currentNav}
-                      />
-                    )}
-                  </div>
-                </div>
+        <div className="flex flex-grow h-full overflow-hidden min-w-0 flex-col">
+          <div className="flex items-center justify-between bg-bg-dark border-b border-border-color py-2 px-4 gap-3 shrink-0 w-full z-10 shadow-sm data-[theme=hc-dark]:shadow-md">
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <h3 className="text-sm font-bold flex items-center border-l-[3px] border-accent-cyan pl-2.5 text-text-primary m-0">
+                Stage 1: Drawing Pair Ingestion
+              </h3>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              {newDrawing && (
+                <Button variant="outline" size="sm" onClick={exportToPDF} className="h-8 text-xs border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1.5" title="Export drawing pair as PDF">
+                  <Download size={14} /> PDF
+                </Button>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Button variant="outline" size="icon" onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })} title="Reset Viewport">
+                  <Maximize size={20} />
+                </Button>
+                <div className="w-px h-6 bg-border-color mx-1"></div>
+                <Button variant={showMinimap ? "primary" : "outline"} size="icon" onClick={toggleMinimap} title="Toggle Interactive Minimap">
+                  <Map size={20} />
+                </Button>
               </div>
             </div>
-          </main>
-
-          <TwoDRightPanel currentNav={currentNav} />
+          </div>
+          
+          <div className="flex-grow relative min-h-0 min-w-0 workspace-flexlayout-container">
+            <Layout 
+              model={model} 
+              factory={factory} 
+              onModelChange={handleModelChange}
+              onAction={handleAction}
+            />
+          </div>
         </div>
       )}
     </div>

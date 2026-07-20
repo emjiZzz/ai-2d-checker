@@ -22,7 +22,9 @@ class SpatialDiffer:
         Normalizes text to gracefully handle standard "Copy-Trace" upgrades.
         For example: "Dia 25" -> "ø25", ignoring extra spaces.
         """
-        t = text.lower().replace(" ", "").replace("\n", "")
+        import unicodedata
+        t = unicodedata.normalize("NFKC", text)
+        t = t.lower().replace(" ", "").replace("\n", "")
         # Common standard upgrades
         t = t.replace("dia", "ø").replace("diameter", "ø")
         t = t.replace("deg", "°").replace("degrees", "°")
@@ -60,14 +62,19 @@ class SpatialDiffer:
                 norm_txt = SpatialDiffer._normalize_text(txt)
                 if txt and len(txt) > 2 and norm_txt in ref_text_map:
                     rev_coord = SpatialDiffer._get_entity_coords(e)
-                    # Find closest match if multiple
-                    for ref_coord in ref_text_map[norm_txt]:
-                        dx = rev_coord[0] - ref_coord[0]
-                        dy = rev_coord[1] - ref_coord[1]
-                        deltas_x.append(round(dx, 1))
-                        deltas_y.append(round(dy, 1))
-                        matched_count += 1
-                        break # Just take the first one for offset estimation
+                    candidates = ref_text_map[norm_txt]
+                    # Pick the nearest ref coordinate when a normalized text has multiple
+                    # ref entities (e.g. repeated dimension labels), not just the first in
+                    # list order — this only affects offset estimation (median-smoothed below).
+                    ref_coord = min(
+                        candidates,
+                        key=lambda c: (rev_coord[0] - c[0]) ** 2 + (rev_coord[1] - c[1]) ** 2
+                    )
+                    dx = rev_coord[0] - ref_coord[0]
+                    dy = rev_coord[1] - ref_coord[1]
+                    deltas_x.append(round(dx, 1))
+                    deltas_y.append(round(dy, 1))
+                    matched_count += 1
 
         total_rev_texts = sum(1 for e in rev_entities if getattr(e, 'entity_type', '') == 'text')
         is_mismatch = False
@@ -153,53 +160,65 @@ class SpatialDiffer:
             distance_threshold = 150.0  # Wide search radius for jitter tolerance
 
         # --- PHASE B: Greedy Bipartite Spatial Matching ---
-        # Generate all possible pairs within threshold
-        potential_pairs = []
-        for rev in rev_texts:
-            for ref in ref_texts:
-                dist = math.sqrt((rev["x"] - ref["x"])**2 + (rev["y"] - ref["y"])**2)
-                if dist <= distance_threshold:
-                    # Score: Distance + Penalty if text differs
-                    # Prefer exact semantic matches first, then fall back to spatial proximity
-                    score = dist if rev["clean_text"] == ref["clean_text"] else dist + 1000.0
-                    potential_pairs.append((score, dist, rev, ref))
-
-        # Sort pairs by best score (Greedy Hungarian approximation)
-        potential_pairs.sort(key=lambda x: x[0])
-
         markings = []
 
-        # Lock in pairs
-        for score, dist, rev, ref in potential_pairs:
-            if rev["matched"] or ref["matched"]:
-                continue
+        def match_pass(threshold: float, same_text_only: bool = False):
+            potential_pairs = []
+            for rev in rev_texts:
+                if rev.get("matched"): continue
+                for ref in ref_texts:
+                    if ref.get("matched"): continue
+                    dist = math.sqrt((rev["x"] - ref["x"])**2 + (rev["y"] - ref["y"])**2)
+                    if dist <= threshold:
+                        is_same_text = rev["clean_text"] == ref["clean_text"]
+                        if same_text_only and not is_same_text:
+                            # Widened pass: a long-range match between *different* text was
+                            # never a structural edit, it's a false pair — skip it entirely
+                            # rather than letting the dist+1000 fallback pick it up.
+                            continue
+                        score = dist if is_same_text else dist + 1000.0
+                        potential_pairs.append((score, dist, rev, ref))
             
-            # Pair confirmed!
-            rev["matched"] = True
-            ref["matched"] = True
+            potential_pairs.sort(key=lambda x: x[0])
             
-            if rev["clean_text"] == ref["clean_text"]:
-                markings.append({
-                    "entity_id": rev["id"],
-                    "text_content": rev["text"],
-                    "status": "MATCHED",
-                    "details": "Element verified and matches reference.",
-                    "category": category,
-                    "coordinates": [rev["raw_x"], rev["raw_y"]],
-                    "ref_coordinates": [ref["x"], ref["y"]]
-                })
-            else:
-                # Text changed but spatial anchor is same -> Standard Upgrade or Typo
-                markings.append({
-                    "entity_id": rev["id"],
-                    "text_content": rev["text"],
-                    "original_value": ref["text"],
-                    "status": "CHANGED",
-                    "details": f"Dimension/Note updated: '{ref['text']}' -> '{rev['text']}'",
-                    "category": category,
-                    "coordinates": [rev["raw_x"], rev["raw_y"]],
-                    "ref_coordinates": [ref["x"], ref["y"]]
-                })
+            for score, dist, rev, ref in potential_pairs:
+                if rev.get("matched") or ref.get("matched"):
+                    continue
+                
+                rev["matched"] = True
+                ref["matched"] = True
+                
+                if rev["clean_text"] == ref["clean_text"]:
+                    markings.append({
+                        "entity_id": rev["id"],
+                        "text_content": rev["text"],
+                        "status": "MATCHED",
+                        "details": "Element verified and matches reference.",
+                        "category": category,
+                        "coordinates": [rev["raw_x"], rev["raw_y"]],
+                        "ref_coordinates": [ref["x"], ref["y"]]
+                    })
+                else:
+                    markings.append({
+                        "entity_id": rev["id"],
+                        "text_content": rev["text"],
+                        "original_value": ref["text"],
+                        "status": "CHANGED",
+                        "details": f"Dimension/Note updated: '{ref['text']}' -> '{rev['text']}'",
+                        "category": category,
+                        "coordinates": [rev["raw_x"], rev["raw_y"]],
+                        "ref_coordinates": [ref["x"], ref["y"]]
+                    })
+
+        # Pass 1: Standard threshold
+        match_pass(distance_threshold)
+        
+        # Pass 2: Widened threshold for unmatched leftovers to catch large-distance structural
+        # edits — same-text matches only. A cross-text match at 5x the normal search radius was
+        # never a structural edit (it's a false pair, most likely on drawings with repeated short
+        # dimension labels), so the fallback score+1000 escape hatch is intentionally dropped here.
+        widened_threshold = max(150.0, distance_threshold * 5.0)
+        match_pass(widened_threshold, same_text_only=True)
 
         # Sweep unmatched REVs -> ADDED
         for rev in rev_texts:

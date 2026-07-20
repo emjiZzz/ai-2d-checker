@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useReviewStore } from "../stores/reviewStore";
+import { useRoomStore } from "../stores/roomStore";
 import { computeBounds } from "../utils/spatialBounds";
 import { generateComparisonMarkings } from "../utils/markerGenerator";
 import { buildHeaders, baseUrl, parseOrThrow } from "../services/fetchUtils";
@@ -20,6 +21,8 @@ export const usePhysicalComparison = () => {
     setAiScanError
   } = useWorkspaceStore();
 
+  const activeRoom = useRoomStore((s) => s.activeRoom);
+
   const resetComparison = useCallback(() => {
     setAiChecklistResults({});
     setViolations([]);
@@ -30,22 +33,42 @@ export const usePhysicalComparison = () => {
   const runPhysicalComparisonAI = async () => {
     if (!oldDrawing || !newDrawing) return;
 
-    setAiScanProgress("comparing");
     setAiScanError(null);
 
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180_000); // 3 minutes timeout
       
-      const res = await fetch(`${baseUrl()}/api/v1/audits/physical-comparison`, {
+      // Start the fetch request immediately
+      const comparisonMethod = activeRoom?.comparison_method ?? "deterministic";
+      const fetchPromise = fetch(`${baseUrl()}/api/v1/audits/physical-comparison`, {
         method: "POST",
         headers: buildHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           reference_drawing_id: oldDrawing.id,
-          drawing_id: newDrawing.id
+          drawing_id: newDrawing.id,
+          comparison_method: comparisonMethod,
         }),
         signal: controller.signal
       });
+
+      // Visually step through the sequence to simulate real progress
+      setAiScanProgress("scanning_ref");
+      await new Promise(r => setTimeout(r, 1200));
+      
+      if (controller.signal.aborted) throw new Error("Aborted");
+      setAiScanProgress("extracting");
+      await new Promise(r => setTimeout(r, 1500));
+      
+      if (controller.signal.aborted) throw new Error("Aborted");
+      setAiScanProgress("scanning_rev");
+      await new Promise(r => setTimeout(r, 1200));
+      
+      if (controller.signal.aborted) throw new Error("Aborted");
+      setAiScanProgress("comparing");
+      
+      // Wait for the actual backend to finish
+      const res = await fetchPromise;
       clearTimeout(timeoutId);
       
       const data = await parseOrThrow<any>(res);

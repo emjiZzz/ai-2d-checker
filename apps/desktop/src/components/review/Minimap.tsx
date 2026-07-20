@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { fetchWithAuth } from '../../services/fetchUtils';
-import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
+import { getNormalization, parseBounds, clampViewport } from '../../utils/coordinateTransform';
 import { Map as MapIcon } from 'lucide-react';
 
 // Shared cache to prevent duplicate network requests when both Old and New panels load the same drawing
@@ -173,11 +173,13 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
     const targetWorldX = worldX - viewWWorld / 2;
     const targetWorldY = worldY - viewHWorld / 2;
 
-    setViewport({
+    const clampedVp = clampViewport({
       ...vp,
       x: -(targetWorldX - norm.xmin) * effectiveScale,
       y: -(targetWorldY - norm.ymin) * effectiveScale,
-    });
+    }, bounds, canvasWidth, canvasHeight);
+
+    setViewport(clampedVp);
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -206,6 +208,7 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
     <div
       className="minimap-container"
       style={{
+        boxSizing: 'content-box',
         position: 'absolute',
         top: '8px',
         left: '8px',
@@ -267,6 +270,7 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
       {!thumbImage && bounds && (
         <div
           style={{
+            boxSizing: 'border-box',
             position: 'absolute',
             left: `${box.offsetX}px`,
             top: `${box.offsetY}px`,
@@ -283,12 +287,14 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
       <div
         ref={viewportBoxRef}
         style={{
+          boxSizing: 'border-box',
           position: 'absolute',
           left: `${box.left}px`,
           top: `${box.top}px`,
           width: `${box.width}px`,
           height: `${box.height}px`,
           border: '2px solid #ef4444',
+          borderRadius: '4px',
           boxShadow: '0 0 6px rgba(239,68,68,0.6)',
           background: 'transparent',
           pointerEvents: 'none',

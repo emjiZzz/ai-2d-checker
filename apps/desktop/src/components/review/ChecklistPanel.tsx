@@ -39,6 +39,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
       if (cleanedParts[0] === "") cleanedParts.shift();
       if (cleanedParts[cleanedParts.length - 1] === "") cleanedParts.pop();
 
+      // Support both 3-col (FIELD|ORIG|KMTI|STATUS) and 4-col (ANNOTATION|ORIG|REV|STATUS) formats
       const field = cleanedParts[0] || "";
       const original = cleanedParts[1] || "";
       const kmti = cleanedParts[2] || "";
@@ -89,7 +90,14 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             return (
               <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.02)", padding: "5px 8px", borderRadius: "5px", border: "1px solid rgba(255,255,255,0.04)" }}>
                 <span style={{ fontSize: "0.72rem", color: "#a1a1aa", fontWeight: 400 }}>{label}</span>
-                <span style={{ fontSize: "0.68rem", fontWeight: 600, color, letterSpacing: "0.02em" }}>{res.status}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "0.68rem", fontWeight: 600, color, letterSpacing: "0.02em" }}>
+                  {res.status === "MATCHED" && (
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
+                    </svg>
+                  )}
+                  {res.status}
+                </span>
               </div>
             );
           })}
@@ -255,10 +263,16 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{
-                  fontSize: "0.72rem", fontWeight: 500, padding: "3px 8px", borderRadius: "5px",
+                  display: "flex", alignItems: "center", gap: "5px",
+                  fontSize: "0.72rem", fontWeight: 600, padding: "3px 8px", borderRadius: "5px",
                   color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}12`,
                   letterSpacing: "0.04em"
                 }}>
+                  {result.status === "MATCHED" && (
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
+                    </svg>
+                  )}
                   {result.status}
                 </span>
                 {isExpanded ? <ChevronDown size={14} color="#a1a1aa" /> : <ChevronRight size={14} color="#a1a1aa" />}
@@ -267,7 +281,88 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
             {isExpanded && (
               <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", gap: "14px" }}>
-                {result.difference_summary && (
+
+                {/* ── MATCHED: All-Clear confirmation block with verified content ── */}
+                {result.status === "MATCHED" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {/* Header badge */}
+                    <div style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                      padding: "14px 16px",
+                      background: "rgba(16, 185, 129, 0.07)",
+                      border: "1px solid rgba(16, 185, 129, 0.25)",
+                      borderRadius: "10px",
+                    }}>
+                      <div style={{
+                        flexShrink: 0,
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        background: "rgba(16, 185, 129, 0.15)",
+                        border: "1.5px solid rgba(16, 185, 129, 0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="2 7.5 5.5 11 12 3" />
+                        </svg>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#10b981", marginBottom: "4px", letterSpacing: "0.04em" }}>
+                          ✓ VERIFIED — NO DISCREPANCIES
+                        </div>
+                        <div style={{ fontSize: "0.82rem", color: "#a1a1aa", lineHeight: "1.5" }}>
+                          {result.difference_summary || "All entries in this section match between the reference and revision drawings."}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Verified content comparison — show what was verified */}
+                    {(result.reference_content || result.revision_content) && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "rgba(16,185,129,0.8)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          Verified Contents
+                        </div>
+                        <div style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "8px",
+                          background: "rgba(0,0,0,0.2)",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          border: "1px solid rgba(16,185,129,0.12)"
+                        }}>
+                          {/* Column headers */}
+                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#a1a1aa", padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            Original Drawing
+                          </div>
+                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#10b981", padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            Revision Drawing
+                          </div>
+                          {/* Content values */}
+                          <div style={{ fontSize: "0.78rem", color: "#94a3b8", padding: "10px", lineHeight: "1.5", wordBreak: "break-word", fontFamily: "'JetBrains Mono', monospace", whiteSpace: "pre-wrap" }}>
+                            {result.reference_content || "—"}
+                          </div>
+                          <div style={{ fontSize: "0.78rem", color: "#e4e4e7", padding: "10px", lineHeight: "1.5", wordBreak: "break-word", fontFamily: "'JetBrains Mono', monospace", whiteSpace: "pre-wrap" }}>
+                            {result.revision_content || "—"}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Engineering discrepancy details (usually empty for MATCHED, but show if present) */}
+                    {result.engineering_discrepancy_details && result.engineering_discrepancy_details.trim() && (
+                      <div style={{ fontSize: "0.78rem", color: "#a1a1aa", padding: "8px 12px", background: "rgba(16,185,129,0.04)", borderRadius: "6px", border: "1px solid rgba(16,185,129,0.1)", lineHeight: "1.5" }}>
+                        {result.engineering_discrepancy_details}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {result.status !== "MATCHED" && result.difference_summary && (
                   <div>
                     <div style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>DIFFERENCE SUMMARY</div>
                     <div style={{ fontSize: "0.85rem", color: "#e4e4e7", lineHeight: "1.5", fontWeight: 100 }}>{result.difference_summary}</div>
@@ -295,31 +390,28 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                         ) : (
                           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                             {diffRows.map((row, idx) => {
-                              let cellBadgeColor = "#ef4444";
-                              let cellBadgeBg = "rgba(239, 68, 68, 0.08)";
-                              let statusText = row.status || "MISMATCHED";
+                              // Determine badge color from the row's own status first,
+                              // then refine if we have a matching canvas violation
+                              const statusUp = (row.status || "").toUpperCase();
+                              let cellBadgeColor = "#10b981"; // green = MATCHED default
+                              let cellBadgeBg = "rgba(16, 185, 129, 0.08)";
+                              let statusText = row.status || "MATCHED";
+
+                              if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) {
+                                cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; statusText = "CHANGED";
+                              } else if (statusUp.includes("ADD")) {
+                                cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; statusText = "ADDED";
+                              } else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) {
+                                cellBadgeColor = "#ef4444"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; statusText = "REMOVED";
+                              }
 
                               const matchingViolation = rowToViolationMap.get(idx);
-
                               if (matchingViolation) {
                                 const pt = matchingViolation.pen_type || "";
-                                if (pt === "ai_orange") {
-                                  cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.08)";
-                                } else if (pt === "checker_blue") {
-                                  cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.08)";
-                                } else if (pt === "ai_red") {
-                                  cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.08)";
-                                } else if (pt === "resolved_green" || pt === "ai_green") {
-                                  cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.08)";
-                                }
-                              } else {
-                                if (statusText.toUpperCase().includes("CHANGE")) {
-                                  cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.08)";
-                                } else if (statusText.toUpperCase().includes("ADD")) {
-                                  cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.08)";
-                                } else if (statusText.toUpperCase().includes("MATCH")) {
-                                  cellBadgeColor = "#10b981"; cellBadgeBg = "rgba(16, 185, 129, 0.08)";
-                                }
+                                if (pt === "ai_orange") { cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; }
+                                else if (pt === "checker_blue") { cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; }
+                                else if (pt === "ai_red") { cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; }
+                                else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.08)"; }
                               }
 
                               const rowId = `${key}-${idx}`;
@@ -396,13 +488,14 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                                     {/* Values */}
                                     <div style={{
                                       fontSize: "0.75rem", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace",
-                                      textDecoration: statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS") ? "line-through" : "none",
+                                      textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
                                       wordBreak: "break-word"
                                     }}>
                                       {row.original || "-"}
                                     </div>
                                     <div style={{
-                                      fontSize: "0.75rem", color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                                      fontSize: "0.75rem", color: statusText.toUpperCase() === "MATCHED" ? "#a7f3d0" : "#e2e8f0",
+                                      fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
                                       wordBreak: "break-word"
                                     }}>
                                       {row.kmti || "-"}

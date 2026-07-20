@@ -12,9 +12,9 @@ from ...infrastructure.cad.processing_queue import processing_queue
 from ...infrastructure.cad.diagnostics import CADDiagnostics
 from ...infrastructure.rendering.geometry_serializer import GeometrySerializer
 from ...infrastructure.storage.path_resolver import get_storage_root
-from ...logger import logger
+from ...logger import logger, correlation_id_var
 from ...config import settings
-from ..dependencies import get_auth_token
+from ..dependencies import get_auth_token, get_or_404
 from ..schemas import StandardResponse, UploadResponse, DrawingResponse, JobResponse
 
 router = APIRouter()
@@ -65,9 +65,11 @@ async def upload_drawing(file: UploadFile = File(...)):
                 pass
         if isinstance(e, HTTPException):
             raise e
+        corr_id = correlation_id_var.get()
+        logger.exception(f"[{corr_id}] Drawing upload failed while streaming to disk: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Drawing upload failed: {str(e)}"
+            detail=f"Drawing upload failed. Reference: {corr_id}"
         )
 
     file_hash = sha256.hexdigest()
@@ -167,9 +169,11 @@ async def upload_drawing(file: UploadFile = File(...)):
                 temp_upload_path.unlink()
             except Exception:
                 pass
+        corr_id = correlation_id_var.get()
+        logger.exception(f"[{corr_id}] Failed to move uploaded drawing to secure storage: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to securely store uploaded drawing: {str(e)}"
+            detail=f"Failed to securely store uploaded drawing. Reference: {corr_id}"
         )
 
     # Normalize relative path inside workspace storage root
@@ -262,12 +266,7 @@ async def list_drawings():
     dependencies=[Depends(get_auth_token)]
 )
 async def get_drawing(id: str):
-    drawing = await DrawingDocument.get(id)
-    if not drawing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drawing document not found for ID: {id}"
-        )
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
     return StandardResponse(
         success=True,
         data=DrawingResponse(
@@ -293,12 +292,7 @@ async def get_drawing(id: str):
     dependencies=[Depends(get_auth_token)]
 )
 async def get_drawing_layers(id: str):
-    drawing = await DrawingDocument.get(id)
-    if not drawing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drawing document not found for ID: {id}"
-        )
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
     entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == id).to_list()
     
     if not entities:
@@ -321,12 +315,7 @@ async def get_drawing_layers(id: str):
     dependencies=[Depends(get_auth_token)]
 )
 async def get_drawing_rendering(id: str):
-    drawing = await DrawingDocument.get(id)
-    if not drawing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drawing document not found for ID: {id}"
-        )
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
     rendering_path = get_storage_root() / "renderings" / f"{id}.png"
     if not rendering_path.exists():
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -339,12 +328,7 @@ async def get_drawing_rendering(id: str):
     dependencies=[Depends(get_auth_token)]
 )
 async def get_drawing_gltf(id: str):
-    drawing = await DrawingDocument.get(id)
-    if not drawing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drawing document not found for ID: {id}"
-        )
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
     gltf_path = get_storage_root() / "temp" / f"model_{id}.gltf"
     if not gltf_path.exists():
         raise HTTPException(
@@ -375,9 +359,7 @@ async def get_drawing_similarity(id: str, limit: int = 5):
     Computes a cosine similarity score over CAD entity count vectors to identify
     geometrically or typologically similar technical drawing layouts.
     """
-    target = await DrawingDocument.get(id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Drawing not found.")
+    target = await get_or_404(DrawingDocument, id, "Drawing not found.")
 
     all_drawings = await DrawingDocument.find(DrawingDocument.id != target.id).to_list()
     
@@ -413,34 +395,33 @@ async def get_drawing_similarity(id: str, limit: int = 5):
 
 
 class SignatureVerificationResult(BaseModel):
-    has_signature: bool
-    signer_name: str | None = None
-    signing_time: str | None = None
-    is_valid: bool = False
+    has_signature_field: bool
     message: str
 
 
 @router.get(
     "/drawings/{id}/signature",
     response_model=StandardResponse[SignatureVerificationResult],
-    summary="Verifies digital certificate signature blocks inside PDF drawings",
+    summary="Checks whether a PDF drawing contains a digital signature field",
     dependencies=[Depends(get_auth_token)]
 )
 async def verify_drawing_signature(id: str):
     """
-    Scans drawing blueprints for valid trust chains and digital signatures.
+    Cheap presence check only: scans the raw PDF bytes for `/Sig` and `/ByteRange`
+    markers indicating a signature field exists in the document structure.
+
+    This does NOT perform certificate/trust-chain verification, does NOT confirm
+    the signature is cryptographically valid, and does NOT identify a signer.
+    `has_signature_field=True` means "this PDF has a signature field", nothing more.
     """
-    from datetime import datetime, timezone
-    drawing = await DrawingDocument.get(id)
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found.")
+    drawing = await get_or_404(DrawingDocument, id, "Drawing not found.")
 
     if drawing.format.lower() != "pdf":
         return StandardResponse(
             success=True,
             data=SignatureVerificationResult(
-                has_signature=False,
-                message="Digital signature verification is only supported for PDF blueprint drawing packages."
+                has_signature_field=False,
+                message="Digital signature field detection is only supported for PDF blueprint drawing packages."
             )
         )
 
@@ -452,21 +433,18 @@ async def verify_drawing_signature(id: str):
                 return StandardResponse(
                     success=True,
                     data=SignatureVerificationResult(
-                        has_signature=True,
-                        signer_name="KMTI QA Division - Lead Verifier",
-                        signing_time=datetime.now(timezone.utc).isoformat(),
-                        is_valid=True,
-                        message="Valid cryptographically-secured digital signing block detected. Certificate matches trust records."
+                        has_signature_field=True,
+                        message="This PDF contains a digital signature field. This is a structural presence check only — it does not verify the certificate, trust chain, or signer identity."
                     )
                 )
     except Exception as e:
-        logger.warning(f"Signature check failed: {e}")
+        logger.warning(f"Signature field check failed: {e}")
 
     return StandardResponse(
         success=True,
         data=SignatureVerificationResult(
-            has_signature=False,
-            message="No active digital certificate signature blocks found in this PDF document."
+            has_signature_field=False,
+            message="No digital signature field found in this PDF document."
         )
     )
 
@@ -478,12 +456,7 @@ async def verify_drawing_signature(id: str):
     dependencies=[Depends(get_auth_token)]
 )
 async def get_job(id: str):
-    job = await ExtractionJob.get(id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Extraction job not found for ID: {id}"
-        )
+    job = await get_or_404(ExtractionJob, id, f"Extraction job not found for ID: {id}")
     return StandardResponse(
         success=True,
         data=JobResponse(

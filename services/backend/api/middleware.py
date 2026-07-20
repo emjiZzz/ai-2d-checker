@@ -54,17 +54,18 @@ class ExceptionLoggingMiddleware(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except Exception as e:
-            logger.exception(f"Unhandled API error while processing '{request.url.path}': {str(e)}")
+            corr_id = correlation_id_var.get()
+            # Full exception detail stays server-side only — never returned to the client.
+            logger.exception(f"[{corr_id}] Unhandled API error while processing '{request.url.path}': {str(e)}")
             
-            # Unified error response format
+            # Unified error response format — generic message, no internals, traceable via correlation ID.
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={
                     "success": False,
                     "error": {
                         "code": "INTERNAL_SERVER_ERROR",
-                        "message": "An unexpected error occurred on the local server.",
-                        "detail": str(e)
+                        "message": f"An unexpected error occurred on the local server. Reference: {corr_id}"
                     }
                 }
             )

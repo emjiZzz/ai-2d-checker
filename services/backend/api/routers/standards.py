@@ -8,7 +8,7 @@ from ...domain.models.standard_chunk import StandardChunk
 from ...infrastructure.audit.standards_loader import StandardsLoader
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...core.security import validate_sandboxed_path
-from ...logger import logger
+from ...logger import logger, correlation_id_var
 from ..dependencies import get_auth_token
 from ..schemas import StandardResponse, StandardDocumentResponse
 
@@ -83,10 +83,11 @@ async def upload_standard(
         )
 
     except Exception as e:
-        logger.error(f"Failed standard document ingestion: {str(e)}")
+        corr_id = correlation_id_var.get()
+        logger.exception(f"[{corr_id}] Failed standard document ingestion: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ingestion process failed: {str(e)}"
+            detail=f"Ingestion process failed. Reference: {corr_id}"
         )
     finally:
         # Clean temporary file

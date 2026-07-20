@@ -1,4 +1,6 @@
 from datetime import datetime
+from typing import Literal
+
 
 from beanie import Document
 from pydantic import Field
@@ -20,7 +22,9 @@ class Room(Document):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_opened_at: datetime | None = Field(None, description="Updated each time the room is opened")
+    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = Field("deterministic", description="Method used for physical comparison in this room")
     
+
     # Per-room data isolation
     active_old_drawing_id: str | None = Field(None, description="ID of the old/reference drawing active in this room")
     active_new_drawing_id: str | None = Field(None, description="ID of the new/revised drawing active in this room")

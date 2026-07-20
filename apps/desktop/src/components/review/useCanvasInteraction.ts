@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, RefObject, useRef } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { getNormalization, screenToWorld, parseBounds } from '../../utils/coordinateTransform';
+import { getNormalization, screenToWorld, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
 import { hitTestMarker, getRoiDragPercentages } from './canvasInteraction';
 
 interface UseCanvasInteractionProps {
@@ -85,6 +85,11 @@ export function useCanvasInteraction({
     originalYMax: number;
   } | null>(null);
 
+  const clampViewport = useCallback((v: { x: number, y: number, scale: number }) => {
+    const bounds = parseBounds(drawing?.metadata?.render_bounds);
+    return clampViewportShared(v, bounds, width, height);
+  }, [drawing?.metadata?.render_bounds, width, height]);
+
   // Close context menu on outside click
   useEffect(() => {
     const closeMenu = () => {
@@ -150,10 +155,10 @@ export function useCanvasInteraction({
         const targetX = width / 2 - stdX * targetScale;
         const targetY = height / 2 - stdY * targetScale;
 
-        setViewport({ x: targetX, y: targetY, scale: targetScale });
+        setViewport(clampViewport({ x: targetX, y: targetY, scale: targetScale }));
       }
     }
-  }, [selectedViolation, drawing, width, height, setViewport]);
+  }, [selectedViolation, drawing, width, height, setViewport, clampViewport]);
 
   // Keyboard shortcut actions
   useEffect(() => {
@@ -183,7 +188,7 @@ export function useCanvasInteraction({
           const targetScale = 2.2;
           const targetX = width / 2 - stdX * targetScale;
           const targetY = height / 2 - stdY * targetScale;
-          setViewport({ x: targetX, y: targetY, scale: targetScale });
+          setViewport(clampViewport({ x: targetX, y: targetY, scale: targetScale }));
         }
       } else if (e.key === 'delete' || e.key === 'backspace') {
         if (selectedViolation) {
@@ -195,17 +200,17 @@ export function useCanvasInteraction({
       } else if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         const currentViewport = useReviewStore.getState().viewport;
-        setViewport({ ...currentViewport, scale: Math.min(25, currentViewport.scale * 1.25) });
+        setViewport(clampViewport({ ...currentViewport, scale: Math.min(25, currentViewport.scale * 1.25) }));
       } else if (e.ctrlKey && e.key === '-') {
         e.preventDefault();
         const currentViewport = useReviewStore.getState().viewport;
-        setViewport({ ...currentViewport, scale: Math.max(0.1, currentViewport.scale / 1.25) });
+        setViewport(clampViewport({ ...currentViewport, scale: Math.max(0.81, currentViewport.scale / 1.25) }));
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedViolation, drawing, width, height, setViewport, selectViolation]);
+  }, [selectedViolation, drawing, width, height, setViewport, selectViolation, clampViewport]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const currentViewport = useReviewStore.getState().viewport;
@@ -345,7 +350,7 @@ export function useCanvasInteraction({
     // Skip ALL expensive work: hit-tests, getNormalization(), state setters.
     // This is the most-frequently-hit code path (every mouse pixel while panning).
     if (isDragging && !activeDragHandle) {
-      setViewport({ ...currentViewport, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+      setViewport(clampViewport({ ...currentViewport, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
       if (e.buttons === 2) setPreventNextContextMenu(true);
       return;
     }
@@ -468,7 +473,7 @@ export function useCanvasInteraction({
       updateCustomRegion(activeDragHandle.regionKey, currentBounds);
       setRedrawTrigger(prev => prev + 1);
     }
-  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo]);
+  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport]);
 
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
@@ -603,13 +608,13 @@ export function useCanvasInteraction({
     const zoomFactor = 1.15;
     const scaleFactor = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
     
-    const newScale = Math.min(25, Math.max(0.1, currentViewport.scale * scaleFactor));
+    const newScale = Math.min(25, Math.max(0.81, currentViewport.scale * scaleFactor));
     
     const newX = mx - (mx - currentViewport.x) * (newScale / currentViewport.scale);
     const newY = my - (my - currentViewport.y) * (newScale / currentViewport.scale);
     
-    setViewport({ x: newX, y: newY, scale: newScale });
-  }, [canvasRef, setViewport]);
+    setViewport(clampViewport({ x: newX, y: newY, scale: newScale }));
+  }, [canvasRef, setViewport, clampViewport]);
 
   const getCursorStyle = () => {
     if (isSpacePressed) return isDragging ? 'grabbing' : 'grab';

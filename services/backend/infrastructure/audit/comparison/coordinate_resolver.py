@@ -34,6 +34,8 @@ def resolve_marking_coordinates(
     ref_iso_bbox: Optional[tuple],
     rev_views_bbox: Optional[tuple],
     ref_views_bbox: Optional[tuple],
+    rev_title_ul_bbox: Optional[tuple],
+    ref_title_ul_bbox: Optional[tuple],
     used_rev_entities: set,
     used_ref_entities: set
 ) -> None:
@@ -87,10 +89,15 @@ def resolve_marking_coordinates(
             
             def set_region_bbox(kwargs: dict, category: str, is_rev: bool):
                 bbox = None
+                zone = m.get("zone")  # 'title_upper_left' tag set by extract_title_ul_kv markings
                 if category == "bill_of_materials":
                     bbox = rev_bom_bbox if is_rev else ref_bom_bbox
                 elif category == "title_block":
-                    bbox = rev_title_bbox if is_rev else ref_title_bbox
+                    # Title Upper-Left has its own bbox; fall back to bottom-right title only for normal title_block
+                    if zone == "title_upper_left":
+                        bbox = rev_title_ul_bbox if is_rev else ref_title_ul_bbox
+                    else:
+                        bbox = rev_title_bbox if is_rev else ref_title_bbox
                 elif category == "notes_section":
                     bbox = rev_notes_bbox if is_rev else ref_notes_bbox
                 elif category == "isometric_view":

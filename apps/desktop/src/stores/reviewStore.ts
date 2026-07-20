@@ -64,6 +64,10 @@ interface ReviewState {
   // Context Menu Marker Filters
   visibleMarkerTypes: Record<string, boolean>;
   toggleMarkerTypeVisibility: (type: string) => void;
+
+  // Layout Presets
+  activeLayoutPreset: "grid" | "left" | "right";
+  setActiveLayoutPreset: (preset: "grid" | "left" | "right") => void;
 }
 
 export const useReviewStore = create<ReviewState>((set) => ({
@@ -209,5 +213,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
       ...state.visibleMarkerTypes,
       [type]: !state.visibleMarkerTypes[type]
     }
-  }))
+  })),
+
+  activeLayoutPreset: "grid",
+  setActiveLayoutPreset: (preset) => set({ activeLayoutPreset: preset })
 }));

@@ -67,7 +67,6 @@ export const AuditWorkspace: React.FC = () => {
           active_audit_session_id: activeSessionId || null,
           physical_comparison_results: aiScanProgress === "completed" ? aiChecklistResults : null
         };
-        console.log("DEBUG: Calling updateRoom with:", payloadToSave);
         updateRoom(activeRoom.id, payloadToSave);
       }
     }

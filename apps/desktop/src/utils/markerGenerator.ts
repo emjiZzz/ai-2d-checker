@@ -142,8 +142,41 @@ export const generateComparisonMarkings = ({
         }
       }
 
+      // ── MATCHED fallback: try a lenient token search so checkmarks can be placed ──
+      const isMatched = (marking.status || "").toUpperCase() === "MATCHED";
+      if (isMatched && !coordinates && matches.length === 0 && refMatches.length === 0) {
+        const tokens = searchTerm.split(/\s+/).filter((t: string) => t.length >= 2);
+        for (const token of tokens) {
+          const looseFwd = findAllFuzzyMatches(token, textEntities, preferModel, false, 50);
+          if (looseFwd.length > 0) { matches = looseFwd; break; }
+          const looseRef = findAllFuzzyMatches(token, refTextEntities, preferModel, false, 50);
+          if (looseRef.length > 0) { refMatches = looseRef; break; }
+        }
+        // Recompute coordinates from loose match
+        if (matches.length > 0) {
+          const m = matches[0];
+          const h = m.height || 3.0;
+          if (m.bbox && Array.isArray(m.bbox) && m.bbox.length >= 2) {
+            try {
+              const [[, ymin], [xmax, ymax]] = m.bbox;
+              const hVal = m.height || (ymax - ymin) || 3.0;
+              coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
+            } catch { coordinates = [m.x + h * 0.8, m.y + h * 0.5] as [number, number]; }
+          } else {
+            coordinates = [m.x + h * 0.8, m.y + h * 0.5] as [number, number];
+          }
+        } else if (refMatches.length > 0) {
+          const m = refMatches[0];
+          const h = m.height || 3.0;
+          ref_coordinates = [m.x + h * 0.8, m.y + h * 0.5] as [number, number];
+          coordinates = ref_coordinates; // use ref position as proxy for rev canvas
+        }
+      }
+
       const isMatchFilteredTick = (rawMatchesCount > 0 && matches.length === 0) || (rawRefMatchesCount > 0 && refMatches.length === 0);
-      if (!coordinates && !isMatchFilteredTick) continue;
+      // Non-MATCHED: skip if no coordinate. MATCHED: only skip if entities array is completely empty.
+      if (!coordinates && !isMatchFilteredTick && !isMatched) continue;
+      if (!coordinates && isMatched && textEntities.length === 0 && refTextEntities.length === 0) continue;
 
       let penType = "resolved_green";
       if (marking.status === "REMOVED") penType = "ai_red";

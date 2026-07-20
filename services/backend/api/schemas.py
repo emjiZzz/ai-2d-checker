@@ -1,4 +1,4 @@
-from typing import Any, TypeVar, Optional
+from typing import Any, TypeVar, Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -146,7 +146,7 @@ class LoginRequest(BaseModel):
     password: str = Field(..., description="Plaintext raw credentials")
 
 class LoginResponse(BaseModel):
-    session_token: str = Field(..., description="AES-256 encrypted active session identifier")
+    session_token: str = Field(..., description="HMAC-SHA256 signed active session identifier (base64 payload + '.' + signature, not encrypted)")
     username: str = Field(..., description="Logged-in username")
     role: str = Field(..., description="Enterprise workspace role: admin or user")
 
@@ -171,12 +171,20 @@ class UpdateUserRequest(BaseModel):
 class PhysicalComparisonRequest(BaseModel):
     reference_drawing_id: str
     drawing_id: str
+    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = Field(
+        "deterministic",
+        description="Pipeline to use: deterministic, full_ai (Gemini w/ CAD), or full_ai_vision (Gemini image only)"
+    )
 
 # Room workflow schemas
 class RoomCreateRequest(BaseModel):
     name: str = Field(..., description="User-facing room label")
     description: str | None = None
     client_name: str | None = None
+    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = Field(
+        "deterministic",
+        description="Comparison pipeline for this room (dev-only)"
+    )
 
 class RoomResponse(BaseModel):
     id: str
@@ -187,11 +195,15 @@ class RoomResponse(BaseModel):
     active_new_drawing_id: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
+    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = "deterministic"
     created_at: datetime
     updated_at: datetime
     last_opened_at: datetime | None = None
 
 class UpdateRoomRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    client_name: str | None = None
     active_old_drawing_id: str | None = None
     active_new_drawing_id: str | None = None
     active_audit_session_id: str | None = None
@@ -210,7 +222,6 @@ class BomRowComparison(BaseModel):
     kmti: str
     diffType: str
 
-from typing import Literal
 
 class CategoryComparison(BaseModel):
     status: Literal["MATCHED", "CHANGED", "ADDED", "REMOVED", "MISSING"]

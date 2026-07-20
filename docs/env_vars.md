@@ -10,8 +10,10 @@ This document specifies the variables used in the workspace `.env` configuration
 |---|---|---|---|
 | `MONGO_URI` | Connection URI for the local MongoDB Community Server. | `mongodb://localhost:27017` | **Medium** (Masked credentials in logs) |
 | `MONGO_DB_NAME` | Active MongoDB database namespace. | `ai_2d_checker` | **Low** |
-| `GEMINI_API_KEY` | Developer Google Gemini Flash API Key. | `YOUR_GEMINI_API_KEY_HERE` | **Critical** (Redacted automatically in logs) |
-| `GEMINI_MODEL` | Gemini AI auditing engine model version. | `gemini-3-flash` | **Low** |
+| `GEMINI_API_KEY` | Developer Google Gemini API Key. | `YOUR_GEMINI_API_KEY_HERE` | **Critical** (Redacted automatically in logs) |
+| `GEMINI_MODEL_PRO` | Highest-reasoning Gemini tier, used for the full-AI structured drawing comparison pipeline. | `gemini-3.1-pro-preview` | **Low** |
+| `GEMINI_MODEL_FLASH` | Fast/interactive Gemini tier, used for Copilot chat streaming and title block OCR. | `gemini-3.5-flash` | **Low** |
+| `GEMINI_MODEL_FALLBACK` | Last-resort model tried if PRO/FLASH error out (deprecation, rate limit, overload). | `gemini-flash-latest` | **Low** |
 | `STORAGE_ROOT` | Absolute or relative path to the persistent workspace storage root. | `./storage` | **Low** |
 | `MAX_FILE_SIZE_MB` | Upper limit boundary on drawing upload requests. | `500` | **Low** |
 | `ODA_CONVERTER_PATH`| Path to the local installation of the ODA File Converter. | `C:/Program Files/ODA/ODAFileConverter...` | **Low** |

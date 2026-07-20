@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import json
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from pydantic import BaseModel
-from ...core.auth import verify_password, create_jwt_token
+from ...core.auth import verify_password, create_session_token
 from ...domain.models.user_account import UserAccountDocument
 from ...domain.models.user_session import UserSessionDocument
 from ...infrastructure.database.connection import db_manager
@@ -50,7 +50,7 @@ async def login_user(request: LoginRequest):
         )
         
     # Generate token
-    token, expires_at = create_jwt_token({
+    token, expires_at = create_session_token({
         "username": user.username,
         "role": user.role
     })

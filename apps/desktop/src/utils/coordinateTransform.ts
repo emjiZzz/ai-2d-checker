@@ -136,3 +136,47 @@ export function parseBounds(raw: number[] | null | undefined): RenderBounds | nu
   const [xmin, ymin, xmax, ymax] = raw;
   return { xmin, ymin, xmax, ymax };
 }
+
+/**
+ * Clamps the viewport so that the zooming respects a minimum bound
+ * and the panning respects the drawing boundaries, preventing the user
+ * from losing the drawing off-screen.
+ */
+export function clampViewport(
+  v: Viewport,
+  bounds: RenderBounds | null | undefined,
+  width: number,
+  height: number
+): Viewport {
+  let drawW = 1000 * v.scale;
+  let drawH = 1000 * v.scale;
+  
+  if (bounds && bounds.xmax - bounds.xmin > 0) {
+    drawH = (bounds.ymax - bounds.ymin) * (1000 / (bounds.xmax - bounds.xmin)) * v.scale;
+  }
+  
+  const scale = Math.max(0.81, Math.min(25, v.scale));
+  
+  if (bounds && bounds.xmax - bounds.xmin > 0) {
+    drawW = 1000 * scale;
+    drawH = (bounds.ymax - bounds.ymin) * (1000 / (bounds.xmax - bounds.xmin)) * scale;
+  } else {
+    drawW = 1000 * scale;
+    drawH = 1000 * scale;
+  }
+
+  const paddingX = width * 0.5;
+  const paddingY = height * 0.5;
+
+  const minX = -drawW + width - paddingX;
+  const maxX = paddingX;
+
+  const minY = -drawH + height - paddingY;
+  const maxY = paddingY;
+
+  return {
+    x: Math.min(Math.max(v.x, minX), maxX),
+    y: Math.min(Math.max(v.y, minY), maxY),
+    scale
+  };
+}

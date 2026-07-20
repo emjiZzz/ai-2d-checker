@@ -1,14 +1,40 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings, Box } from "lucide-react";
+import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useThemeStore } from "../stores/themeStore";
 import { useNavStore } from "../stores/navStore";
+import { useReviewStore } from "../stores/reviewStore";
+import { useRoomStore } from "../stores/roomStore";
 
 export const AppHeader: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
   const { currentNav, setCurrentNav } = useNavStore();
+  const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
+  const setActiveLayoutPreset = useReviewStore(s => s.setActiveLayoutPreset);
+  const activeRoom = useRoomStore(s => s.activeRoom);
+
+  const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (layoutMenuRef.current && !layoutMenuRef.current.contains(event.target as Node)) {
+        setIsLayoutMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const getActiveLayoutIcon = () => {
+    switch (activeLayoutPreset) {
+      case 'left': return <PanelLeft size={15} />;
+      case 'right': return <PanelRight size={15} />;
+      default: return <Columns size={15} />;
+    }
+  };
 
   const handleMinimize = () => getCurrentWindow().minimize();
   const handleToggleMaximize = async () => {
@@ -216,6 +242,56 @@ export const AppHeader: React.FC = () => {
               </div>
             </div>
 
+            {/* Layout Toggles (Only show in workspace when a room is active) */}
+            {currentNav === "workspace" && activeRoom && (
+              <div ref={layoutMenuRef} style={{ position: "relative", marginRight: "6px" }}>
+                <button 
+                  className="layout-btn active" 
+                  title="Change Layout" 
+                  onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
+                >
+                  {getActiveLayoutIcon()}
+                </button>
+                
+                {isLayoutMenuOpen && (
+                  <div style={{ 
+                    position: "absolute", 
+                    top: "100%", 
+                    right: 0, 
+                    marginTop: "8px", 
+                    background: "var(--bg-card)", 
+                    border: "1px solid var(--border-color)", 
+                    borderRadius: "6px", 
+                    padding: "4px",
+                    display: "flex", 
+                    flexDirection: "column",
+                    gap: "2px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                    zIndex: 99999
+                  }}>
+                    <button 
+                      className={`layout-dropdown-btn ${activeLayoutPreset === 'grid' ? 'active' : ''}`} 
+                      onClick={() => { setActiveLayoutPreset('grid'); setIsLayoutMenuOpen(false); }}
+                    >
+                      <Columns size={14} /> <span style={{fontSize: "0.75rem", fontWeight: 600}}>Default</span>
+                    </button>
+                    <button 
+                      className={`layout-dropdown-btn ${activeLayoutPreset === 'left' ? 'active' : ''}`} 
+                      onClick={() => { setActiveLayoutPreset('left'); setIsLayoutMenuOpen(false); }}
+                    >
+                      <PanelLeft size={14} /> <span style={{fontSize: "0.75rem", fontWeight: 600}}>Left Panel</span>
+                    </button>
+                    <button 
+                      className={`layout-dropdown-btn ${activeLayoutPreset === 'right' ? 'active' : ''}`} 
+                      onClick={() => { setActiveLayoutPreset('right'); setIsLayoutMenuOpen(false); }}
+                    >
+                      <PanelRight size={14} /> <span style={{fontSize: "0.75rem", fontWeight: 600}}>Right Panel</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Actions */}
             <button
               onClick={toggleTheme}
@@ -289,6 +365,46 @@ export const AppHeader: React.FC = () => {
         .window-control-btn.close-btn:hover {
           background: #e81123 !important;
           color: white !important;
+        }
+        .layout-btn {
+          background: transparent;
+          border: 1px solid transparent;
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          padding: 4px;
+          border-radius: 4px;
+          transition: all 0.2s;
+        }
+        .layout-btn:hover {
+          background: rgba(128, 128, 128, 0.15);
+          color: var(--text-primary);
+        }
+        .layout-btn.active {
+          background: rgba(255, 255, 255, 0.1);
+          color: var(--text-primary);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .layout-dropdown-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          border-radius: 4px;
+          transition: all 0.2s;
+          white-space: nowrap;
+        }
+        .layout-dropdown-btn:hover {
+          background: rgba(128, 128, 128, 0.15);
+          color: var(--text-primary);
+        }
+        .layout-dropdown-btn.active {
+          color: var(--accent-cyan);
+          background: rgba(0, 229, 255, 0.05);
         }
         .nav-header-btn {
           border: 1px solid transparent !important;

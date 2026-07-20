@@ -90,11 +90,36 @@ class StreamingEngine:
                 f"=== ENGINEER QUESTION ===\n{prompt}"
             )
 
+            # Model is env-driven (settings.GEMINI_MODEL_FLASH / GEMINI_MODEL_FALLBACK, see
+            # config.py) instead of hardcoded — this was previously pinned to "gemini-2.0-flash",
+            # which Google shut down June 1, 2026, silently breaking every Copilot request since.
+            # One fallback attempt on GEMINI_MODEL_FALLBACK if the primary model errors out
+            # (deprecation, overload, etc.) rather than failing the whole chat turn outright.
+            primary_model = settings.GEMINI_MODEL_FLASH
+            fallback_model = settings.GEMINI_MODEL_FALLBACK
+            models_to_try = [primary_model] if primary_model == fallback_model else [primary_model, fallback_model]
+
+            stream = None
+            last_err: Exception | None = None
+            for attempt, model_name in enumerate(models_to_try):
+                try:
+                    stream = await client.aio.models.generate_content_stream(
+                        model=model_name,
+                        contents=full_prompt,
+                    )
+                    if attempt > 0:
+                        logger.warning(f"Copilot streaming: primary model '{primary_model}' failed, succeeded on fallback '{model_name}'.")
+                    break
+                except Exception as model_err:
+                    last_err = model_err
+                    logger.warning(f"Copilot streaming: model '{model_name}' failed ({model_err}).")
+                    continue
+
+            if stream is None:
+                raise last_err or RuntimeError("All configured Gemini models failed for Copilot streaming.")
+
             # Stream tokens using the new SDK's async generator
-            async for chunk in await client.aio.models.generate_content_stream(
-                model="gemini-2.0-flash",
-                contents=full_prompt,
-            ):
+            async for chunk in stream:
                 token = chunk.text
                 if token:
                     yield token

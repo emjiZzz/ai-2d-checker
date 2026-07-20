@@ -84,6 +84,7 @@ function useCreateRoom() {
         name: variables.name,
         description: variables.description ?? null,
         client_name: variables.client_name ?? null,
+        comparison_method: variables.comparison_method ?? "deterministic",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         last_opened_at: null,

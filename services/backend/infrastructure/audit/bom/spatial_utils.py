@@ -94,6 +94,10 @@ def find_drawing_text_coordinates(
         if in_excluded_region(e):
             continue
             
+        # Strictly enforce bounding box for BOM, because the BOM extractor itself exclusively uses entities inside it.
+        if category == "bill_of_materials" and region_bbox and not in_region(e):
+            continue
+            
         layer = getattr(e, "layer", "") or ""
         if region_bbox and in_region(e):
             inside_region.append(e)

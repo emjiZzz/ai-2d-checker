@@ -331,6 +331,37 @@ class DXFParser:
             except Exception:
                 pass
 
+        # Content-aware zone detection — run at ingestion time so results are
+        # persisted into drawing.metadata and available to both the AI engine
+        # and the React frontend without re-computing them on every comparison.
+        try:
+            from ..audit.bom.zone_detector import detect_zones_by_content
+            # Build lightweight entity list from raw dicts (zone_detector accepts both models and dicts)
+            class _DictEntity:
+                """Thin wrapper so zone_detector can call getattr(e, ...) on raw dicts."""
+                def __init__(self, d):
+                    self.entity_type = d.get("entity_type", "")
+                    self.layer = d.get("layer", "")
+                    self.geometry = d.get("geometry", {}) or {}
+                    self.properties = d.get("properties", {}) or {}
+            dict_entities = [_DictEntity(e) for e in entities]
+            detected = detect_zones_by_content(dict_entities)
+            # Store safe zones as a list of absolute-coordinate bounding boxes
+            # Format: [[xmin, ymin, xmax, ymax], ...]  -- JSON-serializable
+            safe_bbox_list = []
+            if detected.get("tolerance"):
+                safe_bbox_list.append(list(detected["tolerance"]))
+            # Also include any explicitly detected safe_zones from the detector
+            for sz in (detected.get("safe_zones") or []):
+                if sz and sz not in safe_bbox_list:
+                    safe_bbox_list.append(list(sz))
+            metadata["safe_zones"] = safe_bbox_list
+            logger.info(f"Content-aware zone detection complete. Detected safe zones: {len(safe_bbox_list)}")
+        except Exception as zone_err:
+            logger.warning(f"Content-aware zone detection failed during ingestion (non-fatal): {zone_err}")
+            metadata["safe_zones"] = []
+
+
         # Transcode all string elements in layers and entities to their correct drawing encoding
         doc_encoding = getattr(doc, "encoding", "cp932") or "cp932"
         # Normalize to lower standard

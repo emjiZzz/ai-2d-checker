@@ -24,6 +24,7 @@ export const RoomSchema = z.object({
   active_new_drawing_id: z.string().nullable().optional(),
   active_audit_session_id: z.string().nullable().optional(),
   physical_comparison_results: z.any().nullable().optional(),
+  comparison_method: z.enum(["deterministic", "full_ai", "full_ai_vision"]).default("deterministic").optional(),
   participants: z.array(z.string()).optional()
 });
 

@@ -4,6 +4,8 @@ import { useRooms } from "../../hooks/useRooms";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 
+type ComparisonMethod = "deterministic" | "full_ai" | "full_ai_vision";
+
 export const RoomsView: React.FC = () => {
   // useRooms() owns the server state: list, loading, optimistic mutations.
   const { rooms, isLoading, createRoom, deleteRoom } = useRooms();
@@ -18,17 +20,19 @@ export const RoomsView: React.FC = () => {
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
   const [description, setDescription] = useState("");
+  const [comparisonMethod, setComparisonMethod] = useState<ComparisonMethod>("deterministic");
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     try {
-      const newRoom = await createRoom({ name, description, client_name: clientName });
+      const newRoom = await createRoom({ name, description, client_name: clientName, comparison_method: comparisonMethod });
       setIsCreating(false);
       setName("");
       setClientName("");
       setDescription("");
+      setComparisonMethod("deterministic");
       // openRoom is a Zustand action that hydrates the workspace — called after
       // the Query mutation resolves so we have the real server-generated ID.
       openRoom(newRoom.id);
@@ -140,6 +144,76 @@ export const RoomsView: React.FC = () => {
                   rows={3}
                 />
               </div>
+
+              {/* ── Comparison Method Selector (dev benchmarking feature — visible to all users) ── */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
+                  Comparison Method
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 border border-amber-400/30 px-1.5 py-0.5 rounded">
+                    DEV
+                  </span>
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    id="method-deterministic"
+                    onClick={() => setComparisonMethod("deterministic")}
+                    className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
+                      comparisonMethod === "deterministic"
+                        ? "border-accent-cyan bg-accent-cyan/10 text-accent-cyan"
+                        : "border-border-color bg-bg-dark text-text-muted hover:border-text-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                      Deterministic
+                    </div>
+                    <div className="text-[10px] mt-1 opacity-70">SpatialDiffer + BOMAnalyzer</div>
+                  </button>
+                  <button
+                    type="button"
+                    id="method-full-ai"
+                    onClick={() => setComparisonMethod("full_ai")}
+                    className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
+                      comparisonMethod === "full_ai"
+                        ? "border-violet-500 bg-violet-500/10 text-violet-400"
+                        : "border-border-color bg-bg-dark text-text-muted hover:border-text-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+                      Full AI
+                    </div>
+                    <div className="text-[10px] mt-1 opacity-70">Gemini (PNG + CAD JSON)</div>
+                  </button>
+                  <button
+                    type="button"
+                    id="method-full-ai-vision"
+                    onClick={() => setComparisonMethod("full_ai_vision")}
+                    className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
+                      comparisonMethod === "full_ai_vision"
+                        ? "border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-400"
+                        : "border-border-color bg-bg-dark text-text-muted hover:border-text-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      AI Vision
+                    </div>
+                    <div className="text-[10px] mt-1 opacity-70">Gemini (PNG Image Only)</div>
+                  </button>
+                </div>
+                {comparisonMethod.startsWith("full_ai") && (
+                  <p className="mt-2 text-xs text-amber-400/80 flex items-start gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    {comparisonMethod === "full_ai" 
+                      ? "Full AI mode sends both drawing PNGs + full CAD context to Gemini."
+                      : "Vision mode sends ONLY the drawing PNGs to Gemini, ignoring extracted CAD data."}
+                    {" "}Results are for benchmarking only — use Deterministic for production.
+                  </p>
+                )}
+              </div>
+
               <div className="md:col-span-2 flex items-center space-x-4 pt-6 mt-2 border-t border-border-color">
                 <Button 
                   type="submit" 
@@ -148,7 +222,7 @@ export const RoomsView: React.FC = () => {
                   disabled={!name.trim()}
                   className="shadow-[0_0_15px_rgba(37,99,235,0.2)]"
                 >
-                  Create & Open
+                  Create &amp; Open
                 </Button>
                 <Button 
                   type="button" 
@@ -205,12 +279,21 @@ export const RoomsView: React.FC = () => {
                 </button>
               </div>
               
-              {room.client_name && (
-                <div className="inline-flex items-center text-xs font-medium text-accent-cyan bg-accent-cyan/10 px-2.5 py-1 rounded-md mb-4 w-fit border border-accent-cyan/20">
-                  <svg className="w-3.5 h-3.5 mr-1.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                  {room.client_name}
-                </div>
-              )}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {room.client_name && (
+                  <div className="inline-flex items-center text-xs font-medium text-accent-cyan bg-accent-cyan/10 px-2.5 py-1 rounded-md w-fit border border-accent-cyan/20">
+                    <svg className="w-3.5 h-3.5 mr-1.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    {room.client_name}
+                  </div>
+                )}
+                {/* Method badge — always visible so devs can see at a glance */}
+                {room.comparison_method === "full_ai" && (
+                  <div className="inline-flex items-center text-xs font-bold text-violet-400 bg-violet-500/10 px-2.5 py-1 rounded-md w-fit border border-violet-500/20 uppercase tracking-wide">
+                    <svg className="w-3 h-3 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+                    Full AI
+                  </div>
+                )}
+              </div>
               
               <p className="text-sm text-text-muted line-clamp-3 mb-6 flex-1 group-hover:text-text-secondary transition-colors">
                 {room.description || "No description provided."}

@@ -181,4 +181,80 @@ html, body, [class*="overflow-"] {
   }
 }
 
+/* FlexLayout Custom Theme Overrides */
+.flexlayout__layout {
+  --color-text: var(--text-primary);
+  --color-background: var(--bg-dark);
+  --color-base: var(--bg-sidebar);
+  --color-1: var(--bg-dark);
+  --color-2: var(--bg-card);
+  --color-3: var(--border-color);
+  --color-drag1: rgba(0, 229, 255, 0.2);
+  --color-drag2: rgba(0, 229, 255, 0.4);
+}
 
+.workspace-flexlayout-container .flexlayout__tab {
+  background-color: var(--bg-dark);
+  border: none !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset {
+  background-color: var(--bg-sidebar);
+}
+
+.workspace-flexlayout-container .flexlayout__tabset_header {
+  background-color: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button {
+  background-color: var(--bg-sidebar);
+  color: var(--text-muted);
+  border: none;
+  border-right: 1px solid var(--border-color);
+  box-shadow: inset 0 -2px 0 0 transparent;
+  transition: all 0.2s ease;
+  cursor: grab !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button:active {
+  cursor: grabbing !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button_trailing {
+  cursor: pointer !important;
+  opacity: 0.6;
+  transition: all 0.2s;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button_trailing:hover {
+  opacity: 1;
+  color: var(--accent-cyan);
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button:hover {
+  background-color: var(--sidebar-item-hover);
+  color: var(--text-primary);
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button--selected {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  box-shadow: inset 0 -2px 0 0 var(--accent-cyan);
+}
+
+.workspace-flexlayout-container .flexlayout__splitter {
+  background-color: var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.workspace-flexlayout-container .flexlayout__splitter:hover {
+  background-color: var(--accent-cyan);
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button_content {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
