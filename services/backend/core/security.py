@@ -17,8 +17,10 @@ def initialize_local_api_token() -> str:
     """
     token = settings.API_TOKEN
     
+    from ..infrastructure.storage.path_resolver import get_storage_root
+    
     # Ensure storage/secure folder exists
-    secure_dir = Path(settings.STORAGE_ROOT) / "secure"
+    secure_dir = get_storage_root() / "secure"
     secure_dir.mkdir(parents=True, exist_ok=True)
     token_file = secure_dir / TOKEN_FILE_NAME
 

@@ -3,6 +3,7 @@ import { useRoomStore } from "../../stores/roomStore";
 import { useRooms } from "../../hooks/useRooms";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
+import { Modal } from "../../components/ui/Modal";
 
 type ComparisonMethod = "deterministic" | "full_ai" | "full_ai_vision";
 
@@ -93,7 +94,7 @@ export const RoomsView: React.FC = () => {
             <h1 className="text-4xl font-bold text-text-primary tracking-tight">Workspaces</h1>
             <p className="text-text-muted mt-2 text-lg">Manage your audit rooms and test sessions.</p>
           </div>
-          {!isCreating && rooms.length > 0 && (
+          {rooms.length > 0 && (
             <Button 
               variant="primary"
               size="lg"
@@ -105,15 +106,40 @@ export const RoomsView: React.FC = () => {
           )}
         </div>
 
-        {isCreating && (
-          <div className="mb-12 p-8 bg-bg-card border border-border-color rounded-2xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300">
-            <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-              Initialize New Room
-            </h2>
-            <form onSubmit={handleCreate} className="max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-text-secondary mb-2">Room Name <span className="text-red-400">*</span></label>
+        <Modal
+          isOpen={isCreating}
+          onClose={() => setIsCreating(false)}
+          title="Initialize New Room"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          }
+          maxWidthClassName="max-w-xl"
+          footer={
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                onClick={() => setIsCreating(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="create-room-form"
+                variant="primary"
+                size="lg"
+                disabled={!name.trim()}
+                className="shadow-[0_0_15px_rgba(37,99,235,0.25)] min-w-[140px]"
+              >
+                Create &amp; Open
+              </Button>
+            </div>
+          }
+        >
+            <form id="create-room-form" onSubmit={handleCreate}>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-text-secondary mb-2.5">Room Name <span className="text-red-400">*</span></label>
                 <input
                   autoFocus
                   type="text"
@@ -124,8 +150,8 @@ export const RoomsView: React.FC = () => {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">Client (Optional)</label>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-text-secondary mb-2.5">Client (Optional)</label>
                 <input
                   type="text"
                   className="w-full bg-bg-dark border border-border-color rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-cyan focus:border-transparent transition-all"
@@ -134,8 +160,8 @@ export const RoomsView: React.FC = () => {
                   placeholder="e.g. Acme Corp"
                 />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-text-secondary mb-2">Description (Optional)</label>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-text-secondary mb-2.5">Description (Optional)</label>
                 <textarea
                   className="w-full bg-bg-dark border border-border-color rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-cyan focus:border-transparent transition-all resize-none"
                   value={description}
@@ -146,65 +172,65 @@ export const RoomsView: React.FC = () => {
               </div>
 
               {/* ── Comparison Method Selector (dev benchmarking feature — visible to all users) ── */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
+              <div className="bg-bg-dark/60 border border-border-color rounded-xl p-4">
+                <label className="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
                   Comparison Method
                   <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 border border-amber-400/30 px-1.5 py-0.5 rounded">
                     DEV
                   </span>
                 </label>
-                <div className="flex gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     id="method-deterministic"
                     onClick={() => setComparisonMethod("deterministic")}
-                    className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
+                    className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       comparisonMethod === "deterministic"
                         ? "border-accent-cyan bg-accent-cyan/10 text-accent-cyan"
-                        : "border-border-color bg-bg-dark text-text-muted hover:border-text-muted"
+                        : "border-border-color bg-bg-card text-text-muted hover:border-text-muted"
                     }`}
                   >
-                    <div className="flex items-center gap-2 justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <div className="flex items-center gap-1.5 justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                       Deterministic
                     </div>
-                    <div className="text-[10px] mt-1 opacity-70">SpatialDiffer + BOMAnalyzer</div>
+                    <div className="text-[9px] mt-1 opacity-70 leading-tight">SpatialDiffer + BOMAnalyzer</div>
                   </button>
                   <button
                     type="button"
                     id="method-full-ai"
                     onClick={() => setComparisonMethod("full_ai")}
-                    className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
+                    className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       comparisonMethod === "full_ai"
                         ? "border-violet-500 bg-violet-500/10 text-violet-400"
-                        : "border-border-color bg-bg-dark text-text-muted hover:border-text-muted"
+                        : "border-border-color bg-bg-card text-text-muted hover:border-text-muted"
                     }`}
                   >
-                    <div className="flex items-center gap-2 justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+                    <div className="flex items-center gap-1.5 justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
                       Full AI
                     </div>
-                    <div className="text-[10px] mt-1 opacity-70">Gemini (PNG + CAD JSON)</div>
+                    <div className="text-[9px] mt-1 opacity-70 leading-tight">Gemini (PNG + CAD JSON)</div>
                   </button>
                   <button
                     type="button"
                     id="method-full-ai-vision"
                     onClick={() => setComparisonMethod("full_ai_vision")}
-                    className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
+                    className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       comparisonMethod === "full_ai_vision"
                         ? "border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-400"
-                        : "border-border-color bg-bg-dark text-text-muted hover:border-text-muted"
+                        : "border-border-color bg-bg-card text-text-muted hover:border-text-muted"
                     }`}
                   >
-                    <div className="flex items-center gap-2 justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <div className="flex items-center gap-1.5 justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                       AI Vision
                     </div>
-                    <div className="text-[10px] mt-1 opacity-70">Gemini (PNG Image Only)</div>
+                    <div className="text-[9px] mt-1 opacity-70 leading-tight">Gemini (PNG Only)</div>
                   </button>
                 </div>
                 {comparisonMethod.startsWith("full_ai") && (
-                  <p className="mt-2 text-xs text-amber-400/80 flex items-start gap-1.5">
+                  <p className="mt-3 text-xs text-amber-400/80 flex items-start gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                     {comparisonMethod === "full_ai" 
                       ? "Full AI mode sends both drawing PNGs + full CAD context to Gemini."
@@ -214,28 +240,8 @@ export const RoomsView: React.FC = () => {
                 )}
               </div>
 
-              <div className="md:col-span-2 flex items-center space-x-4 pt-6 mt-2 border-t border-border-color">
-                <Button 
-                  type="submit" 
-                  variant="primary"
-                  size="lg"
-                  disabled={!name.trim()}
-                  className="shadow-[0_0_15px_rgba(37,99,235,0.2)]"
-                >
-                  Create &amp; Open
-                </Button>
-                <Button 
-                  type="button" 
-                  variant="ghost"
-                  size="lg"
-                  onClick={() => setIsCreating(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {!isCreating && rooms.length === 0 && (
           <div className="flex flex-col items-center justify-center h-[50vh] animate-in fade-in duration-500">

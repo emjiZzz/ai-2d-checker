@@ -547,6 +547,77 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                     </div>
                   </div>
                 )}
+
+                {categoryViolationIds.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--accent-cyan)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                      Visual Checklist Markers ({categoryViolationIds.length})
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {violations
+                        .filter(v => categoryViolationIds.includes(v.id))
+                        .map(v => {
+                          const isSelected = selectedViolation?.id === v.id;
+                          const isHidden = !!hiddenViolationIds[v.id];
+                          let markerBg = "rgba(255,255,255,0.04)";
+                          let markerBorder = "rgba(255,255,255,0.08)";
+                          let markerText = "#e2e8f0";
+
+                          if (isSelected) {
+                            markerBg = "rgba(0, 229, 255, 0.1)";
+                            markerBorder = "var(--accent-cyan)";
+                            markerText = "var(--accent-cyan)";
+                          } else if (v.pen_type === "ai_red") {
+                            markerBg = "rgba(239, 68, 68, 0.05)";
+                            markerBorder = "rgba(239, 68, 68, 0.2)";
+                          } else if (v.pen_type === "ai_orange") {
+                            markerBg = "rgba(249, 115, 22, 0.05)";
+                            markerBorder = "rgba(249, 115, 22, 0.2)";
+                          }
+
+                          return (
+                            <div
+                              key={v.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectViolation(v);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "4px 8px",
+                                borderRadius: "4px",
+                                background: markerBg,
+                                border: `1px solid ${markerBorder}`,
+                                fontSize: "0.72rem",
+                                color: markerText,
+                                cursor: "pointer",
+                                opacity: isHidden ? 0.4 : 1,
+                                transition: "all 0.15s ease",
+                                maxWidth: "100%",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap"
+                              }}
+                              title={v.description}
+                            >
+                              <span style={{
+                                width: "6px",
+                                height: "6px",
+                                borderRadius: "50%",
+                                background: v.pen_type === "ai_red" ? "#ef4444" : v.pen_type === "ai_orange" ? "#f97316" : v.pen_type === "checker_blue" ? "#3b82f6" : "#10b981",
+                                flexShrink: 0
+                              }} />
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {v.description}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

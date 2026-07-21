@@ -42,6 +42,8 @@ from ..context_builder import build_structured_context, load_drawing_png
 from .revision_resolver import resolve_revisions
 from .gemini_client import execute_gemini_cascade
 from .cache_manager import ComparisonCacheManager
+from .coordinate_resolver import resolve_marking_coordinates
+from .schemas import Coordinate2D, BoundingBox2D
 
 
 async def perform_full_ai_comparison(
@@ -167,7 +169,13 @@ async def perform_full_ai_comparison(
         "exact text string as text_content. "
         "Produce at least one MATCHED canvas_marking per MATCHED category so each verified "
         "item gets a green checkmark on the drawing canvas. "
-        "Be precise and thorough. Do not fabricate markings not present in the drawings."
+        "Be precise and thorough. Do not fabricate markings not present in the drawings. "
+        "IMPORTANT: For every canvas_marking, you MUST provide a 'visual_bbox' field — "
+        "a list of 4 integers [ymin, xmin, ymax, xmax] representing the bounding box of that "
+        "element on the REVISION drawing image, using normalized coordinates from 0 to 1000 "
+        "(where [0,0,1000,1000] covers the entire image). If the marking represents a REMOVED "
+        "item (only on the reference), provide 'ref_visual_bbox' instead. "
+        "This visual localization is critical for placing audit markers on the drawing canvas."
     )
 
     # Build contents list for Gemini multipart call
@@ -259,6 +267,154 @@ async def perform_full_ai_comparison(
 
     if "canvas_markings" not in parsed:
         parsed["canvas_markings"] = []
+
+    # ── Coordinate resolution (bridge Full-AI to deterministic-quality coords) ─
+    clean_markings = parsed["canvas_markings"]
+
+    # 1. Extract all region bounding boxes (same as deterministic path)
+    ref_title_bbox_raw = ref_regions.get("title")
+    rev_title_bbox_raw = rev_regions.get("title")
+    ref_notes_bbox_raw = ref_regions.get("notes")
+    rev_notes_bbox_raw = rev_regions.get("notes")
+    ref_iso_bbox_raw = ref_regions.get("iso")
+    rev_iso_bbox_raw = rev_regions.get("iso")
+    ref_views_bbox_raw = ref_regions.get("views")
+    rev_views_bbox_raw = rev_regions.get("views")
+    ref_title_ul_bbox_raw = ref_regions.get("title_upper_left")
+    rev_title_ul_bbox_raw = rev_regions.get("title_upper_left")
+
+    _to_bbox = lambda raw: BoundingBox2D.from_tuple(raw).to_tuple() if raw else None
+    ref_title_bbox = _to_bbox(ref_title_bbox_raw)
+    rev_title_bbox = _to_bbox(rev_title_bbox_raw)
+    ref_notes_bbox = _to_bbox(ref_notes_bbox_raw)
+    rev_notes_bbox = _to_bbox(rev_notes_bbox_raw)
+    ref_iso_bbox = _to_bbox(ref_iso_bbox_raw)
+    rev_iso_bbox = _to_bbox(rev_iso_bbox_raw)
+    ref_views_bbox = _to_bbox(ref_views_bbox_raw)
+    rev_views_bbox = _to_bbox(rev_views_bbox_raw)
+    ref_title_ul_bbox = _to_bbox(ref_title_ul_bbox_raw)
+    rev_title_ul_bbox = _to_bbox(rev_title_ul_bbox_raw)
+    ref_bom_bbox_validated = _to_bbox(ref_bom_bbox)
+    rev_bom_bbox_validated = _to_bbox(rev_bom_bbox)
+
+    # 2. Build entity ID lookup dictionaries for coordinate resolution
+    id_to_rev_entity = {
+        f"REV-{e.properties.get('handle')}": e
+        for e in rev_entities if e.properties and e.properties.get("handle")
+    }
+    id_to_ref_entity = {
+        f"REF-{e.properties.get('handle')}": e
+        for e in ref_entities if e.properties and e.properties.get("handle")
+    }
+    used_rev_entities: set = set()
+    used_ref_entities: set = set()
+
+    # 3. Run text-based coordinate resolution (same resolver as deterministic)
+    try:
+        resolve_marking_coordinates(
+            clean_markings, id_to_rev_entity, id_to_ref_entity,
+            rev_entities, ref_entities, rev_bom_rows, ref_bom_rows,
+            rev_title_fields, ref_title_fields,
+            rev_bom_bbox_validated, ref_bom_bbox_validated,
+            rev_title_bbox, ref_title_bbox,
+            rev_notes_bbox, ref_notes_bbox,
+            rev_iso_bbox, ref_iso_bbox,
+            rev_views_bbox, ref_views_bbox,
+            rev_title_ul_bbox, ref_title_ul_bbox,
+            used_rev_entities, used_ref_entities,
+        )
+        resolved_count = sum(1 for m in clean_markings if m.get("coordinates"))
+        logger.info(
+            f"[full_ai] Text-based coordinate resolution: "
+            f"{resolved_count}/{len(clean_markings)} markings resolved."
+        )
+    except Exception as resolve_err:
+        logger.warning(f"[full_ai] Coordinate resolution failed (non-fatal): {resolve_err}")
+
+    # 4. Visual coordinate fallback — convert Gemini normalized [ymin,xmin,ymax,xmax]/1000
+    #    to CAD world coordinates for any markings still missing coordinates.
+    def _visual_to_cad(visual_bbox: list[float], render_bounds: list[float]) -> list[float]:
+        """Convert Gemini [ymin, xmin, ymax, xmax] (0–1000) to CAD [x, y] center point."""
+        ymin_n, xmin_n, ymax_n, xmax_n = visual_bbox
+        x_min_cad, y_min_cad, x_max_cad, y_max_cad = render_bounds
+        cad_w = x_max_cad - x_min_cad
+        cad_h = y_max_cad - y_min_cad
+        # Center of the visual bbox
+        x_frac = ((xmin_n + xmax_n) / 2.0) / 1000.0
+        y_frac = ((ymin_n + ymax_n) / 2.0) / 1000.0
+        # Y-inversion: Gemini image origin is top-left, CAD origin is bottom-left
+        x_cad = x_min_cad + (x_frac * cad_w)
+        y_cad = y_min_cad + ((1.0 - y_frac) * cad_h)
+        return [x_cad, y_cad]
+
+    rev_render_bounds = rev_drawing.metadata.get("render_bounds") if rev_drawing.metadata else None
+    ref_render_bounds = ref_drawing.metadata.get("render_bounds") if ref_drawing.metadata else None
+
+    visual_fallback_count = 0
+    for m in clean_markings:
+        # Revision coordinates fallback
+        if m.get("coordinates") is None and m.get("visual_bbox") and rev_render_bounds:
+            try:
+                m["coordinates"] = _visual_to_cad(m["visual_bbox"], rev_render_bounds)
+                visual_fallback_count += 1
+            except Exception:
+                pass
+        # Reference coordinates fallback
+        if m.get("ref_coordinates") is None and m.get("ref_visual_bbox") and ref_render_bounds:
+            try:
+                m["ref_coordinates"] = _visual_to_cad(m["ref_visual_bbox"], ref_render_bounds)
+                visual_fallback_count += 1
+            except Exception:
+                pass
+
+    if visual_fallback_count > 0:
+        logger.info(f"[full_ai] Visual coordinate fallback resolved {visual_fallback_count} additional coordinate(s).")
+
+    # 5. Spatial deduplication — merge markings within 5mm CAD distance threshold
+    import math
+    DEDUP_THRESHOLD_MM = 5.0
+    deduped_markings: list[dict] = []
+    for m in clean_markings:
+        coords = m.get("coordinates")
+        is_duplicate = False
+        if coords and len(coords) >= 2:
+            for existing in deduped_markings:
+                ec = existing.get("coordinates")
+                if ec and len(ec) >= 2:
+                    dist = math.hypot(coords[0] - ec[0], coords[1] - ec[1])
+                    if dist < DEDUP_THRESHOLD_MM and m.get("status") == existing.get("status") and m.get("category") == existing.get("category"):
+                        # Merge: keep the one with more detail
+                        if len(m.get("details", "")) > len(existing.get("details", "")):
+                            existing.update(m)
+                        is_duplicate = True
+                        break
+        if not is_duplicate:
+            deduped_markings.append(m)
+
+    if len(clean_markings) != len(deduped_markings):
+        logger.info(f"[full_ai] Spatial dedup: {len(clean_markings)} → {len(deduped_markings)} markings.")
+    clean_markings = deduped_markings
+
+    # 6. Validate coordinates and bounding boxes via DTO constraints
+    for m in clean_markings:
+        coords = m.get("coordinates")
+        if coords is not None:
+            m["coordinates"] = Coordinate2D.from_list(coords).to_list()
+        ref_coords = m.get("ref_coordinates")
+        if ref_coords is not None:
+            m["ref_coordinates"] = Coordinate2D.from_list(ref_coords).to_list()
+        bbox = m.get("bbox")
+        if bbox is not None and len(bbox) == 2 and len(bbox[0]) == 2 and len(bbox[1]) == 2:
+            flat = (bbox[0][0], bbox[0][1], bbox[1][0], bbox[1][1])
+            vb = BoundingBox2D.from_tuple(flat)
+            m["bbox"] = [[vb.xmin, vb.ymin], [vb.xmax, vb.ymax]]
+        ref_bbox_val = m.get("ref_bbox")
+        if ref_bbox_val is not None and len(ref_bbox_val) == 2 and len(ref_bbox_val[0]) == 2 and len(ref_bbox_val[1]) == 2:
+            flat = (ref_bbox_val[0][0], ref_bbox_val[0][1], ref_bbox_val[1][0], ref_bbox_val[1][1])
+            vb = BoundingBox2D.from_tuple(flat)
+            m["ref_bbox"] = [[vb.xmin, vb.ymin], [vb.xmax, vb.ymax]]
+
+    parsed["canvas_markings"] = clean_markings
 
     comparison_response = PhysicalComparisonResponse(
         drawing_views=CategoryComparison(**parsed["drawing_views"]),

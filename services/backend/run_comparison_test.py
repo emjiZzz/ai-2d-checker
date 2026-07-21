@@ -29,13 +29,20 @@ async def main():
     from services.backend.infrastructure.database.connection import db_manager
     await db_manager.connect()
     
-    # Use CR19061U01 assembly drawings
-    ref_id = "6a4c9136d3519ef21ef800de"
-    rev_id = "6a4c914ad3519ef21ef8120f"
+    # Query database for available drawings
+    drawings = await DrawingDocument.find_all().limit(2).to_list()
+    if len(drawings) < 2:
+        print("ERROR: Need at least 2 drawings in the database to run the comparison test.")
+        return
+        
+    ref_id = str(drawings[0].id)
+    rev_id = str(drawings[1].id)
+    print(f"Using database drawings:\nReference: {drawings[0].file_name} ({ref_id})\nRevision: {drawings[1].file_name} ({rev_id})")
     
     req = PhysicalComparisonRequest(
         reference_drawing_id=ref_id,
-        drawing_id=rev_id
+        drawing_id=rev_id,
+        comparison_method="full_ai"
     )
     
     print("Running physical comparison endpoint logic...")

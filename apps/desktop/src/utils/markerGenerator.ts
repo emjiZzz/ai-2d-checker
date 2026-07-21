@@ -11,6 +11,8 @@ export interface RawViolation {
   coordinates?: [number, number];
   ref_coordinates?: [number, number];
   status?: string;
+  visual_bbox?: [number, number, number, number];
+  ref_visual_bbox?: [number, number, number, number];
 }
 
 export interface GeneratorParams {
@@ -32,6 +34,22 @@ export const generateComparisonMarkings = ({
   bounds,
   refBounds
 }: GeneratorParams): any[] => {
+  // Helper: convert Gemini visual_bbox [ymin, xmin, ymax, xmax] (0-1000) to CAD [x, y]
+  const visualBboxToCad = (
+    vbox: [number, number, number, number],
+    renderBounds: number[] | undefined
+  ): [number, number] | undefined => {
+    if (!renderBounds || renderBounds.length < 4) return undefined;
+    const [yminN, xminN, ymaxN, xmaxN] = vbox;
+    const [xMinCad, yMinCad, xMaxCad, yMaxCad] = renderBounds;
+    const cadW = xMaxCad - xMinCad;
+    const cadH = yMaxCad - yMinCad;
+    const xFrac = ((xminN + xmaxN) / 2.0) / 1000.0;
+    const yFrac = ((yminN + ymaxN) / 2.0) / 1000.0;
+    // Y-inversion: Gemini image origin is top-left, CAD origin is bottom-left
+    return [xMinCad + xFrac * cadW, yMinCad + (1.0 - yFrac) * cadH];
+  };
+
   const mappedMarkings: any[] = [];
   const refTextEntitiesWithMarkers = new Set<string>();
   const getCoordKey = (x: number, y: number) => `${x.toFixed(2)},${y.toFixed(2)}`;
@@ -102,6 +120,8 @@ export const generateComparisonMarkings = ({
         }
       } else if (marking.coordinates && i === 0 && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
         coordinates = [marking.coordinates[0], marking.coordinates[1]] as [number, number];
+      } else if (marking.visual_bbox && i === 0 && drawing?.metadata?.render_bounds) {
+        coordinates = visualBboxToCad(marking.visual_bbox, drawing.metadata.render_bounds);
       }
 
       let ref_coordinates: [number, number] | undefined = undefined;
@@ -122,6 +142,8 @@ export const generateComparisonMarkings = ({
         }
       } else if (marking.ref_coordinates && i === 0 && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
         ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
+      } else if (marking.ref_visual_bbox && i === 0 && oldDrawing?.metadata?.render_bounds) {
+        ref_coordinates = visualBboxToCad(marking.ref_visual_bbox, oldDrawing.metadata.render_bounds);
       }
 
       if (match && !refMatch) {

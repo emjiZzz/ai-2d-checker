@@ -142,7 +142,7 @@ async def create_enterprise_user(request: CreateUserRequest):
         username=request.username,
         hashed_password=hashed,
         role=request.role,
-        permissions=request.permissions or [],
+        permissions=request.permissions if request.permissions is not None else (["all"] if request.role == "admin" else ["audit"]),
         active=True
     )
     await user.save()

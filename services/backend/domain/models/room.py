@@ -9,11 +9,14 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 class Room(Document):
     """
-    A Room is an isolated container for a single comparison/testing session
-    (Phase A, room-based workflow). Data isolation (linking specific drawings/
-    audit sessions to a Room) is deliberately NOT modeled yet — see
-    frontend-room-workflow-plan.md "Deferred" section. This is the container
-    only; what it holds is a later phase.
+    A Room is an isolated container for a single comparison/testing session.
+    Per-room data isolation (active_old_drawing_id / active_new_drawing_id /
+    active_audit_session_id / physical_comparison_results below) is
+    implemented: AuditWorkspace.tsx syncs the workspace's live state into
+    these fields on every change, so reopening a Room restores what was
+    active in it. This went beyond frontend-room-workflow-plan.md's original
+    Phase A scope, which deliberately deferred isolation — see
+    _deprecated/README.md for the full history of that plan.
     """
     name: str = Field(..., description="User-facing room label, e.g. 'Bracket Rev C vs Rev D'")
     description: str | None = Field(None, description="Optional free-text notes about this test session")

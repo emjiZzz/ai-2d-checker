@@ -175,6 +175,10 @@ export const AuditWorkspace: React.FC = () => {
         )
       )}
 
+      {/* 3D workspace is intentionally not Room-gated: it runs on its own
+          useThreeDStore, separate from the workspaceStore state Rooms sync
+          (oldDrawing/newDrawing/activeSessionId). There's no "3D room" state
+          model to gate into yet — confirmed decision, not an oversight. */}
       {currentNav === "3d-workspace" && (
         <div className="flex flex-col w-full h-full">
           <WorkspaceView currentNav={currentNav} />

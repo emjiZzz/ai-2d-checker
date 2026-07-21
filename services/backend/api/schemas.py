@@ -162,6 +162,7 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     role: str
+    permissions: list[str] | None = None
 
 class UpdateUserRequest(BaseModel):
     active: bool | None = None
@@ -244,6 +245,8 @@ class CanvasMarking(BaseModel):
     bbox: Optional[list[list[float]]] = Field(default=None, description="Optional bounding box of the text element.")
     ref_bbox: Optional[list[list[float]]] = Field(default=None, description="Optional bounding box of the text element on the reference sheet.")
     original_value: Optional[str] = Field(default=None, description="The original value from the reference drawing, if changed.")
+    visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the revision drawing sheet image, normalized 0 to 1000.")
+    ref_visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the reference drawing sheet image, normalized 0 to 1000.")
 
 class PhysicalComparisonResponse(BaseModel):
     drawing_views: CategoryComparison
