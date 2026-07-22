@@ -40,7 +40,7 @@ export const usePhysicalComparison = () => {
       const timeoutId = setTimeout(() => controller.abort(), 180_000); // 3 minutes timeout
       
       // Start the fetch request immediately
-      const comparisonMethod = activeRoom?.comparison_method ?? "deterministic";
+      const comparisonMethod = activeRoom?.comparison_method ?? "rag";
       const fetchPromise = fetch(`${baseUrl()}/api/v1/audits/physical-comparison`, {
         method: "POST",
         headers: buildHeaders({ "Content-Type": "application/json" }),

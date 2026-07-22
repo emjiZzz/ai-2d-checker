@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { KeyRound, ShieldAlert, User, Cpu } from "lucide-react";
-import { Button } from "../../components/ui/Button";
 
 export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -18,37 +17,45 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="login-viewport">
-      <div className="login-card">
-        {/* Technical Branding Header */}
-        <div className="login-branding">
-          <div className="branding-logo">
-            <Cpu size={28} className="logo-icon" />
+    <div className="relative flex items-center justify-center w-screen h-screen bg-[#09090b] overflow-hidden select-none font-sans text-zinc-100">
+      {/* Soft Ambient Radial Background Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-cyan-500/[0.07] rounded-full blur-[160px] pointer-events-none" />
+
+      {/* Pure Centered Login Panel (No outer card container, no border boxes) */}
+      <div className="w-full max-w-[340px] px-4 z-10 animate-fade-in">
+        {/* Minimalist Branding Header */}
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 mb-3">
+            <Cpu size={24} className="animate-pulse" />
           </div>
-          <h2 className="branding-title">AI-2D-Checker</h2>
-          <span className="branding-subtitle">Enterprise CAD Compliance Platform</span>
+          <h1 className="text-xl font-extrabold tracking-tight text-white">
+            AI-2D-Checker
+          </h1>
+          <p className="text-[11px] font-medium text-zinc-500 mt-0.5 tracking-wider uppercase">
+            Enterprise Compliance Portal
+          </p>
         </div>
 
         {/* Credentials Form */}
-        <form onSubmit={handleSubmit} className="login-form">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && (
-            <div className="error-banner">
-              <ShieldAlert size={16} style={{ flexShrink: 0 }} />
+            <div className="flex items-center gap-2 text-red-400 bg-red-500/10 px-3 py-2 rounded-lg text-xs font-semibold animate-fade-in">
+              <ShieldAlert size={15} className="shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="username">
-              Username or ID
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400" htmlFor="username">
+              Username
             </label>
-            <div className="input-icon-wrapper">
-              <User size={16} className="input-icon" />
+            <div className="relative flex items-center">
+              <User size={15} className="absolute left-3 text-zinc-500 pointer-events-none" />
               <input
                 id="username"
                 type="text"
-                className="form-input"
-                placeholder="e.g. engineer"
+                className="w-full py-2.5 pl-9 pr-3 bg-zinc-900/60 border border-zinc-800 rounded-xl text-white placeholder:text-zinc-600 text-xs font-medium focus:outline-none focus:border-cyan-500/60 focus:bg-zinc-900 transition-all"
+                placeholder="Username or ID"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isSubmitting}
@@ -58,16 +65,16 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">
-              Security Password
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400" htmlFor="password">
+              Password
             </label>
-            <div className="input-icon-wrapper">
-              <KeyRound size={16} className="input-icon" />
+            <div className="relative flex items-center">
+              <KeyRound size={15} className="absolute left-3 text-zinc-500 pointer-events-none" />
               <input
                 id="password"
                 type="password"
-                className="form-input"
+                className="w-full py-2.5 pl-9 pr-3 bg-zinc-900/60 border border-zinc-800 rounded-xl text-white placeholder:text-zinc-600 text-xs font-medium focus:outline-none focus:border-cyan-500/60 focus:bg-zinc-900 transition-all"
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -77,210 +84,36 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <Button
+          <button
             type="submit"
-            variant="primary"
-            className="w-full mt-4 h-12 text-[15px]"
             disabled={isSubmitting}
+            className="w-full mt-1 h-10 bg-cyan-400 hover:bg-cyan-300 active:scale-[0.98] text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all duration-150 shadow-[0_0_15px_rgba(0,229,255,0.2)] disabled:opacity-50 cursor-pointer"
           >
-            {isSubmitting ? "Authenticating session..." : "Initialize Portal Access"}
-          </Button>
+            {isSubmitting ? "Authenticating..." : "Sign In"}
+          </button>
         </form>
 
-        {/* Enterprise Context Footer */}
-        <div className="login-help-box">
-          <p className="help-heading">Demo Workspace Access Accounts:</p>
-          <div className="help-credentials-grid">
-            <span className="help-label">Admin Role:</span>
-            <code className="help-code">admin</code>
-            <code className="help-code">admin123</code>
-
-            <span className="help-label">Engineer Role:</span>
-            <code className="help-code">engineer</code>
-            <code className="help-code">engineer123</code>
+        {/* Minimalist Quick Account Preset Fill Buttons */}
+        <div className="mt-8 pt-5 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-500">
+          <span>Quick fill:</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setUsername("admin"); setPassword("admin123"); }}
+              className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 hover:text-cyan-400 border border-zinc-800 transition-colors font-mono cursor-pointer"
+            >
+              admin
+            </button>
+            <button
+              type="button"
+              onClick={() => { setUsername("engineer"); setPassword("engineer123"); }}
+              className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 hover:text-cyan-400 border border-zinc-800 transition-colors font-mono cursor-pointer"
+            >
+              engineer
+            </button>
           </div>
         </div>
       </div>
-
-      <style>{`
-        .login-viewport {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100vw;
-          height: 100vh;
-          background: #09090b;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          color: #e4e4e7;
-          overflow: hidden;
-        }
-
-        .login-card {
-          width: 100%;
-          max-width: 420px;
-          background: #18181b;
-          border: 1px solid #27272a;
-          border-radius: 12px;
-          padding: 40px 32px;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
-          animation: slideUp 0.4s ease-out;
-        }
-
-        .login-branding {
-          text-align: center;
-          margin-bottom: 30px;
-        }
-
-        .branding-logo {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 56px;
-          height: 56px;
-          border-radius: 12px;
-          background: rgba(0, 229, 255, 0.1);
-          border: 1px solid rgba(0, 229, 255, 0.2);
-          margin-bottom: 12px;
-        }
-
-        .logo-icon {
-          color: #00e5ff;
-        }
-
-        .branding-title {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: #ffffff;
-          margin: 0;
-          letter-spacing: -0.025em;
-        }
-
-        .branding-subtitle {
-          font-size: 0.8rem;
-          color: #a1a1aa;
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .error-banner {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.2);
-          padding: 12px;
-          border-radius: 6px;
-          color: #fca5a5;
-          font-size: 0.85rem;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .form-label {
-          font-size: 0.75rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          color: #a1a1aa;
-          letter-spacing: 0.05em;
-        }
-
-        .input-icon-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .input-icon {
-          position: absolute;
-          left: 12px;
-          color: #71717a;
-        }
-
-        .form-input {
-          width: 100%;
-          padding: 10px 12px 10px 38px;
-          background: #09090b;
-          border: 1px solid #27272a;
-          border-radius: 6px;
-          color: #ffffff;
-          font-size: 0.9rem;
-          transition: all 0.2s ease;
-        }
-
-        .form-input:focus {
-          border-color: #00e5ff;
-          outline: none;
-          box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.15);
-        }
-
-        .login-btn {
-          margin-top: 10px;
-          padding: 12px;
-          font-weight: 600;
-          background: #00e5ff !important;
-          color: #09090b !important;
-          border: none !important;
-          width: 100%;
-        }
-
-        .login-btn:hover {
-          background: #33ebff !important;
-          color: #09090b !important;
-          transform: translateY(-1px);
-        }
-
-        .login-help-box {
-          margin-top: 30px;
-          padding-top: 20px;
-          border-top: 1px solid #27272a;
-          font-size: 0.75rem;
-        }
-
-        .help-heading {
-          font-weight: 600;
-          color: #a1a1aa;
-          margin-bottom: 8px;
-        }
-
-        .help-credentials-grid {
-          display: grid;
-          grid-template-columns: 80px 1fr 1fr;
-          gap: 6px;
-          align-items: center;
-        }
-
-        .help-label {
-          color: #71717a;
-        }
-
-        .help-code {
-          font-family: monospace;
-          background: #09090b;
-          padding: 2px 6px;
-          border-radius: 4px;
-          color: #00e5ff;
-          text-align: center;
-        }
-
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   );
 };

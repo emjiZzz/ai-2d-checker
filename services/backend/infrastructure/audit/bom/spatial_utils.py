@@ -13,7 +13,8 @@ def find_drawing_text_coordinates(
     category: Optional[str] = None,
     region_bbox: Optional[tuple] = None,
     used_entities: Optional[set] = None,
-    exclude_bboxes: Optional[list] = None
+    exclude_bboxes: Optional[list] = None,
+    match_level: int = 5
 ) -> Optional[dict]:
     """Locate screen anchor coordinates for a given text value in drawings."""
     if not target_text or target_text == "NONE":
@@ -133,6 +134,9 @@ def find_drawing_text_coordinates(
                     used_entities.add(id(e))
                 return get_anchor(e)
 
+    if match_level <= 1:
+        return None
+
     for e in search_order:
         if used_entities is not None and id(e) in used_entities:
             continue
@@ -155,6 +159,9 @@ def find_drawing_text_coordinates(
                         if used_entities is not None:
                             used_entities.add(id(e))
                         return get_anchor(e)
+
+    if match_level <= 2:
+        return None
 
     if len(target_norm) >= 3:
         prefix = target_norm[:2]

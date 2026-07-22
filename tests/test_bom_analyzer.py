@@ -158,8 +158,14 @@ def test_spatial_calculations():
     assert coords is not None
     assert coords["coords"] is not None
 
+    # compute_bom_bbox delegates to extract_dynamic_regions(), which always returns a
+    # best-effort bbox via its 3-tier fallback (content-aware -> layer heuristic ->
+    # percentage-of-sheet-bounds) rather than None when there's no confident signal.
+    # That "always guess" behavior with no confidence flag back to the caller is a
+    # known fragility (tracked separately) — this assertion documents current intended
+    # behavior, not an endorsement of it.
     bom_bbox = BOMAnalyzer.compute_bom_bbox([ent])
-    assert bom_bbox is None
+    assert isinstance(bom_bbox, tuple) and len(bom_bbox) == 4
 
     title_bbox = BOMAnalyzer.compute_title_block_bbox([ent])
     assert title_bbox is None or isinstance(title_bbox, tuple)

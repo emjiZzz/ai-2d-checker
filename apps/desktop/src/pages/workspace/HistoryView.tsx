@@ -37,6 +37,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { DrawingItem } from "../../stores/workspaceStore";
+import { Button } from "../../components/ui/Button";
+import { Modal } from "../../components/ui/Modal";
+import { Badge } from "../../components/ui/Badge";
 
 // Helper utility to parse ISO datetime strings from backend reliably as UTC
 const parseUtcDate = (dateStr: string | null | undefined): Date => {
@@ -153,7 +156,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         {/* DYNAMIC STATISTICS SUMMARY DECK */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Card 1: Total Runs */}
-          <div className="flex items-center gap-4 p-4 md:p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4 p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-blue-500/8 border-blue-500/15 text-accent-cyan shadow-blue-500/5">
               <Database size={18} />
             </div>
@@ -166,7 +169,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
 
           {/* Card 2: Average Compliance */}
-          <div className="flex items-center gap-4 p-4 md:p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4 p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-emerald-500/8 border-emerald-500/15 text-emerald-400 shadow-emerald-500/5">
               <BarChart2 size={18} />
             </div>
@@ -179,7 +182,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
 
           {/* Card 3: Success Rate */}
-          <div className="flex items-center gap-4 p-4 md:p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4 p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-purple-500/8 border-purple-500/15 text-purple-400 shadow-purple-500/5">
               <TrendingUp size={18} />
             </div>
@@ -258,23 +261,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   const isCompleted = session.status === "completed";
                   const isFailed = session.status === "failed";
                   const score = session.compliance_score;
-                  let scoreColor = "text-text-muted";
-                  let scoreBg = "bg-white/3";
-                  let scoreBorder = "border-white/5";
+                  // Maps 1:1 onto Badge's semantic variants instead of hand-computing
+                  // bg/border/text triplets per threshold.
+                  let scoreVariant: "success" | "warning" | "destructive" | "secondary" = "secondary";
                   if (isCompleted && score !== null) {
-                    if (score >= 85) {
-                      scoreColor = "text-emerald-400";
-                      scoreBg = "bg-emerald-500/8";
-                      scoreBorder = "border-emerald-500/15";
-                    } else if (score >= 70) {
-                      scoreColor = "text-amber-400";
-                      scoreBg = "bg-amber-500/8";
-                      scoreBorder = "border-amber-500/15";
-                    } else {
-                      scoreColor = "text-red-400";
-                      scoreBg = "bg-red-500/8";
-                      scoreBorder = "border-red-500/15";
-                    }
+                    if (score >= 85) scoreVariant = "success";
+                    else if (score >= 70) scoreVariant = "warning";
+                    else scoreVariant = "destructive";
                   }
 
                   return (
@@ -333,13 +326,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       {/* Compliance Score */}
                       <td className="p-3.5 text-xs text-text-primary align-middle">
                         {isCompleted ? (
-                          <span className={`inline-flex items-center py-0.5 px-2 rounded border font-extrabold ${scoreBg} ${scoreBorder} ${scoreColor}`}>
+                          <Badge variant={scoreVariant} className="font-extrabold">
                             {score !== null ? `${score.toFixed(1)}%` : "N/A"}
-                          </span>
+                          </Badge>
                         ) : isFailed ? (
-                          <span className="bg-red-500/8 border border-red-500/15 text-red-400 text-[10px] inline-flex items-center gap-1 py-0.5 px-2 rounded" title={session.error_message || "Audit pipeline failed"}>
+                          <Badge variant="destructive" className="text-[10px] gap-1" title={session.error_message || "Audit pipeline failed"}>
                             <AlertTriangle size={12} /> Failed
-                          </span>
+                          </Badge>
                         ) : (
                           <span className="bg-accent-cyan/5 border border-accent-cyan/12 text-accent-cyan text-[10px] inline-flex items-center gap-1 py-0.5 px-2 rounded">
                             <Loader size={12} className="spin-animation" /> Auditing...
@@ -369,7 +362,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             onClick={() => handleOpenSession(session)}
                             disabled={session.status !== "completed"}
                             title="Open visual canvas review"
-                            className="bg-transparent border border-border-color text-text-muted p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:text-accent-cyan hover:border-accent-cyan hover:bg-accent-cyan/15 hover:scale-105 transition-all disabled:opacity-50 disabled:pointer-events-none"
+                            className="bg-transparent border border-border-color text-text-muted p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:text-accent-cyan hover:border-accent-cyan hover:bg-accent-cyan/15 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                           >
                             <FolderOpen size={14} />
                           </button>
@@ -380,7 +373,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                               setIsEditModalOpen(true);
                             }}
                             title="Edit custom remarks"
-                            className="bg-transparent border border-border-color text-text-muted p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:text-amber-500 hover:border-amber-500 hover:bg-amber-500/15 hover:scale-105 transition-all"
+                            className="bg-transparent border border-border-color text-text-muted p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:text-warning hover:border-warning hover:bg-warning/15 transition-colors"
                           >
                             <Edit size={14} />
                           </button>
@@ -390,14 +383,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                               setIsDeleteModalOpen(true);
                             }}
                             title="Purge session record"
-                            className="bg-transparent border border-red-500/30 text-red-400 p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-red-500/20 hover:border-red-500 hover:scale-105 transition-all"
+                            className="bg-transparent border border-danger/30 text-danger p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-danger/20 hover:border-danger transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
                           {session.is_restored && (
-                            <span className="text-[9px] font-extrabold py-0.5 px-1.5 rounded uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 tracking-wide flex items-center ml-1 shadow-xs">
+                            <Badge variant="success" className="text-[9px] uppercase tracking-wide ml-1">
                               Restored
-                            </span>
+                            </Badge>
                           )}
                         </div>
                       </td>
@@ -420,8 +413,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 : "No CAD compliance runs have been archived yet. Go to the review workspace to launch your first compliance check!"}
             </p>
             {sessions && sessions.length > 0 ? (
-              <button
-                className="inline-flex items-center justify-center py-2 px-5 rounded-lg font-semibold text-xs border border-border-color text-text-muted hover:text-text-primary hover:bg-white/5 cursor-pointer transition-all duration-200"
+              <Button
+                variant="outline"
                 onClick={() => {
                   setHistorySearchQuery("");
                   setHistoryStatusFilter("all");
@@ -429,102 +422,96 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 }}
               >
                 Clear all filters
-              </button>
+              </Button>
             ) : (
-              <button
-                className="inline-flex items-center justify-center gap-2 py-2 px-5 rounded-lg font-semibold text-xs cursor-pointer transition-all bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-md hover:-translate-y-0.5 hover:shadow-lg hover:brightness-105 border border-transparent disabled:opacity-50 disabled:pointer-events-none"
-                onClick={() => setCurrentNav("workspace")}
-              >
-                <Play size={12} /> Launch Compliance Check
-              </button>
+              <Button variant="primary" onClick={() => setCurrentNav("workspace")}>
+                <Play size={12} className="mr-2" /> Launch Compliance Check
+              </Button>
             )}
           </div>
         )}
       </main>
 
       {/* Edit Remarks Modal */}
-      {isEditModalOpen && selectedSessionForEdit && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-bg-sidebar border border-border-color rounded-2xl p-6 shadow-2xl w-full max-w-[480px] flex flex-col gap-4 animate-scale-up">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-base font-extrabold text-text-primary m-0">Edit Session Remarks</h3>
-              <p className="text-xs text-text-muted m-0 leading-relaxed">Add custom notes or checker logs for this revision audit.</p>
-            </div>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Remarks / Notes</label>
-                <textarea
-                  className="w-full bg-transparent border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer h-[120px] resize-none"
-                  value={remarksText}
-                  onChange={(e) => setRemarksText(e.target.value)}
-                  placeholder="Enter custom remarks for this session..."
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-2">
-              <button
-                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs border border-border-color text-text-muted hover:text-text-primary hover:bg-white/5 cursor-pointer transition-all duration-200"
-                onClick={() => {
-                  setIsEditModalOpen(false);
-                  setSelectedSessionForEdit(null);
-                  setRemarksText("");
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs bg-gradient-to-r from-accent-cyan to-indigo-400 hover:brightness-110 text-black cursor-pointer transition-all duration-200 hover:shadow-[0_0_12px_rgba(0,229,255,0.3)]"
-                onClick={handleSaveRemarks}
-              >
-                Save Remarks
-              </button>
-            </div>
+      <Modal
+        isOpen={isEditModalOpen && !!selectedSessionForEdit}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedSessionForEdit(null);
+          setRemarksText("");
+        }}
+        title="Edit Session Remarks"
+        description="Add custom notes or checker logs for this revision audit."
+        maxWidthClassName="max-w-[480px]"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditModalOpen(false);
+                setSelectedSessionForEdit(null);
+                setRemarksText("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveRemarks}>
+              Save Remarks
+            </Button>
           </div>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Remarks / Notes</label>
+          <textarea
+            className="w-full bg-transparent border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan transition-colors h-[120px] resize-none"
+            value={remarksText}
+            onChange={(e) => setRemarksText(e.target.value)}
+            placeholder="Enter custom remarks for this session..."
+          />
         </div>
-      )}
+      </Modal>
 
       {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && selectedSessionForDelete && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-bg-sidebar border border-border-color rounded-2xl p-6 shadow-2xl w-full max-w-[480px] flex flex-col gap-4 animate-scale-up">
-            <div className="flex flex-col gap-1">
-              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
-                <AlertTriangle size={20} />
-              </div>
-              <h3 className="text-base font-extrabold text-red-500 m-0 mt-2">Purge Session Record?</h3>
-              <p className="text-xs text-text-muted m-0 leading-relaxed">
-                You are about to permanently delete this audit session log and all associated violations from MongoDB. This action is irreversible.
-              </p>
-            </div>
-            <div className="p-3 bg-red-500/5 border border-red-500/15 rounded-lg">
-              <div className="text-xs flex flex-col gap-1.5 font-mono">
-                <span className="text-text-muted">Target: <strong className="text-text-primary">{getDrawingName(selectedSessionForDelete.drawing_id)}</strong></span>
-                {selectedSessionForDelete.reference_drawing_id && (
-                  <span className="text-text-muted">Reference: <strong className="text-text-primary">{getDrawingName(selectedSessionForDelete.reference_drawing_id)}</strong></span>
-                )}
-                <span className="text-text-muted">Date: <strong className="text-text-primary">{parseUtcDate(selectedSessionForDelete.created_at).toLocaleString()}</strong></span>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-2">
-              <button
-                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs border border-border-color text-text-muted hover:text-text-primary hover:bg-white/5 cursor-pointer transition-all duration-200"
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setSelectedSessionForDelete(null);
-                }}
-              >
-                Keep Record
-              </button>
-              <button
-                className="inline-flex items-center justify-center py-2 px-4 rounded-lg font-semibold text-xs bg-red-600 hover:bg-red-700 text-white cursor-pointer transition-all duration-200 shadow-md hover:shadow-red-500/25"
-                onClick={handleDeleteConfirm}
-              >
-                Purge Record
-              </button>
+      <Modal
+        isOpen={isDeleteModalOpen && !!selectedSessionForDelete}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setSelectedSessionForDelete(null);
+        }}
+        title="Purge Session Record?"
+        icon={<AlertTriangle size={18} className="text-danger" />}
+        description="You are about to permanently delete this audit session log and all associated violations from MongoDB. This action is irreversible."
+        maxWidthClassName="max-w-[480px]"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setSelectedSessionForDelete(null);
+              }}
+            >
+              Keep Record
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Purge Record
+            </Button>
+          </div>
+        }
+      >
+        {selectedSessionForDelete && (
+          <div className="p-3 bg-danger/5 border border-danger/15 rounded-lg">
+            <div className="text-xs flex flex-col gap-1.5 font-mono">
+              <span className="text-text-muted">Target: <strong className="text-text-primary">{getDrawingName(selectedSessionForDelete.drawing_id)}</strong></span>
+              {selectedSessionForDelete.reference_drawing_id && (
+                <span className="text-text-muted">Reference: <strong className="text-text-primary">{getDrawingName(selectedSessionForDelete.reference_drawing_id)}</strong></span>
+              )}
+              <span className="text-text-muted">Date: <strong className="text-text-primary">{parseUtcDate(selectedSessionForDelete.created_at).toLocaleString()}</strong></span>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </>
   );
 };

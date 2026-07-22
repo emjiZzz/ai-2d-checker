@@ -34,6 +34,14 @@ def extract_dynamic_regions(entities: list) -> dict:
     }
 
     result = {}
+    # Tracks how each zone's bbox was actually resolved ("percentage_fallback" vs
+    # "content_aware"), stashed under the reserved "_zone_confidence" key using the
+    # same smuggle-an-extra-key pattern already used for "safe_zones" below, rather
+    # than changing this function's return shape and rippling through every caller.
+    # A caller can compare ref's vs rev's confidence per zone: if either fell back to
+    # the percentage grid, or the two resolved the same zone via different paths, the
+    # resulting bbox comparison is unreliable and should be flagged, not trusted silently.
+    zone_confidence: dict[str, str] = {}
     if sheet_bounds:
         min_x, min_y, max_x, max_y = sheet_bounds
         w, h = max_x - min_x, max_y - min_y
@@ -42,9 +50,11 @@ def extract_dynamic_regions(entities: list) -> dict:
                 min_x + pct["xMin"] * w, min_y + pct["yMin"] * h,
                 min_x + pct["xMax"] * w, min_y + pct["yMax"] * h,
             )
+            zone_confidence[z] = "percentage_fallback"
     else:
         for z in default_pct:
             result[z] = (0.0, 0.0, 1000.0, 1000.0)
+            zone_confidence[z] = "percentage_fallback_no_sheet_bounds"
 
     # -----------------------------------------------------------------------
     # Step 2: Content-aware detection (PRIMARY - overrides fallback per zone)
@@ -61,6 +71,7 @@ def extract_dynamic_regions(entities: list) -> dict:
             if bbox is not None:
                 # Content anchor found — use the precise bbox instead of the percentage guess
                 result[zone] = bbox
+                zone_confidence[zone] = "content_aware"
     except Exception as e:
         # Non-fatal: if content detection fails, we still have the percentage fallbacks
         import logging
@@ -68,7 +79,31 @@ def extract_dynamic_regions(entities: list) -> dict:
             f"Content-aware zone detection failed (non-fatal, using fallback): {e}"
         )
 
+    result["_zone_confidence"] = zone_confidence
     return result
+
+
+def summarize_zone_detection_confidence(ref_regions: dict, rev_regions: dict) -> list[str]:
+    """
+    Compares which detection path each zone resolved via for reference vs revision and
+    returns human-readable warnings for any zone whose bbox comparison is unreliable:
+    either side fell back to the percentage grid (a guess, not a measurement), or the two
+    sides resolved the "same" zone through different paths, so their bounding boxes aren't
+    really comparable even though they're both labeled e.g. "bom". Previously this fallback
+    was completely silent — a bbox mismatch from this would just read as ADDED/REMOVED noise
+    with no indication that the underlying zone detection, not the drawing, was the problem.
+    """
+    ref_conf = ref_regions.get("_zone_confidence", {})
+    rev_conf = rev_regions.get("_zone_confidence", {})
+    warnings = []
+    for zone in sorted(set(ref_conf) | set(rev_conf)):
+        r, v = ref_conf.get(zone, "unknown"), rev_conf.get(zone, "unknown")
+        if r != "content_aware" or v != "content_aware":
+            warnings.append(
+                f"'{zone}' zone detection: reference={r}, revision={v} — not resolved via "
+                f"content anchors on both drawings; treat this zone's comparison with reduced confidence."
+            )
+    return warnings
 
 def extract_bom_table(entities: list, render_bounds: Optional[list] = None, bom_bbox: Optional[tuple] = None) -> Tuple[list, bool]:
     """Auto-detect drawing type (Parts vs Assembly) and extract all BOM rows.

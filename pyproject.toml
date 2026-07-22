@@ -16,8 +16,9 @@ line-ending = "auto"
 minversion = "7.0"
 addopts = "-ra -q --tb=short"
 testpaths = [
-    "services/ai-auditor/tests"
+    "tests"
 ]
+pythonpath = ["."]
 asyncio_mode = "auto"
 
 [tool.mypy]

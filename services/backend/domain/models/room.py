@@ -25,12 +25,14 @@ class Room(Document):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_opened_at: datetime | None = Field(None, description="Updated each time the room is opened")
-    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = Field("deterministic", description="Method used for physical comparison in this room")
+    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = Field("rag", description="Method used for physical comparison in this room")
     
 
     # Per-room data isolation
     active_old_drawing_id: str | None = Field(None, description="ID of the old/reference drawing active in this room")
     active_new_drawing_id: str | None = Field(None, description="ID of the new/revised drawing active in this room")
+    active_old_drawing_name: str | None = Field(None, description="Name of the old/reference drawing active in this room")
+    active_new_drawing_name: str | None = Field(None, description="Name of the new/revised drawing active in this room")
     active_audit_session_id: str | None = Field(None, description="ID of the active audit session in this room")
     physical_comparison_results: str | None = Field(None, description="Cached AI physical comparison checklist results as JSON string")
 

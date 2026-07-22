@@ -64,6 +64,8 @@ export const AuditWorkspace: React.FC = () => {
         const payloadToSave = {
           active_old_drawing_id: oldDrawing?.id || null,
           active_new_drawing_id: newDrawing?.id || null,
+          active_old_drawing_name: oldDrawing?.file_name || null,
+          active_new_drawing_name: newDrawing?.file_name || null,
           active_audit_session_id: activeSessionId || null,
           physical_comparison_results: aiScanProgress === "completed" ? aiChecklistResults : null
         };

@@ -473,11 +473,11 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     ref_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.reference_drawing_id).to_list()
     rev_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.drawing_id).to_list()
 
-    method = getattr(request, "comparison_method", "deterministic")
+    method = getattr(request, "comparison_method", "rag")
     logger.info(f"Physical comparison dispatched with method='{method}' for drawing {request.drawing_id}")
 
     try:
-        if method in ("full_ai", "full_ai_vision"):
+        if method in ("rag_ai", "ai_vision"):
             from ...infrastructure.audit.comparison.full_ai_orchestrator import perform_full_ai_comparison
             comparison_response = await perform_full_ai_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities, method=method)
         else:

@@ -1,11 +1,44 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight } from "lucide-react";
+import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useThemeStore } from "../stores/themeStore";
 import { useNavStore } from "../stores/navStore";
 import { useReviewStore } from "../stores/reviewStore";
 import { useRoomStore } from "../stores/roomStore";
+
+type NavKey = "workspace" | "3d-workspace" | "standards" | "history" | "settings";
+
+interface NavTabProps {
+  navKey: NavKey;
+  label: string;
+  icon: LucideIcon;
+  isActive: boolean;
+  onSelect: (key: NavKey) => void;
+}
+
+// Single tab implementation shared by every nav item — the previous version
+// duplicated this ~40-line button 5x with only label/icon/color changing,
+// including one tab (3D Workspace) that broke the "one accent color" rule
+// with its own purple. Consolidated here, one accent (cyan) for all active
+// states.
+const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, onSelect }) => (
+  <button
+    role="tab"
+    aria-selected={isActive}
+    aria-controls={`${navKey}-panel`}
+    tabIndex={0}
+    onClick={() => onSelect(navKey)}
+    className={`flex items-center gap-1.5 h-full px-3.5 rounded-md text-xs font-semibold transition-all duration-200 cubic-bezier(0.16, 1, 0.3, 1) ${
+      isActive
+        ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-accent-cyan border border-cyan-500/30 shadow-[0_0_12px_-2px_rgba(0,229,255,0.25)]"
+        : "text-text-muted hover:text-text-primary hover:bg-white/5 border border-transparent"
+    }`}
+  >
+    <Icon size={14} className={`transition-transform duration-200 ${isActive ? "scale-110" : ""}`} />
+    {label}
+  </button>
+);
 
 export const AppHeader: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuthStore();
@@ -52,240 +85,97 @@ export const AppHeader: React.FC = () => {
 
   return (
     <div
-      className="app-header"
       data-tauri-drag-region
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        height: "44px",
-        background: "var(--bg-sidebar)",
-        borderBottom: "1px solid var(--border-color)",
-        userSelect: "none",
-        zIndex: 9999
-      }}
+      className="flex justify-between items-center h-11 glass-header select-none relative z-[9999]"
     >
       {/* LEFT: Branding */}
       <div
-        className="header-branding"
         data-tauri-drag-region
-        style={{ display: "flex", alignItems: "center", gap: "10px", padding: "0 16px", height: "100%" }}
+        className="flex items-center gap-2.5 px-4 h-full cursor-default"
       >
-        <Cpu size={18} style={{ color: "var(--accent-cyan)" }} />
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <span style={{ fontSize: "0.9rem", fontWeight: 700, lineHeight: 1.2, color: "var(--text-primary)" }}>KMTI Checker</span>
+        <div className="relative flex items-center justify-center p-1 rounded-lg bg-accent-cyan/10 border border-accent-cyan/20">
+          <Cpu size={16} className="text-accent-cyan animate-pulse" />
+          <div className="absolute inset-0 rounded-lg bg-accent-cyan/20 blur-sm -z-10" />
         </div>
+        <span className="text-xs font-black tracking-wider uppercase text-text-primary bg-clip-text text-transparent bg-gradient-to-r from-text-primary to-text-secondary">
+          KMTI Checker
+        </span>
       </div>
 
-      {/* CENTER: Draggable space & Sleek Navigation Tabs */}
-      <div 
-        data-tauri-drag-region 
-        style={{ 
-          flexGrow: 1, 
-          height: "100%", 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "center",
-          gap: "4px"
-        }}
+      {/* CENTER: Draggable space & Navigation Tabs */}
+      <div
+        data-tauri-drag-region
+        className="flex-1 h-full flex items-center justify-center gap-1"
       >
         {isAuthenticated && (
-          <div 
+          <div
             role="tablist"
             aria-label="Workspace Navigation"
-            style={{ display: "flex", gap: "2px", height: "30px", background: "rgba(0,0,0,0.2)", borderRadius: "6px", padding: "2px", border: "1px solid var(--border-color)" }}
+            className="flex gap-1 h-[32px] p-0.5 bg-black/40 border border-white/5 rounded-lg backdrop-blur-md"
           >
-            <button
-              role="tab"
-              aria-selected={currentNav === "workspace"}
-              aria-controls="workspace-panel"
-              tabIndex={0}
-              onClick={() => setCurrentNav("workspace")}
-              className={`header-nav-tab ${currentNav === "workspace" ? "active" : ""}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "0 12px",
-                height: "100%",
-                background: currentNav === "workspace" ? "rgba(128, 128, 128, 0.18)" : "transparent",
-                border: "none",
-                borderRadius: "4px",
-                color: currentNav === "workspace" ? "var(--text-primary)" : "var(--text-muted)",
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s"
-              }}
-            >
-              <Compass size={13} />
-              2D Workspace
-            </button>
-
-            <button
-              role="tab"
-              aria-selected={currentNav === "3d-workspace"}
-              aria-controls="3d-workspace-panel"
-              tabIndex={0}
-              onClick={() => setCurrentNav("3d-workspace")}
-              className={`header-nav-tab ${currentNav === "3d-workspace" ? "active" : ""}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "0 12px",
-                height: "100%",
-                background: currentNav === "3d-workspace" ? "rgba(168, 85, 247, 0.18)" : "transparent",
-                border: "none",
-                borderRadius: "4px",
-                color: currentNav === "3d-workspace" ? "#c084fc" : "var(--text-muted)",
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s"
-              }}
-            >
-              <Box size={13} style={{ color: currentNav === "3d-workspace" ? "#c084fc" : "var(--text-muted)" }} />
-              3D Workspace
-            </button>
-
+            <NavTab navKey="workspace" label="2D Workspace" icon={Compass} isActive={currentNav === "workspace"} onSelect={setCurrentNav} />
+            <NavTab navKey="3d-workspace" label="3D Workspace" icon={Box} isActive={currentNav === "3d-workspace"} onSelect={setCurrentNav} />
             {user?.role === "admin" && (
-              <button
-                onClick={() => setCurrentNav("standards")}
-                className={`header-nav-tab ${currentNav === "standards" ? "active" : ""}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "0 12px",
-                  height: "100%",
-                  background: currentNav === "standards" ? "rgba(128, 128, 128, 0.18)" : "transparent",
-                  border: "none",
-                  borderRadius: "4px",
-                  color: currentNav === "standards" ? "var(--text-primary)" : "var(--text-muted)",
-                  fontSize: "0.78rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.15s"
-                }}
-              >
-                <Bookmark size={13} />
-                Standards
-              </button>
+              <NavTab navKey="standards" label="Standards" icon={Bookmark} isActive={currentNav === "standards"} onSelect={setCurrentNav} />
             )}
-
-            <button
-              role="tab"
-              aria-selected={currentNav === "history"}
-              aria-controls="history-panel"
-              tabIndex={0}
-              onClick={() => setCurrentNav("history")}
-              className={`header-nav-tab ${currentNav === "history" ? "active" : ""}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "0 12px",
-                height: "100%",
-                background: currentNav === "history" ? "rgba(128, 128, 128, 0.18)" : "transparent",
-                border: "none",
-                borderRadius: "4px",
-                color: currentNav === "history" ? "var(--text-primary)" : "var(--text-muted)",
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s"
-              }}
-            >
-              <History size={13} />
-              History
-            </button>
-
-            <button
-              role="tab"
-              aria-selected={currentNav === "settings"}
-              aria-controls="settings-panel"
-              tabIndex={0}
-              onClick={() => setCurrentNav("settings")}
-              className={`header-nav-tab ${currentNav === "settings" ? "active" : ""}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "0 12px",
-                height: "100%",
-                background: currentNav === "settings" ? "rgba(128, 128, 128, 0.18)" : "transparent",
-                border: "none",
-                borderRadius: "4px",
-                color: currentNav === "settings" ? "var(--text-primary)" : "var(--text-muted)",
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s"
-              }}
-            >
-              <Settings size={13} />
-              Settings
-            </button>
+            <NavTab navKey="history" label="History" icon={History} isActive={currentNav === "history"} onSelect={setCurrentNav} />
+            <NavTab navKey="settings" label="Settings" icon={Settings} isActive={currentNav === "settings"} onSelect={setCurrentNav} />
           </div>
         )}
       </div>
 
       {/* RIGHT: User Info & Actions */}
-      <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
+      <div className="flex items-center h-full">
         {isAuthenticated && (
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", paddingRight: "16px", borderRight: "1px solid var(--border-color)", height: "24px", marginRight: "8px" }}>
-            {/* User Profile */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: 400, color: "var(--accent-cyan)", lineHeight: 1, textTransform: "uppercase" }}>{user?.username || "Engineer"}</span>
-              </div>
+          <div className="flex items-center gap-3 h-6 pr-4 mr-2 border-r border-border-color/50">
+            {/* User Profile Badge */}
+            <div className="flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-medium text-text-secondary">
+                {user?.username || "Engineer"}
+              </span>
             </div>
 
             {/* Layout Toggles (Only show in workspace when a room is active) */}
             {currentNav === "workspace" && activeRoom && (
-              <div ref={layoutMenuRef} style={{ position: "relative", marginRight: "6px" }}>
-                <button 
-                  className="layout-btn active" 
-                  title="Change Layout" 
+              <div ref={layoutMenuRef} className="relative mr-1">
+                <button
+                  title="Change Layout"
                   onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
+                  className={`flex p-1.5 rounded-md border transition-all duration-200 ${
+                    isLayoutMenuOpen
+                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30"
+                      : "text-text-muted border-white/5 hover:text-text-primary hover:bg-white/5 hover:border-white/10"
+                  }`}
                 >
                   {getActiveLayoutIcon()}
                 </button>
-                
+
                 {isLayoutMenuOpen && (
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "100%", 
-                    right: 0, 
-                    marginTop: "8px", 
-                    background: "var(--bg-card)", 
-                    border: "1px solid var(--border-color)", 
-                    borderRadius: "6px", 
-                    padding: "4px",
-                    display: "flex", 
-                    flexDirection: "column",
-                    gap: "2px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-                    zIndex: 99999
-                  }}>
-                    <button 
-                      className={`layout-dropdown-btn ${activeLayoutPreset === 'grid' ? 'active' : ''}`} 
+                  <div className="absolute top-full right-0 mt-2 flex flex-col gap-1 p-1.5 glass-panel rounded-xl shadow-2xl z-[99999] animate-in fade-in slide-in-from-top-2 duration-150">
+                    <button
                       onClick={() => { setActiveLayoutPreset('grid'); setIsLayoutMenuOpen(false); }}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                        activeLayoutPreset === 'grid' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                      }`}
                     >
-                      <Columns size={14} /> <span style={{fontSize: "0.75rem", fontWeight: 600}}>Default</span>
+                      <Columns size={14} /> Default Grid
                     </button>
-                    <button 
-                      className={`layout-dropdown-btn ${activeLayoutPreset === 'left' ? 'active' : ''}`} 
+                    <button
                       onClick={() => { setActiveLayoutPreset('left'); setIsLayoutMenuOpen(false); }}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                        activeLayoutPreset === 'left' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                      }`}
                     >
-                      <PanelLeft size={14} /> <span style={{fontSize: "0.75rem", fontWeight: 600}}>Left Panel</span>
+                      <PanelLeft size={14} /> Left Panel Focus
                     </button>
-                    <button 
-                      className={`layout-dropdown-btn ${activeLayoutPreset === 'right' ? 'active' : ''}`} 
+                    <button
                       onClick={() => { setActiveLayoutPreset('right'); setIsLayoutMenuOpen(false); }}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                        activeLayoutPreset === 'right' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                      }`}
                     >
-                      <PanelRight size={14} /> <span style={{fontSize: "0.75rem", fontWeight: 600}}>Right Panel</span>
+                      <PanelRight size={14} /> Right Panel Focus
                     </button>
                   </div>
                 )}
@@ -296,127 +186,42 @@ export const AppHeader: React.FC = () => {
             <button
               onClick={toggleTheme}
               title="Toggle Theme"
-              className="action-btn theme-toggle-btn"
-              style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", padding: "4px", borderRadius: "4px", transition: "all 0.2s" }}
+              className="flex p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-all duration-150 active:scale-95"
             >
-              <span className="icon-default">{theme === "hc-dark" ? <Moon size={16} /> : <Sun size={16} />}</span>
-              <span className="icon-hover">{theme === "hc-dark" ? <Sun size={16} /> : <Moon size={16} />}</span>
+              {theme === "hc-dark" ? <Moon size={15} /> : <Sun size={15} />}
             </button>
             <button
               onClick={() => logout()}
               title="Logout Portal"
-              className="action-btn logout-btn"
-              style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", padding: "4px", borderRadius: "4px", transition: "all 0.2s" }}
+              className="flex p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger/10 transition-all duration-150 active:scale-95"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
             </button>
           </div>
         )}
 
         {/* Window Controls */}
-        <div style={{ display: "flex", height: "100%" }}>
+        <div className="flex h-full">
           <button
             onClick={handleMinimize}
-            className="window-control-btn"
-            style={{ width: "46px", height: "100%", background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-white/10 hover:text-text-primary transition-colors"
           >
-            <Minus size={16} />
+            <Minus size={15} />
           </button>
           <button
             onClick={handleToggleMaximize}
-            className="window-control-btn"
-            style={{ width: "46px", height: "100%", background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-white/10 hover:text-text-primary transition-colors"
           >
-            <Square size={14} />
+            <Square size={13} />
           </button>
           <button
             onClick={handleClose}
-            className="window-control-btn close-btn"
-            style={{ width: "46px", height: "100%", background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-red-600 hover:text-white transition-colors"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
       </div>
-      <style>{`
-        .action-btn:hover {
-          color: var(--text-primary) !important;
-          background: rgba(128, 128, 128, 0.1) !important;
-        }
-        .logout-btn:hover {
-          color: #ef4444 !important; /* Premium red */
-          background: rgba(239, 68, 68, 0.08) !important;
-        }
-        .theme-toggle-btn .icon-hover {
-          display: none;
-        }
-        .theme-toggle-btn:hover .icon-default {
-          display: none;
-        }
-        .theme-toggle-btn:hover .icon-hover {
-          display: flex;
-          color: #f59e0b !important; /* Golden yellow */
-          filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.65));
-        }
-        .window-control-btn:hover {
-          background: rgba(128, 128, 128, 0.15) !important;
-          color: var(--text-primary) !important;
-        }
-        .window-control-btn.close-btn:hover {
-          background: #e81123 !important;
-          color: white !important;
-        }
-        .layout-btn {
-          background: transparent;
-          border: 1px solid transparent;
-          color: var(--text-muted);
-          cursor: pointer;
-          display: flex;
-          padding: 4px;
-          border-radius: 4px;
-          transition: all 0.2s;
-        }
-        .layout-btn:hover {
-          background: rgba(128, 128, 128, 0.15);
-          color: var(--text-primary);
-        }
-        .layout-btn.active {
-          background: rgba(255, 255, 255, 0.1);
-          color: var(--text-primary);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .layout-dropdown-btn {
-          background: transparent;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 6px 12px;
-          border-radius: 4px;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-        .layout-dropdown-btn:hover {
-          background: rgba(128, 128, 128, 0.15);
-          color: var(--text-primary);
-        }
-        .layout-dropdown-btn.active {
-          color: var(--accent-cyan);
-          background: rgba(0, 229, 255, 0.05);
-        }
-        .nav-header-btn {
-          border: 1px solid transparent !important;
-        }
-        .nav-header-btn:hover {
-          color: var(--text-primary) !important;
-          background: rgba(255, 255, 255, 0.04) !important;
-        }
-        .nav-header-btn:active {
-          transform: scale(0.97);
-        }
-      `}</style>
     </div>
   );
 };

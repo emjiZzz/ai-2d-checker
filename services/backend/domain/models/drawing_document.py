@@ -15,6 +15,7 @@ class DrawingDocument(Document):
     status: str = Field("queued", description="Ingestion/extraction state: queued, processing, completed, failed")
     entity_counts: dict[str, int] = Field(default_factory=dict, description="Counts of lines, circles, dimensions, etc.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Extracted structural drawing metadata")
+    ai_summary: dict[str, Any] | None = Field(None, description="Detailed 6-view AI summary of the drawing")
     
     # --- PHASE 7.1: DrawingDocument Revision Chain fields ---
     part_number: str | None = Field(None, description="Extracted part number identifier")

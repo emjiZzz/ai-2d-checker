@@ -1,7 +1,23 @@
+import re
 from pathlib import Path
 from ...domain.models.drawing_document import DrawingDocument
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
+
+# Matches a leading diameter/radius/plus-minus symbol on dimension text. Entity extraction
+# (entity_mapper.py, via the shared strip_mtext canonical decode) now converts the raw
+# AutoCAD control-code form to its Unicode symbol before this text is ever stored (e.g.
+# "%%c50" -> "Ø50"), so the Unicode form is what normally reaches this point -- the raw
+# "%%c"-style match is kept only as a defensive fallback. Regardless of form: some drawings
+# carry this symbol as a manually-typed text override, others rely on the DIMENSION entity
+# auto-filling from the raw measurement with no symbol at all — a purely cosmetic difference
+# between otherwise-identical values that would otherwise read as a false CHANGED diff to
+# the comparison model, so it's stripped entirely (not just decoded) for comparison purposes.
+_DIM_SYMBOL_PREFIX_RE = re.compile(r'^(?:%%[cCdDpP]|[Ø⌀ΦR±°])\s*(?=\d)')
+
+
+def _normalize_dim_text(text: str) -> str:
+    return _DIM_SYMBOL_PREFIX_RE.sub('', text).strip()
 
 def load_drawing_png(drawing_id: str) -> bytes | None:
     """
@@ -63,7 +79,7 @@ def build_structured_context(entities: list, drawing: DrawingDocument) -> dict:
             "arcs": len([e for e in entities if e.entity_type == "arc"]),
             "polylines": len([e for e in entities if e.entity_type == "polyline"])
         },
-        "dimensions": [clean_txt(d) for d in dimensions if clean_txt(d)],
+        "dimensions": [_normalize_dim_text(clean_txt(d)) for d in dimensions if clean_txt(d)],
         "title_block_annotations": title_block_items,
         "bom_table_cells": bom_cells[:20],
         "gd_and_t_frames": [clean_txt(t) for t in tolerances if clean_txt(t)]

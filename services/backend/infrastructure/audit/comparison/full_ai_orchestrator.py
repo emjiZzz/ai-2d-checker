@@ -34,6 +34,7 @@ from ....api.schemas import (
     PhysicalComparisonResponse,
     CategoryComparison,
     CanvasMarking,
+    ComparisonDiagnostics,
 )
 from ...storage.path_resolver import get_storage_root
 from ...utils.text import extract_semantic_text_groups, build_title_block_table
@@ -46,13 +47,96 @@ from .coordinate_resolver import resolve_marking_coordinates
 from .schemas import Coordinate2D, BoundingBox2D
 
 
+def build_drawing_views_prompt_instructions() -> str:
+    return (
+        "=== CATEGORY: DRAWING VIEWS (Senior Industrial CAD Auditor Persona - ISO 128 / JIS B 0001) ===\n"
+        "Evaluate `drawing_views` across all orthogonal, detail, and section views.\n"
+        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Must evaluate these 10 features strictly:\n"
+        "1. Origin: Evaluate datum reference lines (Base Datum Edge / Centerlines) and view origin placement. Do NOT output 'N/A' — report 'Datum Origin / Centerlines Aligned (Maintained)' if views match.\n"
+        "2. Alignment of Views: Check orthographic projection alignment across front, top, side, and section views.\n"
+        "3. Line Attributes: Check line types (hidden, center, solid, phantom, hatching).\n"
+        "4. Dimensions: Summarize dimensions broken down by drawing view (e.g. Main View: 140, 100, 15 | Section A-A: 170 +0/-0.1). Include dimensional fit tolerances.\n"
+        "5. Hole Properties: Detail hole callouts, drill sizes (キリ), counterbores (ザグリ), and depth (深サ).\n"
+        "6. Chamfer/Radius: Detail chamfers (C1, C2) and radii (R2, R3, R0.5), noting view additions (e.g., Reference: 2x R3, 1x R0.5 | Revision: R2, R4, R0.5 [Added Detail View]). Mark as CHANGED or ADDED as applicable.\n"
+        "7. Welding Symbol: Visually inspect the PNG renderings for graphical welding symbols (fillet △, bevel ∨, surface finish ∇/sqrt). Extracted text takes precedence for numeric data; visual OCR takes precedence for graphical weld symbols.\n"
+        "8. Geometric Tolerances: Capture both GD&T feature control frames (⊕, ⊥, □) AND dimensional fit/limit tolerances (170 +0/-0.1, 15 +0/-0.05, ±0.02).\n"
+        "9. Additional Views: Report newly added or modified detail/section views (e.g., 油溝詳細 Oil groove detail).\n"
+        "10. Text Attributes: Standard text font, height, and spacing.\n"
+    )
+
+def build_notes_prompt_instructions() -> str:
+    return (
+        "=== CATEGORY: NOTES SECTION ===\n"
+        "Evaluate `notes_section` for standard notes, special manufacturing instructions, and heat treatment callouts.\n"
+        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Evaluate: standard notes, special notes.\n"
+    )
+
+def build_title_block_prompt_instructions() -> str:
+    return (
+        "=== CATEGORY: TITLE BLOCK ===\n"
+        "Evaluate `title_block` metadata across machine name, line name, scale, designed by, drawn by, quantity, job number, cross ref number, prev dwg number, revision code.\n"
+        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+    )
+
+def build_isometric_prompt_instructions() -> str:
+    return (
+        "=== CATEGORY: ISOMETRIC VIEW ===\n"
+        "Evaluate `isometric_view` (3D perspective representations usually placed in the corner).\n"
+        "IMPORTANT: Isometric views often lack text labels in CAD context. Visually inspect the PNG renderings to verify if a 3D perspective representation exists before concluding it is missing.\n"
+        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Evaluate: orientation, scale, location.\n"
+    )
+
+def build_others_prompt_instructions() -> str:
+    return (
+        "=== CATEGORY: OTHER ENGINEERING REFERENCES ===\n"
+        "Evaluate `other_engineering_references` for tree view properties, external links, and Excel data.\n"
+        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+    )
+
+def _format_subview_breakdown(subviews: list, prefix: str) -> str:
+    """Render detect_subviews() output as grounding text for the drawing_views prompt."""
+    if not subviews:
+        return f"{prefix}: No distinct sub-views detected — treat as a single Main View."
+    lines = [f"{prefix}: {len(subviews)} sub-view(s) detected via deterministic anchor clustering:"]
+    for sv in subviews:
+        bbox = tuple(round(c, 1) for c in sv["bbox"])
+        lines.append(f"  - \"{sv['label']}\" — bbox={bbox}")
+    return "\n".join(lines)
+
+def build_full_system_instruction() -> str:
+    header = (
+        "You are a Senior Industrial CAD Engineering Auditor performing a rigorous comparison between a REFERENCE drawing and a REVISION drawing.\n"
+        "For each category (except bill_of_materials which uses its own format), you MUST provide a markdown table in `reference_content` with exactly 4 columns: `Feature | Original Value | Revision Value | Status`.\n"
+        "CRITICAL: If a feature is not present in either drawing, mark it N/A / MATCHED in the table rather than omitting the row or inventing content.\n"
+        "For each category, determine the overall status (MATCHED, CHANGED, ADDED, REMOVED, or MISSING), write a detailed summary report in `difference_summary`, output the 4-column table in `reference_content`, and write a professional suggestion in `engineering_discrepancy_details`.\n"
+    )
+    markings_instr = (
+        "For canvas_markings, produce one entry per significant annotation or data item found in the drawings — including BOTH MATCHED items AND changed/added/removed ones.\n"
+        "For MATCHED items: set status='MATCHED', use EXACT text string, and populate category.\n"
+        "Produce at least one MATCHED canvas_marking per MATCHED category so each verified item gets a green checkmark on the drawing canvas.\n"
+        "IMPORTANT: Provide 'visual_bbox' [ymin, xmin, ymax, xmax] normalized 0-1000 for each canvas_marking.\n"
+    )
+    return "\n\n".join([
+        header,
+        build_drawing_views_prompt_instructions(),
+        build_notes_prompt_instructions(),
+        build_title_block_prompt_instructions(),
+        build_isometric_prompt_instructions(),
+        build_others_prompt_instructions(),
+        markings_instr
+    ])
+
+
 async def perform_full_ai_comparison(
     request,
     ref_drawing: DrawingDocument,
     rev_drawing: DrawingDocument,
     ref_entities: list,
     rev_entities: list,
-    method: str = "full_ai",
+    method: str = "rag_ai",
 ) -> PhysicalComparisonResponse:
     """
     Full-AI comparison pipeline: Gemini receives both drawings (PNG + structured
@@ -84,6 +168,7 @@ async def perform_full_ai_comparison(
                     CanvasMarking(**item)
                     for item in cached_payload.get("canvas_markings", [])
                 ],
+                diagnostics=cached_payload.get("diagnostics"),
             )
         except Exception as cache_err:
             logger.warning(
@@ -110,10 +195,25 @@ async def perform_full_ai_comparison(
     rev_ctx = build_structured_context(rev_entities, rev_drawing)
 
     # ── BOM extraction (same as deterministic, just for context text) ─────────
-    from ..bom.table_extractor import extract_dynamic_regions
+    from ..bom.table_extractor import extract_dynamic_regions, summarize_zone_detection_confidence
+    from ..bom.zone_detector import detect_subviews
 
     ref_regions = extract_dynamic_regions(ref_entities)
     rev_regions = extract_dynamic_regions(rev_entities)
+    zone_detection_warnings = summarize_zone_detection_confidence(ref_regions, rev_regions)
+    if zone_detection_warnings:
+        logger.info(f"[full_ai] Zone detection confidence warnings: {zone_detection_warnings}")
+
+    # ── Sub-view detection (Section A-A, Detail B, etc.) for prompt grounding ──
+    ref_views_bbox_raw = ref_regions.get("views")
+    rev_views_bbox_raw = rev_regions.get("views")
+    ref_subviews = detect_subviews(ref_entities, views_bbox=ref_views_bbox_raw)
+    rev_subviews = detect_subviews(rev_entities, views_bbox=rev_views_bbox_raw)
+    logger.info(
+        f"[full_ai] Sub-view detection — ref: {len(ref_subviews)} "
+        f"({[sv['label'] for sv in ref_subviews]}), rev: {len(rev_subviews)} "
+        f"({[sv['label'] for sv in rev_subviews]})"
+    )
 
     ref_bom_bbox = ref_regions.get("bom")
     rev_bom_bbox = rev_regions.get("bom")
@@ -150,33 +250,7 @@ async def perform_full_ai_comparison(
     rev_png = load_drawing_png(str(rev_drawing.id))
 
     # ── Assemble prompt ────────────────────────────────────────────────────────
-    system_instruction = (
-        "You are a senior CAD engineering auditor comparing two technical drawings: "
-        "a REFERENCE drawing and a REVISION drawing. "
-        "Your task is to perform a complete physical comparison across all checklist categories: "
-        "drawing_views, notes_section, bill_of_materials, title_block, isometric_view, and "
-        "other_engineering_references. "
-        "For each category, determine the status (MATCHED, CHANGED, ADDED, REMOVED, or MISSING), "
-        "write a concise difference_summary, list specific content in reference_content and "
-        "revision_content (even when status is MATCHED — show what was verified), and list "
-        "specific discrepancies in engineering_discrepancy_details. "
-        "For canvas_markings, produce one entry per significant annotation or data item found "
-        "in the drawings — including BOTH MATCHED items AND changed/added/removed ones. "
-        "For MATCHED items: set status='MATCHED', use the EXACT text string as text_content "
-        "(copy it verbatim from the drawing — e.g. dimension values, part numbers, notes text, "
-        "Japanese characters), and populate category to match the checklist key. "
-        "For CHANGED/ADDED/REMOVED items: set the correct status, use the revision drawing's "
-        "exact text string as text_content. "
-        "Produce at least one MATCHED canvas_marking per MATCHED category so each verified "
-        "item gets a green checkmark on the drawing canvas. "
-        "Be precise and thorough. Do not fabricate markings not present in the drawings. "
-        "IMPORTANT: For every canvas_marking, you MUST provide a 'visual_bbox' field — "
-        "a list of 4 integers [ymin, xmin, ymax, xmax] representing the bounding box of that "
-        "element on the REVISION drawing image, using normalized coordinates from 0 to 1000 "
-        "(where [0,0,1000,1000] covers the entire image). If the marking represents a REMOVED "
-        "item (only on the reference), provide 'ref_visual_bbox' instead. "
-        "This visual localization is critical for placing audit markers on the drawing canvas."
-    )
+    system_instruction = build_full_system_instruction()
 
     # Build contents list for Gemini multipart call
     contents: list = []
@@ -196,7 +270,7 @@ async def perform_full_ai_comparison(
         logger.warning(f"[full_ai] No PNG for revision drawing {rev_drawing.id} — text-only")
 
     # Build prompt_text dynamically based on method
-    if method == "full_ai_vision":
+    if method == "ai_vision":
         prompt_text = (
             f"=== REFERENCE DRAWING METADATA ===\n"
             f"File: {ref_drawing.file_name} | Title: {ref_title} | Rev: {ref_rev}\n\n"
@@ -217,10 +291,14 @@ async def perform_full_ai_comparison(
             f"{bom_table_text or '(No BOM detected)'}\n\n"
             f"=== TITLE BLOCK COMPARISON TABLE ===\n"
             f"{title_block_table_text or '(No title block data)'}\n\n"
-            f"=== REFERENCE GEOMETRY ANNOTATIONS (sample) ===\n"
+            f"=== REFERENCE MAIN DRAWING VIEW ANNOTATIONS ===\n"
             f"{ref_groups.get('geometry_annotations', '')[:3000]}\n\n"
-            f"=== REVISION GEOMETRY ANNOTATIONS (sample) ===\n"
+            f"=== REVISION MAIN DRAWING VIEW ANNOTATIONS ===\n"
             f"{rev_groups.get('geometry_annotations', '')[:3000]}\n\n"
+            f"=== REFERENCE DRAWING SUB-VIEW BREAKDOWN ===\n"
+            f"{_format_subview_breakdown(ref_subviews, 'REF')}\n\n"
+            f"=== REVISION DRAWING SUB-VIEW BREAKDOWN ===\n"
+            f"{_format_subview_breakdown(rev_subviews, 'REV')}\n\n"
             f"=== REFERENCE NOTES ===\n"
             f"{ref_groups.get('notes_zone_text', '')[:2000]}\n\n"
             f"=== REVISION NOTES ===\n"
@@ -235,7 +313,7 @@ async def perform_full_ai_comparison(
         f"[full_ai] Dispatching Gemini cascade for "
         f"ref={ref_drawing.file_name} vs rev={rev_drawing.file_name}"
     )
-    raw_json_text = await asyncio.to_thread(
+    raw_json_text, model_used = await asyncio.to_thread(
         execute_gemini_cascade, api_key, system_instruction, contents
     )
 
@@ -268,8 +346,78 @@ async def perform_full_ai_comparison(
     if "canvas_markings" not in parsed:
         parsed["canvas_markings"] = []
 
+    # ── Deterministic BOM Override ─────────────────────────────────────────────
+    bom_status = "CHANGED" if any("|" in line and "MISMATCHED" in line for line in (bom_table_text or "").split("\n")) else "MATCHED"
+    gemini_summary = parsed["bill_of_materials"].get("difference_summary", "")
+    
+    contradicts_matched = (bom_status == "MATCHED" and any(w in gemini_summary.lower() for w in ("added", "removed", "changed", "updated")))
+    contradicts_changed = (bom_status == "CHANGED" and any(w in gemini_summary.lower() for w in ("added", "removed")))
+    
+    if contradicts_matched:
+        final_summary = "No BOM discrepancies detected."
+        final_details = ""
+    elif contradicts_changed:
+        final_summary = "BOM table was modified."
+        final_details = "Specific row discrepancies verified via Deterministic Spatial Differ."
+    else:
+        final_summary = gemini_summary
+        final_details = parsed["bill_of_materials"].get("engineering_discrepancy_details", "")
+
+    parsed["bill_of_materials"].update({
+        "status": bom_status,
+        "reference_content": bom_table_text or "(No BOM)",
+        "revision_content": bom_table_text or "(No BOM)",
+        "difference_summary": final_summary,
+        "engineering_discrepancy_details": final_details,
+    })
+
+    # ── Deterministic Title Block Override ──────────────────────────────────────
+    # Same pattern as the BOM override above: title_block_table_text (built by
+    # build_title_block_table via compare_values) is already deterministic, computed
+    # from extracted title-block fields, and already handed to Gemini as grounding
+    # context — but until now Gemini's own free-form title_block verdict went through
+    # unchecked, same class of gap as the drawing_views dimension-symbol bug fixed
+    # earlier. Title block is the next-best fit for a full override (unlike
+    # drawing_views/notes_section/isometric_view, it has a clean per-field structured
+    # ground truth already computed, not just unstructured text/geometry).
+    title_status = "CHANGED" if any("|" in line and "MISMATCHED" in line for line in (title_block_table_text or "").split("\n")) else "MATCHED"
+    gemini_title_summary = parsed["title_block"].get("difference_summary", "")
+
+    title_contradicts_matched = (title_status == "MATCHED" and any(w in gemini_title_summary.lower() for w in ("added", "removed", "changed", "updated")))
+    title_contradicts_changed = (title_status == "CHANGED" and any(w in gemini_title_summary.lower() for w in ("added", "removed")))
+
+    if title_contradicts_matched:
+        final_title_summary = "No title block discrepancies detected."
+        final_title_details = ""
+    elif title_contradicts_changed:
+        final_title_summary = "Title block was modified."
+        final_title_details = "Specific field discrepancies verified via deterministic field comparison."
+    else:
+        final_title_summary = gemini_title_summary
+        final_title_details = parsed["title_block"].get("engineering_discrepancy_details", "")
+
+    parsed["title_block"].update({
+        "status": title_status,
+        "reference_content": title_block_table_text or "(No title block data)",
+        "revision_content": title_block_table_text or "(No title block data)",
+        "difference_summary": final_title_summary,
+        "engineering_discrepancy_details": final_title_details,
+    })
+
     # ── Coordinate resolution (bridge Full-AI to deterministic-quality coords) ─
     clean_markings = parsed["canvas_markings"]
+
+    # Downgrade hallucinated ADDED/REMOVED pins in BOM if the table is just CHANGED
+    if bom_status == "CHANGED":
+        for m in clean_markings:
+            if m.get("category") == "bill_of_materials" and m.get("status") in ("ADDED", "REMOVED"):
+                m["status"] = "CHANGED"
+
+    # Same downgrade for title_block
+    if title_status == "CHANGED":
+        for m in clean_markings:
+            if m.get("category") == "title_block" and m.get("status") in ("ADDED", "REMOVED"):
+                m["status"] = "CHANGED"
 
     # 1. Extract all region bounding boxes (same as deterministic path)
     ref_title_bbox_raw = ref_regions.get("title")
@@ -278,10 +426,10 @@ async def perform_full_ai_comparison(
     rev_notes_bbox_raw = rev_regions.get("notes")
     ref_iso_bbox_raw = ref_regions.get("iso")
     rev_iso_bbox_raw = rev_regions.get("iso")
-    ref_views_bbox_raw = ref_regions.get("views")
-    rev_views_bbox_raw = rev_regions.get("views")
     ref_title_ul_bbox_raw = ref_regions.get("title_upper_left")
     rev_title_ul_bbox_raw = rev_regions.get("title_upper_left")
+    ref_tolerance_bbox_raw = ref_regions.get("tolerance")
+    rev_tolerance_bbox_raw = rev_regions.get("tolerance")
 
     _to_bbox = lambda raw: BoundingBox2D.from_tuple(raw).to_tuple() if raw else None
     ref_title_bbox = _to_bbox(ref_title_bbox_raw)
@@ -294,6 +442,8 @@ async def perform_full_ai_comparison(
     rev_views_bbox = _to_bbox(rev_views_bbox_raw)
     ref_title_ul_bbox = _to_bbox(ref_title_ul_bbox_raw)
     rev_title_ul_bbox = _to_bbox(rev_title_ul_bbox_raw)
+    ref_tolerance_bbox = _to_bbox(ref_tolerance_bbox_raw)
+    rev_tolerance_bbox = _to_bbox(rev_tolerance_bbox_raw)
     ref_bom_bbox_validated = _to_bbox(ref_bom_bbox)
     rev_bom_bbox_validated = _to_bbox(rev_bom_bbox)
 
@@ -370,6 +520,45 @@ async def perform_full_ai_comparison(
     if visual_fallback_count > 0:
         logger.info(f"[full_ai] Visual coordinate fallback resolved {visual_fallback_count} additional coordinate(s).")
 
+    # 4.5 Bbox-aware visual overwrite — map CAD bbox back to normalized visual_bbox
+    def _cad_to_visual(cad_bbox: list[float], render_bounds: list[float]) -> list[float]:
+        """Convert CAD [xmin, ymin, xmax, ymax] to Gemini [ymin, xmin, ymax, xmax] (0–1000)."""
+        xmin_cad, ymin_cad, xmax_cad, ymax_cad = cad_bbox
+        x_min_bound, y_min_bound, x_max_bound, y_max_bound = render_bounds
+        cad_w = x_max_bound - x_min_bound
+        cad_h = y_max_bound - y_min_bound
+        
+        if cad_w == 0 or cad_h == 0: return None
+        
+        xmin_n = max(0.0, min(1000.0, ((xmin_cad - x_min_bound) / cad_w) * 1000.0))
+        xmax_n = max(0.0, min(1000.0, ((xmax_cad - x_min_bound) / cad_w) * 1000.0))
+        
+        # Y-inversion
+        ymax_n = max(0.0, min(1000.0, (1.0 - (ymin_cad - y_min_bound) / cad_h) * 1000.0))
+        ymin_n = max(0.0, min(1000.0, (1.0 - (ymax_cad - y_min_bound) / cad_h) * 1000.0))
+        
+        return [int(ymin_n), int(xmin_n), int(ymax_n), int(xmax_n)]
+
+    for m in clean_markings:
+        if m.get("bbox") and rev_render_bounds:
+            try:
+                if len(m["bbox"]) == 2 and len(m["bbox"][0]) == 2:
+                    flat_bbox = [m["bbox"][0][0], m["bbox"][0][1], m["bbox"][1][0], m["bbox"][1][1]]
+                    mapped_vbbox = _cad_to_visual(flat_bbox, rev_render_bounds)
+                    if mapped_vbbox:
+                        m["visual_bbox"] = mapped_vbbox
+            except Exception:
+                pass
+        if m.get("ref_bbox") and ref_render_bounds:
+            try:
+                if len(m["ref_bbox"]) == 2 and len(m["ref_bbox"][0]) == 2:
+                    flat_bbox = [m["ref_bbox"][0][0], m["ref_bbox"][0][1], m["ref_bbox"][1][0], m["ref_bbox"][1][1]]
+                    mapped_vbbox = _cad_to_visual(flat_bbox, ref_render_bounds)
+                    if mapped_vbbox:
+                        m["ref_visual_bbox"] = mapped_vbbox
+            except Exception:
+                pass
+
     # 5. Spatial deduplication — merge markings within 5mm CAD distance threshold
     import math
     DEDUP_THRESHOLD_MM = 5.0
@@ -424,6 +613,10 @@ async def perform_full_ai_comparison(
         isometric_view=CategoryComparison(**parsed["isometric_view"]),
         other_engineering_references=CategoryComparison(**parsed["other_engineering_references"]),
         canvas_markings=[CanvasMarking(**item) for item in parsed.get("canvas_markings", [])],
+        diagnostics=ComparisonDiagnostics(
+            model_used=model_used,
+            zone_detection_warnings=zone_detection_warnings,
+        ),
     )
 
     logger.info(
@@ -456,7 +649,7 @@ async def perform_full_ai_comparison(
             timings={},
             diagnostics={
                 "source": "physical_comparison",
-                "comparison_method": "full_ai",
+                "comparison_method": method,
                 "total_markings": total_markings,
                 "non_matched": len(non_matched),
                 "ref_png_used": ref_png is not None,
@@ -520,7 +713,7 @@ async def perform_full_ai_comparison(
             ref_hash=ref_drawing.file_hash,
             rev_hash=rev_drawing.file_hash,
             payload=comparison_response.model_dump(),
-            method="full_ai",
+            method=method,
         )
     except Exception as cache_write_err:
         logger.warning(f"[full_ai] Failed to cache comparison response: {cache_write_err}")

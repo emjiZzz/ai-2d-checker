@@ -19,6 +19,8 @@ def _to_response(room: Room) -> RoomResponse:
         client_name=room.client_name,
         active_old_drawing_id=room.active_old_drawing_id,
         active_new_drawing_id=room.active_new_drawing_id,
+        active_old_drawing_name=room.active_old_drawing_name,
+        active_new_drawing_name=room.active_new_drawing_name,
         active_audit_session_id=room.active_audit_session_id,
         physical_comparison_results=json.loads(room.physical_comparison_results) if room.physical_comparison_results else None,
         comparison_method=room.comparison_method,

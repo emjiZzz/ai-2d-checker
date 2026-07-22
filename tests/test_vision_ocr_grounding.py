@@ -39,10 +39,10 @@ def mock_beanie_docs(monkeypatch):
     AuditViolation.audit_session_id = MockField("audit_session_id")
 
 class MockEntity:
-    def __init__(self, entity_type, text, x, y):
+    def __init__(self, entity_type, text, x, y, geometry=None):
         self.entity_type = entity_type
         self.properties = {"text": text}
-        self.geometry = {"insert": [x, y, 0.0]}
+        self.geometry = geometry if geometry is not None else {"insert": [x, y, 0.0]}
 
 @pytest.fixture
 def ref_drawing():
@@ -108,16 +108,23 @@ def test_crop_title_block_image_success(mock_exists, mock_open):
     # render bounds: 0 to 100. title block: x in [80, 100], y in [0, 20]
     metadata = {"render_bounds": [0.0, 0.0, 100.0, 100.0]}
     entities = [
+        # compute_title_block_bbox() now delegates to extract_dynamic_regions(), whose
+        # sheet-bounds calculation (compute_drawing_bounds) only looks at line/polyline
+        # geometry -- text-only fixtures produce no bounds signal at all and fall through
+        # to a degenerate full-image crop. A border/frame polyline is what every real DXF
+        # actually has, so include one here to exercise the real code path.
+        MockEntity("polyline", None, 0, 0, geometry={"points": [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]}),
         MockEntity("text", "尺度", 80, 20),
         MockEntity("text", "1:2", 90, 20)
     ]
-    
+
     crop_bytes = crop_title_block_image("some_id", metadata, entities)
     assert crop_bytes is not None
-    
-    # Verification: tb_xmin (92.4 - 40) = 52.4 -> px_min = 524
-    # tb_ymax (21.5 + 40) = 61.5 -> py_min = (1 - 61.5/100)*1000 = 385
-    mock_img.crop.assert_called_with((524, 385, 1000, 1000))
+
+    # With sheet bounds established, the "title" zone falls back to the percentage
+    # grid (xMin 0.38-0.98, yMin 0.72-0.98 of the 0-100 sheet) since there's no
+    # content-aware anchor phrase in this fixture -> CAD [38,72]-[98,98] -> pixels:
+    mock_img.crop.assert_called_with((380, 20, 980, 280))
 
 def test_nfkc_coordinate_matching_normalization():
     """Test 4: Verify NFKC text match standardization rules."""

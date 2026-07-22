@@ -1,5 +1,7 @@
 from typing import Any
 
+from ..utils.text import strip_mtext
+
 
 class EntityMapper:
     """
@@ -99,19 +101,18 @@ class EntityMapper:
         # Dimensions contain geometric definition points and overlay texts
         text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
         measurement = entity.dxf.actual_measurement if hasattr(entity.dxf, "actual_measurement") else None
-        
+
         if (not text or "<>" in text) and measurement is not None:
             meas_str = f"{measurement:.2f}".rstrip('0').rstrip('.')
             text = meas_str if not text else text.replace("<>", meas_str)
-            
+
         text = EntityMapper._clean_mtext_content(text)
-            
+
         def_point = entity.dxf.defpoint if hasattr(entity.dxf, "defpoint") else [0,0,0]
         text_point = entity.dxf.text_midpoint if hasattr(entity.dxf, "text_midpoint") else [0,0,0]
         if text_point[0] == 0 and text_point[1] == 0:
             text_point = def_point
         dim_type = entity.dxf.dimtype if hasattr(entity.dxf, "dimtype") else 0
-        
         return {
             "entity_type": "dimension",
             "layer": entity.dxf.layer,
@@ -130,46 +131,19 @@ class EntityMapper:
 
     @staticmethod
     def _clean_mtext_content(raw: str) -> str:
-        """
-        Strip MTEXT rich-text formatting control codes from CAD text entities.
-        AutoCAD MTEXT uses codes like:
-          \\W0.8;   = width factor
-          \\H2.5;   = height
-          \\A1;     = alignment (0=bottom, 1=center, 2=top)
-          \\T0.5;   = tracking/character spacing
-          \\S ...;  = stacked fractions
-          \\P       = paragraph break
-          \\~       = non-breaking space
-          {{\\...}} = font/color change groups
-        """
-        import re
-        if not raw:
-            return raw
+        """Thin alias for the shared canonical CAD text cleaner (utils/text.py's
+        strip_mtext) so every entity mapper goes through one normalization path
+        instead of a locally-duplicated, less-complete copy of the same logic.
 
-        # Handle bytes (cp932 encoded Japanese text from legacy DXF files)
-        if isinstance(raw, bytes):
-            for enc in ('utf-8', 'cp932', 'latin-1'):
-                try:
-                    raw = raw.decode(enc)
-                    break
-                except (UnicodeDecodeError, AttributeError):
-                    continue
-            else:
-                raw = raw.decode('utf-8', errors='replace')
-
-        # Strip MTEXT format codes: \X...; or \X patterns
-        text = re.sub(r'\\[WwHhAaTtQqFfCcLlOoKkPpNn][^;]*;', '', raw)
-        # Strip \P paragraph breaks
-        text = re.sub(r'\\[Pp]', ' ', text)
-        # Strip \~ non-breaking spaces
-        text = text.replace('\\~', ' ')
-        # Strip stacked fraction blocks \S...^...;
-        text = re.sub(r'\\S[^;]*;', '', text)
-        # Strip curly-brace groups for font/color changes { }
-        text = re.sub(r'[{}]', '', text)
-        # Strip remaining single backslash escapes
-        text = re.sub(r'\\(.)', r'\1', text)
-        return text.strip()
+        convert_symbols=False: this runs during extraction, BEFORE dxf_parser.py's
+        transcode_value() re-encodes every string as latin-1 bytes and re-decodes as
+        cp932 to recover real Shift-JIS text. Converting "%%c" to the real "Ø" symbol
+        here would introduce a genuine Unicode character that transcode_value then
+        corrupts (Ø's latin-1 byte 0xD8 decodes under cp932 as the replacement
+        character). Downstream consumers reading already-stored/transcoded text
+        (zone_detector, table_extractor, context_builder) call strip_mtext directly
+        with its default (True) to get the real symbol -- see strip_mtext's docstring."""
+        return strip_mtext(raw, convert_symbols=False)
 
     @staticmethod
     def map_text(entity: Any) -> dict[str, Any]:
@@ -264,6 +238,12 @@ class EntityMapper:
             content = entity.dxf.content
         elif hasattr(entity.dxf, "text") and entity.dxf.text:
             content = entity.dxf.text
+        # Deliberately NOT run through the generic MTEXT cleaner: GD&T tolerance
+        # content commonly uses font-substitution codes like "{\Fgdt;j}" to render
+        # a specific engineering symbol via a dedicated symbol font (the GDT.shx
+        # style) -- the character itself ("j") is meaningless without that font
+        # context, so stripping the \F code would silently corrupt the symbol's
+        # meaning rather than merely reformat it (see test_gdt_welding_native_parsing).
         insert = entity.dxf.insert if hasattr(entity.dxf, "insert") else [0, 0, 0]
         
         return {
@@ -302,11 +282,18 @@ class EntityMapper:
     @staticmethod
     def map_multileader(entity: Any) -> dict[str, Any]:
         text = ""
-        if hasattr(entity, "context") and hasattr(entity.context, "text"):
-            text = entity.context.text
-        elif hasattr(entity.dxf, "text"):
+        # MLeaderContext (entity.context) has no "text" attribute -- that check
+        # always fails silently, so this used to fall through to entity.dxf.text
+        # (rarely populated for MULTILEADER) and yield an empty string for most
+        # annotations. get_mtext_content() is ezdxf's documented accessor; it
+        # returns "" itself when the multileader has block content instead of
+        # MTEXT, so no extra guard is needed.
+        if hasattr(entity, "get_mtext_content"):
+            text = entity.get_mtext_content() or ""
+        if not text and hasattr(entity.dxf, "text"):
             text = entity.dxf.text
-            
+        text = EntityMapper._clean_mtext_content(text) if text else ""
+
         vertices = []
         # MultiLeaders are complex, we extract basic location/vertices if possible
         if hasattr(entity, "leaders"):

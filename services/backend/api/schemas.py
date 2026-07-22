@@ -48,6 +48,7 @@ class DrawingResponse(BaseModel):
     status: str
     entity_counts: dict
     metadata: dict
+    ai_summary: dict | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -172,9 +173,9 @@ class UpdateUserRequest(BaseModel):
 class PhysicalComparisonRequest(BaseModel):
     reference_drawing_id: str
     drawing_id: str
-    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = Field(
-        "deterministic",
-        description="Pipeline to use: deterministic, full_ai (Gemini w/ CAD), or full_ai_vision (Gemini image only)"
+    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = Field(
+        "rag",
+        description="Pipeline to use: rag, rag_ai (Gemini w/ CAD), or ai_vision (Gemini image only)"
     )
 
 # Room workflow schemas
@@ -182,8 +183,8 @@ class RoomCreateRequest(BaseModel):
     name: str = Field(..., description="User-facing room label")
     description: str | None = None
     client_name: str | None = None
-    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = Field(
-        "deterministic",
+    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = Field(
+        "rag",
         description="Comparison pipeline for this room (dev-only)"
     )
 
@@ -194,9 +195,11 @@ class RoomResponse(BaseModel):
     client_name: str | None = None
     active_old_drawing_id: str | None = None
     active_new_drawing_id: str | None = None
+    active_old_drawing_name: str | None = None
+    active_new_drawing_name: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
-    comparison_method: Literal["deterministic", "full_ai", "full_ai_vision"] = "deterministic"
+    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = "rag"
     created_at: datetime
     updated_at: datetime
     last_opened_at: datetime | None = None
@@ -207,6 +210,8 @@ class UpdateRoomRequest(BaseModel):
     client_name: str | None = None
     active_old_drawing_id: str | None = None
     active_new_drawing_id: str | None = None
+    active_old_drawing_name: str | None = None
+    active_new_drawing_name: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
 
@@ -248,6 +253,17 @@ class CanvasMarking(BaseModel):
     visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the revision drawing sheet image, normalized 0 to 1000.")
     ref_visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the reference drawing sheet image, normalized 0 to 1000.")
 
+class ComparisonDiagnostics(BaseModel):
+    """Backend-populated confidence/fallback metadata (which AI model actually answered,
+    zone-detection fallback warnings, etc.) — not something the comparison model should
+    fill in itself; always overwritten server-side after generation, same as
+    bill_of_materials' deterministic override. A fixed-field model, not a bare dict:
+    Gemini's structured-output API rejects open-ended "additionalProperties" schemas
+    (a bare `dict` field breaks response_schema validation with a 400 INVALID_ARGUMENT
+    for every request, not just when the field happens to be populated)."""
+    model_used: Optional[str] = Field(default=None, description="Which model in the cascade actually produced this comparison (e.g. a Pro->Flash rate-limit fallback).")
+    zone_detection_warnings: list[str] = Field(default_factory=list, description="Zones where reference/revision bbox detection used different or low-confidence methods.")
+
 class PhysicalComparisonResponse(BaseModel):
     drawing_views: CategoryComparison
     notes_section: CategoryComparison
@@ -256,6 +272,15 @@ class PhysicalComparisonResponse(BaseModel):
     isometric_view: CategoryComparison
     other_engineering_references: CategoryComparison
     canvas_markings: list[CanvasMarking] = Field(default_factory=list, description="Visual checklist coordinates mapping items.")
+    diagnostics: Optional[ComparisonDiagnostics] = Field(default=None, description="Backend-populated confidence/fallback metadata, not part of the model's own judgment.")
 
+class ViewSummary(BaseModel):
+    summary: str = Field(..., description="A detailed summary paragraph for this specific view category.")
 
-
+class DrawingSummaryResponse(BaseModel):
+    drawing_views: ViewSummary = Field(..., description="Origin, alignment, lines, dimensions, holes, chamfers, welds, tolerances, text attrs.")
+    notes: ViewSummary = Field(..., description="Standard and special notes.")
+    bom: ViewSummary = Field(..., description="Material type, specification, quantity, weight, balloons, remarks, numbering.")
+    title_block: ViewSummary = Field(..., description="Machine name, line name, scale, designed by, drawn by, quantity, job/ref numbers, rev code.")
+    iso_view: ViewSummary = Field(..., description="Orientation, scale, location.")
+    others: ViewSummary = Field(..., description="Tree view properties/link, excel additional information.")

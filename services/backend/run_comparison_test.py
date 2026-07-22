@@ -35,25 +35,23 @@ async def main():
         print("ERROR: Need at least 2 drawings in the database to run the comparison test.")
         return
         
-    ref_id = str(drawings[0].id)
-    rev_id = str(drawings[1].id)
-    print(f"Using database drawings:\nReference: {drawings[0].file_name} ({ref_id})\nRevision: {drawings[1].file_name} ({rev_id})")
-    
+    ref_id = "6a5f09d6f3fcd214b5e123b9"
+    rev_id = "6a5f09eaf3fcd214b5e125cb"
+
     req = PhysicalComparisonRequest(
         reference_drawing_id=ref_id,
         drawing_id=rev_id,
-        comparison_method="full_ai"
+        comparison_method="rag"
     )
     
     print("Running physical comparison endpoint logic...")
     res = await perform_physical_comparison(req)
     print("\nSUCCESS!")
-    print("title_block status:", res.data.title_block.status)
-    print("title_block difference_summary:", res.data.title_block.difference_summary)
-    print("title_block reference_content:")
-    print(repr(res.data.title_block.reference_content))
-    print("title_block revision_content:")
-    print(repr(res.data.title_block.revision_content))
+    print("bill_of_materials status:", res.data.bill_of_materials.status)
+    print("bill_of_materials difference_summary:", res.data.bill_of_materials.difference_summary)
+    print("bill_of_materials discrepancy_details:", res.data.bill_of_materials.engineering_discrepancy_details)
+    print("bill_of_materials reference_content:")
+    print(repr(res.data.bill_of_materials.reference_content)[:100] + "...")
 
 if __name__ == '__main__':
     asyncio.run(main())

@@ -194,16 +194,20 @@ def test_extract_bom_fields_ignores_hardcoded_layers():
         # Headers on a weird layer
         MockEntity("text", "No.", 700, 70, layer="RANDOM_LAYER_1"),
         MockEntity("text", "材質 / Code", 750, 70, layer="RANDOM_LAYER_2"),
+        MockEntity("text", "Q'ty", 850, 70, layer="RANDOM_LAYER_4"),
         MockEntity("text", "備考 / Remark", 950, 70, layer="RANDOM_LAYER_3"),
-        
+
         # Data on completely unassociated layers
+        # (extract_bom_table requires >=4 cells per row to reject 2-3 item
+        # false-positive alignments, so a realistic row needs a Q'ty cell too)
         MockEntity("text", "99", 700, 60, layer="DIMENSIONS"),
         MockEntity("text", "ALUMINUM", 750, 60, layer="0"),
+        MockEntity("text", "1", 850, 60, layer="0"),
         MockEntity("text", "-", 950, 60, layer="0"),
     ]
-    
+
     bom_rows, is_assembly = extract_bom_fields(entities)
-    
+
     assert len(bom_rows) == 1
     assert bom_rows[0]["NO"] == "99"
     assert bom_rows[0]["CODE"].lower() == "aluminum"

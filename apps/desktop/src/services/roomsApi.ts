@@ -16,7 +16,7 @@ export interface CreateRoomParams {
   name: string;
   description?: string;
   client_name?: string;
-  comparison_method?: "deterministic" | "full_ai" | "full_ai_vision";
+  comparison_method?: "rag" | "rag_ai" | "ai_vision";
 }
 
 export interface UpdateRoomParams {
@@ -63,7 +63,7 @@ export async function createRoom(params: CreateRoomParams): Promise<Room> {
       name: params.name,
       description: params.description ?? null,
       client_name: params.client_name ?? null,
-      comparison_method: params.comparison_method ?? "deterministic",
+      comparison_method: params.comparison_method ?? "rag",
     }),
   });
   return parseOrThrow<Room>(res);

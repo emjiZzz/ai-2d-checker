@@ -24,6 +24,7 @@
   --border-color: #27272a;
 
   --text-primary: #e4e4e7;
+  --text-secondary: #d4d4d8;
   --text-muted: #a1a1aa;
   --bg-bubble-user: #1A1A1A;
 
@@ -32,6 +33,14 @@
 
   --primary-glow: linear-gradient(135deg, #00e5ff, #0088ff);
   --accent-cyan: #00e5ff;
+  /* Text color to use ON TOP of a solid --accent-cyan fill. Cyan is bright in
+     dark mode (needs dark text) but --accent-cyan is remapped to a darker blue
+     in light mode (needs light text) — see hc-light block below. */
+  --on-accent: #09090b;
+
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
 }
 
 /* High Contrast Light Mode Theme Variables */
@@ -43,6 +52,7 @@
   --border-color: #e4e4e7;
 
   --text-primary: #18181b;
+  --text-secondary: #3f3f46;
   --text-muted: #71717a;
   --bg-bubble-user: #f4f4f5;
 
@@ -51,6 +61,11 @@
 
   --primary-glow: linear-gradient(135deg, #2563eb, #1d4ed8);
   --accent-cyan: #2563eb;
+  --on-accent: #ffffff;
+
+  --danger: #dc2626;
+  --success: #059669;
+  --warning: #d97706;
 }
 
 @theme {
@@ -63,9 +78,14 @@
   --color-accent-purple: var(--accent-purple);
   --color-accent-pink: var(--accent-pink);
   --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
   --color-bg-bubble-user: var(--bg-bubble-user);
   --color-sidebar-item-hover: var(--sidebar-item-hover);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
 }
 
 * {
@@ -164,6 +184,34 @@ html, body, [class*="overflow-"] {
   outline: 2px solid var(--accent-cyan);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+@utility glass-panel {
+  background: rgba(24, 24, 27, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@utility glass-header {
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@utility glow-cyan {
+  box-shadow: 0 0 15px -3px rgba(0, 229, 255, 0.35);
+}
+
+@utility interactive-scale {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  &:hover {
+    transform: translateY(-1px);
+  }
+  &:active {
+    transform: translateY(0) scale(0.98);
+  }
 }
 
 @theme {

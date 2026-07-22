@@ -31,7 +31,9 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
     if (!content) return [];
     const lines = content.split("\n").filter((l: string) => l.trim());
     const headerLine = lines.find((l: string) => l.includes("|"));
-    const dataLines = lines.filter((l: string) => l.includes("|") && !l.match(/^-+$/) && l !== headerLine);
+    const isSeparatorRow = (l: string) =>
+      l.split("|").map(p => p.trim()).filter(p => p !== "").every(p => /^:?-{1,}:?$/.test(p));
+    const dataLines = lines.filter((l: string) => l.includes("|") && !isSeparatorRow(l) && l !== headerLine);
 
     return dataLines.map((line: string) => {
       const parts = line.split("|").map((p: string) => p.trim());
@@ -282,7 +284,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             {isExpanded && (
               <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", gap: "14px" }}>
 
-                {/* ── MATCHED: All-Clear confirmation block with verified content ── */}
+                {/* ── MATCHED: All-Clear confirmation block ── */}
                 {result.status === "MATCHED" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {/* Header badge */}
@@ -314,58 +316,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                         <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#10b981", marginBottom: "4px", letterSpacing: "0.04em" }}>
                           ✓ VERIFIED — NO DISCREPANCIES
                         </div>
-                        <div style={{ fontSize: "0.82rem", color: "#a1a1aa", lineHeight: "1.5" }}>
-                          {result.difference_summary || "All entries in this section match between the reference and revision drawings."}
-                        </div>
                       </div>
                     </div>
-
-                    {/* Verified content comparison — show what was verified */}
-                    {(result.reference_content || result.revision_content) && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "rgba(16,185,129,0.8)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          Verified Contents
-                        </div>
-                        <div style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "8px",
-                          background: "rgba(0,0,0,0.2)",
-                          borderRadius: "8px",
-                          overflow: "hidden",
-                          border: "1px solid rgba(16,185,129,0.12)"
-                        }}>
-                          {/* Column headers */}
-                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#a1a1aa", padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                            Original Drawing
-                          </div>
-                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#10b981", padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                            Revision Drawing
-                          </div>
-                          {/* Content values */}
-                          <div style={{ fontSize: "0.78rem", color: "#94a3b8", padding: "10px", lineHeight: "1.5", wordBreak: "break-word", fontFamily: "'JetBrains Mono', monospace", whiteSpace: "pre-wrap" }}>
-                            {result.reference_content || "—"}
-                          </div>
-                          <div style={{ fontSize: "0.78rem", color: "#e4e4e7", padding: "10px", lineHeight: "1.5", wordBreak: "break-word", fontFamily: "'JetBrains Mono', monospace", whiteSpace: "pre-wrap" }}>
-                            {result.revision_content || "—"}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Engineering discrepancy details (usually empty for MATCHED, but show if present) */}
-                    {result.engineering_discrepancy_details && result.engineering_discrepancy_details.trim() && (
-                      <div style={{ fontSize: "0.78rem", color: "#a1a1aa", padding: "8px 12px", background: "rgba(16,185,129,0.04)", borderRadius: "6px", border: "1px solid rgba(16,185,129,0.1)", lineHeight: "1.5" }}>
-                        {result.engineering_discrepancy_details}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {result.status !== "MATCHED" && result.difference_summary && (
-                  <div>
-                    <div style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>DIFFERENCE SUMMARY</div>
-                    <div style={{ fontSize: "0.85rem", color: "#e4e4e7", lineHeight: "1.5", fontWeight: 100 }}>{result.difference_summary}</div>
                   </div>
                 )}
 
@@ -531,9 +483,16 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                   }
                 })()}
 
+                {result.difference_summary && (
+                  <div>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>DETAILED SUMMARY REPORT</div>
+                    <div style={{ fontSize: "0.85rem", color: "#e4e4e7", lineHeight: "1.5", fontWeight: 300 }}>{result.difference_summary}</div>
+                  </div>
+                )}
+
                 {result.engineering_discrepancy_details && (
                   <div>
-                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px" }}>ENGINEERING DISCREPANCY DETAILS</div>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>PROFESSIONAL SUGGESTION</div>
                     <div style={{
                       fontSize: "0.85rem",
                       color: result.status === "MATCHED" ? "#a7f3d0" : "#fecaca",

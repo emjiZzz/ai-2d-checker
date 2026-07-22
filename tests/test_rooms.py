@@ -28,7 +28,15 @@ def mock_beanie_rooms(monkeypatch):
 
             return Comparison(self, other)
 
+        def __neg__(self):
+            # Beanie's real ExpressionField supports unary "-" for descending
+            # sort (e.g. .sort(-Room.updated_at)); the mocked sort() below
+            # ignores the argument and sorts by the real instance attribute
+            # instead, so this only needs to make the expression evaluable.
+            return self
+
     Room.is_deleted = MockField("is_deleted")
+    Room.updated_at = MockField("updated_at")
 
     mock_rooms: dict[str, Room] = {}
 

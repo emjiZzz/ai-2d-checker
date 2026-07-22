@@ -20,8 +20,10 @@ Zone Anchors (examples):
 from __future__ import annotations
 
 import re
+import math
 import unicodedata
 from typing import Any, Optional
+from ...utils.text import strip_mtext, safe_decode
 
 # ---------------------------------------------------------------------------
 # Zone Anchor Signatures
@@ -510,3 +512,104 @@ def _derive_views_zone(entities: list, detected: dict) -> Optional[tuple]:
         view_xs[hi] + BBOX_PADDING,
         view_ys[hi] + BBOX_PADDING,
     )
+
+
+VIEW_LABEL_PATTERNS = [
+    r'(?:section|sec\.|断面|断面図)\s*([a-z0-9\-]+)',
+    r'(?:detail|det\.|詳細|詳細図)\s*([a-z0-9\-]+)',
+    r'(?:view|矢視|矢視図)\s*([a-z0-9\-]+)',
+    r'(?:front|top|side|rear|正面|平面|側面|底面|正面図|平面図|側面図)(?:\s*図)?',
+    r'\b(?:s|scale)\s*=\s*\d+\s*[:/]\s*\d+\b'
+]
+
+EXCLUDE_VIEW_LABEL_PATTERNS = [
+    r'^(?:注\s*\d*|注記|notes?:?|remark:?|title|scale|drawn|approved|checked)',
+    r'^[\d\u2460-\u2473\u2474-\u2487]+[\.\)\uff0e\uff09\u30fb:：]?\s*',  # Handles ASCII (1., 1)), Full-Width (１．, １）), & Circled/Parenthesized JIS Numerals (①, ②, ⑴)
+]
+
+def detect_subviews(entities: list, views_bbox: Optional[tuple] = None) -> list:
+    """
+    Detects individual view label anchors (SECTION A-A, DETAIL B, TOP VIEW, S=2:1, etc.)
+    and clusters surrounding CAD entities to construct tagged sub-view bounding boxes.
+    Returns a list of dicts: [{"label": str, "bbox": (xmin, ymin, xmax, ymax), "anchor": (x, y)}]
+    If no sub-view anchors exist, returns [] (caller falls back to single views_bbox).
+    """
+    import re
+
+    anchors = []
+    for e in entities:
+        if getattr(e, "entity_type", "") not in ("text", "mtext"):
+            continue
+        raw_txt = e.properties.get("text", "") if getattr(e, "properties", None) else ""
+        if not raw_txt:
+            continue
+        txt_norm = strip_mtext(safe_decode(raw_txt)).strip()
+        txt_lower = txt_norm.lower()
+
+        # Skip note markers, title block fields, and general note callouts
+        if any(re.search(pat, txt_lower, re.IGNORECASE) for pat in EXCLUDE_VIEW_LABEL_PATTERNS):
+            continue
+
+        for pat in VIEW_LABEL_PATTERNS:
+            if re.search(pat, txt_lower, re.IGNORECASE):
+                xy = _get_xy(e)
+                if xy:
+                    # Enforce that the anchor lies within the overall views zone if provided
+                    if views_bbox:
+                        bx0, by0, bx1, by1 = views_bbox
+                        if not (bx0 <= xy[0] <= bx1 and by0 <= xy[1] <= by1):
+                            continue
+                    anchors.append({"label": txt_norm, "anchor": xy, "entities": []})
+                    break
+
+    if not anchors:
+        return []
+
+    # Compute maximum allowed anchor distance (empirically validated 30% of sheet diagonal) to prevent misassigning boundary entities
+    sheet_diag = math.hypot(views_bbox[2] - views_bbox[0], views_bbox[3] - views_bbox[1]) if views_bbox else 1000.0
+    max_anchor_dist = sheet_diag * 0.30
+
+    # Filter out text/line entities in the views area and assign to closest anchor (Voronoi clustering with distance cutoff)
+    for e in entities:
+        etype = getattr(e, "entity_type", "")
+        if etype not in ("dimension", "line", "polyline", "text", "mtext", "arc", "circle"):
+            continue
+        xy = _get_xy(e)
+        if not xy:
+            continue
+        if views_bbox:
+            bx0, by0, bx1, by1 = views_bbox
+            if not (bx0 <= xy[0] <= bx1 and by0 <= xy[1] <= by1):
+                continue
+
+        # Find closest anchor by Euclidean distance
+        closest_anchor = min(
+            anchors,
+            key=lambda a: math.hypot(xy[0] - a["anchor"][0], xy[1] - a["anchor"][1])
+        )
+        dist = math.hypot(xy[0] - closest_anchor["anchor"][0], xy[1] - closest_anchor["anchor"][1])
+        if dist <= max_anchor_dist:
+            closest_anchor["entities"].append(xy)
+
+    # Compute bounding boxes for each cluster
+    subviews = []
+    for a in anchors:
+        pts = a["entities"]
+        if not pts:
+            continue
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        bbox = (
+            min(xs) - BBOX_PADDING,
+            min(ys) - BBOX_PADDING,
+            max(xs) + BBOX_PADDING,
+            max(ys) + BBOX_PADDING,
+        )
+        subviews.append({
+            "label": a["label"],
+            "bbox": bbox,
+            "anchor": a["anchor"]
+        })
+
+    return subviews
+

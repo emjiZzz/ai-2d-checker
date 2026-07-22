@@ -1,5 +1,6 @@
 import time
 import json
+from typing import Any
 from google import genai
 from google.genai import types
 from ....logger import logger
@@ -9,11 +10,20 @@ from ....api.schemas import PhysicalComparisonResponse
 def execute_gemini_cascade(
     api_key: str,
     system_instruction: str,
-    contents: list
-) -> str:
-    """Executes Gemini content generation cascade with error handling and fallback logic."""
+    contents: list,
+    response_schema: Any = PhysicalComparisonResponse
+) -> tuple[str, str]:
+    """Executes Gemini content generation cascade with error handling and fallback logic.
+
+    Returns (response_text, model_used) — the caller needs to know which model in the
+    cascade actually produced the result: a mid-run fallback (e.g. Pro -> Flash on
+    rate-limit) silently swaps a high-reasoning model for a materially weaker one for
+    the same comparison, and previously nothing surfaced which model answered, so two
+    runs of the "same" comparison could differ in quality for reasons invisible to
+    anyone looking at the result.
+    """
     client = genai.Client(api_key=api_key)
-    
+
     # Driven by config.py's settings.GEMINI_MODEL_CASCADE (env-controlled: GEMINI_MODEL_PRO,
     # GEMINI_MODEL_FLASH, GEMINI_MODEL_FALLBACK) instead of a hardcoded list — Google's
     # Gemini deprecation cadence has been fast enough this year that a hardcoded cascade
@@ -21,7 +31,8 @@ def execute_gemini_cascade(
     _model_cascade = settings.GEMINI_MODEL_CASCADE
     _last_err = None
     response = None
-    
+    _model_used = None
+
     for _attempt, _model in enumerate(_model_cascade):
         try:
             logger.info(f"Gemini comparison attempt {_attempt + 1}/{len(_model_cascade)} using model: {_model}")
@@ -31,11 +42,12 @@ def execute_gemini_cascade(
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
-                    response_schema=PhysicalComparisonResponse,
+                    response_schema=response_schema,
                     temperature=0.0
                 )
             )
             logger.info(f"Gemini comparison succeeded with model: {_model}")
+            _model_used = _model
             break
         except Exception as _model_err:
             _last_err = _model_err
@@ -47,11 +59,11 @@ def execute_gemini_cascade(
                 time.sleep(_backoff)
                 continue
             raise _model_err
-            
+
     if response is None:
         raise _last_err or RuntimeError("All Gemini models failed without a response.")
-        
-    return response.text
+
+    return response.text, _model_used
 
 def execute_title_block_ocr(
     api_key: str,

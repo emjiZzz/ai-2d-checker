@@ -14,7 +14,8 @@ from ....config import settings
 from ....api.schemas import (
     PhysicalComparisonResponse,
     CategoryComparison,
-    CanvasMarking
+    CanvasMarking,
+    ComparisonDiagnostics,
 )
 from ...storage.path_resolver import get_storage_root
 from ...utils.text import (
@@ -53,7 +54,7 @@ async def perform_drawing_comparison(
         rev_drawing_id=str(rev_drawing.id),
         ref_hash=ref_drawing.file_hash,
         rev_hash=rev_drawing.file_hash,
-        method="deterministic"
+        method="rag"
     )
     if cached_payload:
         try:
@@ -64,7 +65,8 @@ async def perform_drawing_comparison(
                 title_block=CategoryComparison(**cached_payload["title_block"]),
                 isometric_view=CategoryComparison(**cached_payload["isometric_view"]),
                 other_engineering_references=CategoryComparison(**cached_payload["other_engineering_references"]),
-                canvas_markings=[CanvasMarking(**item) for item in cached_payload.get("canvas_markings", [])]
+                canvas_markings=[CanvasMarking(**item) for item in cached_payload.get("canvas_markings", [])],
+                diagnostics=cached_payload.get("diagnostics"),
             )
         except Exception as cache_err:
             logger.warning(f"Failed to parse cached drawing comparison, performing full comparison: {cache_err}")
@@ -105,9 +107,12 @@ async def perform_drawing_comparison(
         return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
 
     # Compute bounding boxes for visual overlap warnings and spatial constraints
-    from ..bom.table_extractor import extract_dynamic_regions
+    from ..bom.table_extractor import extract_dynamic_regions, summarize_zone_detection_confidence
     ref_regions = extract_dynamic_regions(ref_entities)
     rev_regions = extract_dynamic_regions(rev_entities)
+    zone_detection_warnings = summarize_zone_detection_confidence(ref_regions, rev_regions)
+    if zone_detection_warnings:
+        logger.info(f"Zone detection confidence warnings: {zone_detection_warnings}")
 
     ref_bom_bbox_raw = ref_regions.get("bom")
     rev_bom_bbox_raw = rev_regions.get("bom")
@@ -696,7 +701,8 @@ async def perform_drawing_comparison(
         title_block=CategoryComparison(**parsed["title_block"]),
         isometric_view=CategoryComparison(**parsed["isometric_view"]),
         other_engineering_references=CategoryComparison(**parsed["other_engineering_references"]),
-        canvas_markings=[CanvasMarking(**item) for item in parsed.get("canvas_markings", [])]
+        canvas_markings=[CanvasMarking(**item) for item in parsed.get("canvas_markings", [])],
+        diagnostics=ComparisonDiagnostics(zone_detection_warnings=zone_detection_warnings),
     )
 
     # Save comparison findings as AuditSession + AuditViolations
@@ -717,7 +723,7 @@ async def perform_drawing_comparison(
             timings={},
             diagnostics={
                 "source": "physical_comparison",
-                "comparison_method": "deterministic",
+                "comparison_method": "rag",
                 "total_markings": total_markings,
                 "non_matched": len(non_matched),
             },
@@ -772,7 +778,7 @@ async def perform_drawing_comparison(
             ref_hash=ref_drawing.file_hash,
             rev_hash=rev_drawing.file_hash,
             payload=comparison_response.model_dump(),
-            method="deterministic"
+            method="rag"
         )
     except Exception as cache_write_err:
         logger.warning(f"Failed to cache physical comparison response: {cache_write_err}")

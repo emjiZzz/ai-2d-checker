@@ -23,10 +23,73 @@ def safe_decode(text: Any) -> str:
             return text_str
 
 
-def strip_mtext(t: str) -> str:
-    # Replace AutoCAD newlines (\P) with standard newlines before stripping formatting
-    t = t.replace('\\P', '\n')
-    return re.sub(r'\\[A-Za-z0-9\-~|.]+;', '', t.replace('{', '').replace('}', '')).strip()
+def strip_mtext(t: Any, convert_symbols: bool = True) -> str:
+    """
+    Canonical CAD text cleanup, used everywhere a text/dimension/tolerance/
+    multileader/block-attribute entity's raw content is extracted so every
+    entity type goes through the same single normalization pass instead of
+    several divergent partial ones (previously: entity_mapper.py's MTEXT
+    cleaner never converted %% control codes; map_tolerance/map_multileader
+    applied no cleaning at all; this file's own version didn't decode bytes
+    or handle every escape form). Consolidates:
+      - raw bytes decoding (legacy cp932-encoded Japanese DXF text)
+      - legacy "%%x" control codes -> their visual symbol (%%c -> Ø, %%d -> °,
+        %%p -> ±; %%u/%%o are underline/overline toggles with no symbol, dropped) --
+        gated by `convert_symbols` (see below)
+      - \\P paragraph breaks -> space (these are single-value CAD fields, not
+        multi-paragraph prose, so a literal embedded newline is not useful)
+      - \\~ non-breaking space -> space
+      - MTEXT formatting codes (\\W0.8;, \\H2.5;, \\Sstacked/fraction;, etc.) and
+        {...} font/color change groups
+      - any remaining single backslash escape, keeping the escaped character
+
+    `convert_symbols=False` is REQUIRED when this is called during CAD entity
+    extraction (entity_mapper.py), before dxf_parser.py's transcode_value() pass
+    runs. That pass re-encodes every string to latin-1 bytes and re-decodes as
+    cp932 to recover real Shift-JIS text from a byte-preserving raw file read --
+    it assumes every string it sees still represents raw untouched bytes. "Ø"
+    (U+00D8) encodes to latin-1 byte 0xD8, which decodes under cp932 as the
+    Unicode replacement character (0xD8 falls in cp932's single-byte halfwidth-
+    katakana territory) -- introducing a *real* Unicode symbol before that pass
+    runs corrupts it into "�", which Gemini then hallucinates into a stray
+    katakana character when reasoning about the image. Downstream callers that
+    run at comparison/runtime (zone_detector, table_extractor, context_builder),
+    reading text that was already safely stored post-transcode, should keep the
+    default (True) so raw "%%c"-style codes still resolve to their real symbol.
+    """
+    if not t:
+        return t if isinstance(t, str) else ""
+
+    if isinstance(t, bytes):
+        for enc in ('utf-8', 'cp932', 'latin-1'):
+            try:
+                t = t.decode(enc)
+                break
+            except (UnicodeDecodeError, AttributeError):
+                continue
+        else:
+            t = t.decode('utf-8', errors='replace')
+
+    # Replace AutoCAD paragraph breaks with spaces before stripping formatting
+    t = t.replace('\\P', ' ')
+    # Non-breaking space
+    t = t.replace('\\~', ' ')
+    if convert_symbols:
+        # Replace common AutoCAD symbol codes with their visual equivalents so AI vision matches entity text
+        t = t.replace('%%c', 'Ø').replace('%%C', 'Ø')
+        t = t.replace('%%d', '°').replace('%%D', '°')
+        t = t.replace('%%p', '±').replace('%%P', '±')
+        # Underline/overline toggles have no visual symbol -- just drop them
+        t = t.replace('%%u', '').replace('%%U', '').replace('%%o', '').replace('%%O', '')
+    # Strip MTEXT formatting codes: \X...; (width, height, alignment, tracking,
+    # stacked fractions, font/color, etc. -- any backslash-letter code up to its
+    # terminating semicolon, regardless of what characters the argument contains)
+    t = re.sub(r'\\[A-Za-z][^;]*;', '', t)
+    # Strip curly-brace groups for font/color changes
+    t = t.replace('{', '').replace('}', '')
+    # Strip any remaining single backslash escapes, keeping the escaped character
+    t = re.sub(r'\\(.)', r'\1', t)
+    return t.strip()
 
 
 def compare_values(orig_val: str, kmti_val: str) -> str:

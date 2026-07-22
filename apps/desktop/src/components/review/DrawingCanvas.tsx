@@ -43,14 +43,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
   ({ layers, width, height, drawing }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const markerPositionsRef = useRef<Record<string, { x: number, y: number }>>({});
-    
+
 
     const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
     const toggleMarkerLabels = useReviewStore(s => s.toggleMarkerLabels);
     const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
     const theme = useThemeStore((s) => s.theme);
 
-    const [isNeonCAD, setIsNeonCAD] = useState(false);
     const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
     const [redrawTrigger, setRedrawTrigger] = useState(0);
 
@@ -113,9 +112,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           const res = await fetchWithAuth(`/api/v1/drawings/${drawing.id}/rendering`, {
             headers: { "Accept": "image/png" }
           });
-          
+
           if (!active) return;
-          
+
           if (res.status === 204) {
             setBgImage(null);
             setLightBgImage(null);
@@ -146,7 +145,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               context.drawImage(img, 0, 0);
               const imgData = context.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
-              
+
               const PIXELS_PER_CHUNK = 250000;
               const CHUNK_SIZE = PIXELS_PER_CHUNK * 4;
               let offset = 0;
@@ -171,7 +170,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                   }
                 }
                 offset = end;
-                
+
                 if (offset < data.length) {
                   setTimeout(processChunk, 0);
                 } else {
@@ -184,7 +183,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                     if (currentCache) {
                       currentCache.lightBgImage = lightImg;
                     }
-                    
+
                     if (active) {
                       setLightBgImage(lightImg);
                       setRedrawTrigger((prev) => prev + 1);
@@ -192,7 +191,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                   };
                 }
               };
-              
+
               setTimeout(processChunk, 0);
             }
           };
@@ -246,7 +245,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             drawing={drawing}
             isHoveringMarkerState={isHoveringMarkerState}
             hoveredMarkerId={hoveredMarkerId}
-            isNeonCAD={isNeonCAD}
+            isNeonCAD={false}
             bgImage={bgImage}
             lightBgImage={lightBgImage}
             setRenderDiagnostics={setRenderDiagnostics}
@@ -388,177 +387,26 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           </div>
         )}
 
-        <DrawingCanvasHUD isNeonCAD={isNeonCAD} theme={theme} />
 
-        {/* Floating Visual Quality Controller Panel */}
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            right: 12,
-            background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
-            backdropFilter: 'blur(12px)',
-            border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
-            padding: '8px 12px',
-            borderRadius: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
-            userSelect: 'none',
-            zIndex: 10
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <span style={{ fontSize: '0.75rem', color: theme === 'hc-light' ? '#a1a1aa' : '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>Engine Mode</span>
-            <span style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-              350 DPI High-Res
-            </span>
-          </div>
-
-          <div style={{ width: '1px', height: '24px', backgroundColor: theme === 'hc-light' ? 'rgba(228, 228, 231, 1)' : 'rgba(63, 63, 70, 0.5)' }} />
-
-          <button
-            onClick={() => {
-              setIsNeonCAD(prev => !prev);
-              setRedrawTrigger(prev => prev + 1);
-            }}
-            style={{
-              background: isNeonCAD ? 'rgba(0, 255, 204, 0.12)' : (theme === 'hc-light' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.03)'),
-              border: `1px solid ${isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)')}`,
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              color: isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#71717a' : '#a1a1aa'),
-              cursor: 'pointer',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              outline: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: isNeonCAD ? '0 0 10px rgba(0, 255, 204, 0.25)' : 'none'
-            }}
-            onMouseEnter={(e) => {
-              if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(161, 161, 170, 0.8)' : 'rgba(255, 255, 255, 0.3)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isNeonCAD) e.currentTarget.style.borderColor = theme === 'hc-light' ? 'rgba(212, 212, 216, 0.8)' : 'rgba(63, 63, 70, 0.8)';
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-            </svg>
-            NEON GLOW
-          </button>
-        </div>
 
         {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
         <div
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            left: 12,
-            background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
-            backdropFilter: 'blur(12px)',
-            border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
-            padding: '8px 12px',
-            borderRadius: '10px',
-            fontFamily: 'monospace',
-            fontSize: '0.85rem',
-            color: theme === 'hc-light' ? '#71717a' : '#a1a1aa',
-            display: 'flex',
-            gap: '12px',
-            pointerEvents: 'none',
-            boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)'
-          }}
+          className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
+            theme === 'hc-light'
+              ? 'bg-white/85 border-zinc-200/80 text-zinc-600'
+              : 'bg-zinc-950/80 border-white/10 text-zinc-400'
+          }`}
         >
           <ZoomDisplay />
-          <div>VIRTUALIZED: <span style={{ color: '#10b981', fontWeight: 600 }}>{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
-          <div>RENDER: <span style={{ color: '#eab308', fontWeight: 600 }}>{renderDiagnostics.renderTimeMs}ms</span></div>
+          <div className="w-[1px] h-3 bg-white/10" />
+          <div>VIRTUALIZED: <span className="text-emerald-400 font-bold">{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
+          <div className="w-[1px] h-3 bg-white/10" />
+          <div>RENDER: <span className="text-amber-400 font-bold">{renderDiagnostics.renderTimeMs}ms</span></div>
         </div>
       </div>
     );
   }
 );
-
-/**
- * CAD Navigation HUD — uses imperative DOM updates instead of React subscriptions.
- * This means viewport changes (every pan pixel) do NOT trigger React re-renders here.
- */
-const DrawingCanvasHUD = ({ isNeonCAD, theme }: { isNeonCAD: boolean, theme: string }) => {
-  const compassRef = useRef<SVGSVGElement>(null);
-  const xRef = useRef<HTMLSpanElement>(null);
-  const yRef = useRef<HTMLSpanElement>(null);
-  const magRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    const unsub = useReviewStore.subscribe((state) => {
-      const vp = state.viewport;
-      if (compassRef.current) {
-        compassRef.current.style.transform = `rotate(${(vp.x + vp.y) * 0.05}deg)`;
-      }
-      if (xRef.current) xRef.current.textContent = vp.x.toFixed(0);
-      if (yRef.current) yRef.current.textContent = vp.y.toFixed(0);
-      if (magRef.current) magRef.current.textContent = `${vp.scale.toFixed(2)}x`;
-    });
-    return unsub;
-  }, []);
-
-  const initVp = useReviewStore.getState().viewport;
-  const accentColor = isNeonCAD ? '#00ffcc' : (theme === 'hc-light' ? '#0ea5e9' : '#00e5ff');
-
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        bottom: 12,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: theme === 'hc-light' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(9, 9, 11, 0.75)',
-        backdropFilter: 'blur(12px)',
-        border: theme === 'hc-light' ? '1px solid rgba(228, 228, 231, 0.8)' : '1px solid rgba(63, 63, 70, 0.4)',
-        padding: '8px 16px',
-        borderRadius: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        boxShadow: theme === 'hc-light' ? '0 4px 20px rgba(0, 0, 0, 0.08)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
-        pointerEvents: 'none',
-        zIndex: 10
-      }}
-    >
-      <div style={{ position: 'relative', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg ref={compassRef} width="36" height="36" viewBox="0 0 36 36" style={{ transform: `rotate(${(initVp.x + initVp.y) * 0.05}deg)`, transition: 'transform 0.1s linear' }}>
-          <circle cx="18" cy="18" r="16" fill="none" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'} strokeWidth="1.5" />
-          <circle cx="18" cy="18" r="16" fill="none" stroke={accentColor} strokeWidth="1.5" strokeDasharray="8, 6" />
-          <line x1="18" y1="2" x2="18" y2="8" stroke={accentColor} strokeWidth="1.5" />
-          <line x1="18" y1="28" x2="18" y2="34" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
-          <line x1="2" y1="18" x2="8" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
-          <line x1="28" y1="18" x2="34" y2="18" stroke={theme === 'hc-light' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)'} strokeWidth="1.5" />
-        </svg>
-        <div style={{
-          position: 'absolute',
-          width: '6px',
-          height: '6px',
-          borderRadius: '50%',
-          backgroundColor: accentColor,
-          boxShadow: `0 0 8px ${accentColor}`
-        }} />
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <div style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: theme === 'hc-light' ? '#71717a' : '#a1a1aa', fontWeight: 600 }}>CAD Navigation HUD</div>
-        <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', display: 'flex', gap: '10px' }}>
-          <span>X: <span ref={xRef} style={{ color: accentColor }}>{initVp.x.toFixed(0)}</span></span>
-          <span>Y: <span ref={yRef} style={{ color: accentColor }}>{initVp.y.toFixed(0)}</span></span>
-          <span>MAG: <span ref={magRef} style={{ color: '#ec4899' }}>{initVp.scale.toFixed(2)}x</span></span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 /**
  * Zoom percentage display — imperative DOM update, no React re-render on zoom.

@@ -77,6 +77,68 @@ async def upload_drawing(file: UploadFile = File(...)):
     # Check for duplicate Drawing hash in database
     existing_drawing = await DrawingDocument.find_one(DrawingDocument.file_hash == file_hash)
     if existing_drawing:
+        # If the drawing is already fully extracted and completed, don't nuke the caches or re-extract
+        if existing_drawing.status == "completed":
+            logger.info(f"Duplicate upload detected for completed drawing {existing_drawing.id}. Skipping re-extraction to preserve cache.")
+            
+            # Find the most recent job for this drawing to return in the response
+            existing_job = await ExtractionJob.find_one(ExtractionJob.drawing_id == str(existing_drawing.id), sort=[("created_at", -1)])
+            
+            # If temp file exists, clean it up since we don't need it
+            if temp_upload_path.exists():
+                try:
+                    temp_upload_path.unlink()
+                except Exception:
+                    pass
+                    
+            # Return early without deleting caches or re-queuing
+            job_response = None
+            if existing_job:
+                job_response = JobResponse(
+                    id=str(existing_job.id),
+                    drawing_id=existing_job.drawing_id,
+                    status=existing_job.status,
+                    error_message=existing_job.error_message,
+                    diagnostics=existing_job.diagnostics,
+                    conversion_duration_seconds=existing_job.conversion_duration_seconds,
+                    parsing_duration_seconds=existing_job.parsing_duration_seconds,
+                    total_duration_seconds=existing_job.total_duration_seconds,
+                    created_at=existing_job.created_at,
+                    started_at=existing_job.started_at,
+                    completed_at=existing_job.completed_at
+                )
+            else:
+                # Fallback if somehow there's no job
+                job_response = JobResponse(
+                    id=f"dummy-{existing_drawing.id}",
+                    drawing_id=str(existing_drawing.id),
+                    status="completed",
+                    diagnostics={},
+                    created_at=existing_drawing.created_at
+                )
+                
+            return StandardResponse(
+                success=True,
+                data=UploadResponse(
+                    drawing=DrawingResponse(
+                        id=str(existing_drawing.id),
+                        file_name=existing_drawing.file_name,
+                        file_path=existing_drawing.file_path,
+                        file_hash=existing_drawing.file_hash,
+                        file_size_bytes=existing_drawing.file_size_bytes,
+                        format=existing_drawing.format,
+                        status=existing_drawing.status,
+                        entity_counts=existing_drawing.entity_counts,
+                        metadata=existing_drawing.metadata,
+                        created_at=existing_drawing.created_at,
+                        updated_at=existing_drawing.updated_at
+                    ),
+                    job=job_response,
+                    is_duplicate=True
+                )
+            )
+
+        # If it failed or got stuck, we DO want to overwrite it and clear caches
         # We need to overwrite the secure filename and update the document, just in case the previous ingestion left it in a broken state
         secure_filename = f"{file_hash}.{file_ext}"
         final_upload_path = get_storage_root() / "uploads" / secure_filename

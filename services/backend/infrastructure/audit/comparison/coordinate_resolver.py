@@ -115,6 +115,17 @@ def resolve_marking_coordinates(
                     if res:
                         m["coordinates"] = res.get("coords")
                         m["bbox"] = res.get("bbox")
+                        
+                        # HALLUCINATION GUARDRAIL: Check if it actually exists in the reference drawing
+                        ref_kwargs = {"category": cat, "used_entities": used_ref_entities, "exclude_bboxes": ref_ex, "match_level": 1}
+                        set_region_bbox(ref_kwargs, cat, is_rev=False)
+                        ref_res = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, txt, **ref_kwargs)
+                        if ref_res:
+                            # It exists in both! Override the AI's hallucinated ADDED status.
+                            m["status"] = "MATCHED"
+                            m["details"] = "Verified match with reference (Auto-corrected AI vision hallucination)"
+                            m["ref_coordinates"] = ref_res.get("coords")
+                            m["ref_bbox"] = ref_res.get("bbox")
             
             elif status_val == "REMOVED":
                 search_txt = m.get("original_value") or txt
@@ -125,6 +136,19 @@ def resolve_marking_coordinates(
                     if res:
                         m["ref_coordinates"] = res.get("coords")
                         m["ref_bbox"] = res.get("bbox")
+                        
+                        # HALLUCINATION GUARDRAIL: Check if it actually exists in the revision drawing
+                        rev_kwargs = {"category": cat, "used_entities": used_rev_entities, "exclude_bboxes": rev_ex, "match_level": 1}
+                        set_region_bbox(rev_kwargs, cat, is_rev=True)
+                        rev_res = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, search_txt, **rev_kwargs)
+                        if rev_res:
+                            # It exists in both! Override the AI's hallucinated REMOVED status.
+                            m["status"] = "MATCHED"
+                            m["details"] = "Verified match with reference (Auto-corrected AI vision hallucination)"
+                            m["text_content"] = search_txt
+                            m["original_value"] = None
+                            m["coordinates"] = rev_res.get("coords")
+                            m["bbox"] = rev_res.get("bbox")
                     
             elif status_val == "CHANGED":
                 if m.get("coordinates") is None and txt and txt != "NONE":

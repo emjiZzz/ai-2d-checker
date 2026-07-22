@@ -7,22 +7,32 @@ from ....logger import logger
 class ComparisonCacheManager:
     """Manages serialization and invalidation of structured visual drawing comparisons."""
 
+    # Bump this whenever a change to comparison LOGIC (not the input files) could change
+    # the output for an already-cached (ref, rev, method) triple: orchestrator/prompt
+    # changes, extraction/normalization fixes, BOM override logic, coordinate resolution,
+    # etc. Without this, a bug fix silently has no effect for any drawing pair a user
+    # already ran a comparison on -- the cache keeps serving the pre-fix result until
+    # someone thinks to manually clear it. Content-hash alone (ref_hash/rev_hash) only
+    # catches the file changing, not the code that interprets it changing.
+    COMPARISON_CACHE_VERSION = "v2"
+
     @staticmethod
     def _get_cache_path(
         ref_drawing_id: str,
         rev_drawing_id: str,
         ref_hash: str,
         rev_hash: str,
-        method: str = "deterministic"
+        method: str = "rag"
     ) -> Path:
         cache_dir = get_storage_root() / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        # Naming format: gemini_comparison_{method}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json
-        # `method` distinguishes deterministic vs full_ai results for the same drawing pair so
+        # Naming format: gemini_comparison_{version}_{method}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json
+        # `method` distinguishes rag vs rag_ai results for the same drawing pair so
         # switching a room's comparison_method can't silently serve the other method's cached output.
         # This aligns with api/routers/drawings.py cache invalidation glob/string check, which only
-        # substring-matches on drawing_id and doesn't care about the extra segment.
-        filename = f"gemini_comparison_{method}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json"
+        # substring-matches on drawing_id and doesn't care about the extra segments.
+        version = ComparisonCacheManager.COMPARISON_CACHE_VERSION
+        filename = f"gemini_comparison_{version}_{method}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json"
         return cache_dir / filename
 
     @classmethod
@@ -32,7 +42,7 @@ class ComparisonCacheManager:
         rev_drawing_id: str,
         ref_hash: str,
         rev_hash: str,
-        method: str = "deterministic"
+        method: str = "rag"
     ) -> Optional[Dict[str, Any]]:
         """Retrieves comparison payload if a valid cache hit exists."""
         cache_file = cls._get_cache_path(ref_drawing_id, rev_drawing_id, ref_hash, rev_hash, method)
@@ -54,7 +64,7 @@ class ComparisonCacheManager:
         ref_hash: str,
         rev_hash: str,
         payload: Dict[str, Any],
-        method: str = "deterministic"
+        method: str = "rag"
     ) -> None:
         """Saves comparison payload to cache."""
         cache_file = cls._get_cache_path(ref_drawing_id, rev_drawing_id, ref_hash, rev_hash, method)

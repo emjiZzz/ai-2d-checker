@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md animate-fade-in p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !disableDismiss) onClose();
       }}
@@ -70,31 +70,31 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={cn(
-          "w-full bg-bg-card border border-border-color rounded-2xl shadow-2xl animate-scale-up flex flex-col max-h-[90vh]",
+          "w-full bg-bg-card/90 border border-white/10 rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] backdrop-blur-xl animate-scale-up flex flex-col max-h-[90vh]",
           maxWidthClassName,
           className
         )}
       >
         {(title || !disableDismiss) && (
-          <div className="flex items-start justify-between gap-4 px-8 py-6 border-b border-border-color shrink-0">
+          <div className="flex items-start justify-between gap-4 px-8 py-5 border-b border-white/10 shrink-0 bg-white/[0.02]">
             <div>
               {title && (
                 <h2
                   id="modal-title"
-                  className="text-lg font-bold text-text-primary flex items-center gap-2.5"
+                  className="text-base font-bold text-text-primary flex items-center gap-2.5 tracking-tight"
                 >
                   {icon}
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-text-muted mt-1.5">{description}</p>
+                <p className="text-xs text-text-muted mt-1">{description}</p>
               )}
             </div>
             {!disableDismiss && (
               <button
                 onClick={onClose}
-                className="text-text-muted hover:text-text-primary hover:bg-white/5 rounded-md p-1.5 transition-all shrink-0 -mr-1.5 -mt-1.5"
+                className="text-text-muted hover:text-text-primary hover:bg-white/10 rounded-lg p-1.5 transition-all duration-150 shrink-0 -mr-1.5 -mt-1.5 active:scale-95"
                 aria-label="Close"
               >
                 <X size={18} />
@@ -103,10 +103,10 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
         )}
 
-        <div className="px-8 py-7 overflow-y-auto">{children}</div>
+        <div className="px-8 py-6 overflow-y-auto">{children}</div>
 
         {footer && (
-          <div className="px-8 py-5 shrink-0 border-t border-border-color bg-black/10 rounded-b-2xl">
+          <div className="px-8 py-4 shrink-0 border-t border-white/10 bg-black/20 rounded-b-2xl">
             {footer}
           </div>
         )}

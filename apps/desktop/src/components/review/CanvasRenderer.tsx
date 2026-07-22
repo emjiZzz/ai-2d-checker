@@ -50,7 +50,7 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
   /** Holds the latest viewport value. Updated via store subscription — avoids React re-renders on every pan pixel. */
   const viewportRef = useRef(useReviewStore.getState().viewport);
   /** Stable ref to the latest drawCanvas — used by the imperative viewport subscription below. */
-  const drawCanvasFnRef = useRef<() => void>(() => {});
+  const drawCanvasFnRef = useRef<() => void>(() => { });
 
   // viewport intentionally NOT subscribed via React hook — managed via viewportRef + store subscription
   const activeLayers = useReviewStore(s => s.activeLayers);

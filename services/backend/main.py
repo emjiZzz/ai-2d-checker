@@ -91,8 +91,10 @@ async def startup_event() -> None:
     # E. Start Background CAD Processing Queue worker
     from .infrastructure.audit.audit_pipeline import audit_queue
     from .infrastructure.cad.processing_queue import processing_queue
+    from .infrastructure.cad.summarization_queue import summarization_queue
     processing_queue.start()
     audit_queue.start()
+    summarization_queue.start()
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
@@ -103,8 +105,10 @@ async def shutdown_event() -> None:
     # Graceful stop of background CAD processing worker
     from .infrastructure.audit.audit_pipeline import audit_queue
     from .infrastructure.cad.processing_queue import processing_queue
+    from .infrastructure.cad.summarization_queue import summarization_queue
     await processing_queue.stop()
     await audit_queue.stop()
+    await summarization_queue.stop()
     
     logger.info("Graceful cleanup of system hooks completed.")
 
