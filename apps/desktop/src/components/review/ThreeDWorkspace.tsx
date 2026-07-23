@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, Play, CheckCircle2, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Play, CheckCircle2, RotateCcw, AlertTriangle } from "lucide-react";
 import { useThreeDStore } from "../../stores/threeDStore";
 import { useDrawingStore } from "../../stores/drawingStore";
 import { useAuditStore } from "../../stores/auditStore";
@@ -9,6 +9,7 @@ import { useAuditPolling } from "../../hooks/useAuditPolling";
 import { ThreeDViewer } from "./ThreeDViewer";
 import { UploadZone } from "./UploadZone";
 import { Skeleton } from "../ui/Skeleton";
+import { Select } from "../ui/Select";
 
 interface ThreeDWorkspaceProps {
   currentNav: string;
@@ -132,7 +133,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
         <div className="bg-bg-card border border-border-color rounded-xl p-3 backdrop-blur-md shadow-sm mb-3 z-10">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <h3 className="text-sm font-bold flex items-center border-l-[3px] border-accent-cyan pl-2.5 text-text-primary m-0">
+              <h3 className="text-base font-extrabold tracking-tight flex items-center border-l-[3px] border-accent-cyan pl-2.5 text-text-primary m-0">
                 Stage 1: 3D Model Checking Ingestion
               </h3>
               
@@ -145,7 +146,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
           </div>
         </div>
 
-        <div className="flex-grow bg-bg-sidebar border border-border-color rounded-xl flex flex-col overflow-hidden min-h-[500px] relative shadow-sm" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>
+        <div className="flex-grow bg-bg-sidebar border border-border-color rounded-xl flex flex-col overflow-hidden min-h-[500px] relative shadow-sm">
           <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 1 }} ref={containerRef}>
             <ThreeDViewer
               drawing={activeDrawing}
@@ -155,19 +156,10 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
           </div>
 
           {(!activeDrawing || !["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(activeDrawing?.format?.toLowerCase() || "")) && (
-            <div style={{
-              position: "absolute",
-              top: 0, left: 0, width: "100%", height: "100%",
-              zIndex: 5,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(9, 9, 11, 0.65)",
-              backdropFilter: "blur(8px)"
-            }}>
-              <div style={{ width: "400px", background: "rgba(255,255,255,0.03)", padding: "30px", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 20px 40px rgba(0,0,0,0.4)" }}>
-                <h2 style={{ textAlign: "center", color: "#e4e4e7", fontSize: "1.2rem", marginBottom: "20px" }}>3D Model Ingestion</h2>
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-bg-dark/80 backdrop-blur-md">
+              <div className="w-[420px] bg-bg-card p-[30px] rounded-[16px] border border-border-color shadow-2xl">
+                <h2 className="text-center text-text-primary text-2xl font-extrabold tracking-tight mb-1.5">3D Model Ingestion</h2>
+                <p className="text-center text-text-muted text-sm mb-5 leading-relaxed">Upload your 3D model file to begin compliance checking</p>
                 <UploadZone
                   side="new"
                   uploadState={uploadState}
@@ -195,7 +187,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
                       });
                       _setUploadStatus("completed", 100);
                     }}
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 text-xs font-bold rounded-lg cursor-pointer transition-all bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 w-full"
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 text-xs font-bold rounded-xl cursor-pointer transition-all bg-purple-500/10 border border-dashed border-purple-500/40 text-purple-400 hover:bg-purple-500/20 w-full"
                   >
                     <RotateCcw size={14} />
                     Load 3D STEP Demo
@@ -207,27 +199,31 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
         </div>
       </main>
 
-      <aside 
+      <aside
         className={`stage2-right-panel ${isRightPanelCollapsed ? "collapsed" : ""}`}
         style={{
-          width: isRightPanelCollapsed ? "0px" : `${rightSidebarWidth}px`,
-          minWidth: isRightPanelCollapsed ? "0px" : `${rightSidebarWidth}px`,
+          width: isRightPanelCollapsed ? "40px" : `${rightSidebarWidth}px`,
+          minWidth: isRightPanelCollapsed ? "40px" : `${rightSidebarWidth}px`,
           position: "relative",
           display: "flex",
           flexDirection: "column",
           transition: isResizingRight ? "none" : "width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
         }}
       >
+        {/* Kept inside the panel's own box (no negative offset) so it can never be
+            clipped by the overflow-hidden ancestors of the workspace layout — a
+            collapsed panel that shrank all the way to 0px used to strand this
+            button off-screen with no way to reopen the panel. */}
         <button
-          className="panel-collapse-btn"
+          className="absolute left-1 top-4 z-50 w-8 h-8 rounded-lg bg-bg-card border border-border-color shadow-md flex items-center justify-center text-text-muted hover:text-accent-cyan hover:border-accent-cyan transition-colors cursor-pointer"
           onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
           title={isRightPanelCollapsed ? "Expand AI Explanations" : "Collapse AI Explanations"}
         >
           {isRightPanelCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
-        
+
         {!isRightPanelCollapsed && (
-          <div 
+          <div
             className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-accent-cyan/40 transition-colors z-50"
             onMouseDown={(e) => {
               e.preventDefault();
@@ -236,31 +232,28 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
           />
         )}
 
+        {!isRightPanelCollapsed && (
         <div className="panel-content-wrapper" style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto", padding: "16px" }}>
           <div className="bg-bg-card border border-border-color rounded-xl p-6 backdrop-blur-md shadow-sm mb-5">
-            <h3 className="text-sm font-bold mb-4 flex items-center gap-2.5 border-l-[3px] border-accent-cyan pl-2.5 text-text-primary">
-              <Sparkles size={16} style={{ color: "var(--accent-cyan)" }} />
+            <h3 className="text-base font-extrabold tracking-tight mb-4 flex items-center gap-3 text-text-primary">
+              <span className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm">
+                <Sparkles size={15} className="text-white" />
+              </span>
               Stage 2 AI 3D Compliance Auditor
             </h3>
 
             <div className="flex flex-col gap-2" style={{ marginTop: "12px" }}>
               <label className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Grounding Client Profile</label>
-              <select
-                className="w-full bg-transparent border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
+              <Select
                 value={selectedClient || ""}
-                onChange={(e) => setSelectedClient(e.target.value)}
-              >
-                <option value="" disabled>Select Target Client</option>
-                {clients.map((c: any) => (
-                  <option key={c.id} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedClient}
+                placeholder="Select Target Client"
+                options={clients.map((c: any) => ({ value: c.name, label: c.name }))}
+              />
             </div>
 
             <button
-              className="inline-flex items-center justify-center gap-2 py-3 px-6 rounded-xl font-bold text-sm cursor-pointer transition-all bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-md hover:-translate-y-0.5 hover:shadow-lg hover:brightness-105 border border-transparent disabled:opacity-50 disabled:pointer-events-none w-full mt-4 justify-center whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-2 py-3 px-6 rounded-xl font-bold text-sm cursor-pointer transition-all bg-linear-to-br from-indigo-500 to-purple-600 text-white shadow-md hover:-translate-y-0.5 hover:shadow-lg hover:brightness-105 border border-transparent disabled:opacity-50 disabled:pointer-events-none w-full mt-4 justify-center whitespace-nowrap"
               onClick={handleAuditTrigger}
               disabled={!activeDrawing || auditStatus === "queued" || auditStatus === "auditing"}
             >
@@ -300,11 +293,19 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
           )}
 
           <div className="bg-bg-card border border-border-color rounded-xl p-6 backdrop-blur-md shadow-sm flex-grow flex flex-col overflow-hidden">
-            <h4 className="text-sm font-bold mb-4 flex items-center gap-2.5 border-l-[3px] border-accent-cyan pl-2.5 text-text-primary">AI Geometrical Infractions & peer checking</h4>
+            <h4 className="text-base font-extrabold tracking-tight mb-4 flex items-center gap-2.5 border-l-[3px] border-accent-cyan pl-2.5 text-text-primary">AI Geometrical Infractions & peer checking</h4>
             
             <div className="overflow-y-auto flex-grow mt-4 flex flex-col gap-3">
               {auditStatus === "idle" && (
-                <div className="text-text-muted text-xs text-center py-6 flex flex-col items-center justify-center gap-3">Trigger 3D compliance run to check mechanical alignment against manufacturing standards.</div>
+                <div className="text-text-muted text-sm text-center py-6 flex flex-col items-center justify-center gap-3 px-2">
+                  <span className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={18} className="text-amber-500" />
+                  </span>
+                  <span className="leading-relaxed">Trigger 3D compliance run to check mechanical alignment against manufacturing standards.</span>
+                  <span className="inline-flex items-center gap-1 text-accent-cyan font-semibold hover:underline cursor-pointer">
+                    Learn more <ChevronRight size={13} />
+                  </span>
+                </div>
               )}
               
               {auditStatus === "queued" || auditStatus === "auditing" ? (
@@ -371,6 +372,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
             </div>
           </div>
         </div>
+        )}
       </aside>
     </div>
   );

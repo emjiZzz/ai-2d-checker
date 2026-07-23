@@ -259,10 +259,10 @@ export const CopilotPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] bg-[#121420]/85 border border-border-color rounded-2xl p-5 backdrop-blur-md shadow-2xl text-text-primary animate-slide-in-right">
+    <div className="flex flex-col h-[calc(100vh-200px)] bg-bg-card border border-border-color rounded-2xl p-5 backdrop-blur-md shadow-2xl text-text-primary animate-slide-in-right">
       {/* Header */}
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-[1.15rem] font-semibold text-white flex items-center gap-2 pb-1.5 mb-2">
+        <h2 className="text-[1.15rem] font-semibold text-text-primary flex items-center gap-2 pb-1.5 mb-2">
           <span>🤖</span> AI Engineering Copilot
         </h2>
         <button

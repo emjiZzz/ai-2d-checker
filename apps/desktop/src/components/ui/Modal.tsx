@@ -70,43 +70,43 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={cn(
-          "w-full bg-bg-card/90 border border-white/10 rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] backdrop-blur-xl animate-scale-up flex flex-col max-h-[90vh]",
+          "w-full bg-white border border-gray-200 rounded-3xl shadow-2xl shadow-black/20 animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
           maxWidthClassName,
           className
         )}
       >
         {(title || !disableDismiss) && (
-          <div className="flex items-start justify-between gap-4 px-8 py-5 border-b border-white/10 shrink-0 bg-white/[0.02]">
-            <div>
+          <div className="flex items-start gap-4 px-7 py-6 border-b border-gray-100 shrink-0">
+            {icon && <div className="shrink-0 mt-0.5">{icon}</div>}
+            <div className="flex-1 min-w-0">
               {title && (
                 <h2
                   id="modal-title"
-                  className="text-base font-bold text-text-primary flex items-center gap-2.5 tracking-tight"
+                  className="text-xl font-bold text-text-primary tracking-tight leading-tight"
                 >
-                  {icon}
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-xs text-text-muted mt-1">{description}</p>
+                <p className="text-sm text-text-muted mt-1">{description}</p>
               )}
             </div>
             {!disableDismiss && (
               <button
                 onClick={onClose}
-                className="text-text-muted hover:text-text-primary hover:bg-white/10 rounded-lg p-1.5 transition-all duration-150 shrink-0 -mr-1.5 -mt-1.5 active:scale-95"
+                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-lg p-1.5 transition-all duration-150 shrink-0 active:scale-95"
                 aria-label="Close"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             )}
           </div>
         )}
 
-        <div className="px-8 py-6 overflow-y-auto">{children}</div>
+        <div className="px-7 py-6 overflow-y-auto">{children}</div>
 
         {footer && (
-          <div className="px-8 py-4 shrink-0 border-t border-white/10 bg-black/20 rounded-b-2xl">
+          <div className="px-7 py-5 shrink-0 border-t border-gray-100">
             {footer}
           </div>
         )}

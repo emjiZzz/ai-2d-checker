@@ -28,11 +28,11 @@ export const SettingsView: React.FC = () => {
         <div className="flex flex-col gap-4 mt-5">
           <div className="flex flex-col gap-2">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Coincidence Tolerance (mm)</label>
-            <input type="number" className="w-full bg-transparent border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer" defaultValue="0.05" />
+            <input type="number" className="w-full bg-bg-sidebar border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer" defaultValue="0.05" />
           </div>
           <div className="flex flex-col gap-2">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Coplanar Angle Tolerance (degrees)</label>
-            <input type="number" className="w-full bg-transparent border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer" defaultValue="0.1" />
+            <input type="number" className="w-full bg-bg-sidebar border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer" defaultValue="0.1" />
           </div>
         </div>
       </div>

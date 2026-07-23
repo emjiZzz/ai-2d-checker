@@ -103,7 +103,7 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
 
         <Button
           variant="primary"
-          className="w-full mt-4 gap-2 h-12 bg-gradient-to-br from-blue-600 to-blue-800 border-0"
+          className="w-full mt-4 gap-2 h-12 bg-linear-to-br from-blue-600 to-blue-800 border-0"
           onClick={handleAuditTrigger}
           disabled={!newDrawing || auditStatus === "queued" || auditStatus === "auditing"}
         >

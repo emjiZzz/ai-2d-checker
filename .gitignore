@@ -20,6 +20,8 @@ target/
 *.egg-info/
 out/
 .turbo/
+msvc/
+downloads/
 
 # === Runtime Local Storage (NEVER commit raw or metadata files) ===
 /storage/
@@ -37,7 +39,7 @@ encrypted-config/
 .idea/
 *.swp
 *.suo
-*.ntvs*
+.ntvs
 *.njsproj
 *.sln
 *.lsu
@@ -63,3 +65,5 @@ tools/_archive_root_scripts/
 
 # === Large installer binaries (download via README_SETUP.txt instead) ===
 tools/installer/*.exe
+
+Prompt-Engineering-OS/

@@ -156,7 +156,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         {/* DYNAMIC STATISTICS SUMMARY DECK */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Card 1: Total Runs */}
-          <div className="flex items-center gap-4 p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4 p-5 bg-bg-card border border-border-color rounded-xl shadow-sm">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-blue-500/8 border-blue-500/15 text-accent-cyan shadow-blue-500/5">
               <Database size={18} />
             </div>
@@ -169,7 +169,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
 
           {/* Card 2: Average Compliance */}
-          <div className="flex items-center gap-4 p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4 p-5 bg-bg-card border border-border-color rounded-xl shadow-sm">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-emerald-500/8 border-emerald-500/15 text-emerald-400 shadow-emerald-500/5">
               <BarChart2 size={18} />
             </div>
@@ -182,7 +182,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
 
           {/* Card 3: Success Rate */}
-          <div className="flex items-center gap-4 p-5 bg-gradient-to-br from-white/2 to-white/0 border border-white/5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-4 p-5 bg-bg-card border border-border-color rounded-xl shadow-sm">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center border shadow-xs select-none shrink-0 bg-purple-500/8 border-purple-500/15 text-purple-400 shadow-purple-500/5">
               <TrendingUp size={18} />
             </div>
@@ -196,7 +196,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </div>
 
         {/* INTERACTIVE CONTROLS BAR: SEARCH & MULTI-CRITERIA FILTERS */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white/1 border border-white/5 rounded-xl">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-bg-card border border-border-color rounded-xl">
           <div className="flex flex-1 gap-3 items-center min-w-[290px]">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -205,7 +205,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 placeholder="Search drawing name, remarks, or client context..."
                 value={historySearchQuery}
                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                className="w-full bg-transparent border border-border-color rounded-lg py-2 px-3.5 pl-9 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
+                className="w-full bg-bg-sidebar border border-border-color rounded-lg py-2 px-3.5 pl-9 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
               />
             </div>
           </div>
@@ -217,7 +217,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <select
                 value={historyStatusFilter}
                 onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
-                className="w-36 bg-transparent border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
+                className="w-36 bg-bg-sidebar border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
               >
                 <option value="all">All Statuses</option>
                 <option value="completed">Completed</option>
