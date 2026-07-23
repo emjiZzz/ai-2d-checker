@@ -173,9 +173,9 @@ class UpdateUserRequest(BaseModel):
 class PhysicalComparisonRequest(BaseModel):
     reference_drawing_id: str
     drawing_id: str
-    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = Field(
+    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = Field(
         "rag",
-        description="Pipeline to use: rag, rag_ai (Gemini w/ CAD), or ai_vision (Gemini image only)"
+        description="Pipeline to use: rag, rag_ai (Gemini w/ CAD), ai_vision (Gemini image only), or hybrid (dual-generator cross-verification)"
     )
 
 # Room workflow schemas
@@ -183,7 +183,7 @@ class RoomCreateRequest(BaseModel):
     name: str = Field(..., description="User-facing room label")
     description: str | None = None
     client_name: str | None = None
-    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = Field(
+    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = Field(
         "rag",
         description="Comparison pipeline for this room (dev-only)"
     )
@@ -199,7 +199,7 @@ class RoomResponse(BaseModel):
     active_new_drawing_name: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
-    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = "rag"
+    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = "rag"
     created_at: datetime
     updated_at: datetime
     last_opened_at: datetime | None = None
@@ -238,9 +238,9 @@ class CategoryComparison(BaseModel):
 
 class CanvasMarking(BaseModel):
     text_content: str = Field(..., description="The exact text string in the revised KMTI drawing to locate and highlight.")
-    status: Literal["MATCHED", "CHANGED", "ADDED", "REMOVED"] = Field(..., description="Audit status for this specific text marking.")
+    status: Literal["MATCHED", "CHANGED", "ADDED", "REMOVED", "CONFLICT"] = Field(..., description="Audit status for this specific text marking. CONFLICT means the hybrid pipeline's two generators disagreed and the crop verifier could not confirm either side — flagged for human review, never silently resolved.")
     details: str = Field(..., description="Short explanation of the check result for this element.")
-    category: Literal["drawing_views", "notes_section", "bill_of_materials", "title_block", "isometric_view"] = Field(
+    category: Literal["drawing_views", "notes_section", "bill_of_materials", "title_block", "isometric_view", "other_engineering_references"] = Field(
         default="drawing_views",
         description="The checklist category this text belongs to."
     )
@@ -252,6 +252,30 @@ class CanvasMarking(BaseModel):
     original_value: Optional[str] = Field(default=None, description="The original value from the reference drawing, if changed.")
     visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the revision drawing sheet image, normalized 0 to 1000.")
     ref_visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the reference drawing sheet image, normalized 0 to 1000.")
+    origin: Optional[Literal["deterministic", "ai_vision"]] = Field(default=None, description="Which generator produced this finding in the hybrid pipeline. None for markings from rag/rag_ai/ai_vision, which have a single source by construction.")
+    verification: Optional[Literal["confirmed_both", "confirmed_single", "corrected_to_matched", "conflict", "unverified"]] = Field(default=None, description="Hybrid-pipeline outcome: confirmed_both = both generators agreed, confirmed_single = the two disagreed and the crop verifier picked a side, corrected_to_matched = the verifier looked at the actual crops and found no real difference at all, overriding whatever either generator originally claimed (status is forced to MATCHED), conflict = the verifier could not confirm either side, unverified = single-source finding not yet run through the verifier. None for markings from rag/rag_ai/ai_vision.")
+    resolution_method: Optional[Literal["entity_handle", "visual_bbox_fallback", "unresolved"]] = Field(default=None, description="How `coordinates` was derived: exact entity-handle lookup, Gemini's normalized visual bbox mapped to CAD space, or not resolved at all.")
+    feature: Optional[str] = Field(default=None, description="Sub-item taxonomy key within `category` (e.g. category='title_block', feature='scale') — see services/backend/infrastructure/audit/comparison/taxonomy.py for the canonical list per category. Used to group the checklist panel into named sub-sections instead of one flat list per category. Falls back to 'other' when unset or unrecognized.")
+
+class CategoryAgreement(BaseModel):
+    """
+    Per-category generator agreement counts for the hybrid method (docs/hybrid-
+    comparison-engine-implementation-plan.md, Phase 8) — a fixed-shape object, not a
+    dict keyed by category name, for the same reason ComparisonDiagnostics itself isn't
+    a bare dict below: Gemini's structured-output API rejects open-ended
+    additionalProperties schemas, and this model nests inside PhysicalComparisonResponse
+    which rag_ai/ai_vision also hand to Gemini as response_schema. A list of these,
+    one entry per category that had any candidate from either generator, is the
+    Gemini-safe equivalent of "a dict by category."
+    """
+    category: str
+    generator_a_candidates: int = 0
+    generator_b_candidates: int = 0
+    confirmed_both: int = 0
+    confirmed_single: int = 0
+    corrected_to_matched: int = 0
+    conflicts: int = 0
+
 
 class ComparisonDiagnostics(BaseModel):
     """Backend-populated confidence/fallback metadata (which AI model actually answered,
@@ -263,6 +287,13 @@ class ComparisonDiagnostics(BaseModel):
     for every request, not just when the field happens to be populated)."""
     model_used: Optional[str] = Field(default=None, description="Which model in the cascade actually produced this comparison (e.g. a Pro->Flash rate-limit fallback).")
     zone_detection_warnings: list[str] = Field(default_factory=list, description="Zones where reference/revision bbox detection used different or low-confidence methods.")
+    generator_a_candidates: int = Field(default=0, description="Hybrid only: candidate count produced by the deterministic generator before reconciliation.")
+    generator_b_candidates: int = Field(default=0, description="Hybrid only: candidate count produced by the AI Vision generator before reconciliation.")
+    confirmed_both: int = Field(default=0, description="Hybrid only: findings where both generators agreed, no verifier call needed.")
+    confirmed_single: int = Field(default=0, description="Hybrid only: findings where the two generators disagreed and the crop verifier confirmed one side.")
+    corrected_to_matched: int = Field(default=0, description="Hybrid only: findings where the crop verifier found no real difference at all, overriding whatever either generator originally claimed and forcing status to MATCHED.")
+    conflicts: int = Field(default=0, description="Hybrid only: findings the crop verifier could not confirm either way; flagged CONFLICT for human review.")
+    category_agreement: list[CategoryAgreement] = Field(default_factory=list, description="Hybrid only: per-category breakdown of the six counters above — lets a future pass measure whether Generator B is worth running for a given category before building any auto-gating logic on top of it.")
 
 class PhysicalComparisonResponse(BaseModel):
     drawing_views: CategoryComparison

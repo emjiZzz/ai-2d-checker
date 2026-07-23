@@ -311,16 +311,20 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             {/*
               Keys here MUST match the markerType values renderViolationReticles
               derives from pen_type (see renderEntities.ts) and reviewStore's
-              visibleMarkerTypes default state: MISMATCHED/CHANGED/ADDED/MATCHED.
+              visibleMarkerTypes default state: MISMATCHED/CHANGED/ADDED/MATCHED/CONFLICT.
               A prior refactor swapped these for dimensional/clearance/missing_entity,
               which renderViolationReticles never reads — the checkboxes rendered
               but silently did nothing. Restored to the working taxonomy.
+              CONFLICT is hybrid-method-only (docs/hybrid-comparison-engine-
+              implementation-plan.md) — the two generators disagreed and the crop
+              verifier couldn't confirm either side; never emitted by rag/rag_ai/ai_vision.
             */}
             {[
               { label: "MISMATCHED", key: "MISMATCHED", color: "#ef4444" },
               { label: "CHANGED", key: "CHANGED", color: "#f97316" },
               { label: "ADDED", key: "ADDED", color: "#3b82f6" },
-              { label: "MATCHED", key: "MATCHED", color: "#10b981" }
+              { label: "MATCHED", key: "MATCHED", color: "#10b981" },
+              { label: "CONFLICT", key: "CONFLICT", color: "#a855f7" }
             ].map(item => {
               const isActive = useReviewStore.getState().visibleMarkerTypes[item.key] ?? true;
               return (

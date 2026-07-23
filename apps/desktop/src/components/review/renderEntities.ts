@@ -295,7 +295,7 @@ export const renderViolationReticles = ({
 
   sortedViolationsWithIndex.forEach(({ v, i: idx }) => {
     const penType = v.pen_type || 'ai_red';
-    if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green') return;
+    if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green' && penType !== 'ai_conflict') return;
 
     if (isOldDrawing && penType === 'checker_blue') return;
     if (!isOldDrawing && penType === 'ai_red') return;
@@ -304,6 +304,7 @@ export const renderViolationReticles = ({
     if (penType === 'ai_orange') markerType = 'CHANGED';
     else if (penType === 'checker_blue') markerType = 'ADDED';
     else if (penType === 'ai_green' || penType === 'resolved_green') markerType = 'MATCHED';
+    else if (penType === 'ai_conflict') markerType = 'CONFLICT';
 
     if (!visibleMarkerTypes[markerType]) return;
 
@@ -317,8 +318,8 @@ export const renderViolationReticles = ({
     const screenPos = worldToScreen(vx, raw_vy, norm, viewport);
     const isSelected = selectedViolation?.id === v.id;
 
-    const bulletColor = penType === 'ai_red' ? '#ff2850' : penType === 'ai_orange' ? '#ff9600' : penType === 'checker_blue' ? '#00ffff' : '#39ff14';
-    const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : 'MATCHED';
+    const bulletColor = penType === 'ai_red' ? '#ff2850' : penType === 'ai_orange' ? '#ff9600' : penType === 'checker_blue' ? '#00ffff' : penType === 'ai_conflict' ? '#c084fc' : '#39ff14';
+    const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : penType === 'ai_conflict' ? 'CONFLICT' : 'MATCHED';
 
     let screenX = screenPos.x;
     let screenY = screenPos.y;
@@ -340,9 +341,15 @@ export const renderViolationReticles = ({
       const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
       const displayStat = `Stat: ${statusLabel}`;
 
+      // For CONFLICT (hybrid method only), reuse the same card slot/sizing CHANGED
+      // already uses for its extra line — a CONFLICT pin's whole point is "needs a
+      // human look," so surfacing that here is the highest-value single addition,
+      // without touching the card's pixel-layout math for a third text line.
       const subValueText = markerType === 'CHANGED'
         ? (isOldDrawing ? `Revised Drawing: ${v.description}` : (v.original_value ? `Original Drawing: ${v.original_value}` : null))
-        : null;
+        : markerType === 'CONFLICT'
+          ? '⚠ Generators disagreed — needs manual review'
+          : null;
 
       ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
       const seqId = `M${String(idx + 1).padStart(3, '0')}`;
@@ -470,8 +477,8 @@ export const renderViolationReticles = ({
     } else {
       ctx.beginPath();
       ctx.fillStyle = isSelected
-        ? (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.7)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.7)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.7)' : 'rgba(57, 255, 20, 0.7)')
-        : (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.4)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.4)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.4)' : 'rgba(57, 255, 20, 0.4)');
+        ? (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.7)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.7)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.7)' : penType === 'ai_conflict' ? 'rgba(192, 132, 252, 0.7)' : 'rgba(57, 255, 20, 0.7)')
+        : (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.4)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.4)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.4)' : penType === 'ai_conflict' ? 'rgba(192, 132, 252, 0.4)' : 'rgba(57, 255, 20, 0.4)');
       
       // Draw the neon dot centered at the exact coordinate
       ctx.arc(screenX, screenY, radius, 0, 2 * Math.PI);

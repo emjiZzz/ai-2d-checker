@@ -299,9 +299,28 @@ async def upload_drawing(file: UploadFile = File(...)):
 )
 async def list_drawings():
     """
-    Fetches all registered drawings from the local MongoDB registry.
+    Fetches all registered drawings from the local MongoDB registry, sorted by newest first.
+    Filters out and purges orphaned drawing records whose backing files no longer exist on disk.
     """
-    docs = await DrawingDocument.find_all().to_list()
+    docs = await DrawingDocument.find_all(sort=[("created_at", -1)]).to_list()
+    storage_root = get_storage_root()
+    valid_docs = []
+    
+    for d in docs:
+        if d.file_path:
+            full_path = storage_root / d.file_path
+            if not full_path.exists():
+                # Backing file on disk is gone - purge orphaned DB record
+                logger.info(f"Pruning orphaned DrawingDocument {d.id} ({d.file_name}) - file not found at {full_path}")
+                try:
+                    await ExtractedEntity.find(ExtractedEntity.drawing_id == str(d.id)).delete()
+                    await ExtractionJob.find(ExtractionJob.drawing_id == str(d.id)).delete()
+                    await d.delete()
+                except Exception as e:
+                    logger.warning(f"Failed to auto-prune orphaned drawing {d.id}: {e}")
+                continue
+        valid_docs.append(d)
+
     res = [
         DrawingResponse(
             id=str(d.id),
@@ -316,9 +335,57 @@ async def list_drawings():
             created_at=d.created_at,
             updated_at=d.updated_at
         )
-        for d in docs
+        for d in valid_docs
     ]
     return StandardResponse(success=True, data=res)
+
+
+@router.delete(
+    "/drawings/{id}",
+    response_model=StandardResponse[dict],
+    summary="Delete a DrawingDocument and its associated extracted entities and storage artifacts",
+    dependencies=[Depends(get_auth_token)]
+)
+async def delete_drawing(id: str):
+    """
+    Purges a drawing document record, its parsed entities, jobs, and associated disk files.
+    """
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
+    
+    # 1. Delete associated extracted entities & jobs
+    await ExtractedEntity.find(ExtractedEntity.drawing_id == id).delete()
+    await ExtractionJob.find(ExtractionJob.drawing_id == id).delete()
+
+    # 2. Clean up disk artifacts if they exist
+    storage_root = get_storage_root()
+    if drawing.file_path:
+        file_path = storage_root / drawing.file_path
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete drawing file {file_path}: {e}")
+
+    rendering_path = storage_root / "renderings" / f"{id}.png"
+    if rendering_path.exists():
+        try:
+            rendering_path.unlink()
+        except Exception as e:
+            logger.warning(f"Failed to delete rendering artifact {rendering_path}: {e}")
+
+    gltf_path = storage_root / "temp" / f"model_{id}.gltf"
+    if gltf_path.exists():
+        try:
+            gltf_path.unlink()
+        except Exception as e:
+            logger.warning(f"Failed to delete gltf artifact {gltf_path}: {e}")
+
+    # 3. Delete the DrawingDocument record from MongoDB
+    await drawing.delete()
+
+    logger.info(f"Successfully deleted DrawingDocument {id} and associated artifacts.")
+    return StandardResponse(success=True, data={"deleted_id": id})
+
 
 
 @router.get(

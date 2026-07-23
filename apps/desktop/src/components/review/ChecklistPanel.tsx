@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
+import { getTaxonomyWithOther, OTHER_FEATURE_KEY, DEFERRED_FEATURE_KEYS } from "../../utils/comparisonTaxonomy";
 
 interface ChecklistPanelProps {
   aiChecklistResults: Record<string, any>;
@@ -15,6 +16,15 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
     isometric_view: true,
     other_engineering_references: true
   });
+
+  // Second-level (category-feature) collapse state, separate from the category-level
+  // one above (docs/checklist-taxonomy-grouping-implementation-plan.md, Phase 6).
+  // Sub-items with findings default open; empty ones default closed since there's
+  // nothing more to reveal than the single placeholder line already visible.
+  const [expandedFeaturePanels, setExpandedFeaturePanels] = useState<Record<string, boolean>>({});
+  const toggleFeaturePanel = (panelKey: string, defaultState: boolean) => {
+    setExpandedFeaturePanels((prev) => ({ ...prev, [panelKey]: !(panelKey in prev ? prev[panelKey] : defaultState) }));
+  };
 
   const violations = useWorkspaceStore(s => s.violations);
   const hiddenViolationIds = useWorkspaceStore(s => s.hiddenViolationIds);
@@ -57,6 +67,127 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
       return { field, original, kmti, status, isMatch };
     });
+  };
+
+  // Renders one finding's card body — unchanged from the pre-Phase-6 flat-list layout
+  // (docs/checklist-taxonomy-grouping-implementation-plan.md, Context: only the
+  // grouping wrapper around this is new). Extracted to a function so both the
+  // feature-grouped list below and (if ever needed) any other caller can reuse the
+  // exact same JSX instead of duplicating it.
+  const renderDiffRowCard = (row: any, matchingViolation: any, rowId: string) => {
+    const statusUp = (row.status || "").toUpperCase();
+    let cellBadgeColor = "#10b981"; // green = MATCHED default
+    let cellBadgeBg = "rgba(16, 185, 129, 0.08)";
+    let statusText = row.status || "MATCHED";
+
+    if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) {
+      cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; statusText = "CHANGED";
+    } else if (statusUp.includes("ADD")) {
+      cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; statusText = "ADDED";
+    } else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) {
+      cellBadgeColor = "#ef4444"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; statusText = "REMOVED";
+    }
+
+    if (matchingViolation) {
+      const pt = matchingViolation.pen_type || "";
+      if (pt === "ai_orange") { cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; }
+      else if (pt === "checker_blue") { cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; }
+      else if (pt === "ai_red") { cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; }
+      else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.08)"; }
+      // CONFLICT (hybrid method, docs/hybrid-comparison-engine-implementation-plan.md) — the
+      // pre-Phase-6 flat card never handled this pen_type at all, which would have silently
+      // rendered a disputed finding with the MATCHED-green default. Real gap, fixed here.
+      else if (pt === "ai_conflict") { cellBadgeColor = "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = "rgba(168, 85, 247, 0.08)"; }
+    }
+
+    const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id &&
+      ((selectedViolation as any)._rowId === rowId || !(selectedViolation as any)._rowId));
+
+    const isHidden = matchingViolation ? !!hiddenViolationIds[matchingViolation.id] : false;
+
+    return (
+      <div
+        key={rowId}
+        onClick={() => {
+          if (matchingViolation) {
+            selectViolation({ ...matchingViolation, _rowId: rowId } as any);
+          }
+        }}
+        style={{
+          background: isSelected ? "rgba(0, 229, 255, 0.06)" : "rgba(255,255,255,0.02)",
+          border: isSelected ? "1px solid var(--accent-cyan)" : "1px solid rgba(255,255,255,0.06)",
+          borderRadius: "8px",
+          padding: "12px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          cursor: matchingViolation ? "pointer" : "default",
+          opacity: isHidden ? 0.4 : 1,
+          transition: "opacity 0.2s ease"
+        }}
+      >
+        {/* Badge Row */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div
+            onClick={(e) => {
+              if (matchingViolation) {
+                e.stopPropagation();
+                toggleViolationVisibility(matchingViolation.id);
+              }
+            }}
+            style={{
+              cursor: matchingViolation ? "pointer" : "default",
+              color: isHidden ? "#52525b" : "var(--accent-cyan)",
+              display: "flex",
+              alignItems: "center"
+            }}
+          >
+            {matchingViolation && (
+              isHidden ? <EyeOff size={14} /> : <Eye size={14} />
+            )}
+          </div>
+          <span style={{
+            fontSize: "0.62rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
+            color: cellBadgeColor, background: cellBadgeBg, border: `1px solid ${cellBadgeColor}33`,
+            textTransform: "uppercase"
+          }}>
+            {statusText}
+          </span>
+        </div>
+
+        {/* Comparison Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", textAlign: "center", background: "rgba(0,0,0,0.2)", padding: "10px", borderRadius: "6px" }}>
+          {/* Field Title */}
+          <div style={{ gridColumn: "span 2", fontSize: "0.8rem", fontWeight: 700, color: "var(--accent-cyan)", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "6px", textTransform: "uppercase", textAlign: "left" }}>
+            {row.field}
+          </div>
+
+          {/* Column Headers */}
+          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", marginTop: "4px" }}>
+            ORIGINAL
+          </div>
+          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--accent-cyan)", marginTop: "4px" }}>
+            REVISION
+          </div>
+
+          {/* Values */}
+          <div style={{
+            fontSize: "0.75rem", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace",
+            textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
+            wordBreak: "break-word"
+          }}>
+            {row.original || "-"}
+          </div>
+          <div style={{
+            fontSize: "0.75rem", color: statusText.toUpperCase() === "MATCHED" ? "#a7f3d0" : "#e2e8f0",
+            fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+            wordBreak: "break-word"
+          }}>
+            {row.kmti || "-"}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -323,141 +454,88 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
                 {(result.reference_content || result.revision_content) && (() => {
                   if (isTabular) {
+                    // Sub-item taxonomy grouping (docs/checklist-taxonomy-grouping-
+                    // implementation-plan.md, Phase 6). Grouping bucket comes from each
+                    // row's matched canvas_marking's `feature` (decision 2) — the
+                    // ORIGINAL/REVISION card body itself is 100% unchanged
+                    // (renderDiffRowCard, extracted verbatim from the pre-Phase-6 flat
+                    // list). Every taxonomy sub-item is always rendered, even with zero
+                    // findings, per the scope decision confirmed with the user.
+                    const featureGroups = getTaxonomyWithOther(key).map(item => {
+                      const rows = diffRows
+                        .map((row, idx) => ({ row, idx, violation: rowToViolationMap.get(idx) }))
+                        .filter(({ violation }) => (violation?.feature || OTHER_FEATURE_KEY) === item.key);
+                      return { ...item, rows };
+                    });
+
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ fontSize: "0.8rem", fontWeight: 650, color: "var(--accent-cyan)", marginBottom: "4px", letterSpacing: "0.05em" }}>COMPARATIVE CONTENTS</div>
-                        {diffRows.length === 0 ? (
-                          <div style={{
-                            padding: "14px",
-                            textAlign: "center",
-                            color: "#10b981",
-                            background: "rgba(16, 185, 129, 0.06)",
-                            border: "1px dashed rgba(16, 185, 129, 0.25)",
-                            borderRadius: "8px",
-                            fontSize: "0.78rem",
-                            fontWeight: 500
-                          }}>
-                            ✨ Perfect Match! All fields are identical.
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {diffRows.map((row, idx) => {
-                              // Determine badge color from the row's own status first,
-                              // then refine if we have a matching canvas violation
-                              const statusUp = (row.status || "").toUpperCase();
-                              let cellBadgeColor = "#10b981"; // green = MATCHED default
-                              let cellBadgeBg = "rgba(16, 185, 129, 0.08)";
-                              let statusText = row.status || "MATCHED";
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {featureGroups.map(group => {
+                            const panelKey = `${key}::${group.key}`;
+                            const isDeferred = DEFERRED_FEATURE_KEYS.has(group.key);
+                            const hasRows = group.rows.length > 0;
+                            const defaultOpen = hasRows;
+                            const isOpen = panelKey in expandedFeaturePanels ? expandedFeaturePanels[panelKey] : defaultOpen;
 
-                              if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) {
-                                cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; statusText = "CHANGED";
-                              } else if (statusUp.includes("ADD")) {
-                                cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; statusText = "ADDED";
-                              } else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) {
-                                cellBadgeColor = "#ef4444"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; statusText = "REMOVED";
-                              }
+                            // Worst-status color across the bucket's rows, same severity
+                            // ranking as elsewhere in this file (REMOVED/CONFLICT > CHANGED > ADDED > MATCHED).
+                            let subBadgeColor = "#10b981";
+                            let severity = 0;
+                            for (const { row, violation } of group.rows) {
+                              const pt = violation?.pen_type;
+                              const s = pt === "ai_red" ? "REMOVED" : pt === "ai_conflict" ? "CONFLICT"
+                                : pt === "ai_orange" ? "CHANGED" : pt === "checker_blue" ? "ADDED"
+                                : (row.status || "").toUpperCase();
+                              if ((s.includes("REMOV") || s === "CONFLICT") && severity < 3) { severity = 3; subBadgeColor = s === "CONFLICT" ? "#a855f7" : "#ef4444"; }
+                              else if (s.includes("CHANGE") && severity < 2) { severity = 2; subBadgeColor = "#f97316"; }
+                              else if (s.includes("ADD") && severity < 1) { severity = 1; subBadgeColor = "#3b82f6"; }
+                            }
 
-                              const matchingViolation = rowToViolationMap.get(idx);
-                              if (matchingViolation) {
-                                const pt = matchingViolation.pen_type || "";
-                                if (pt === "ai_orange") { cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; }
-                                else if (pt === "checker_blue") { cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; }
-                                else if (pt === "ai_red") { cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; }
-                                else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.08)"; }
-                              }
-
-                              const rowId = `${key}-${idx}`;
-                              const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id &&
-                                ((selectedViolation as any)._rowId === rowId || !(selectedViolation as any)._rowId));
-                                
-                              const isHidden = matchingViolation ? !!hiddenViolationIds[matchingViolation.id] : false;
-
-                              return (
+                            return (
+                              <div key={panelKey} style={{ border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden" }}>
                                 <div
-                                  key={idx}
-                                  onClick={() => {
-                                    if (matchingViolation) {
-                                      selectViolation({ ...matchingViolation, _rowId: rowId } as any);
-                                    }
-                                  }}
+                                  onClick={() => hasRows && toggleFeaturePanel(panelKey, defaultOpen)}
                                   style={{
-                                    background: isSelected ? "rgba(0, 229, 255, 0.06)" : "rgba(255,255,255,0.02)",
-                                    border: isSelected ? "1px solid var(--accent-cyan)" : "1px solid rgba(255,255,255,0.06)",
-                                    borderRadius: "8px",
-                                    padding: "12px",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "8px",
-                                    cursor: matchingViolation ? "pointer" : "default",
-                                    opacity: isHidden ? 0.4 : 1,
-                                    transition: "opacity 0.2s ease"
+                                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                                    padding: "8px 10px", cursor: hasRows ? "pointer" : "default", userSelect: "none",
+                                    background: "rgba(255,255,255,0.015)"
                                   }}
                                 >
-                                  {/* Badge Row */}
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <div 
-                                      onClick={(e) => {
-                                        if (matchingViolation) {
-                                          e.stopPropagation();
-                                          toggleViolationVisibility(matchingViolation.id);
-                                        }
-                                      }}
-                                      style={{
-                                        cursor: matchingViolation ? "pointer" : "default",
-                                        color: isHidden ? "#52525b" : "var(--accent-cyan)",
-                                        display: "flex",
-                                        alignItems: "center"
-                                      }}
-                                    >
-                                      {matchingViolation && (
-                                        isHidden ? <EyeOff size={14} /> : <Eye size={14} />
-                                      )}
-                                    </div>
-                                    <span style={{
-                                      fontSize: "0.62rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
-                                      color: cellBadgeColor, background: cellBadgeBg, border: `1px solid ${cellBadgeColor}33`,
-                                      textTransform: "uppercase"
-                                    }}>
-                                      {statusText}
-                                    </span>
-                                  </div>
-
-                                  {/* Comparison Grid */}
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", textAlign: "center", background: "rgba(0,0,0,0.2)", padding: "10px", borderRadius: "6px" }}>
-                                    {/* Field Title */}
-                                    <div style={{ gridColumn: "span 2", fontSize: "0.8rem", fontWeight: 700, color: "var(--accent-cyan)", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "6px", textTransform: "uppercase", textAlign: "left" }}>
-                                      {row.field}
-                                    </div>
-                                    
-                                    {/* Column Headers */}
-                                    <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", marginTop: "4px" }}>
-                                      ORIGINAL
-                                    </div>
-                                    <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--accent-cyan)", marginTop: "4px" }}>
-                                      REVISION
-                                    </div>
-                                    
-                                    {/* Values */}
-                                    <div style={{
-                                      fontSize: "0.75rem", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace",
-                                      textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
-                                      wordBreak: "break-word"
-                                    }}>
-                                      {row.original || "-"}
-                                    </div>
-                                    <div style={{
-                                      fontSize: "0.75rem", color: statusText.toUpperCase() === "MATCHED" ? "#a7f3d0" : "#e2e8f0",
-                                      fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
-                                      wordBreak: "break-word"
-                                    }}>
-                                      {row.kmti || "-"}
-                                    </div>
+                                  <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#d4d4d8", letterSpacing: "0.02em" }}>
+                                    {group.label}
+                                  </span>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    {hasRows && (
+                                      <span style={{
+                                        fontSize: "0.62rem", fontWeight: 700, color: subBadgeColor,
+                                        background: `${subBadgeColor}14`, border: `1px solid ${subBadgeColor}33`,
+                                        borderRadius: "10px", padding: "1px 7px"
+                                      }}>
+                                        {group.rows.length}
+                                      </span>
+                                    )}
+                                    {hasRows && (isOpen ? <ChevronDown size={12} color="#71717a" /> : <ChevronRight size={12} color="#71717a" />)}
                                   </div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                                {isDeferred ? (
+                                  <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "#71717a", fontStyle: "italic", background: "rgba(255,255,255,0.01)" }}>
+                                    Not yet supported for automatic checking.
+                                  </div>
+                                ) : !hasRows ? (
+                                  <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "#52525b", background: "rgba(255,255,255,0.01)" }}>
+                                    No changes detected.
+                                  </div>
+                                ) : isOpen ? (
+                                  <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "8px", background: "rgba(0,0,0,0.1)" }}>
+                                    {group.rows.map(({ row, idx, violation }) => renderDiffRowCard(row, violation, `${key}-${idx}`))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   } else {

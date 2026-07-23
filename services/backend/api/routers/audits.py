@@ -480,6 +480,9 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         if method in ("rag_ai", "ai_vision"):
             from ...infrastructure.audit.comparison.full_ai_orchestrator import perform_full_ai_comparison
             comparison_response = await perform_full_ai_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities, method=method)
+        elif method == "hybrid":
+            from ...infrastructure.audit.comparison.hybrid_orchestrator import perform_hybrid_comparison
+            comparison_response = await perform_hybrid_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
         else:
             from ...infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
             comparison_response = await perform_drawing_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)

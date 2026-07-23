@@ -75,10 +75,15 @@ export interface ComparisonSlice {
   setSyncViewport: (sync: boolean) => void;
   toggleLayer: (layerName: string) => void;
   
-  aiScanProgress: "idle" | "scanning_ref" | "extracting" | "scanning_rev" | "comparing" | "completed";
+  // "idle" and "completed" are the only two states other code (AuditWorkspace.tsx,
+  // roomStore.ts) actually branches on; every other value is a method-specific stage id
+  // from utils/comparisonStages.ts, which TwoDLeftPanel.tsx looks up to render the
+  // matching label — not a fixed set of literals, since that set now varies per
+  // comparison_method.
+  aiScanProgress: "idle" | "completed" | string;
   aiChecklistResults: Record<string, any>;
   aiScanError: string | null;
-  setAiScanProgress: (progress: "idle" | "scanning_ref" | "extracting" | "scanning_rev" | "comparing" | "completed") => void;
+  setAiScanProgress: (progress: "idle" | "completed" | string) => void;
   setAiChecklistResults: (results: Record<string, any>) => void;
   setAiScanError: (error: string | null) => void;
 }

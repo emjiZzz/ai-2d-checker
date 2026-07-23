@@ -2,6 +2,8 @@ import re
 from typing import List, Dict, Any, Optional
 from ...utils.text import compare_values
 from ..bom_analyzer import BOMAnalyzer
+from ..bom.row_extractor import detect_balloons
+from . import taxonomy
 
 def is_empty_placeholder_remark(val: str) -> bool:
     if not val or val == "NONE":
@@ -85,7 +87,24 @@ def inject_title_block_markings(
         "STD NO": " Std. No.",
         "STANDARD": " Standard",
         "MACHINE CODE": " Mach. code /  Unit Code",
-        "DWG NO": " DWG. No. /  Machine Type /  Unit No. /  Part No. /   Branch"
+        "DWG NO": " DWG. No. /  Machine Type /  Unit No. /  Part No. /   Branch",
+        "REVISION CODE": " AMD. / Design Chg No."
+    }
+
+    # Sub-item taxonomy tag per field (docs/checklist-taxonomy-grouping-implementation-
+    # plan.md). STD NO/STANDARD/MACHINE CODE/DWG NO have no dedicated taxonomy feature
+    # (the user's own field list doesn't name one) — left as OTHER rather than forced
+    # into a nearby-sounding key.
+    title_feature_map = {
+        "QTY": "quantity",
+        "CROSS REF NO": "cross_reference_number",
+        "PREVIOUS DWG NO": "previous_drawing_number",
+        "DESIGNED": "designed",
+        "DRAWN": "drawn",
+        "SCALE": "scale",
+        "NAME": "machine_name",
+        "JOB NO": "job_number",
+        "REVISION CODE": "revision_code",
     }
 
     for field_key, display_label in field_labels_map.items():
@@ -139,6 +158,7 @@ def inject_title_block_markings(
                 "status": status_val,
                 "details": details_str,
                 "category": "title_block",
+                "feature": title_feature_map.get(field_key, taxonomy.OTHER_FEATURE_KEY),
                 "original_value": orig_val if status_val == "CHANGED" else None
             }
             if kmti_coords is not None:
@@ -159,6 +179,21 @@ def inject_bom_markings(
     used_ref_entities: set,
     used_rev_entities: set
 ) -> None:
+    # Sub-item taxonomy tag per BOM column (docs/checklist-taxonomy-grouping-
+    # implementation-plan.md). One flat map covers both assembly and parts column
+    # sets since their col_keys don't collide in meaning (NO/QTY/REMARK are shared
+    # concepts in both). DWG_NO/TITLE/CODE/DIMENSION have no dedicated taxonomy
+    # feature for their exact meaning and fall to OTHER except CODE, which maps to
+    # material_specification as the closest real match.
+    bom_feature_map = {
+        "NO": "numbering_arrangement",
+        "QTY": "quantity",
+        "REMARK": "remarks",
+        "CODE": "material_specification",
+        "MATERIAL_WEIGHT": "material_weight",
+        "FINISHED_WEIGHT": "material_weight",
+    }
+
     filtered_ref = [r for r in ref_bom_rows if not is_blank_spacer_local(r, is_assembly_drawing)]
     filtered_rev = [r for r in rev_bom_rows if not is_blank_spacer_local(r, is_assembly_drawing)]
 
@@ -281,6 +316,7 @@ def inject_bom_markings(
                     "status": status_val,
                     "details": details_str,
                     "category": "bill_of_materials",
+                    "feature": bom_feature_map.get(col_key, taxonomy.OTHER_FEATURE_KEY),
                     "original_value": orig_val if status_val == "CHANGED" else None
                 }
                 if kmti_coords is not None:
@@ -293,6 +329,104 @@ def inject_bom_markings(
                     continue
                     
                 clean_markings.append(marking_entry)
+
+def _bom_item_numbers(bom_rows: list) -> set:
+    nums = set()
+    for r in bom_rows:
+        raw = get_val_outer(r, "NO")
+        if raw == "NONE":
+            continue
+        m = re.search(r'\d+', raw)
+        if m:
+            nums.add(int(m.group()))
+    return nums
+
+
+def _bom_row_by_item_no(bom_rows: list) -> dict:
+    by_num = {}
+    for r in bom_rows:
+        raw = get_val_outer(r, "NO")
+        if raw == "NONE":
+            continue
+        m = re.search(r'\d+', raw)
+        if m:
+            by_num[int(m.group())] = r
+    return by_num
+
+
+def _bom_row_coords(row: dict):
+    cell = row.get("NO") if isinstance(row, dict) else None
+    if isinstance(cell, dict):
+        return cell.get("coordinates")
+    return None
+
+
+def inject_ballooning_markings(
+    clean_markings: list,
+    ref_bom_rows: list,
+    rev_bom_rows: list,
+    ref_entities: list,
+    rev_entities: list
+) -> None:
+    """
+    Cross-checks each drawing's balloon callouts (circled item-number tags on the
+    drawing views) against its own BOM row numbers, using row_extractor.py's
+    detect_balloons() — real geometry-based detection, reused rather than
+    reimplemented. Deliberately NOT the full 4-state orphan/unlinked/resolved audit
+    that row_extractor.py::reconcile() runs for a single drawing: this pipeline
+    compares REF vs REV, so only ballooning issues that are new in the revision
+    (absent as an issue in the reference) are surfaced as markings here. An issue
+    present in both drawings is a pre-existing condition, not a regression introduced
+    by this revision, and is left to the separate standards-compliance audit path
+    instead of being duplicated as a "finding" on every comparison.
+    """
+    ref_balloons = detect_balloons(ref_entities)
+    rev_balloons = detect_balloons(rev_entities)
+
+    ref_bom_nums = _bom_item_numbers(ref_bom_rows)
+    rev_bom_nums = _bom_item_numbers(rev_bom_rows)
+
+    ref_balloon_nums = {b["item_no"] for b in ref_balloons}
+    rev_balloon_nums = {b["item_no"] for b in rev_balloons}
+
+    ref_orphan = ref_balloon_nums - ref_bom_nums
+    rev_orphan = rev_balloon_nums - rev_bom_nums
+    ref_unlinked = ref_bom_nums - ref_balloon_nums
+    rev_unlinked = rev_bom_nums - rev_balloon_nums
+
+    new_orphan = rev_orphan - ref_orphan
+    new_unlinked = rev_unlinked - ref_unlinked
+
+    rev_balloon_by_num = {b["item_no"]: b for b in rev_balloons}
+    rev_bom_by_num = _bom_row_by_item_no(rev_bom_rows)
+
+    for item_no in sorted(new_orphan):
+        balloon = rev_balloon_by_num.get(item_no)
+        marking_entry = {
+            "text_content": f"Balloon {item_no}",
+            "status": "ADDED",
+            "details": f"BOM ballooning: item #{item_no} has a balloon callout in the revision with no matching BOM row (not an issue in the reference).",
+            "category": "bill_of_materials",
+            "feature": "ballooning",
+        }
+        if balloon:
+            marking_entry["coordinates"] = balloon["center"]
+        clean_markings.append(marking_entry)
+
+    for item_no in sorted(new_unlinked):
+        row = rev_bom_by_num.get(item_no, {})
+        coords = _bom_row_coords(row)
+        marking_entry = {
+            "text_content": f"Item {item_no}",
+            "status": "ADDED",
+            "details": f"BOM ballooning: item #{item_no} is listed in the revision's BOM with no balloon callout pointing to it in the drawing views (not an issue in the reference).",
+            "category": "bill_of_materials",
+            "feature": "ballooning",
+        }
+        if coords is not None:
+            marking_entry["coordinates"] = coords
+        clean_markings.append(marking_entry)
+
 
 def generate_auto_matched_markings(
     clean_markings: list,

@@ -34,43 +34,80 @@ from .hallucination_guardrails import (
 from .marking_builder import (
     inject_title_block_markings,
     inject_bom_markings,
+    inject_ballooning_markings,
     generate_auto_matched_markings
 )
-from .coordinate_resolver import resolve_marking_coordinates
+from .coordinate_resolver import resolve_marking_coordinates, harden_value_only_coordinates
 from .schemas import Coordinate2D, BoundingBox2D
 from .cache_manager import ComparisonCacheManager
+from .candidate import ComparisonCandidate
+from . import taxonomy
+from .feature_classifier import (
+    classify_drawing_view_feature,
+    classify_notes_feature,
+    classify_iso_feature,
+    classify_title_ul_feature,
+)
 
-async def perform_drawing_comparison(
-    request,
+
+def build_marking_table(markings: list, category_filter: str | None = None) -> str:
+    """
+    Build a pipe-table summary from a list of marking dicts for the checklist panel.
+
+    Module-level (hoisted out of generate_deterministic_candidates, where it started as
+    a nested closure — it doesn't close over anything, so the move is behavior-neutral)
+    so hybrid_orchestrator.py can reuse it to rebuild category tables from the final
+    reconciled/verified candidate list instead of only Generator A's raw output
+    (docs/hybrid-comparison-engine-implementation-plan.md, Phase 6 follow-up).
+    """
+    rows = [m for m in markings if category_filter is None or m.get("category") == category_filter]
+    if not rows:
+        return ""
+    header = f"{'ANNOTATION':<36}| {'ORIGINAL':<24}| {'REVISION':<24}| STATUS"
+    sep = "-" * len(header)
+    lines = [header, sep]
+    for m in rows:
+        text = (m.get("text_content") or "")[:34]
+        status = m.get("status", "MATCHED")
+        if status == "ADDED":
+            orig = "NONE"
+            rev = (m.get("text_content") or "")[:22]
+        elif status in ("DELETED", "REMOVED"):
+            orig = (m.get("original_value") or m.get("text_content") or "")[:22]
+            rev = "NONE"
+        else:
+            orig = (m.get("original_value") or m.get("text_content") or "")[:22]
+            rev = (m.get("text_content") or "")[:22]
+        lines.append(f"{text:<36}| {orig:<24}| {rev:<24}| {status}")
+    return "\n".join(lines)
+
+
+async def generate_deterministic_candidates(
     ref_drawing: DrawingDocument,
     rev_drawing: DrawingDocument,
     ref_entities: list,
     rev_entities: list
-) -> PhysicalComparisonResponse:
-    """Orchestrates drawing comparison pipeline including layout analysis, prompt assembly, and post-processing."""
-    # Check cache first
-    cached_payload = ComparisonCacheManager.get_cached_comparison(
-        ref_drawing_id=str(ref_drawing.id),
-        rev_drawing_id=str(rev_drawing.id),
-        ref_hash=ref_drawing.file_hash,
-        rev_hash=rev_drawing.file_hash,
-        method="rag"
-    )
-    if cached_payload:
-        try:
-            return PhysicalComparisonResponse(
-                drawing_views=CategoryComparison(**cached_payload["drawing_views"]),
-                notes_section=CategoryComparison(**cached_payload["notes_section"]),
-                bill_of_materials=CategoryComparison(**cached_payload["bill_of_materials"]),
-                title_block=CategoryComparison(**cached_payload["title_block"]),
-                isometric_view=CategoryComparison(**cached_payload["isometric_view"]),
-                other_engineering_references=CategoryComparison(**cached_payload["other_engineering_references"]),
-                canvas_markings=[CanvasMarking(**item) for item in cached_payload.get("canvas_markings", [])],
-                diagnostics=cached_payload.get("diagnostics"),
-            )
-        except Exception as cache_err:
-            logger.warning(f"Failed to parse cached drawing comparison, performing full comparison: {cache_err}")
+) -> tuple[list[ComparisonCandidate], dict, list[str]]:
+    """
+    Generator A (deterministic): runs SpatialDiffer + BOMAnalyzer end to end and returns
+    candidate findings instead of a final PhysicalComparisonResponse. Extracted from
+    perform_drawing_comparison() (docs/hybrid-comparison-engine-implementation-plan.md,
+    Phase 2) so the same deterministic pass can feed both the `rag` method (via the thin
+    wrapper below, output unchanged) and the `hybrid` method's reconciliation step. No
+    diffing/extraction logic changed by this move — only where the result goes.
 
+    Returns:
+        candidates: individual finding-level results (the old `clean_markings`), each
+            tagged origin="deterministic" and resolution_method reflecting whether
+            coordinate_resolver found an exact entity-handle match.
+        category_rollups: dict keyed by the 6 CategoryComparison categories, each a dict
+            with status/difference_summary/reference_content/revision_content/
+            engineering_discrepancy_details — everything the response needs besides
+            canvas_markings itself. (Still carries a vestigial "canvas_markings" key,
+            same as the original `parsed` dict did — harmless, callers only read the
+            6 category keys by name.)
+        zone_detection_warnings: unchanged from today's diagnostics.
+    """
     # Resolve titles and revisions
     ref_rev, rev_rev, ref_title, rev_title = resolve_revisions(
         ref_entities,
@@ -215,12 +252,48 @@ async def perform_drawing_comparison(
 
     ref_title_fields = BOMAnalyzer.extract_title_block(ref_title_input, ref_all_text_list, ocr_results=ref_ocr)
     rev_title_fields = BOMAnalyzer.extract_title_block(rev_title_input, rev_all_text_list, ocr_results=rev_ocr)
-    
+
     # Run comparative overlays checks
     title_block_table = build_title_block_table(ref_title_fields, rev_title_fields)
 
+    # Values already captured by structured title-block/BOM extraction shouldn't ALSO
+    # be picked up by the generic drawing_views/notes_section/isometric_view passes
+    # below — a title-block or BOM data value (e.g. a "Previous Dwg. No." stamp) can
+    # sit outside the detected zone bbox (zone detection is a percentage/content-anchor
+    # heuristic — see zone_detection_warnings above) and would otherwise be
+    # double-represented under the wrong category: once correctly, by
+    # inject_title_block_markings/inject_bom_markings, and once incorrectly, as a
+    # generic finding with whatever category SpatialDiffer happens to tag it.
+    import unicodedata as _ud_vals
+
+    def _normalize_value_text(t) -> str:
+        return _ud_vals.normalize("NFKC", str(t or "")).strip().lower()
+
+    def _collect_structured_text_values(*sources) -> set:
+        values: set = set()
+        for source in sources:
+            if isinstance(source, dict):
+                # title-field-style: {field_key: {"value": ...} | str}
+                for obj in source.values():
+                    val = obj.get("value") if isinstance(obj, dict) else obj
+                    if val and str(val).strip().upper() != "NONE":
+                        values.add(_normalize_value_text(val))
+            elif isinstance(source, list):
+                # BOM-row-style: [{col_key: {"value": ...} | str, ...}, ...]
+                for row in source:
+                    if not isinstance(row, dict):
+                        continue
+                    for obj in row.values():
+                        val = obj.get("value") if isinstance(obj, dict) else obj
+                        if val and str(val).strip().upper() != "NONE":
+                            values.add(_normalize_value_text(val))
+        return values
+
+    ref_structured_values = _collect_structured_text_values(ref_title_fields, ref_bom_rows)
+    rev_structured_values = _collect_structured_text_values(rev_title_fields, rev_bom_rows)
+
     # Bounding boxes and spatial differ imports were hoisted earlier
-    
+
     from ..bom.spatial_utils import compute_drawing_bounds
     ref_global_bounds = compute_drawing_bounds(ref_entities)
     rev_global_bounds = compute_drawing_bounds(rev_entities)
@@ -268,10 +341,10 @@ async def perform_drawing_comparison(
         area_fraction = (bw * bh) / (gw * gh)
         return area_fraction > max_fraction
 
-    def extract_zone_entities(entities: list, bbox: tuple | None, global_bounds: tuple | None, exclude_bboxes: list | None = None) -> list:
+    def extract_zone_entities(entities: list, bbox: tuple | None, global_bounds: tuple | None, exclude_bboxes: list | None = None, exclude_values: set | None = None) -> list:
         if not bbox or _bbox_covers_too_much(bbox, global_bounds):
             return []
-        
+
         result = []
         for e in entities:
             if is_in_bbox(e, bbox) and not is_in_margin(e, global_bounds):
@@ -281,11 +354,15 @@ async def perform_drawing_comparison(
                         if is_in_bbox(e, ex_bbox):
                             should_exclude = True
                             break
+                if not should_exclude and exclude_values:
+                    text = str(e.properties.get("text") or e.properties.get("value") or "")
+                    if _normalize_value_text(text) in exclude_values:
+                        should_exclude = True
                 if not should_exclude:
                     result.append(e)
         return result
 
-    def safe_filter(entities: list, bom_bbox, title_bbox, tol_bbox, notes_bbox, iso_bbox, title_ul_bbox, global_bounds) -> list:
+    def safe_filter(entities: list, bom_bbox, title_bbox, tol_bbox, notes_bbox, iso_bbox, title_ul_bbox, global_bounds, exclude_values: set | None = None) -> list:
         """Filter out template-zone entities, but never use a bbox that covers too much of the drawing."""
         use_bom      = bom_bbox      and not _bbox_covers_too_much(bom_bbox,      global_bounds)
         use_title    = title_bbox    and not _bbox_covers_too_much(title_bbox,    global_bounds)
@@ -316,10 +393,20 @@ async def perform_drawing_comparison(
             return any(x in l.lower() for x in ("title", "border", "stamp", "attr", "admin", "block", "header", "logo", "dwg", "rev", "approved", "checked", "designed", "drawn", "scale"))
 
         result = [
-            e for e in result 
+            e for e in result
             if not _is_bom_layer(getattr(e, "layer", "") or "")
             and not _is_title_layer(getattr(e, "layer", "") or "")
         ]
+
+        # Third safety net: exclude entities whose text exactly matches a value already
+        # captured by structured title-block/BOM extraction — see
+        # _collect_structured_text_values above for why this is needed in addition to
+        # the bbox- and layer-based exclusions.
+        if exclude_values:
+            result = [
+                e for e in result
+                if _normalize_value_text(e.properties.get("text") or e.properties.get("value") or "") not in exclude_values
+            ]
 
         # Safety valve: if filtering wiped everything out, fall back to margin-only exclusion
         if len(result) == 0 and len(entities) > 0:
@@ -331,34 +418,40 @@ async def perform_drawing_comparison(
     # Extract Notes entities specifically for notes_section diffing
     ref_notes_entities = extract_zone_entities(
         ref_entities, ref_notes_bbox_raw, ref_global_bounds,
-        exclude_bboxes=[ref_tolerance_bbox_raw, ref_title_bbox_raw, ref_bom_bbox_raw]
+        exclude_bboxes=[ref_tolerance_bbox_raw, ref_title_bbox_raw, ref_bom_bbox_raw],
+        exclude_values=ref_structured_values,
     )
     rev_notes_entities = extract_zone_entities(
         rev_entities, rev_notes_bbox_raw, rev_global_bounds,
-        exclude_bboxes=[rev_tolerance_bbox_raw, rev_title_bbox_raw, rev_bom_bbox_raw]
+        exclude_bboxes=[rev_tolerance_bbox_raw, rev_title_bbox_raw, rev_bom_bbox_raw],
+        exclude_values=rev_structured_values,
     )
 
     # Extract Isometric view entities specifically for isometric_view diffing
     ref_iso_entities = extract_zone_entities(
         ref_entities, ref_iso_bbox_raw, ref_global_bounds,
-        exclude_bboxes=[ref_tolerance_bbox_raw, ref_title_bbox_raw, ref_bom_bbox_raw]
+        exclude_bboxes=[ref_tolerance_bbox_raw, ref_title_bbox_raw, ref_bom_bbox_raw],
+        exclude_values=ref_structured_values,
     )
     rev_iso_entities = extract_zone_entities(
         rev_entities, rev_iso_bbox_raw, rev_global_bounds,
-        exclude_bboxes=[rev_tolerance_bbox_raw, rev_title_bbox_raw, rev_bom_bbox_raw]
+        exclude_bboxes=[rev_tolerance_bbox_raw, rev_title_bbox_raw, rev_bom_bbox_raw],
+        exclude_values=rev_structured_values,
     )
 
     filtered_ref_entities = safe_filter(
         ref_entities,
         ref_bom_bbox_raw, ref_title_bbox_raw, ref_tolerance_bbox_raw,
         ref_notes_bbox_raw, ref_iso_bbox_raw, ref_title_ul_bbox_raw,
-        ref_global_bounds
+        ref_global_bounds,
+        exclude_values=ref_structured_values,
     )
     filtered_rev_entities = safe_filter(
         rev_entities,
         rev_bom_bbox_raw, rev_title_bbox_raw, rev_tolerance_bbox_raw,
         rev_notes_bbox_raw, rev_iso_bbox_raw, rev_title_ul_bbox_raw,
-        rev_global_bounds
+        rev_global_bounds,
+        exclude_values=rev_structured_values,
     )
 
     logger.info(
@@ -371,6 +464,17 @@ async def perform_drawing_comparison(
     notes_markings = SpatialDiffer.diff_views(ref_notes_entities, rev_notes_entities, category="notes_section")
     iso_markings = SpatialDiffer.diff_views(ref_iso_entities, rev_iso_entities, category="isometric_view")
     clean_markings = SpatialDiffer.diff_views(filtered_ref_entities, filtered_rev_entities, category="drawing_views")
+
+    # Sub-item taxonomy tagging (docs/checklist-taxonomy-grouping-implementation-plan.md,
+    # Phase 2) — heuristic, text-only classification; see feature_classifier.py for what
+    # each rule can and can't confidently detect. Runs before the .extend() below so
+    # each classifier only ever sees findings from its own category.
+    for m in clean_markings:
+        m["feature"] = classify_drawing_view_feature(m.get("text_content", ""), m.get("details", ""))
+    for m in notes_markings:
+        m["feature"] = classify_notes_feature(m.get("text_content", ""), m.get("details", ""))
+    for m in iso_markings:
+        m["feature"] = classify_iso_feature(m.get("text_content", ""), m.get("details", ""))
 
     # Combine all visual checklist markings
     clean_markings.extend(notes_markings)
@@ -523,6 +627,7 @@ async def perform_drawing_comparison(
                 'status': status_val,
                 'details': f'Title Block (Upper-Left) {display_key}: {orig_val} vs {kmti_val}',
                 'category': 'title_block',
+                'feature': classify_title_ul_feature(display_key),
                 'zone': 'title_upper_left',  # disambiguates from bottom-right title bbox in coordinate resolver
                 'original_value': orig_val if status_val == 'CHANGED' else None
             }
@@ -543,29 +648,6 @@ async def perform_drawing_comparison(
         f"drawing_views={len([m for m in clean_markings if m.get('category') == 'drawing_views'])}, "
         f"notes_section={len(notes_markings)}, isometric_view={len(iso_markings)}"
     )
-
-    def build_marking_table(markings: list, category_filter: str | None = None) -> str:
-        """Build a pipe-table summary from canvas_markings for the checklist panel."""
-        rows = [m for m in markings if category_filter is None or m.get("category") == category_filter]
-        if not rows:
-            return ""
-        header = f"{'ANNOTATION':<36}| {'ORIGINAL':<24}| {'REVISION':<24}| STATUS"
-        sep = "-" * len(header)
-        lines = [header, sep]
-        for m in rows:
-            text = (m.get("text_content") or "")[:34]
-            status = m.get("status", "MATCHED")
-            if status == "ADDED":
-                orig = "NONE"
-                rev = (m.get("text_content") or "")[:22]
-            elif status in ("DELETED", "REMOVED"):
-                orig = (m.get("original_value") or m.get("text_content") or "")[:22]
-                rev = "NONE"
-            else:
-                orig = (m.get("original_value") or m.get("text_content") or "")[:22]
-                rev = (m.get("text_content") or "")[:22]
-            lines.append(f"{text:<36}| {orig:<24}| {rev:<24}| {status}")
-        return "\n".join(lines)
 
     # Build per-category summaries for the checklist panel
     dv_markings  = [m for m in clean_markings if m.get("category") == "drawing_views"]
@@ -653,6 +735,7 @@ async def perform_drawing_comparison(
 
     inject_title_block_markings(clean_markings, ref_title_fields, rev_title_fields, ref_entities, rev_entities)
     inject_bom_markings(clean_markings, ref_bom_rows, rev_bom_rows, is_assembly_drawing, ref_bom_bbox, rev_bom_bbox, ref_entities, rev_entities, used_ref_entities, used_rev_entities)
+    inject_ballooning_markings(clean_markings, ref_bom_rows, rev_bom_rows, ref_entities, rev_entities)
 
     # Coordinate Resolution
     resolve_marking_coordinates(
@@ -667,6 +750,11 @@ async def perform_drawing_comparison(
         rev_title_ul_bbox, ref_title_ul_bbox,
         used_rev_entities, used_ref_entities
     )
+
+    # Value-only-coordinate safety net (docs/checklist-taxonomy-grouping-implementation-
+    # plan.md, Phase 7) — defense-in-depth only; the deterministic paths above are
+    # already value-only by construction (see harden_value_only_coordinates' docstring).
+    harden_value_only_coordinates(clean_markings, ref_entities, rev_entities)
 
     # Validate final markings coordinates and bounding boxes via DTO validation boundaries
     for m in clean_markings:
@@ -692,7 +780,77 @@ async def perform_drawing_comparison(
                 validated_bbox = BoundingBox2D.from_tuple(flat_bbox)
                 m["ref_bbox"] = [[validated_bbox.xmin, validated_bbox.ymin], [validated_bbox.xmax, validated_bbox.ymax]]
 
-    parsed["canvas_markings"] = clean_markings
+    # Tag provenance — deterministic candidates only ever resolve via exact entity
+    # handle or don't resolve at all; the visual-bbox fallback is AI-generator-only
+    # (see generate_ai_vision_candidates in full_ai_orchestrator.py, Phase 2).
+    #
+    # Check coordinates OR ref_coordinates, not just coordinates: a REMOVED item never
+    # has rev-side coordinates by definition (it doesn't exist on the revision) even
+    # when it resolved perfectly via an exact entity handle on the reference side, and
+    # the reverse for ADDED items (no ref-side coordinates by definition). Checking
+    # coordinates alone mislabeled every correctly-resolved REMOVED candidate
+    # "unresolved" and gave it an undeserved confidence penalty.
+    candidates: list[ComparisonCandidate] = []
+    for m in clean_markings:
+        m["origin"] = "deterministic"
+        m["resolution_method"] = (
+            "entity_handle" if (m.get("coordinates") is not None or m.get("ref_coordinates") is not None) else "unresolved"
+        )
+        # Anything not run through a classifier above (e.g. inject_title_block_markings/
+        # inject_bom_markings entries for fields with no taxonomy match) already sets
+        # 'feature' explicitly to OTHER_FEATURE_KEY at the source; this only catches
+        # markings from a path this phase didn't touch.
+        if not m.get("feature"):
+            m["feature"] = taxonomy.OTHER_FEATURE_KEY
+        # 'zone' (used just above for coordinate_resolver disambiguation) isn't a
+        # ComparisonCandidate field — dropped here the same way CanvasMarking has always
+        # silently dropped unknown keys via Pydantic's default extra="ignore" behavior.
+        candidates.append(ComparisonCandidate(**m))
+
+    return candidates, parsed, zone_detection_warnings
+
+
+async def perform_drawing_comparison(
+    request,
+    ref_drawing: DrawingDocument,
+    rev_drawing: DrawingDocument,
+    ref_entities: list,
+    rev_entities: list
+) -> PhysicalComparisonResponse:
+    """
+    `rag` method entrypoint. Thin wrapper around generate_deterministic_candidates()
+    (Generator A) — this function's job is cache handling, response assembly, and
+    persistence; the diffing itself lives in the extracted function so `hybrid` can
+    reuse it too. Output here is unchanged from before that extraction (Phase 2 of
+    docs/hybrid-comparison-engine-implementation-plan.md).
+    """
+    # Check cache first
+    cached_payload = ComparisonCacheManager.get_cached_comparison(
+        ref_drawing_id=str(ref_drawing.id),
+        rev_drawing_id=str(rev_drawing.id),
+        ref_hash=ref_drawing.file_hash,
+        rev_hash=rev_drawing.file_hash,
+        method="rag"
+    )
+    if cached_payload:
+        try:
+            return PhysicalComparisonResponse(
+                drawing_views=CategoryComparison(**cached_payload["drawing_views"]),
+                notes_section=CategoryComparison(**cached_payload["notes_section"]),
+                bill_of_materials=CategoryComparison(**cached_payload["bill_of_materials"]),
+                title_block=CategoryComparison(**cached_payload["title_block"]),
+                isometric_view=CategoryComparison(**cached_payload["isometric_view"]),
+                other_engineering_references=CategoryComparison(**cached_payload["other_engineering_references"]),
+                canvas_markings=[CanvasMarking(**item) for item in cached_payload.get("canvas_markings", [])],
+                diagnostics=cached_payload.get("diagnostics"),
+            )
+        except Exception as cache_err:
+            logger.warning(f"Failed to parse cached drawing comparison, performing full comparison: {cache_err}")
+
+    candidates, parsed, zone_detection_warnings = await generate_deterministic_candidates(
+        ref_drawing, rev_drawing, ref_entities, rev_entities
+    )
+    clean_markings = [c.model_dump() for c in candidates]
 
     comparison_response = PhysicalComparisonResponse(
         drawing_views=CategoryComparison(**parsed["drawing_views"]),
@@ -701,14 +859,14 @@ async def perform_drawing_comparison(
         title_block=CategoryComparison(**parsed["title_block"]),
         isometric_view=CategoryComparison(**parsed["isometric_view"]),
         other_engineering_references=CategoryComparison(**parsed["other_engineering_references"]),
-        canvas_markings=[CanvasMarking(**item) for item in parsed.get("canvas_markings", [])],
+        canvas_markings=[CanvasMarking(**item) for item in clean_markings],
         diagnostics=ComparisonDiagnostics(zone_detection_warnings=zone_detection_warnings),
     )
 
     # Save comparison findings as AuditSession + AuditViolations
     try:
-        non_matched = [m for m in parsed.get("canvas_markings", []) if m.get("status") != "MATCHED"]
-        total_markings = len(parsed.get("canvas_markings", []))
+        non_matched = [m for m in clean_markings if m.get("status") != "MATCHED"]
+        total_markings = len(clean_markings)
         matched_count = total_markings - len(non_matched)
         comparison_score = round((matched_count / total_markings) * 100, 2) if total_markings > 0 else 100.0
 

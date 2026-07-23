@@ -4,6 +4,7 @@ import { useReviewStore } from "../stores/reviewStore";
 import { useRoomStore } from "../stores/roomStore";
 import { computeBounds } from "../utils/spatialBounds";
 import { generateComparisonMarkings } from "../utils/markerGenerator";
+import { getComparisonStages, getComparisonTimeoutMs } from "../utils/comparisonStages";
 import { buildHeaders, baseUrl, parseOrThrow } from "../services/fetchUtils";
 
 export const usePhysicalComparison = () => {
@@ -36,11 +37,15 @@ export const usePhysicalComparison = () => {
     setAiScanError(null);
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 180_000); // 3 minutes timeout
-      
       // Start the fetch request immediately
       const comparisonMethod = activeRoom?.comparison_method ?? "rag";
+
+      const controller = new AbortController();
+      // Timeout is method-aware (see utils/comparisonStages.ts) — hybrid's pipeline is
+      // structurally more work than a single Gemini call, so a flat 180s aborted real
+      // requests on drawing pairs with many disputed findings.
+      const timeoutId = setTimeout(() => controller.abort(), getComparisonTimeoutMs(comparisonMethod));
+
       const fetchPromise = fetch(`${baseUrl()}/api/v1/audits/physical-comparison`, {
         method: "POST",
         headers: buildHeaders({ "Content-Type": "application/json" }),
@@ -52,21 +57,20 @@ export const usePhysicalComparison = () => {
         signal: controller.signal
       });
 
-      // Visually step through the sequence to simulate real progress
-      setAiScanProgress("scanning_ref");
-      await new Promise(r => setTimeout(r, 1200));
-      
-      if (controller.signal.aborted) throw new Error("Aborted");
-      setAiScanProgress("extracting");
-      await new Promise(r => setTimeout(r, 1500));
-      
-      if (controller.signal.aborted) throw new Error("Aborted");
-      setAiScanProgress("scanning_rev");
-      await new Promise(r => setTimeout(r, 1200));
-      
-      if (controller.signal.aborted) throw new Error("Aborted");
-      setAiScanProgress("comparing");
-      
+      // Visually step through the stages that actually describe this method's backend
+      // pipeline (see utils/comparisonStages.ts) — still simulated timing, no live
+      // signal from the backend, but the labels stop lying about what's running.
+      // The last stage has no timer: it sits on "Processing..." until the real fetch
+      // resolves below, same as the original implementation's final step.
+      const stages = getComparisonStages(comparisonMethod);
+      for (let i = 0; i < stages.length; i++) {
+        if (controller.signal.aborted) throw new Error("Aborted");
+        setAiScanProgress(stages[i].id);
+        if (i < stages.length - 1) {
+          await new Promise(r => setTimeout(r, stages[i].durationMs));
+        }
+      }
+
       // Wait for the actual backend to finish
       const res = await fetchPromise;
       clearTimeout(timeoutId);

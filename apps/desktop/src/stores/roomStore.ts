@@ -26,7 +26,7 @@ export interface Room {
   active_new_drawing_name?: string | null;
   active_audit_session_id?: string | null;
   physical_comparison_results?: any | null;
-  comparison_method?: "rag" | "rag_ai" | "ai_vision";
+  comparison_method?: "rag" | "rag_ai" | "ai_vision" | "hybrid";
 }
 
 interface RoomState {
@@ -36,7 +36,7 @@ interface RoomState {
   error: string | null;
 
   fetchRooms: () => Promise<void>;
-  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: "rag" | "rag_ai" | "ai_vision") => Promise<Room | null>;
+  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: "rag" | "rag_ai" | "ai_vision" | "hybrid") => Promise<Room | null>;
   openRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: (roomId: string) => Promise<boolean>;
@@ -152,6 +152,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             if (marking.status === "REMOVED") penType = "ai_red";
             else if (marking.status === "CHANGED") penType = "ai_orange";
             else if (marking.status === "ADDED") penType = "checker_blue";
+            else if (marking.status === "CONFLICT") penType = "ai_conflict";
 
             return {
               id: `phys_chk_restored_${index}_${Date.now()}`,
@@ -167,7 +168,14 @@ export const useRoomStore = create<RoomState>((set, get) => ({
               ref_bbox: marking.ref_bbox,
               pen_type: penType,
               is_resolved: marking.status === "MATCHED",
-              original_value: marking.original_value
+              original_value: marking.original_value,
+              // hybrid-only provenance (docs/hybrid-comparison-engine-implementation-plan.md,
+              // Phase 6) — undefined for rag/rag_ai/ai_vision markings, same as backend.
+              verification: marking.verification,
+              origin: marking.origin,
+              // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,
+              // Phase 5) — pass-through only, undefined when the backend didn't set one.
+              feature: marking.feature
             };
           });
           useWorkspaceStore.setState({ violations: mappedMarkings });

@@ -5,7 +5,7 @@ import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Modal } from "../../components/ui/Modal";
 
-type ComparisonMethod = "rag" | "rag_ai" | "ai_vision";
+type ComparisonMethod = "rag" | "rag_ai" | "ai_vision" | "hybrid";
 
 export const RoomsView: React.FC = () => {
   // useRooms() owns the server state: list, loading, optimistic mutations.
@@ -174,7 +174,7 @@ export const RoomsView: React.FC = () => {
                   DEV
                 </span>
               </label>
-              <div className="grid grid-cols-3 gap-2 bg-[#1a1a1a] p-1.5 rounded-xl border border-white/5">
+              <div className="grid grid-cols-4 gap-2 bg-[#1a1a1a] p-1.5 rounded-xl border border-white/5">
                 <button
                   type="button"
                   id="method-rag"
@@ -219,6 +219,21 @@ export const RoomsView: React.FC = () => {
                     AI VISION
                   </div>
                   <div className="text-[10px] font-medium opacity-60 leading-tight">Gemini (PNG Only)</div>
+                </button>
+                <button
+                  type="button"
+                  id="method-hybrid"
+                  onClick={() => setComparisonMethod("hybrid")}
+                  className={`px-3 py-3 rounded-lg text-sm font-semibold transition-all ${comparisonMethod === "hybrid"
+                    ? "bg-[#2a2a2a] text-white shadow-md border border-white/10"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/5 border border-transparent"
+                    }`}
+                >
+                  <div className="flex items-center gap-1.5 justify-center mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                    HYBRID
+                  </div>
+                  <div className="text-[10px] font-medium opacity-60 leading-tight">2 gens + verify</div>
                 </button>
               </div>
             </div>
@@ -292,6 +307,11 @@ export const RoomsView: React.FC = () => {
                   {room.comparison_method === "ai_vision" && (
                     <span className="inline-flex items-center text-xs font-bold text-fuchsia-400 bg-fuchsia-500/10 px-3 py-1 rounded-full border border-fuchsia-500/20 uppercase tracking-widest shrink-0">
                       AI VISION
+                    </span>
+                  )}
+                  {room.comparison_method === "hybrid" && (
+                    <span className="inline-flex items-center text-xs font-bold text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20 uppercase tracking-widest shrink-0">
+                      HYBRID
                     </span>
                   )}
                 </div>

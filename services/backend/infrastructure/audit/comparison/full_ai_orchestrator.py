@@ -43,8 +43,10 @@ from ..context_builder import build_structured_context, load_drawing_png
 from .revision_resolver import resolve_revisions
 from .gemini_client import execute_gemini_cascade
 from .cache_manager import ComparisonCacheManager
-from .coordinate_resolver import resolve_marking_coordinates
+from .coordinate_resolver import resolve_marking_coordinates, harden_value_only_coordinates
 from .schemas import Coordinate2D, BoundingBox2D
+from .candidate import ComparisonCandidate
+from . import taxonomy
 
 
 def build_drawing_views_prompt_instructions() -> str:
@@ -52,17 +54,18 @@ def build_drawing_views_prompt_instructions() -> str:
         "=== CATEGORY: DRAWING VIEWS (Senior Industrial CAD Auditor Persona - ISO 128 / JIS B 0001) ===\n"
         "Evaluate `drawing_views` across all orthogonal, detail, and section views.\n"
         "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
-        "Must evaluate these 10 features strictly:\n"
-        "1. Origin: Evaluate datum reference lines (Base Datum Edge / Centerlines) and view origin placement. Do NOT output 'N/A' — report 'Datum Origin / Centerlines Aligned (Maintained)' if views match.\n"
-        "2. Alignment of Views: Check orthographic projection alignment across front, top, side, and section views.\n"
-        "3. Line Attributes: Check line types (hidden, center, solid, phantom, hatching).\n"
-        "4. Dimensions: Summarize dimensions broken down by drawing view (e.g. Main View: 140, 100, 15 | Section A-A: 170 +0/-0.1). Include dimensional fit tolerances.\n"
-        "5. Hole Properties: Detail hole callouts, drill sizes (キリ), counterbores (ザグリ), and depth (深サ).\n"
-        "6. Chamfer/Radius: Detail chamfers (C1, C2) and radii (R2, R3, R0.5), noting view additions (e.g., Reference: 2x R3, 1x R0.5 | Revision: R2, R4, R0.5 [Added Detail View]). Mark as CHANGED or ADDED as applicable.\n"
-        "7. Welding Symbol: Visually inspect the PNG renderings for graphical welding symbols (fillet △, bevel ∨, surface finish ∇/sqrt). Extracted text takes precedence for numeric data; visual OCR takes precedence for graphical weld symbols.\n"
-        "8. Geometric Tolerances: Capture both GD&T feature control frames (⊕, ⊥, □) AND dimensional fit/limit tolerances (170 +0/-0.1, 15 +0/-0.05, ±0.02).\n"
-        "9. Additional Views: Report newly added or modified detail/section views (e.g., 油溝詳細 Oil groove detail).\n"
-        "10. Text Attributes: Standard text font, height, and spacing.\n"
+        "Must evaluate these 11 features strictly (feature keys in parentheses — use them verbatim as the `feature` value on any canvas_marking you tag under drawing_views, see the canvas_markings instructions below):\n"
+        "1. Origin (origin): Evaluate datum reference lines (Base Datum Edge / Centerlines) and view origin placement. Do NOT output 'N/A' — report 'Datum Origin / Centerlines Aligned (Maintained)' if views match.\n"
+        "2. Alignment of Views (alignment_of_views): Check orthographic projection alignment across front, top, side, and section views.\n"
+        "3. Line Attributes (line_attributes): Check line types (hidden, center, solid, phantom, hatching).\n"
+        "4. Dimensions (dimensions): Summarize dimensions broken down by drawing view (e.g. Main View: 140, 100, 15 | Section A-A: 170 +0/-0.1). Include dimensional fit tolerances.\n"
+        "5. Hole Properties (hole_properties): Detail hole callouts, drill sizes (キリ), counterbores (ザグリ), and depth (深サ).\n"
+        "6. Chamfer/Radius (chamfer_radius): Detail chamfers (C1, C2) and radii (R2, R3, R0.5), noting view additions (e.g., Reference: 2x R3, 1x R0.5 | Revision: R2, R4, R0.5 [Added Detail View]). Mark as CHANGED or ADDED as applicable.\n"
+        "7. Machining Symbol (machining_symbol): Visually inspect the PNG renderings for surface-finish / machining marks (∇, √). This is a DIFFERENT symbol from Welding Symbol below — do not conflate the two.\n"
+        "8. Welding Symbol (welding_symbol): Visually inspect the PNG renderings for graphical welding symbols (fillet △, bevel ∨). Extracted text takes precedence for numeric data; visual OCR takes precedence for graphical weld symbols.\n"
+        "9. Geometric Tolerances (geometric_tolerances): Capture both GD&T feature control frames (⊕, ⊥, □) AND dimensional fit/limit tolerances (170 +0/-0.1, 15 +0/-0.05, ±0.02).\n"
+        "10. Additional Views (additional_views): Report newly added or modified detail/section views (e.g., 油溝詳細 Oil groove detail).\n"
+        "11. Text Attributes (text_attributes): Standard text font, height, and spacing.\n"
     )
 
 def build_notes_prompt_instructions() -> str:
@@ -76,8 +79,18 @@ def build_notes_prompt_instructions() -> str:
 def build_title_block_prompt_instructions() -> str:
     return (
         "=== CATEGORY: TITLE BLOCK ===\n"
-        "Evaluate `title_block` metadata across machine name, line name, scale, designed by, drawn by, quantity, job number, cross ref number, prev dwg number, revision code.\n"
-        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Evaluate `title_block` metadata. Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Must evaluate these 10 features (feature keys in parentheses — use them verbatim as the `feature` value on any canvas_marking you tag under title_block):\n"
+        "1. Machine Name (machine_name): the product/machine title text.\n"
+        "2. Line Name (line_name): there is no reliable signal for this field in these drawings — mark it 'N/A' / MATCHED rather than guessing at a value.\n"
+        "3. Scale (scale)\n"
+        "4. Designed (designed): the 'designed by' signee/date field.\n"
+        "5. Drawn (drawn): the 'drawn by' signee/date field.\n"
+        "6. Quantity (quantity)\n"
+        "7. Job Number (job_number)\n"
+        "8. Cross Reference Number (cross_reference_number)\n"
+        "9. Previous Drawing Number (previous_drawing_number)\n"
+        "10. Revision Code (revision_code): the amendment/correction mark, often labeled AMD. or 訂正符号 — mark 'N/A' / MATCHED if the drawing has no revision-code field at all rather than inventing one.\n"
     )
 
 def build_isometric_prompt_instructions() -> str:
@@ -92,8 +105,34 @@ def build_isometric_prompt_instructions() -> str:
 def build_others_prompt_instructions() -> str:
     return (
         "=== CATEGORY: OTHER ENGINEERING REFERENCES ===\n"
-        "Evaluate `other_engineering_references` for tree view properties, external links, and Excel data.\n"
-        "Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Evaluate `other_engineering_references`. Output a 4-column markdown table in `reference_content`: `Feature | Original Value | Revision Value | Status`.\n"
+        "Evaluate these 2 features (feature keys in parentheses): Tree View Properties / Link (tree_view_properties), Excel — Additional Information (excel_additional_info).\n"
+    )
+
+def build_categorization_discipline_instructions() -> str:
+    return (
+        "=== CATEGORIZATION DISCIPLINE (apply this before evaluating any category below) ===\n"
+        "The six categories are mutually exclusive. Every annotation, dimension, or data item "
+        "belongs to exactly ONE of them, based on where it physically is on the sheet and what "
+        "it represents — never based on which category section you happen to be writing about.\n"
+        "- `title_block`: ONLY the metadata block(s) — typically a bottom-right stamp (title, "
+        "drawing number, scale, drawn/designed/checked/approved by, date) and/or a secondary "
+        "upper-left admin block (unit no., part no., quantity, stock qty).\n"
+        "- `bill_of_materials`: ONLY the parts/materials schedule table (item no., code, "
+        "dimension, quantity, weight, material, remarks).\n"
+        "- `isometric_view`: ONLY the 3D perspective representation, usually in its own "
+        "dedicated box in a corner of the sheet.\n"
+        "- `notes_section`: ONLY free-text manufacturing/process instructions and callouts "
+        "(e.g. \"Tap and drill holes to be chamfered\") — not dimensions, not title block data.\n"
+        "- `drawing_views`: the orthogonal/section/detail views and their dimensions, "
+        "tolerances, hole callouts, and geometry — everything that is NOT part of the title "
+        "block, BOM, isometric box, or notes text. Do not report a title block field, BOM row, "
+        "or notes entry here just because it sits spatially near a view.\n"
+        "- `other_engineering_references`: anything else (tree view properties, external "
+        "links, Excel data) that doesn't fit the five categories above.\n"
+        "If uncertain whether something is a title block field, BOM row, or notes entry versus "
+        "a drawing_views annotation, prefer the more specific category over the catch-all "
+        "drawing_views.\n"
     )
 
 def _format_subview_breakdown(subviews: list, prefix: str) -> str:
@@ -117,10 +156,21 @@ def build_full_system_instruction() -> str:
         "For canvas_markings, produce one entry per significant annotation or data item found in the drawings — including BOTH MATCHED items AND changed/added/removed ones.\n"
         "For MATCHED items: set status='MATCHED', use EXACT text string, and populate category.\n"
         "Produce at least one MATCHED canvas_marking per MATCHED category so each verified item gets a green checkmark on the drawing canvas.\n"
+        "CRITICAL — mark VALUES, not labels: for title_block and bill_of_materials specifically, a canvas_marking must point at the actual DATA VALUE (e.g. the text \"45\", \"ZHR\", \"1/2\"), never at the static field-name LABEL next to it (e.g. \"Unit No.\", \"DRAWN\", \"SCALE\"). Field labels are template boilerplate — do not emit a canvas_marking for one just because it also appears unchanged in both drawings.\n"
+        "Assign `category` strictly per the CATEGORIZATION DISCIPLINE section above — do not tag a title block field, BOM row, or notes entry as `drawing_views` just because it is spatially near a view.\n"
+        "Assign a `feature` sub-item tag to every canvas_marking, using the feature key (the snake_case name in parentheses in each category's section above) that best matches what it is:\n"
+        "  - drawing_views: origin, alignment_of_views, line_attributes, dimensions, hole_properties, chamfer_radius, machining_symbol, welding_symbol, geometric_tolerances, additional_views, text_attributes\n"
+        "  - notes_section: standard_notes, special_notes\n"
+        "  - bill_of_materials: material_type, material_specification, quantity, material_weight, ballooning, remarks, numbering_arrangement\n"
+        "  - title_block: machine_name, line_name, scale, designed, drawn, quantity, job_number, cross_reference_number, previous_drawing_number, revision_code\n"
+        "  - isometric_view: orientation, scale, location\n"
+        "  - other_engineering_references: tree_view_properties, excel_additional_info\n"
+        "If nothing in a category's list confidently matches, set feature='other' rather than guessing — never invent a feature key not listed above.\n"
         "IMPORTANT: Provide 'visual_bbox' [ymin, xmin, ymax, xmax] normalized 0-1000 for each canvas_marking.\n"
     )
     return "\n\n".join([
         header,
+        build_categorization_discipline_instructions(),
         build_drawing_views_prompt_instructions(),
         build_notes_prompt_instructions(),
         build_title_block_prompt_instructions(),
@@ -128,6 +178,260 @@ def build_full_system_instruction() -> str:
         build_others_prompt_instructions(),
         markings_instr
     ])
+
+
+async def generate_ai_vision_candidates(
+    ref_drawing: DrawingDocument,
+    rev_drawing: DrawingDocument,
+    ref_entities: list,
+    rev_entities: list,
+) -> tuple[list[ComparisonCandidate], str]:
+    """
+    Generator B (AI Vision): independent full-drawing scan using only the two rendered
+    PNGs — no structured CAD context, no BOM/title tables in the prompt. Deliberately a
+    separate function from perform_full_ai_comparison(), not a refactor of it: that
+    function's `rag_ai` prompt path and its post-hoc BOM/title-block override both stay
+    untouched (docs/hybrid-comparison-engine-implementation-plan.md, Phase 2 sections 1.4
+    and 1.5) — `hybrid` never wants the rag_ai prompt, and its equivalent of the override
+    is the general reconciliation step in Phase 3/4, not this generator overriding itself.
+
+    Returns:
+        candidates: raw AI Vision findings, each tagged origin="ai_vision". No BOM/title
+            override applied here — unlike `rag_ai`/`ai_vision`, whatever Gemini says
+            about those categories is returned as-is; reconciliation decides whether it's
+            trusted once Generator A's candidates exist to compare against.
+        model_used: which model in the Gemini cascade actually answered.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", None)
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not configured.")
+
+    ref_rev, rev_rev, ref_title, rev_title = resolve_revisions(
+        ref_entities, rev_entities,
+        ref_drawing.file_hash, rev_drawing.file_hash,
+        ref_drawing.file_name, rev_drawing.file_name,
+    )
+
+    from ..bom.table_extractor import extract_dynamic_regions
+    ref_regions = extract_dynamic_regions(ref_entities)
+    rev_regions = extract_dynamic_regions(rev_entities)
+
+    ref_png = load_drawing_png(str(ref_drawing.id))
+    rev_png = load_drawing_png(str(rev_drawing.id))
+
+    system_instruction = build_full_system_instruction()
+
+    contents: list = []
+    if ref_png:
+        contents.append("The following image is the REFERENCE (old) drawing:")
+        contents.append(types.Part.from_bytes(data=ref_png, mime_type="image/png"))
+    else:
+        logger.warning(f"[hybrid/gen_b] No PNG for reference drawing {ref_drawing.id} — text-only")
+
+    if rev_png:
+        contents.append("The following image is the REVISION (new) drawing:")
+        contents.append(types.Part.from_bytes(data=rev_png, mime_type="image/png"))
+    else:
+        logger.warning(f"[hybrid/gen_b] No PNG for revision drawing {rev_drawing.id} — text-only")
+
+    prompt_text = (
+        f"=== REFERENCE DRAWING METADATA ===\n"
+        f"File: {ref_drawing.file_name} | Title: {ref_title} | Rev: {ref_rev}\n\n"
+        f"=== REVISION DRAWING METADATA ===\n"
+        f"File: {rev_drawing.file_name} | Title: {rev_title} | Rev: {rev_rev}\n\n"
+        "Perform a complete engineering comparison using ONLY the provided images. "
+        "Return your findings as a structured JSON object matching the required schema."
+    )
+    contents.append(prompt_text)
+
+    logger.info(
+        f"[hybrid/gen_b] Dispatching AI Vision scan for "
+        f"ref={ref_drawing.file_name} vs rev={rev_drawing.file_name}"
+    )
+    raw_json_text, model_used = await asyncio.to_thread(
+        execute_gemini_cascade, api_key, system_instruction, contents
+    )
+
+    try:
+        parsed = json.loads(raw_json_text)
+    except json.JSONDecodeError as parse_err:
+        logger.error(f"[hybrid/gen_b] Gemini returned non-JSON response: {parse_err}")
+        raise RuntimeError(f"AI Vision generator: Gemini returned malformed JSON: {parse_err}")
+
+    clean_markings = parsed.get("canvas_markings", [])
+
+    # Region bboxes for the text/entity-handle coordinate resolver — same source as
+    # perform_full_ai_comparison's, just fetched independently since this function
+    # doesn't share that one's local variables.
+    ref_title_bbox_raw = ref_regions.get("title")
+    rev_title_bbox_raw = rev_regions.get("title")
+    ref_notes_bbox_raw = ref_regions.get("notes")
+    rev_notes_bbox_raw = rev_regions.get("notes")
+    ref_iso_bbox_raw = ref_regions.get("iso")
+    rev_iso_bbox_raw = rev_regions.get("iso")
+    ref_title_ul_bbox_raw = ref_regions.get("title_upper_left")
+    rev_title_ul_bbox_raw = rev_regions.get("title_upper_left")
+    ref_views_bbox_raw = ref_regions.get("views")
+    rev_views_bbox_raw = rev_regions.get("views")
+    ref_bom_bbox_raw = ref_regions.get("bom")
+    rev_bom_bbox_raw = rev_regions.get("bom")
+
+    _to_bbox = lambda raw: BoundingBox2D.from_tuple(raw).to_tuple() if raw else None
+    ref_title_bbox = _to_bbox(ref_title_bbox_raw)
+    rev_title_bbox = _to_bbox(rev_title_bbox_raw)
+    ref_notes_bbox = _to_bbox(ref_notes_bbox_raw)
+    rev_notes_bbox = _to_bbox(rev_notes_bbox_raw)
+    ref_iso_bbox = _to_bbox(ref_iso_bbox_raw)
+    rev_iso_bbox = _to_bbox(rev_iso_bbox_raw)
+    ref_views_bbox = _to_bbox(ref_views_bbox_raw)
+    rev_views_bbox = _to_bbox(rev_views_bbox_raw)
+    ref_title_ul_bbox = _to_bbox(ref_title_ul_bbox_raw)
+    rev_title_ul_bbox = _to_bbox(rev_title_ul_bbox_raw)
+    ref_bom_bbox_validated = _to_bbox(ref_bom_bbox_raw)
+    rev_bom_bbox_validated = _to_bbox(rev_bom_bbox_raw)
+
+    # BOM/title fields are needed here only as resolver input (text/row lookups for
+    # matching a marking to an entity) — NOT as override ground truth. No override
+    # happens in this generator; see the docstring above.
+    ref_bounds_meta = ref_drawing.metadata.get("render_bounds") if ref_drawing.metadata else None
+    rev_bounds_meta = rev_drawing.metadata.get("render_bounds") if rev_drawing.metadata else None
+    ref_bom_rows, _ = BOMAnalyzer.extract_bom_table(ref_entities, render_bounds=ref_bounds_meta, bom_bbox=ref_bom_bbox_raw)
+    rev_bom_rows, _ = BOMAnalyzer.extract_bom_table(rev_entities, render_bounds=rev_bounds_meta, bom_bbox=rev_bom_bbox_raw)
+    ref_title_fields = BOMAnalyzer.extract_title_block(
+        ref_entities, [e.properties.get("text", "") for e in ref_entities if getattr(e, "entity_type", "") == "text"]
+    )
+    rev_title_fields = BOMAnalyzer.extract_title_block(
+        rev_entities, [e.properties.get("text", "") for e in rev_entities if getattr(e, "entity_type", "") == "text"]
+    )
+
+    id_to_rev_entity = {
+        f"REV-{e.properties.get('handle')}": e for e in rev_entities if e.properties and e.properties.get("handle")
+    }
+    id_to_ref_entity = {
+        f"REF-{e.properties.get('handle')}": e for e in ref_entities if e.properties and e.properties.get("handle")
+    }
+    used_rev_entities: set = set()
+    used_ref_entities: set = set()
+
+    try:
+        resolve_marking_coordinates(
+            clean_markings, id_to_rev_entity, id_to_ref_entity,
+            rev_entities, ref_entities, rev_bom_rows, ref_bom_rows,
+            rev_title_fields, ref_title_fields,
+            rev_bom_bbox_validated, ref_bom_bbox_validated,
+            rev_title_bbox, ref_title_bbox,
+            rev_notes_bbox, ref_notes_bbox,
+            rev_iso_bbox, ref_iso_bbox,
+            rev_views_bbox, ref_views_bbox,
+            rev_title_ul_bbox, ref_title_ul_bbox,
+            used_rev_entities, used_ref_entities,
+        )
+    except Exception as resolve_err:
+        logger.warning(f"[hybrid/gen_b] Coordinate resolution failed (non-fatal): {resolve_err}")
+
+    # Snapshot right after the entity-handle resolver, before the visual-bbox fallback
+    # below, so resolution_method can tell the two apart without resolve_marking_coordinates
+    # itself needing to know about this hybrid-only concept.
+    resolved_by_entity_handle = {id(m) for m in clean_markings if m.get("coordinates") is not None}
+
+    def _visual_to_cad(visual_bbox: list[float], render_bounds: list[float]) -> list[float]:
+        """Convert Gemini [ymin, xmin, ymax, xmax] (0–1000) to CAD [x, y] center point."""
+        ymin_n, xmin_n, ymax_n, xmax_n = visual_bbox
+        x_min_cad, y_min_cad, x_max_cad, y_max_cad = render_bounds
+        cad_w = x_max_cad - x_min_cad
+        cad_h = y_max_cad - y_min_cad
+        x_frac = ((xmin_n + xmax_n) / 2.0) / 1000.0
+        y_frac = ((ymin_n + ymax_n) / 2.0) / 1000.0
+        x_cad = x_min_cad + (x_frac * cad_w)
+        y_cad = y_min_cad + ((1.0 - y_frac) * cad_h)
+        return [x_cad, y_cad]
+
+    rev_render_bounds = rev_drawing.metadata.get("render_bounds") if rev_drawing.metadata else None
+    ref_render_bounds = ref_drawing.metadata.get("render_bounds") if ref_drawing.metadata else None
+
+    for m in clean_markings:
+        if m.get("coordinates") is None and m.get("visual_bbox") and rev_render_bounds:
+            try:
+                m["coordinates"] = _visual_to_cad(m["visual_bbox"], rev_render_bounds)
+            except Exception:
+                pass
+        if m.get("ref_coordinates") is None and m.get("ref_visual_bbox") and ref_render_bounds:
+            try:
+                m["ref_coordinates"] = _visual_to_cad(m["ref_visual_bbox"], ref_render_bounds)
+            except Exception:
+                pass
+
+    # Spatial dedup within this generator's own output only (Gemini can emit more than
+    # one marking for the same real finding) — cross-generator reconciliation is a
+    # separate step (Phase 3/4), not this function's job.
+    import math
+    DEDUP_THRESHOLD_MM = 5.0
+    deduped_markings: list[dict] = []
+    for m in clean_markings:
+        coords = m.get("coordinates")
+        is_duplicate = False
+        if coords and len(coords) >= 2:
+            for existing in deduped_markings:
+                ec = existing.get("coordinates")
+                if ec and len(ec) >= 2:
+                    dist = math.hypot(coords[0] - ec[0], coords[1] - ec[1])
+                    if dist < DEDUP_THRESHOLD_MM and m.get("status") == existing.get("status") and m.get("category") == existing.get("category"):
+                        if len(m.get("details", "")) > len(existing.get("details", "")):
+                            existing.update(m)
+                        is_duplicate = True
+                        break
+        if not is_duplicate:
+            deduped_markings.append(m)
+    if len(clean_markings) != len(deduped_markings):
+        logger.info(f"[hybrid/gen_b] Spatial dedup: {len(clean_markings)} → {len(deduped_markings)} markings.")
+    clean_markings = deduped_markings
+
+    # Value-only-coordinate safety net (docs/checklist-taxonomy-grouping-implementation-
+    # plan.md, Phase 7) — this generator's coordinates come from Gemini's visual_bbox
+    # guess, steered only by a prompt instruction, not enforced, so this is the one path
+    # where this check does real work rather than pure defense-in-depth.
+    harden_value_only_coordinates(clean_markings, ref_entities, rev_entities)
+
+    # DTO validation — same as perform_full_ai_comparison's tail.
+    for m in clean_markings:
+        coords = m.get("coordinates")
+        if coords is not None:
+            m["coordinates"] = Coordinate2D.from_list(coords).to_list()
+        ref_coords = m.get("ref_coordinates")
+        if ref_coords is not None:
+            m["ref_coordinates"] = Coordinate2D.from_list(ref_coords).to_list()
+        bbox = m.get("bbox")
+        if bbox is not None and len(bbox) == 2 and len(bbox[0]) == 2 and len(bbox[1]) == 2:
+            flat = (bbox[0][0], bbox[0][1], bbox[1][0], bbox[1][1])
+            vb = BoundingBox2D.from_tuple(flat)
+            m["bbox"] = [[vb.xmin, vb.ymin], [vb.xmax, vb.ymax]]
+        ref_bbox_val = m.get("ref_bbox")
+        if ref_bbox_val is not None and len(ref_bbox_val) == 2 and len(ref_bbox_val[0]) == 2 and len(ref_bbox_val[1]) == 2:
+            flat = (ref_bbox_val[0][0], ref_bbox_val[0][1], ref_bbox_val[1][0], ref_bbox_val[1][1])
+            vb = BoundingBox2D.from_tuple(flat)
+            m["ref_bbox"] = [[vb.xmin, vb.ymin], [vb.xmax, vb.ymax]]
+
+    candidates: list[ComparisonCandidate] = []
+    for m in clean_markings:
+        m["origin"] = "ai_vision"
+        if id(m) in resolved_by_entity_handle:
+            m["resolution_method"] = "entity_handle"
+        elif m.get("coordinates") is not None:
+            m["resolution_method"] = "visual_bbox_fallback"
+        else:
+            m["resolution_method"] = "unresolved"
+        # Gemini's raw `feature` guess is free text, not schema-constrained (see
+        # markings_instr) — normalize against the canonical taxonomy so a near-miss
+        # synonym or a category Gemini got wrong don't leak an unrecognized string
+        # into ComparisonCandidate.
+        m["feature"] = taxonomy.normalize_feature(m.get("category", "drawing_views"), m.get("feature"))
+        try:
+            candidates.append(ComparisonCandidate(**m))
+        except Exception as candidate_err:
+            logger.warning(f"[hybrid/gen_b] Dropping malformed AI Vision candidate ({candidate_err}): {m}")
+
+    logger.info(f"[hybrid/gen_b] AI Vision scan produced {len(candidates)} candidates using model {model_used}.")
+    return candidates, model_used
 
 
 async def perform_full_ai_comparison(
@@ -584,6 +888,14 @@ async def perform_full_ai_comparison(
         logger.info(f"[full_ai] Spatial dedup: {len(clean_markings)} → {len(deduped_markings)} markings.")
     clean_markings = deduped_markings
 
+    # Value-only-coordinate safety net (docs/checklist-taxonomy-grouping-implementation-
+    # plan.md, Phase 7) — same rationale as generate_ai_vision_candidates above: this
+    # `rag_ai`/`ai_vision` path's title_block/BOM markings can also come from Gemini's
+    # visual_bbox guess (deterministic override only applies to the category-level
+    # status/table, not every individual canvas_marking's coordinates), so this is real
+    # coverage here too, not pure defense-in-depth.
+    harden_value_only_coordinates(clean_markings, ref_entities, rev_entities)
+
     # 6. Validate coordinates and bounding boxes via DTO constraints
     for m in clean_markings:
         coords = m.get("coordinates")
@@ -602,6 +914,11 @@ async def perform_full_ai_comparison(
             flat = (ref_bbox_val[0][0], ref_bbox_val[0][1], ref_bbox_val[1][0], ref_bbox_val[1][1])
             vb = BoundingBox2D.from_tuple(flat)
             m["ref_bbox"] = [[vb.xmin, vb.ymin], [vb.xmax, vb.ymax]]
+        # Gemini's raw `feature` guess is free text, not schema-constrained (see
+        # markings_instr) — normalize against the canonical taxonomy so a near-miss
+        # synonym or a category Gemini got wrong don't leak an unrecognized string
+        # into CanvasMarking.
+        m["feature"] = taxonomy.normalize_feature(m.get("category", "drawing_views"), m.get("feature"))
 
     parsed["canvas_markings"] = clean_markings
 

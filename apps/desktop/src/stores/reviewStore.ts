@@ -206,7 +206,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
     MISMATCHED: true,
     CHANGED: true,
     ADDED: true,
-    MATCHED: true
+    MATCHED: true,
+    CONFLICT: true
   },
   toggleMarkerTypeVisibility: (type) => set((state) => ({
     visibleMarkerTypes: {

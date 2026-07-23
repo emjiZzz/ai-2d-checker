@@ -4,6 +4,22 @@ from typing import List, Optional
 from ...utils.text import safe_decode
 from .constants import map_signature_value
 
+# Label/boilerplate keyword list used to keep title-block field-name text from ever
+# being mistaken for a field's VALUE (see is_garbage_value below). Exported at module
+# level (docs/checklist-taxonomy-grouping-implementation-plan.md, Phase 7) so
+# coordinate_resolver.py's value-only-coordinate safety net can reuse the exact same
+# label vocabulary instead of maintaining a second, drifting copy.
+TITLE_BLOCK_LABEL_KEYWORDS = [
+    "designed", "設計", "drawn", "製図", "approved", "承認", "checked", "照査",
+    "scale", "尺度", "title", "図面名", "図名", "名称", "jobname",
+    "jobno.", "工事番号", "unitcode", "mach.code", "ユニット記号", "機番記号", "機器記号",
+    "dwg.no.", "図面番号", "dwgno", "previousdwg.no,", "旧図面番号", "crossrefno.", "共通番号",
+    "符号", "年月日", "y/m/d", "amd.", "designchgno.", "dir.", "branch", "std.no.", "標準図番号",
+    "machine type", "machinetype", "unit no.", "unitno.", "part no.", "partno.", "dir.", "branch", "amd.", "standard",
+    "kusakabe", "electric", "machinery", "co.,ltd", "日下部電機", "t.q'ty", "t.q’ty", "総製作個数", "個数", "q'ty", "stockq'ty",
+    "機種", "ユニット", "部品", "特性", "訂正符号"
+]
+
 def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_results: dict = None) -> dict:
     """Dynamically search the drawing text tokens for each of the 11 title block fields."""
     if all_text_list is None:
@@ -12,9 +28,10 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
     native_fields = {
         "QTY": "NONE", "CROSS REF NO": "NONE", "PREVIOUS DWG NO": "NONE",
         "DESIGNED": "NONE", "DRAWN": "NONE", "SCALE": "NONE", "NAME": "NONE",
-        "TITLE": "NONE", "JOB NO": "NONE", "MACHINE CODE": "NONE", 
-        "DWG NO": "NONE", "UNIT NO": "NONE", "PART NO": "NONE", 
-        "STOCK QTY": "NONE", "STD NO": "NONE", "STANDARD": "NONE"
+        "TITLE": "NONE", "JOB NO": "NONE", "MACHINE CODE": "NONE",
+        "DWG NO": "NONE", "UNIT NO": "NONE", "PART NO": "NONE",
+        "STOCK QTY": "NONE", "STD NO": "NONE", "STANDARD": "NONE",
+        "REVISION CODE": "NONE"
     }
     native_coords: dict = {k: None for k in native_fields}
     found_native = False
@@ -69,19 +86,8 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
         if len(t) == 0:
             return True
         norm = t.replace(" ", "").lower()
-        
-        label_keywords = [
-            "designed", "設計", "drawn", "製図", "approved", "承認", "checked", "照査",
-            "scale", "尺度", "title", "図面名", "図名", "名称", "jobname",
-            "jobno.", "工事番号", "unitcode", "mach.code", "ユニット記号", "機番記号", "機器記号",
-            "dwg.no.", "図面番号", "dwgno", "previousdwg.no,", "旧図面番号", "crossrefno.", "共通番号",
-            "符号", "年月日", "y/m/d", "amd.", "designchgno.", "dir.", "branch", "std.no.", "標準図番号",
-            "machine type", "machinetype", "unit no.", "unitno.", "part no.", "partno.", "dir.", "branch", "amd.", "standard",
-            "kusakabe", "electric", "machinery", "co.,ltd", "日下部電機", "t.q'ty", "t.q’ty", "総製作個数", "個数", "q'ty", "stockq'ty",
-            "機種", "ユニット", "部品", "特性", "訂正符号"
-        ]
-        
-        for kw in label_keywords:
+
+        for kw in TITLE_BLOCK_LABEL_KEYWORDS:
             norm_kw = kw.replace(" ", "").lower()
             if norm_kw == norm or norm_kw in norm or norm in norm_kw:
                 return True
@@ -350,6 +356,7 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
     f_mach, mach_c = extract_proximity_value(["Mach. code", "Unit Code", "機器記号", "ユニット記号"], "below", prefer_lowest_y=True)
     f_dwg, dwg_c = resolve_field("DWG NO", ["DWG. No.", "図面番号", "図番"], "below", dx_tol=20.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
     f_title, title_c = resolve_field("TITLE", ["TITLE", "名称", "品名"], "below", dx_tol=50.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
+    f_revision, revision_c = extract_proximity_value(["AMD.", "Design Chg No.", "訂正符号"], "below", prefer_highest_y=True)
 
     res = {
         "QTY": {"value": f_qty, "coordinates": qty_c},
@@ -364,6 +371,7 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
         "MACHINE CODE": {"value": f_mach, "coordinates": mach_c},
         "DWG NO": {"value": f_dwg, "coordinates": dwg_c},
         "TITLE": {"value": f_title, "coordinates": title_c},
-        "STOCK QTY": {"value": "NONE", "coordinates": None}
+        "STOCK QTY": {"value": "NONE", "coordinates": None},
+        "REVISION CODE": {"value": f_revision, "coordinates": revision_c}
     }
     return res

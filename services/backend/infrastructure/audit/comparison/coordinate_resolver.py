@@ -1,6 +1,19 @@
 import re
+import math
 from typing import List, Dict, Any, Optional
 from ..bom_analyzer import BOMAnalyzer
+from ..bom.title_block_extractor import TITLE_BLOCK_LABEL_KEYWORDS
+
+# BOM column header vocabulary (marking_builder.py's bom_cols display labels, English +
+# common Japanese variants) — used only by the Phase 7 value-only-coordinate safety net
+# below (docs/checklist-taxonomy-grouping-implementation-plan.md), not for BOM extraction.
+BOM_LABEL_KEYWORDS = [
+    "no.", "code", "dimension", "q'ty", "material wt", "finished wt", "remark",
+    "dwg no.", "dwg. no.", "title", "item",
+    "番号", "コード", "寸法", "数量", "重量", "備考", "品名", "図番",
+]
+
+LABEL_PROXIMITY_TOLERANCE_MM = 3.0
 
 def calc_anchor(e) -> list:
     ins = getattr(e, "geometry", {}).get("location") or getattr(e, "geometry", {}).get("insert") or getattr(e, "geometry", {}).get("text_point") or [0, 0, 0]
@@ -182,3 +195,94 @@ def resolve_marking_coordinates(
                     if res:
                         m["ref_coordinates"] = res.get("coords")
                         m["ref_bbox"] = res.get("bbox")
+
+
+def _is_label_text(raw_text: str) -> bool:
+    if not raw_text:
+        return False
+    norm = raw_text.strip().replace(" ", "").lower()
+    for kw in TITLE_BLOCK_LABEL_KEYWORDS + BOM_LABEL_KEYWORDS:
+        norm_kw = kw.replace(" ", "").lower()
+        if norm_kw == norm or norm_kw in norm or norm in norm_kw:
+            return True
+    return False
+
+
+def _label_anchor(e) -> Optional[list]:
+    """Same anchor formula as calc_anchor() above — duplicated rather than shared so this
+    safety-net check stays self-contained and doesn't couple to calc_anchor()'s own
+    evolution (see Phase 7 completion log for the tradeoff)."""
+    ins = getattr(e, "geometry", {}).get("location") or getattr(e, "geometry", {}).get("insert") or getattr(e, "geometry", {}).get("text_point") or [0, 0, 0]
+    height = e.properties.get("height", 3.0) if getattr(e, "properties", None) else 3.0
+    bbox = e.properties.get("bbox", None) if getattr(e, "properties", None) else None
+    if bbox and len(bbox) == 2:
+        try:
+            return [bbox[1][0] + (height * 0.8), bbox[0][1] + (bbox[1][1] - bbox[0][1]) / 2.0]
+        except Exception:
+            pass
+    return [ins[0], ins[1]]
+
+
+def _collect_label_anchors(entities: List[Any]) -> list:
+    anchors = []
+    for e in entities:
+        if getattr(e, "entity_type", "") not in ("text", "mtext", "attrib"):
+            continue
+        raw = e.properties.get("text", "") if getattr(e, "properties", None) else ""
+        if _is_label_text(raw):
+            anchors.append(_label_anchor(e))
+    return anchors
+
+
+def _coincides_with_label(coord: Optional[list], label_anchors: list) -> bool:
+    if not coord or len(coord) < 2:
+        return False
+    for la in label_anchors:
+        if la and math.hypot(coord[0] - la[0], coord[1] - la[1]) <= LABEL_PROXIMITY_TOLERANCE_MM:
+            return True
+    return False
+
+
+def harden_value_only_coordinates(
+    clean_markings: List[Dict[str, Any]],
+    ref_entities: List[Any],
+    rev_entities: List[Any],
+) -> None:
+    """
+    Phase 7 safety net (docs/checklist-taxonomy-grouping-implementation-plan.md,
+    decision 7). The deterministic coordinate-resolution paths in this module and in
+    marking_builder.py/title_block_extractor.py are already value-only by construction —
+    is_garbage_value() keeps label text from ever being chosen as a field's VALUE in the
+    first place, extract_title_ul_kv() only ever emits a marking at its value-band
+    entity's own coordinates, and find_drawing_text_coordinates() searches by the
+    marking's own value text, never a label's — see the Phase 7 completion log for the
+    full read-through audit. This function exists for the one path with no
+    deterministic guarantee: Generator B's Gemini-vision visual_bbox coordinates,
+    steered by a prompt instruction ("mark VALUES, not labels") rather than enforced,
+    plus defense-in-depth against any fuzzy-match edge case the audit didn't anticipate.
+
+    For every title_block/bill_of_materials marking, null out any coordinates/
+    ref_coordinates that land within LABEL_PROXIMITY_TOLERANCE_MM of a known label-text
+    entity's own anchor point. A nulled coordinate is strictly safer than a wrong one —
+    the marking keeps its text/status/details, it just won't get a canvas pin, and can
+    still fall through to whatever fallback resolution runs after this (or end up with
+    no pin at all, which is a visible gap rather than a silently wrong one).
+    """
+    rev_label_anchors: Optional[list] = None
+    ref_label_anchors: Optional[list] = None
+
+    for m in clean_markings:
+        if m.get("category") not in ("title_block", "bill_of_materials"):
+            continue
+
+        if m.get("coordinates"):
+            if rev_label_anchors is None:
+                rev_label_anchors = _collect_label_anchors(rev_entities)
+            if _coincides_with_label(m["coordinates"], rev_label_anchors):
+                m["coordinates"] = None
+
+        if m.get("ref_coordinates"):
+            if ref_label_anchors is None:
+                ref_label_anchors = _collect_label_anchors(ref_entities)
+            if _coincides_with_label(m["ref_coordinates"], ref_label_anchors):
+                m["ref_coordinates"] = None

@@ -1,8 +1,10 @@
 import React from "react";
 import { Play, Sparkles, File, ArrowRightLeft, Activity, CheckCircle2, CircleDashed } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
+import { useRoomStore } from "../../stores/roomStore";
 import { ChecklistPanel } from "./ChecklistPanel";
 import { usePhysicalComparison } from "../../hooks/usePhysicalComparison";
+import { getComparisonStages, getComparisonMethodLabel } from "../../utils/comparisonStages";
 import { Button } from "../ui/Button";
 
 interface TwoDLeftPanelProps {
@@ -12,6 +14,7 @@ interface TwoDLeftPanelProps {
 export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
   const oldDrawing = useWorkspaceStore(s => s.oldDrawing);
   const newDrawing = useWorkspaceStore(s => s.newDrawing);
+  const activeRoom = useRoomStore(s => s.activeRoom);
 
   const {
     runPhysicalComparisonAI,
@@ -20,6 +23,16 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
     aiScanError,
     resetComparison
   } = usePhysicalComparison();
+
+  // Stage list/labels match whichever comparison_method this Room actually runs (see
+  // utils/comparisonStages.ts) — no longer a fixed 4-step sequence written for one
+  // generic AI call that doesn't describe what hybrid, rag, etc. each actually do.
+  const stages = getComparisonStages(activeRoom?.comparison_method);
+  const methodLabel = getComparisonMethodLabel(activeRoom?.comparison_method);
+  const currentStageIndex = stages.findIndex(s => s.id === aiScanProgress);
+  const progressPct = currentStageIndex >= 0
+    ? Math.round(((currentStageIndex + 1) / stages.length) * 95)
+    : 5;
 
   if (!(currentNav === "workspace" && oldDrawing && newDrawing)) {
     return null;
@@ -94,18 +107,15 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
 
           <div className="flex items-center gap-3 mb-10 border-b border-white/10 pb-5">
             <Activity size={24} className="text-accent-cyan animate-pulse" />
-            <h4 className="text-sm font-bold text-zinc-100 uppercase tracking-widest">Analysis in Progress</h4>
+            <h4 className="text-sm font-bold text-zinc-100 uppercase tracking-widest">
+              Analysis in Progress <span className="text-accent-cyan/70 normal-case font-semibold">&middot; {methodLabel}</span>
+            </h4>
           </div>
 
           <div className="flex flex-col gap-5">
-            {[
-              { id: "scanning_ref", label: "Scanning Original Drawing", activeSteps: ["scanning_ref", "extracting", "scanning_rev", "comparing"] },
-              { id: "extracting", label: "Extracting Metadata", activeSteps: ["extracting", "scanning_rev", "comparing"] },
-              { id: "scanning_rev", label: "Scanning KMTI Drawing", activeSteps: ["scanning_rev", "comparing"] },
-              { id: "comparing", label: "Comparing Matches", activeSteps: ["comparing"] }
-            ].map((step) => {
+            {stages.map((step, idx) => {
               const isActive = aiScanProgress === step.id;
-              const isPast = step.activeSteps.includes(aiScanProgress) && !isActive;
+              const isPast = currentStageIndex > idx;
 
               return (
                 <div key={step.id} className={`flex items-center gap-4 p-4 rounded-lg bg-black/30 border transition-all duration-300 ${isActive ? 'border-accent-cyan/40 shadow-lg scale-[1.02]' : 'border-transparent'}`}>
@@ -132,19 +142,20 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
           <div className="mt-12">
             <div className="flex justify-between text-xs text-zinc-400 font-medium mb-3">
               <span className="uppercase tracking-widest">Overall Progress</span>
-              <span>
-                {aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "95%"}
-              </span>
+              <span>{progressPct}%</span>
             </div>
             <div className="w-full h-2.5 bg-black/60 rounded-full overflow-hidden border border-white/5">
               <div
                 className="h-full bg-accent-cyan shadow-[0_0_10px_rgba(0,229,255,0.5)]"
                 style={{
-                  width: aiScanProgress === "scanning_ref" ? "25%" : aiScanProgress === "extracting" ? "50%" : aiScanProgress === "scanning_rev" ? "75%" : "95%",
+                  width: `${progressPct}%`,
                   transition: "width 0.4s ease-out"
                 }}
               ></div>
             </div>
+            <p className="mt-3 text-[11px] text-zinc-600 leading-relaxed">
+              Progress reflects the stage this method is expected to be in, not a live signal from the backend — the actual request is still running in parallel.
+            </p>
           </div>
         </div>
       )}

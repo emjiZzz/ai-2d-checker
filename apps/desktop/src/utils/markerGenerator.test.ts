@@ -60,4 +60,43 @@ describe('markerGenerator tests', () => {
     expect(result[1].pen_type).toBe('ai_orange');
     expect(result[1].is_resolved).toBe(false);
   });
+
+  it('passes `feature` through untouched, and leaves it undefined when the backend omits it', () => {
+    const rawMarkings = [
+      {
+        text_content: '45',
+        details: 'checked',
+        coordinates: [500, 500] as [number, number],
+        ref_coordinates: [500, 500] as [number, number],
+        status: 'MATCHED',
+        category: 'title_block',
+        feature: 'scale'
+      },
+      {
+        text_content: '2',
+        details: 'checked',
+        coordinates: [600, 500] as [number, number],
+        ref_coordinates: [600, 500] as [number, number],
+        status: 'MATCHED',
+        category: 'bill_of_materials'
+        // no `feature` — simulates a pre-Phase-5 cached payload
+      }
+    ];
+
+    const bounds = { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
+
+    const result = generateComparisonMarkings({
+      rawMarkings,
+      textEntities: [],
+      refTextEntities: [],
+      drawing: { id: 'rev', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      oldDrawing: { id: 'base', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      bounds,
+      refBounds: bounds
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[0].feature).toBe('scale');
+    expect(result[1].feature).toBeUndefined();
+  });
 });

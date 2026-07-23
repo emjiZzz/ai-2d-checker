@@ -25,7 +25,7 @@ class Room(Document):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_opened_at: datetime | None = Field(None, description="Updated each time the room is opened")
-    comparison_method: Literal["rag", "rag_ai", "ai_vision"] = Field("rag", description="Method used for physical comparison in this room")
+    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = Field("rag", description="Method used for physical comparison in this room")
     
 
     # Per-room data isolation

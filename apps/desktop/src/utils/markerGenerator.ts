@@ -13,6 +13,9 @@ export interface RawViolation {
   status?: string;
   visual_bbox?: [number, number, number, number];
   ref_visual_bbox?: [number, number, number, number];
+  // Sub-item taxonomy key within `category` (docs/checklist-taxonomy-grouping-
+  // implementation-plan.md) — e.g. category="title_block", feature="scale".
+  feature?: string;
 }
 
 export interface GeneratorParams {
@@ -204,6 +207,7 @@ export const generateComparisonMarkings = ({
       if (marking.status === "REMOVED") penType = "ai_red";
       else if (marking.status === "CHANGED") penType = "ai_orange";
       else if (marking.status === "ADDED") penType = "checker_blue";
+      else if (marking.status === "CONFLICT") penType = "ai_conflict";
 
       mappedMarkings.push({
         id: `phys_chk_${index}_inst_${i}_${Date.now()}`,
@@ -219,7 +223,14 @@ export const generateComparisonMarkings = ({
         ref_bbox,
         pen_type: penType,
         is_resolved: marking.status === "MATCHED",
-        original_value: marking.original_value
+        original_value: marking.original_value,
+        // hybrid-only provenance (docs/hybrid-comparison-engine-implementation-plan.md,
+        // Phase 6) — undefined for rag/rag_ai/ai_vision markings.
+        verification: marking.verification,
+        origin: marking.origin,
+        // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,
+        // Phase 5) — pass-through only, undefined when the backend didn't set one.
+        feature: marking.feature
       });
     }
   });
