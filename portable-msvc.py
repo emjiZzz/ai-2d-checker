@@ -305,7 +305,17 @@ with tempfile.TemporaryDirectory(dir=DOWNLOADS) as d:
 ### versions
 
 msvcv = first((OUTPUT / "VC/Tools/MSVC").glob("*")).name
-sdkv = first((OUTPUT / "Windows Kits/10/bin").glob("*")).name
+sdk_bin = OUTPUT / "Windows Kits/10/bin"
+if not sdk_bin.exists() or not list(sdk_bin.glob("*")):
+  sys_sdk_bin = Path("C:/Program Files (x86)/Windows Kits/10/bin")
+  if sys_sdk_bin.exists():
+    sdkv_folder = first([p for p in sys_sdk_bin.glob("10.*") if p.is_dir()])
+    sdkv = sdkv_folder.name if sdkv_folder else "10.0.26100.0"
+  else:
+    sdkv = "10.0.26100.0"
+else:
+  sdkv = first(sdk_bin.glob("*")).name
+
 
 
 # place debug CRT runtime files into MSVC bin folder (not what real Visual Studio installer does... but is reasonable)

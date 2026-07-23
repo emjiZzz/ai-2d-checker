@@ -15,7 +15,7 @@ $port      = 27017
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 
 Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "         AI-2D-Checker — MongoDB Launcher            " -ForegroundColor Cyan
+Write-Host "         AI-2D-Checker -- MongoDB Launcher            " -ForegroundColor Cyan
 Write-Host "=====================================================" -ForegroundColor Cyan
 Write-Host "  Data dir : $dataDir" -ForegroundColor Gray
 Write-Host "  Log file : $logFile" -ForegroundColor Gray
@@ -25,7 +25,7 @@ Write-Host ""
 # Check if MongoDB is already running on port 27017
 $existing = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Host "✅ MongoDB is already running on port $port — nothing to do." -ForegroundColor Green
+    Write-Host "[OK] MongoDB is already running on port $port -- nothing to do." -ForegroundColor Green
     exit 0
 }
 
@@ -43,8 +43,8 @@ do {
 } while (-not $conn -and $attempts -lt 15)
 
 if ($conn) {
-    Write-Host "✅ MongoDB started successfully on port $port" -ForegroundColor Green
+    Write-Host "[OK] MongoDB started successfully on port $port" -ForegroundColor Green
 } else {
-    Write-Host "❌ MongoDB failed to start. Check log at: $logFile" -ForegroundColor Red
+    Write-Host "[FAIL] MongoDB failed to start. Check log at: $logFile" -ForegroundColor Red
     exit 1
 }

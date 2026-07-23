@@ -25,10 +25,10 @@ Write-Host "Activating Python Virtual Environment..." -ForegroundColor Yellow
 $activateScript = Join-Path $venvDir "Scripts\Activate.ps1"
 & $activateScript
 
-# Install / update requirements
-Write-Host "Verifying backend dependencies..." -ForegroundColor Yellow
-py -m pip install --upgrade pip
-pip install -r (Join-Path $PSScriptRoot "requirements.txt")
+# Verify backend dependencies
+# Write-Host "Verifying backend dependencies..." -ForegroundColor Yellow
+# python -m pip install --upgrade pip
+# pip install -r (Join-Path $PSScriptRoot "requirements.txt")
 
 # Determine port from Env or default
 $envFile = Join-Path $PSScriptRoot "..\..\.env"
