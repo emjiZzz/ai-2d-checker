@@ -159,12 +159,12 @@ export const SystemDiagnostics: React.FC = () => {
                 <div className="text-xs text-text-muted">Document Storage & Registries</div>
               </div>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.mongodb ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}>
+            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.mongodb ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-bg-sidebar border-border-color text-text-muted'}`}>
               {diagnostics?.mongodb ? 'OPERATIONAL' : 'UNKNOWN'}
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-bg-dark rounded-lg border border-border-color">
+          <div className="flex items-center justify-between p-4 bg-bg-sidebar rounded-lg border border-border-color">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
                 <Server className="text-purple-500" size={18} />
@@ -174,12 +174,12 @@ export const SystemDiagnostics: React.FC = () => {
                 <div className="text-xs text-text-muted">File Persistence & Caching</div>
               </div>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.storage_root ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}>
+            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.storage_root ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-bg-sidebar border-border-color text-text-muted'}`}>
               {diagnostics?.storage_root ? 'OPERATIONAL' : 'UNKNOWN'}
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-bg-dark rounded-lg border border-border-color">
+          <div className="flex items-center justify-between p-4 bg-bg-sidebar rounded-lg border border-border-color">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
                 <Cpu className="text-indigo-500" size={18} />
@@ -189,7 +189,7 @@ export const SystemDiagnostics: React.FC = () => {
                 <div className="text-xs text-text-muted">Vision & Audit Engine API</div>
               </div>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.gemini_api ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'}`}>
+            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.gemini_api ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-bg-sidebar border-border-color text-text-muted'}`}>
               {diagnostics?.gemini_api ? 'OPERATIONAL' : 'UNKNOWN'}
             </div>
           </div>

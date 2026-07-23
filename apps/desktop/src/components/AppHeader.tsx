@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Moon, Sun, LogOut, Minus, Square, X, Cpu, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
+import { Moon, Sun, LogOut, Minus, Square, X, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useThemeStore } from "../stores/themeStore";
 import { useNavStore } from "../stores/navStore";
@@ -14,29 +14,25 @@ interface NavTabProps {
   label: string;
   icon: LucideIcon;
   isActive: boolean;
+  activeColor: string;
   onSelect: (key: NavKey) => void;
 }
 
-// Single tab implementation shared by every nav item — the previous version
-// duplicated this ~40-line button 5x with only label/icon/color changing,
-// including one tab (3D Workspace) that broke the "one accent color" rule
-// with its own purple. Consolidated here, one accent (cyan) for all active
-// states.
-const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, onSelect }) => (
+const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, activeColor, onSelect }) => (
   <button
     role="tab"
     aria-selected={isActive}
     aria-controls={`${navKey}-panel`}
     tabIndex={0}
     onClick={() => onSelect(navKey)}
-    className={`flex items-center gap-1.5 h-full px-3.5 rounded-md text-xs font-semibold transition-all duration-200 cubic-bezier(0.16, 1, 0.3, 1) ${
+    className={`flex items-center gap-2 h-full px-3.5 py-1 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 shrink-0 ${
       isActive
-        ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-accent-cyan border border-cyan-500/30 shadow-[0_0_12px_-2px_rgba(0,229,255,0.25)]"
-        : "text-text-muted hover:text-text-primary hover:bg-white/5 border border-transparent"
+        ? "text-text-primary font-bold"
+        : "text-text-muted hover:text-text-primary"
     }`}
   >
-    <Icon size={14} className={`transition-transform duration-200 ${isActive ? "scale-110" : ""}`} />
-    {label}
+    <Icon size={15} className={`transition-transform duration-200 shrink-0 ${isActive ? `${activeColor} scale-110` : ""}`} />
+    <span className="whitespace-nowrap">{label}</span>
   </button>
 );
 
@@ -63,9 +59,9 @@ export const AppHeader: React.FC = () => {
 
   const getActiveLayoutIcon = () => {
     switch (activeLayoutPreset) {
-      case 'left': return <PanelLeft size={15} />;
-      case 'right': return <PanelRight size={15} />;
-      default: return <Columns size={15} />;
+      case 'left': return <PanelLeft size={16} />;
+      case 'right': return <PanelRight size={16} />;
+      default: return <Columns size={16} />;
     }
   };
 
@@ -86,18 +82,17 @@ export const AppHeader: React.FC = () => {
   return (
     <div
       data-tauri-drag-region
-      className="flex justify-between items-center h-11 glass-header select-none relative z-[9999]"
+      className="flex justify-between items-center h-14 bg-bg-topbar border-b border-border-color select-none relative z-[9999] px-3"
     >
       {/* LEFT: Branding */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-2.5 px-4 h-full cursor-default"
+        className="flex items-center gap-3 px-3 h-full cursor-default"
       >
-        <div className="relative flex items-center justify-center p-1 rounded-lg bg-accent-cyan/10 border border-accent-cyan/20">
-          <Cpu size={16} className="text-accent-cyan animate-pulse" />
-          <div className="absolute inset-0 rounded-lg bg-accent-cyan/20 blur-sm -z-10" />
+        <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-accent-cyan/10 border border-accent-cyan/15">
+          <Box size={20} strokeWidth={1.75} className="text-accent-cyan" />
         </div>
-        <span className="text-xs font-black tracking-wider uppercase text-text-primary bg-clip-text text-transparent bg-gradient-to-r from-text-primary to-text-secondary">
+        <span className="text-sm font-black tracking-wider uppercase text-text-primary">
           KMTI Checker
         </span>
       </div>
@@ -111,15 +106,15 @@ export const AppHeader: React.FC = () => {
           <div
             role="tablist"
             aria-label="Workspace Navigation"
-            className="flex gap-1 h-[32px] p-0.5 bg-black/40 border border-white/5 rounded-lg backdrop-blur-md"
+            className="flex items-center gap-[6px] h-[40px] px-2"
           >
-            <NavTab navKey="workspace" label="2D Workspace" icon={Compass} isActive={currentNav === "workspace"} onSelect={setCurrentNav} />
-            <NavTab navKey="3d-workspace" label="3D Workspace" icon={Box} isActive={currentNav === "3d-workspace"} onSelect={setCurrentNav} />
+            <NavTab navKey="workspace" label="2D Workspace" icon={Compass} activeColor="text-accent-cyan" isActive={currentNav === "workspace"} onSelect={setCurrentNav} />
+            <NavTab navKey="3d-workspace" label="3D Workspace" icon={Box} activeColor="text-violet-400" isActive={currentNav === "3d-workspace"} onSelect={setCurrentNav} />
             {user?.role === "admin" && (
-              <NavTab navKey="standards" label="Standards" icon={Bookmark} isActive={currentNav === "standards"} onSelect={setCurrentNav} />
+              <NavTab navKey="standards" label="Standards" icon={Bookmark} activeColor="text-rose-400" isActive={currentNav === "standards"} onSelect={setCurrentNav} />
             )}
-            <NavTab navKey="history" label="History" icon={History} isActive={currentNav === "history"} onSelect={setCurrentNav} />
-            <NavTab navKey="settings" label="Settings" icon={Settings} isActive={currentNav === "settings"} onSelect={setCurrentNav} />
+            <NavTab navKey="history" label="History" icon={History} activeColor="text-amber-400" isActive={currentNav === "history"} onSelect={setCurrentNav} />
+            <NavTab navKey="settings" label="Settings" icon={Settings} activeColor="text-slate-500" isActive={currentNav === "settings"} onSelect={setCurrentNav} />
           </div>
         )}
       </div>
@@ -127,9 +122,9 @@ export const AppHeader: React.FC = () => {
       {/* RIGHT: User Info & Actions */}
       <div className="flex items-center h-full">
         {isAuthenticated && (
-          <div className="flex items-center gap-3 h-6 pr-4 mr-2 border-r border-border-color/50">
+          <div className="flex items-center gap-3 h-6 pr-4 mr-2 border-r border-border-color">
             {/* User Profile Badge */}
-            <div className="flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+            <div className="flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-bg-card border border-border-color">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[11px] font-medium text-text-secondary">
                 {user?.username || "Engineer"}
@@ -145,7 +140,7 @@ export const AppHeader: React.FC = () => {
                   className={`flex p-1.5 rounded-md border transition-all duration-200 ${
                     isLayoutMenuOpen
                       ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30"
-                      : "text-text-muted border-white/5 hover:text-text-primary hover:bg-white/5 hover:border-white/10"
+                      : "text-text-muted border-border-color hover:text-text-primary hover:bg-sidebar-item-hover"
                   }`}
                 >
                   {getActiveLayoutIcon()}
@@ -156,7 +151,7 @@ export const AppHeader: React.FC = () => {
                     <button
                       onClick={() => { setActiveLayoutPreset('grid'); setIsLayoutMenuOpen(false); }}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                        activeLayoutPreset === 'grid' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                        activeLayoutPreset === 'grid' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                     >
                       <Columns size={14} /> Default Grid
@@ -164,7 +159,7 @@ export const AppHeader: React.FC = () => {
                     <button
                       onClick={() => { setActiveLayoutPreset('left'); setIsLayoutMenuOpen(false); }}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                        activeLayoutPreset === 'left' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                        activeLayoutPreset === 'left' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                     >
                       <PanelLeft size={14} /> Left Panel Focus
@@ -172,7 +167,7 @@ export const AppHeader: React.FC = () => {
                     <button
                       onClick={() => { setActiveLayoutPreset('right'); setIsLayoutMenuOpen(false); }}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                        activeLayoutPreset === 'right' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                        activeLayoutPreset === 'right' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                     >
                       <PanelRight size={14} /> Right Panel Focus
@@ -186,7 +181,7 @@ export const AppHeader: React.FC = () => {
             <button
               onClick={toggleTheme}
               title="Toggle Theme"
-              className="flex p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-all duration-150 active:scale-95"
+              className="flex p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover transition-all duration-150 active:scale-95"
             >
               {theme === "hc-dark" ? <Moon size={15} /> : <Sun size={15} />}
             </button>
@@ -204,13 +199,13 @@ export const AppHeader: React.FC = () => {
         <div className="flex h-full">
           <button
             onClick={handleMinimize}
-            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-white/10 hover:text-text-primary transition-colors"
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors"
           >
             <Minus size={15} />
           </button>
           <button
             onClick={handleToggleMaximize}
-            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-white/10 hover:text-text-primary transition-colors"
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors"
           >
             <Square size={13} />
           </button>

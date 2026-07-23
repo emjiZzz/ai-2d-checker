@@ -104,7 +104,9 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         : "border-purple-500 bg-purple-500/5 shadow-[inset_0_0_10px_rgba(139,92,246,0.1)] data-[theme=hc-dark]:border-purple-400 data-[theme=hc-dark]:bg-purple-500/6";
   }
 
-  const containerClass = `relative w-full h-full transition-all duration-250 ease-out flex flex-col items-center justify-center p-5 box-border overflow-hidden bg-transparent border border-dashed border-white/5 data-[theme=hc-light]:border-black/5 group ${borderHover} ${draggingStyles}`;
+  const containerClass = `relative w-full h-full transition-all duration-250 ease-out flex flex-col items-center justify-center p-5 box-border overflow-hidden bg-transparent group ${borderHover}`;
+
+  const dropzoneBoxClass = `w-full flex flex-col items-center text-center gap-3 py-8 px-6 rounded-2xl border-2 border-dashed border-border-color transition-all duration-250 ease-out ${draggingStyles}`;
 
   return (
     <div
@@ -141,44 +143,53 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       />
 
       {uploadState === "idle" && (
-        <div className="flex flex-col items-center text-center gap-3">
-          <div
-            className={`w-8 h-8 rounded-full bg-white/2 border border-border-color flex items-center justify-center text-text-muted transition-all duration-250 group-hover:-translate-y-0.5 ${
-              side === "old"
-                ? "group-hover:border-accent-cyan group-hover:text-accent-cyan group-hover:bg-blue-600/6"
-                : "group-hover:border-purple-500 group-hover:text-purple-400 group-hover:bg-purple-500/6"
-            }`}
-          >
-            <svg
-              style={{ width: "14px", height: "14px" }}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-            </svg>
-          </div>
-          <p className="text-xs font-semibold text-text-primary m-0">
-            Drag & drop or{" "}
-            <span
-              className={
+        <div className="flex flex-col items-center text-center gap-4 w-full max-w-[380px]">
+          <div className={dropzoneBoxClass}>
+            <div
+              className={`w-9 h-9 rounded-full bg-white/2 border border-border-color flex items-center justify-center text-text-muted transition-all duration-250 group-hover:-translate-y-0.5 ${
                 side === "old"
-                  ? "text-accent-cyan underline font-bold"
-                  : "text-purple-400 underline font-bold"
-              }
+                  ? "group-hover:border-accent-cyan group-hover:text-accent-cyan group-hover:bg-blue-600/6"
+                  : "group-hover:border-purple-500 group-hover:text-purple-400 group-hover:bg-purple-500/6"
+              }`}
             >
-              browse
-            </span>
-          </p>
-          <p className="text-xs text-text-muted mt-1">
-            {currentNav === "3d-workspace"
-              ? "STEP, IGES, ICD, SolidWorks (No size limit)"
-              : "DWG, DXF, PDF (No size limit)"}
-          </p>
-          <div 
+              <svg
+                style={{ width: "14px", height: "14px" }}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+              </svg>
+            </div>
+            <p className="text-xs font-semibold text-text-primary m-0">
+              Drag & drop or{" "}
+              <span
+                className={
+                  side === "old"
+                    ? "text-accent-cyan underline font-bold"
+                    : "text-purple-400 underline font-bold"
+                }
+              >
+                browse
+              </span>
+            </p>
+            <p className="text-xs text-text-muted font-medium">
+              {currentNav === "3d-workspace"
+                ? "STEP · IGES · ICD · SolidWorks"
+                : "DWG · DXF · PDF"}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 w-full">
+            <div className="flex-1 h-px bg-border-color" />
+            <span className="text-[11px] text-text-muted">or</span>
+            <div className="flex-1 h-px bg-border-color" />
+          </div>
+
+          <div
             data-no-file-trigger
-            className="mt-2 text-xs flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-full border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-colors"
+            className="text-xs flex items-center justify-center gap-1.5 py-2 px-4 rounded-full border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-colors cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               setShowLibraryPicker(true);

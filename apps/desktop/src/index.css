@@ -88,12 +88,14 @@
   --color-warning: var(--warning);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: 'Outfit', 'Noto Sans JP', 'Yu Gothic', 'MS Gothic', 'Meiryo', sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Outfit', 'Noto Sans JP', 'Yu Gothic', 'MS Gothic', 'Meiryo', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
 body {
@@ -171,12 +173,14 @@ body {
   background-color: rgba(255, 255, 255, 0.15);
   border-radius: 10px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 229, 255, 0.4);
+
+[data-theme="hc-light"] ::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
 }
-html, body, [class*="overflow-"] {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+[data-theme="hc-light"] html,
+[data-theme="hc-light"] body,
+[data-theme="hc-light"] [class*="overflow-"] {
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
 }
 
 /* Accessibility: Focus Visible */
@@ -187,31 +191,31 @@ html, body, [class*="overflow-"] {
 }
 
 @utility glass-panel {
-  background: rgba(24, 24, 27, 0.7);
+  background: var(--bg-sidebar);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
 }
 
 @utility glass-header {
-  background: rgba(24, 24, 27, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-color);
 }
 
-@utility glow-cyan {
-  box-shadow: 0 0 15px -3px rgba(0, 229, 255, 0.35);
+@utility card-panel {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
 }
 
-@utility interactive-scale {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  &:hover {
-    transform: translateY(-1px);
-  }
-  &:active {
-    transform: translateY(0) scale(0.98);
-  }
+@utility input-field {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
 }
 
 @theme {
@@ -241,14 +245,26 @@ html, body, [class*="overflow-"] {
   }
 }
 
-/* FlexLayout Custom Theme Overrides */
+/* FlexLayout Custom Theme Overrides.
+   !important is required here: flexlayout-react/style/dark.css (imported
+   directly by TwoDWorkspace) declares its own hardcoded `.flexlayout__layout`
+   variable block on the same selector. Depending on module/CSS bundling
+   order it can land after this block and win the cascade on equal
+   specificity, which is why the tab bar stayed dark even in light theme. */
 .flexlayout__layout {
-  --color-text: var(--text-primary);
-  --color-background: var(--bg-dark);
-  --color-base: var(--bg-sidebar);
-  --color-1: var(--bg-dark);
-  --color-2: var(--bg-card);
-  --color-3: var(--border-color);
+  --color-text: var(--text-primary) !important;
+  --color-background: var(--bg-dark) !important;
+  --color-base: var(--bg-sidebar) !important;
+  --color-1: var(--bg-dark) !important;
+  --color-2: var(--bg-card) !important;
+  --color-3: var(--border-color) !important;
+  --color-4: var(--sidebar-item-hover) !important;
+  --color-5: var(--border-color) !important;
+  --color-6: var(--bg-sidebar) !important;
+  --color-tab-selected: var(--text-primary) !important;
+  --color-tab-unselected: var(--text-muted) !important;
+  --color-icon: var(--text-muted) !important;
+  --color-overflow: var(--text-muted) !important;
   --color-drag1: rgba(0, 229, 255, 0.2);
   --color-drag2: rgba(0, 229, 255, 0.4);
 }
