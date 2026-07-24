@@ -26,6 +26,8 @@ class SafeRedactor:
                 message = message.replace(settings.API_TOKEN, "********")
             if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY in message:
                 message = message.replace(settings.GEMINI_API_KEY, "********")
+            if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY in message:
+                message = message.replace(settings.OPENAI_API_KEY, "********")
         except Exception:
             pass  # Avoid circular load crashes during bootstrap
         return message

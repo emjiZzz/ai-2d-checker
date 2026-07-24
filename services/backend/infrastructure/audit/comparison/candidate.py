@@ -50,6 +50,27 @@ class ComparisonCandidate(BaseModel):
     # taxonomy.OTHER_FEATURE_KEY for the always-valid catch-all fallback.
     feature: Optional[str] = None
 
+    @classmethod
+    def from_canvas_marking(
+        cls,
+        marking: dict,
+        origin: Literal["deterministic", "ai_vision"]
+    ) -> "ComparisonCandidate":
+        """
+        Factory helper to construct a ComparisonCandidate from a canvas marking dict.
+        """
+        data = dict(marking)
+        data["origin"] = origin
+        if "resolution_method" not in data or not data["resolution_method"]:
+            if data.get("coordinates") and data.get("entity_id"):
+                data["resolution_method"] = "entity_handle"
+            elif data.get("coordinates"):
+                data["resolution_method"] = "visual_bbox_fallback"
+            else:
+                data["resolution_method"] = "unresolved"
+        valid_fields = {k: v for k, v in data.items() if k in cls.model_fields}
+        return cls(**valid_fields)
+
 
 def to_marking_dict(
     candidate: ComparisonCandidate,

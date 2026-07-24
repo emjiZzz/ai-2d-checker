@@ -303,9 +303,14 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             
             let matchesText = false;
             if (descLower) {
-              if (kmtiText && (descLower === kmtiText || descLower.includes(kmtiText) || kmtiText.includes(descLower))) {
-                matchesText = true;
-              } else if (origText && (descLower === origText || descLower.includes(origText) || origText.includes(descLower))) {
+              const isMatch = (target: string) => {
+                if (!target) return false;
+                if (target.length <= 2 || /^[-_./\\]+$/.test(target)) {
+                  return descLower === target;
+                }
+                return descLower === target || descLower.includes(target) || target.includes(descLower);
+              };
+              if (isMatch(kmtiText) || isMatch(origText)) {
                 matchesText = true;
               }
             }

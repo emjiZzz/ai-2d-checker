@@ -71,6 +71,13 @@ if (Test-Path ".env") {
     } else {
         Log-Status "Gemini API Key" "PASS" "Gemini API Key value is set."
     }
+
+    # Check for OpenAI API key
+    if ($envContent -match "OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE" -or $envContent -match "OPENAI_API_KEY=\s*$") {
+        Log-Status "OpenAI API Key" "WARN" "OpenAI API Key in '.env' remains unconfigured or placeholder."
+    } else {
+        Log-Status "OpenAI API Key" "PASS" "OpenAI API Key value is set."
+    }
 } else {
     Log-Status "Env File" "FAIL" "No local '.env' file found. Run setup-dev.ps1 to generate."
 }

@@ -72,6 +72,55 @@ def test_reconcile_category_mismatch_prevents_match_even_at_zero_distance():
     assert len(result.disputed) == 2
 
 
+# ─── reconciler.py — MATCH_RADIUS_MM / text-similarity bypass boundaries ───────────
+# Audit finding #3 (docs/refactoring-audit-2026-07-23.md): the base radius was widened
+# 5.0mm -> 35.0mm, plus a text-similarity bypass extends matching up to 65.0mm with a
+# distance discount, with no test previously pinning the new thresholds. These tests
+# lock in the *current* boundary behavior; they do not assert the specific values
+# (35.0 / 65.0 / 0.3) are the empirically-correct ones — see the reconciler.py comment
+# above MATCH_RADIUS_MM, which flags that basis as still needing confirmation.
+
+def test_reconcile_matches_beyond_old_5mm_radius_without_text_similarity():
+    """20mm apart, non-matching text: would have been a miss under the old 5.0mm
+    radius, but must match under the current plain (non-text-bypass) 35.0mm radius."""
+    det = [_candidate("FOO", "CHANGED", 0.0, 0.0)]
+    ai = [_candidate("BAR", "CHANGED", 20.0, 0.0, origin="ai_vision")]
+    result = reconcile_candidates(det, ai)
+    assert len(result.confirmed) == 1
+    assert len(result.disputed) == 0
+
+
+def test_reconcile_does_not_match_beyond_35mm_without_text_similarity():
+    """40mm apart with non-matching text: outside the plain 35.0mm radius and not
+    eligible for the wider text-similarity window, so must NOT match."""
+    det = [_candidate("FOO", "CHANGED", 0.0, 0.0)]
+    ai = [_candidate("BAR", "CHANGED", 40.0, 0.0, origin="ai_vision")]
+    result = reconcile_candidates(det, ai)
+    assert len(result.confirmed) == 0
+    assert len(result.disputed) == 2  # single-source on each side
+
+
+def test_reconcile_matches_up_to_65mm_when_text_content_matches():
+    """40mm apart but with matching normalized text (both reduce to '2', per
+    _normalize_core_text stripping the 'R' prefix): within the 65.0mm text-similarity
+    window, so it must match despite exceeding the plain 35.0mm radius."""
+    det = [_candidate("R2", "CHANGED", 0.0, 0.0)]
+    ai = [_candidate("R2", "CHANGED", 40.0, 0.0, origin="ai_vision")]
+    result = reconcile_candidates(det, ai)
+    assert len(result.confirmed) == 1
+    assert len(result.disputed) == 0
+
+
+def test_reconcile_does_not_match_beyond_65mm_even_with_text_similarity():
+    """70mm apart with matching text: beyond even the widened 65.0mm text-similarity
+    window, so it must not match regardless of text agreement."""
+    det = [_candidate("R2", "CHANGED", 0.0, 0.0)]
+    ai = [_candidate("R2", "CHANGED", 70.0, 0.0, origin="ai_vision")]
+    result = reconcile_candidates(det, ai)
+    assert len(result.confirmed) == 0
+    assert len(result.disputed) == 2
+
+
 # ─── hybrid_orchestrator.py::_confirmed_both_feature (checklist-taxonomy-grouping, ──
 # ─── Phase 4 — confirmed-both `feature` tie-break, decision 5) ─────────────────────
 

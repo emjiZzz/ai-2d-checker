@@ -10,6 +10,7 @@ export const SystemDiagnostics: React.FC = () => {
     mongodb: boolean;
     storage_root: boolean;
     gemini_api: boolean;
+    openai_api?: boolean;
   } | null>(null);
 
   const fetchDiagnostics = async () => {
@@ -23,7 +24,8 @@ export const SystemDiagnostics: React.FC = () => {
           setDiagnostics({
             mongodb: true,
             storage_root: true,
-            gemini_api: true
+            gemini_api: true,
+            openai_api: true
           });
         }
       } else {
@@ -191,6 +193,21 @@ export const SystemDiagnostics: React.FC = () => {
             </div>
             <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.gemini_api ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-bg-sidebar border-border-color text-text-muted'}`}>
               {diagnostics?.gemini_api ? 'OPERATIONAL' : 'UNKNOWN'}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-bg-sidebar rounded-lg border border-border-color">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-teal-500/10 flex items-center justify-center border border-teal-500/20">
+                <Cpu className="text-teal-500" size={18} />
+              </div>
+              <div>
+                <div className="font-semibold text-text-primary">OpenAI Models</div>
+                <div className="text-xs text-text-muted">GPT-4o Multimodal Engine API</div>
+              </div>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${diagnostics?.openai_api ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-bg-sidebar border-border-color text-text-muted'}`}>
+              {diagnostics?.openai_api ? 'OPERATIONAL' : 'CONFIGURED / STANDBY'}
             </div>
           </div>
         </div>

@@ -61,13 +61,19 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     const validatedLayers = React.useMemo(() => {
       const result: Record<string, EntityPayload[]> = {};
       Object.keys(layers).forEach((layerName) => {
-        const parseResult = z.array(entityPayloadSchema).safeParse(layers[layerName]);
-        if (!parseResult.success) {
-          console.error(`Invalid layer data for ${layerName}:`, parseResult.error);
-          result[layerName] = []; // fallback to empty array for corrupted layers
-        } else {
-          result[layerName] = parseResult.data;
+        const rawLayer = layers[layerName];
+        if (!Array.isArray(rawLayer)) {
+          result[layerName] = [];
+          return;
         }
+        result[layerName] = rawLayer.filter((item) => {
+          const res = entityPayloadSchema.safeParse(item);
+          if (!res.success) {
+            console.warn(`Filtering invalid entity in layer ${layerName}:`, res.error);
+            return false;
+          }
+          return true;
+        });
       });
       return result;
     }, [layers]);

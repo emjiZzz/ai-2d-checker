@@ -258,7 +258,11 @@ async def get_audit_session(id: str):
     summary="Delete an audit session and associated violations",
     dependencies=[Depends(get_auth_token)]
 )
-async def delete_audit_session(id: str, token: str = Depends(get_auth_token)):
+async def delete_audit_session(
+    id: str,
+    token: str = Depends(get_auth_token),
+    x_session_token: str | None = Header(None, alias="X-Session-Token")
+):
     """
     Soft deletes the specified audit session from MongoDB.
     """
@@ -266,9 +270,10 @@ async def delete_audit_session(id: str, token: str = Depends(get_auth_token)):
 
     username = None
     try:
-        from ...core.auth import verify_session_token
-        payload = verify_session_token(token)
-        username = payload.get("username")
+        if x_session_token:
+            from ...core.auth import verify_session_token
+            payload = verify_session_token(x_session_token)
+            username = payload.get("username")
     except Exception:
         pass
     
@@ -495,7 +500,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
         )
     except Exception as e:
         corr_id = correlation_id_var.get()
-        logger.error(f"[{corr_id}] Structured comparison failed ({method}): {str(e)}")
+        logger.error(f"[{corr_id}] Structured comparison failed ({method}): {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Structured comparison failed. Reference: {corr_id}"

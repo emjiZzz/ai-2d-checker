@@ -34,10 +34,23 @@ async def get_or_404(model, id: str, detail: str):
 async def get_current_user(x_session_token: str = Header(..., alias="X-Session-Token", description="Active session token")) -> "UserAccountDocument":
     from ..core.auth import verify_session_token
     from ..domain.models.user_account import UserAccountDocument
+    from ..domain.models.user_session import UserSessionDocument
     from ..logger import logger, correlation_id_var
     try:
         payload = verify_session_token(x_session_token)
         username = payload.get("username")
+
+        # A signature-valid, non-expired token can still have been explicitly
+        # revoked (logout, or an admin-initiated force-logout) — UserSessionDocument
+        # is the source of truth for that, HMAC validity alone only proves the
+        # token was legitimately issued at some point, not that it's still live.
+        session = await UserSessionDocument.find_one(UserSessionDocument.token == x_session_token)
+        if not session or not session.active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session has been revoked. Please log in again."
+            )
+
         user = await UserAccountDocument.find_one(UserAccountDocument.username == username)
         if not user or not user.active:
             raise HTTPException(

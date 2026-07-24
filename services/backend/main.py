@@ -131,6 +131,7 @@ async def health_check() -> dict:
         "services": {
             "mongodb": db_health["connected"],
             "storage_root": storage_diag["write_permission"],
-            "gemini_api": settings.GEMINI_API_KEY is not None and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE"
+            "gemini_api": settings.GEMINI_API_KEY is not None and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE",
+            "openai_api": settings.OPENAI_API_KEY is not None and settings.OPENAI_API_KEY != "YOUR_OPENAI_API_KEY_HERE"
         }
     }

@@ -29,233 +29,35 @@ router = APIRouter()
 async def upload_drawing(file: UploadFile = File(...)):
     """
     Enforces local secure authorization, checks file extension limits, streams file,
-    computes SHA-256 hash, and queues it for background ODA/DXF extraction.
+    computes SHA-256 hash, and queues it for background ODA/DXF extraction via DrawingIngestionService.
     """
-    filename = file.filename or ""
-    file_ext = filename.split(".")[-1].lower() if "." in filename else ""
-    
-    if file_ext not in ("dwg", "dxf", "pdf", "step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file format. Only proprietary .dwg, open .dxf drawings, .pdf files, 3D .step/.iges models, or iCAD .icd / SolidWorks sldprt/sldasm models are accepted."
-        )
+    from ...domain.services.drawing_ingestion_service import DrawingIngestionService
 
-    # Stream upload to temp folder within the secure sandbox
-    sha256 = hashlib.sha256()
-    total_size = 0
-    temp_filename = f"upload_{uuid.uuid4().hex}.tmp"
-    temp_upload_path = get_storage_root() / "temp" / temp_filename
-    
     try:
-        async with aiofiles.open(temp_upload_path, "wb") as out_file:
-            while chunk := await file.read(1024 * 1024):  # 1MB buffer
-                total_size += len(chunk)
-                if total_size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"Drawing file size exceeds maximum limit of {settings.MAX_FILE_SIZE_MB}MB."
-                    )
-                sha256.update(chunk)
-                await out_file.write(chunk)
+        drawing, job, is_duplicate = await DrawingIngestionService.process_ingestion(file)
+    except HTTPException:
+        raise
     except Exception as e:
-        if temp_upload_path.exists():
-            try:
-                temp_upload_path.unlink()
-            except Exception:
-                pass
-        if isinstance(e, HTTPException):
-            raise e
         corr_id = correlation_id_var.get()
-        logger.exception(f"[{corr_id}] Drawing upload failed while streaming to disk: {str(e)}")
+        logger.error(f"[{corr_id}] Drawing ingestion failed unexpectedly: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Drawing upload failed. Reference: {corr_id}"
         )
 
-    file_hash = sha256.hexdigest()
-    
-    # Check for duplicate Drawing hash in database
-    existing_drawing = await DrawingDocument.find_one(DrawingDocument.file_hash == file_hash)
-    if existing_drawing:
-        # If the drawing is already fully extracted and completed, don't nuke the caches or re-extract
-        if existing_drawing.status == "completed":
-            logger.info(f"Duplicate upload detected for completed drawing {existing_drawing.id}. Skipping re-extraction to preserve cache.")
-            
-            # Find the most recent job for this drawing to return in the response
-            existing_job = await ExtractionJob.find_one(ExtractionJob.drawing_id == str(existing_drawing.id), sort=[("created_at", -1)])
-            
-            # If temp file exists, clean it up since we don't need it
-            if temp_upload_path.exists():
-                try:
-                    temp_upload_path.unlink()
-                except Exception:
-                    pass
-                    
-            # Return early without deleting caches or re-queuing
-            job_response = None
-            if existing_job:
-                job_response = JobResponse(
-                    id=str(existing_job.id),
-                    drawing_id=existing_job.drawing_id,
-                    status=existing_job.status,
-                    error_message=existing_job.error_message,
-                    diagnostics=existing_job.diagnostics,
-                    conversion_duration_seconds=existing_job.conversion_duration_seconds,
-                    parsing_duration_seconds=existing_job.parsing_duration_seconds,
-                    total_duration_seconds=existing_job.total_duration_seconds,
-                    created_at=existing_job.created_at,
-                    started_at=existing_job.started_at,
-                    completed_at=existing_job.completed_at
-                )
-            else:
-                # Fallback if somehow there's no job
-                job_response = JobResponse(
-                    id=f"dummy-{existing_drawing.id}",
-                    drawing_id=str(existing_drawing.id),
-                    status="completed",
-                    diagnostics={},
-                    created_at=existing_drawing.created_at
-                )
-                
-            return StandardResponse(
-                success=True,
-                data=UploadResponse(
-                    drawing=DrawingResponse(
-                        id=str(existing_drawing.id),
-                        file_name=existing_drawing.file_name,
-                        file_path=existing_drawing.file_path,
-                        file_hash=existing_drawing.file_hash,
-                        file_size_bytes=existing_drawing.file_size_bytes,
-                        format=existing_drawing.format,
-                        status=existing_drawing.status,
-                        entity_counts=existing_drawing.entity_counts,
-                        metadata=existing_drawing.metadata,
-                        created_at=existing_drawing.created_at,
-                        updated_at=existing_drawing.updated_at
-                    ),
-                    job=job_response,
-                    is_duplicate=True
-                )
-            )
-
-        # If it failed or got stuck, we DO want to overwrite it and clear caches
-        # We need to overwrite the secure filename and update the document, just in case the previous ingestion left it in a broken state
-        secure_filename = f"{file_hash}.{file_ext}"
-        final_upload_path = get_storage_root() / "uploads" / secure_filename
-        
-        try:
-            # Move the new temp file to the secure location (overwriting if exists)
-            if final_upload_path.exists():
-                final_upload_path.unlink()
-            temp_upload_path.rename(final_upload_path)
-        except Exception:
-            # If rename fails, the original file might still be there, just delete the temp file
-            try:
-                temp_upload_path.unlink()
-            except Exception:
-                pass
-
-        # Force re-ingestion: Clear stale extracted entities to ensure fresh parsing logic is executed
-        await ExtractedEntity.find(ExtractedEntity.drawing_id == str(existing_drawing.id)).delete()
-        
-        # Clear stale comparison cache files from disk
-        try:
-            cache_dir = get_storage_root() / "cache"
-            if cache_dir.exists():
-                for f in cache_dir.glob("gemini_comparison_*.json"):
-                    if str(existing_drawing.id) in f.name:
-                        f.unlink()
-        except Exception as cache_del_err:
-            logger.warning(f"Could not clear comparison cache files on re-upload: {cache_del_err}")
-            
-        # Reset the drawing record properties for a clean extraction run
-        existing_drawing.status = "queued"
-        existing_drawing.entity_counts = {}
-        existing_drawing.metadata = {}
-        existing_drawing.file_path = f"uploads/{secure_filename}"
-        existing_drawing.format = file_ext
-        await existing_drawing.save()
-            
-        # Create a fresh extraction job
-        existing_job = ExtractionJob(drawing_id=str(existing_drawing.id), status="queued")
-        await existing_job.save()
-        
-        # Queue the drawing for fresh ODA conversion and DXF layout/block explosion parsing
-        await processing_queue.enqueue(str(existing_drawing.id), str(existing_job.id))
-            
-        return StandardResponse(
-            success=True,
-            data=UploadResponse(
-                drawing=DrawingResponse(
-                    id=str(existing_drawing.id),
-                    file_name=existing_drawing.file_name,
-                    file_path=existing_drawing.file_path,
-                    file_hash=existing_drawing.file_hash,
-                    file_size_bytes=existing_drawing.file_size_bytes,
-                    format=existing_drawing.format,
-                    status=existing_drawing.status,
-                    entity_counts=existing_drawing.entity_counts,
-                    metadata=existing_drawing.metadata,
-                    created_at=existing_drawing.created_at,
-                    updated_at=existing_drawing.updated_at
-                ),
-                job=JobResponse(
-                    id=str(existing_job.id),
-                    drawing_id=existing_job.drawing_id,
-                    status=existing_job.status,
-                    error_message=existing_job.error_message,
-                    diagnostics=existing_job.diagnostics,
-                    conversion_duration_seconds=existing_job.conversion_duration_seconds,
-                    parsing_duration_seconds=existing_job.parsing_duration_seconds,
-                    total_duration_seconds=existing_job.total_duration_seconds,
-                    created_at=existing_job.created_at,
-                    started_at=existing_job.started_at,
-                    completed_at=existing_job.completed_at
-                ),
-                is_duplicate=True
-            )
-        )
-
-    # Secure persistent placement inside storage/uploads sandbox
-    secure_filename = f"{file_hash}.{file_ext}"
-    final_upload_path = get_storage_root() / "uploads" / secure_filename
-    
-    try:
-        # Move temporary file to final sandboxed target path
-        if final_upload_path.exists():
-            final_upload_path.unlink()
-        temp_upload_path.rename(final_upload_path)
-    except Exception as e:
-        if temp_upload_path.exists():
-            try:
-                temp_upload_path.unlink()
-            except Exception:
-                pass
-        corr_id = correlation_id_var.get()
-        logger.exception(f"[{corr_id}] Failed to move uploaded drawing to secure storage: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to securely store uploaded drawing. Reference: {corr_id}"
-        )
-
-    # Normalize relative path inside workspace storage root
-    relative_path = os.path.relpath(final_upload_path, get_storage_root())
-
-    drawing = DrawingDocument(
-        file_name=filename,
-        file_path=relative_path,
-        file_hash=file_hash,
-        file_size_bytes=total_size,
-        format=file_ext,
-        status="queued"
+    job_response = JobResponse(
+        id=str(job.id),
+        drawing_id=job.drawing_id,
+        status=job.status,
+        error_message=job.error_message,
+        diagnostics=job.diagnostics,
+        conversion_duration_seconds=job.conversion_duration_seconds,
+        parsing_duration_seconds=job.parsing_duration_seconds,
+        total_duration_seconds=job.total_duration_seconds,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at
     )
-    await drawing.save()
-
-    job = ExtractionJob(drawing_id=str(drawing.id), status="queued")
-    await job.save()
-
-    # Enqueue task for background thread parsing
-    await processing_queue.enqueue(str(drawing.id), str(job.id))
 
     return StandardResponse(
         success=True,
@@ -273,20 +75,8 @@ async def upload_drawing(file: UploadFile = File(...)):
                 created_at=drawing.created_at,
                 updated_at=drawing.updated_at
             ),
-            job=JobResponse(
-                id=str(job.id),
-                drawing_id=job.drawing_id,
-                status=job.status,
-                error_message=job.error_message,
-                diagnostics=job.diagnostics,
-                conversion_duration_seconds=job.conversion_duration_seconds,
-                parsing_duration_seconds=job.parsing_duration_seconds,
-                total_duration_seconds=job.total_duration_seconds,
-                created_at=job.created_at,
-                started_at=job.started_at,
-                completed_at=job.completed_at
-            ),
-            is_duplicate=False
+            job=job_response,
+            is_duplicate=is_duplicate
         )
     )
 

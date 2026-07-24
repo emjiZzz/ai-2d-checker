@@ -1,3 +1,4 @@
+import asyncio
 import re
 from pathlib import Path
 
@@ -68,9 +69,9 @@ class ReportGenerator:
         validate_sandboxed_path(pdf_path)
         validate_sandboxed_path(xlsx_path)
         
-        # 3. Trigger individual layout compilers
-        PDFComplianceExporter.generate_pdf(pdf_path, session, drawing, standard, violations)
-        XLSXComplianceExporter.generate_xlsx(xlsx_path, session, drawing, standard, violations)
+        # 3. Trigger individual layout compilers off-thread to prevent event loop blocking
+        await asyncio.to_thread(PDFComplianceExporter.generate_pdf, pdf_path, session, drawing, standard, violations)
+        await asyncio.to_thread(XLSXComplianceExporter.generate_xlsx, xlsx_path, session, drawing, standard, violations)
         
         return {
             "pdf": pdf_path,

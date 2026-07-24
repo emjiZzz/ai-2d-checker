@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 import shutil
@@ -62,8 +63,8 @@ class StandardsLoader:
         if ext not in ("pdf", "txt", "md", "xlsx", "xls"):
             raise ValueError(f"Unsupported format: .{ext}. Standards must be PDF, TXT, Excel, or Markdown.")
 
-        # Compute secure hash
-        standard_hash = StandardsLoader.calculate_file_hash(src_file_path)
+        # Compute secure hash off-thread to avoid blocking event loop
+        standard_hash = await asyncio.to_thread(StandardsLoader.calculate_file_hash, src_file_path)
 
         # 2. Check for duplicate standard documents in Database
         existing = await StandardDocument.find_one(StandardDocument.standard_hash == standard_hash)
@@ -79,14 +80,14 @@ class StandardsLoader:
         dest_filename = f"{standard_hash}.{ext}"
         dest_path = standards_dir / dest_filename
         
-        # Avoid redundant copies
+        # Avoid redundant copies off-thread
         if not dest_path.exists():
-            shutil.copy2(src_file_path, dest_path)
+            await asyncio.to_thread(shutil.copy2, src_file_path, dest_path)
 
         relative_path = os.path.relpath(dest_path, settings.STORAGE_ROOT)
 
-        # 3. Parse and chunk document contents
-        chunks, parsed_meta = StandardsParser.parse_file(dest_path)
+        # 3. Parse and chunk document contents off-thread to prevent event loop stalls on heavy PDFs
+        chunks, parsed_meta = await asyncio.to_thread(StandardsParser.parse_file, dest_path)
 
         if not chunks:
             # If no chunks were extracted, insert a fallback general chunk to avoid empty standards
@@ -128,40 +129,17 @@ class StandardsLoader:
         if db_chunks:
             await StandardChunk.insert_many(db_chunks)
 
-        # --- PHASE 1.2: Write chunk embeddings to the local semantic vector index ---
-        # This closes the gap where RAG retrieval relied solely on MongoDB regex ($or keyword).
-        # From this point forward, newly ingested standard chunks are findable by cosine
-        # similarity, enabling true semantic retrieval in AuditOrchestrator._retrieve_lessons_learned().
-        try:
-            from ..ai.vectorstore.embedding_provider import EmbeddingProvider
-            from ..ai.vectorstore.lancedb_manager import LanceDBManager
-
-            provider = EmbeddingProvider()
-            db_manager = LanceDBManager()
-
-            texts = [c["content"] for c in chunks]
-            vectors = provider.embed_texts(texts)
-
-            vector_records = []
-            for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
-                vector_records.append({
-                    "vector": vec,
-                    "text": chunk["content"],
-                    "metadata": {
-                        "standard_id": str(doc.id),
-                        "standard_hash": standard_hash,
-                        "section_header": chunk["section_header"],
-                        "chunk_index": i,
-                        "page_number": chunk["metadata"].get("page_number", 1) if isinstance(chunk.get("metadata"), dict) else 1
-                    }
-                })
-
-            db_manager.write_embeddings("standards_reference", vector_records)
-            logger.info(f"Vector index: wrote {len(vector_records)} semantic embeddings for standard '{name}'.")
-
-        except Exception as vec_err:
-            # Non-fatal: MongoDB-backed chunks are already saved; vector index will be rebuilt on next reindex.
-            logger.warning(f"Vector indexing failed for standard '{name}' (non-fatal, continuing): {vec_err}")
+        # Delegate semantic vector indexing to dedicated vector indexer service, off-thread
+        # (embedding generation + LanceDB write are CPU/IO-bound and would otherwise block
+        # the event loop, same as the file-hash/parse calls above).
+        from ..ai.vectorstore.standards_indexer import StandardsVectorIndexer
+        await asyncio.to_thread(
+            StandardsVectorIndexer.index_standard_chunks,
+            doc_id=str(doc.id),
+            standard_hash=standard_hash,
+            name=name,
+            chunks=chunks
+        )
 
         logger.info(f"Ingested standard standard document '{name}' with {len(db_chunks)} parsed chunks successfully.")
         return doc, False

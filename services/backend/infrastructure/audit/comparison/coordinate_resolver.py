@@ -15,17 +15,27 @@ BOM_LABEL_KEYWORDS = [
 
 LABEL_PROXIMITY_TOLERANCE_MM = 3.0
 
+def _clean_text_for_anchor(raw_text: str) -> str:
+    if not raw_text:
+        return ""
+    t = raw_text.replace('\\P', ' ')
+    t = re.sub(r'\{[^}]*\}', '', t)
+    t = re.sub(r'\\[A-Za-z0-9\-~|.]+;', '', t)
+    return t.strip()
+
 def calc_anchor(e) -> list:
     ins = getattr(e, "geometry", {}).get("location") or getattr(e, "geometry", {}).get("insert") or getattr(e, "geometry", {}).get("text_point") or [0, 0, 0]
     height = e.properties.get("height", 3.0) if getattr(e, "properties", None) else 3.0
     bbox = e.properties.get("bbox", None) if getattr(e, "properties", None) else None
     if bbox and len(bbox) == 2:
         try:
-            return [bbox[1][0] + (height * 0.8), bbox[0][1] + (bbox[1][1] - bbox[0][1]) / 2.0]
+            return [bbox[1][0] + 1.5, bbox[0][1] + (bbox[1][1] - bbox[0][1]) / 2.0]
         except Exception:
             pass
-    text_len = len(e.properties.get("text", "")) if getattr(e, "properties", None) else 0
-    return [ins[0] + text_len * height * 0.6 + (height * 0.8), ins[1] + (height / 2.0)]
+    raw_text = e.properties.get("text", "") if getattr(e, "properties", None) else ""
+    clean_text = _clean_text_for_anchor(raw_text)
+    clean_len = min(len(clean_text), 12)
+    return [ins[0] + (clean_len * height * 0.35) + 1.5, ins[1] + (height / 2.0)]
 
 def resolve_marking_coordinates(
     clean_markings: List[Dict[str, Any]],

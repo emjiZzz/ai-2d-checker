@@ -144,14 +144,38 @@ export function useCanvasInteraction({
         ? (selectedViolation.coordinates || selectedViolation.ref_coordinates)
         : (selectedViolation.ref_coordinates || selectedViolation.coordinates);
 
-      if (coords) {
+      if (coords && Array.isArray(coords) && coords.length >= 2) {
         const [vx, vy] = coords;
-        const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
+
+        // Safety Guard 1: Ignore invalid, non-finite, or [0, 0] unanchored coordinates
+        if (!Number.isFinite(vx) || !Number.isFinite(vy) || (vx === 0 && vy === 0)) {
+          return;
+        }
+
+        const bounds = parseBounds(drawing?.metadata?.render_bounds);
+        const norm = getNormalization(bounds);
+
+        // Safety Guard 2: Verify coordinates are within rendering bounds area (+20% margin)
+        if (norm.hasBounds) {
+          const marginX = (norm.xmax - norm.xmin) * 0.2;
+          const marginY = (norm.ymax - norm.ymin) * 0.2;
+          if (vx < norm.xmin - marginX || vx > norm.xmax + marginX || vy < norm.ymin - marginY || vy > norm.ymax + marginY) {
+            console.warn("[Smart Navigation] Skipping camera auto-focus for out-of-bounds coordinates:", coords);
+            return;
+          }
+        }
+
         const stdX = (vx - norm.xmin) * norm.normScale;
         const vy_inverted = norm.hasBounds ? (norm.ymax + norm.ymin - vy) : vy;
         const stdY = (vy_inverted - norm.ymin) * norm.normScale;
 
-        const targetScale = 2.2;
+        let targetScale = 2.2;
+        if (bounds && norm.normScale) {
+          const drawingDim = Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+          if (drawingDim > 0) {
+            targetScale = Math.min(6.0, Math.max(1.5, (width * 0.45) / (drawingDim * norm.normScale)));
+          }
+        }
         const targetX = width / 2 - stdX * targetScale;
         const targetY = height / 2 - stdY * targetScale;
 
@@ -163,7 +187,8 @@ export function useCanvasInteraction({
   // Keyboard shortcut actions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
         return;
       }
 

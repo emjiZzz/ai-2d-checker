@@ -53,6 +53,8 @@ class Settings:
     
     # Secrets
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+    OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-5.4")
 
     # Gemini model tiers. Google churns model names/deprecations fast (gemini-2.0-flash
     # was shut down June 1 2026; gemini-2.5-pro/flash are deprecated, "no earlier than"

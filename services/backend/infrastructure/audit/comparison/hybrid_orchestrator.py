@@ -137,7 +137,16 @@ def _resolve_disputed(finding: DisputedFinding, verdict: Optional[dict]) -> dict
             return to_marking_dict(finding.det_candidate, verification="confirmed_single")
         if confirms == "B" and finding.ai_candidate is not None:
             return to_marking_dict(finding.ai_candidate, verification="confirmed_single")
+
     base = _base_candidate_for_finding(finding)
+
+    # Safety Guard: If original_value and text_content are identical (e.g. C5 == C5, R2 == R2),
+    # there is no difference — resolve as MATCHED instead of CONFLICT.
+    orig_val = (getattr(base, "original_value", "") or "").strip().lower()
+    text_val = (getattr(base, "text_content", "") or "").strip().lower()
+    if orig_val and text_val and orig_val == text_val:
+        return to_marking_dict(base, verification="corrected_to_matched", status_override="MATCHED")
+
     return to_marking_dict(base, verification="conflict", status_override="CONFLICT")
 
 
@@ -181,8 +190,9 @@ async def perform_hybrid_comparison(
             logger.warning(f"[hybrid] Failed to parse cached comparison, re-running: {cache_err}")
 
     api_key = os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", None)
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured.")
+    openai_key = os.environ.get("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
+    if not api_key and not openai_key:
+        raise ValueError("Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured.")
 
     # Generator A (no LLM call) and Generator B (one Gemini call) don't depend on each
     # other — run them concurrently instead of sequentially like the other methods do.

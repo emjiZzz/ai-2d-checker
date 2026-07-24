@@ -139,6 +139,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // Revoke the session server-side (best-effort) before wiping local state,
+    // so the token can't still be replayed against the API after this device
+    // says "logged out" — see services/backend/api/routers/auth.py::logout_user.
+    // Non-fatal on failure: an unreachable/offline backend must not block the
+    // user from logging out locally.
+    const { sessionToken } = get();
+    if (sessionToken) {
+      try {
+        const { backendUrl, apiToken } = useConnectionStore.getState();
+        const headers: Record<string, string> = { "X-Session-Token": sessionToken };
+        if (apiToken) {
+          headers["Authorization"] = `Bearer ${apiToken}`;
+        }
+        await fetch(`${backendUrl}/api/v1/auth/logout`, { method: "POST", headers });
+      } catch (err) {
+        console.warn("Failed to revoke session server-side:", err);
+      }
+    }
+
     try {
       await tauriInvoke("clear_session");
     } catch (err) {

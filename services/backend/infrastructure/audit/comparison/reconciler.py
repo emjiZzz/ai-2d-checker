@@ -7,7 +7,23 @@ from .candidate import ComparisonCandidate
 # Same match radius as the intra-generator dedup already used on AI markings
 # (full_ai_orchestrator.py's spatial dedup) — reused here for the cross-generator case,
 # per docs/hybrid-comparison-engine-implementation-plan.md, Phase 3 / section 1.3.
-MATCH_RADIUS_MM = 5.0
+import re
+
+# NOTE (docs/refactoring-audit-2026-07-23.md, finding #3): this was widened from the
+# original 5.0mm to 35.0mm, and the text-similarity bypass below extends matching to
+# 65.0mm with a 0.3x distance discount (see is_text_match usage in reconcile_candidates).
+# These three values (35.0 / 65.0 / 0.3) are an empirical tuning with no recorded
+# justification for why these specific numbers were chosen over others — if you're
+# revisiting this, confirm the basis (e.g. observed AI Vision coordinate error on a
+# specific drawing set) before changing them again, don't assume they're load-bearing
+# as-is. tests/test_hybrid_pipeline.py pins the current boundary behavior.
+MATCH_RADIUS_MM = 35.0
+
+def _normalize_core_text(text: str | None) -> str:
+    if not text:
+        return ""
+    # Strip common dimension symbols (Ø, ⌀, ø, R, C, spaces) to compare core value
+    return re.sub(r'[Ø⌀øRrCc\s]', '', text).strip().lower()
 
 
 @dataclass
@@ -88,10 +104,20 @@ def reconcile_candidates(
             if ai.category != det.category:
                 continue
             dist = _distance_mm(det, ai)
-            if dist is None or dist >= MATCH_RADIUS_MM:
+            if dist is None:
                 continue
-            if best_distance is None or dist < best_distance:
-                best_distance = dist
+
+            det_norm = _normalize_core_text(det.text_content) or _normalize_core_text(det.original_value)
+            ai_norm = _normalize_core_text(ai.text_content) or _normalize_core_text(ai.original_value)
+            is_text_match = bool(det_norm and ai_norm and (det_norm == ai_norm or det_norm in ai_norm or ai_norm in det_norm))
+
+            max_allowed = 65.0 if is_text_match else MATCH_RADIUS_MM
+            if dist >= max_allowed:
+                continue
+
+            effective_dist = dist * 0.3 if is_text_match else dist
+            if best_distance is None or effective_dist < best_distance:
+                best_distance = effective_dist
                 best_ai_idx = ai_idx
 
         if best_ai_idx is None:
@@ -105,6 +131,21 @@ def reconcile_candidates(
 
         if det.status == ai.status:
             result.confirmed.append(ReconciledFinding(det_candidate=det, ai_candidate=ai))
+        elif det.status == "MATCHED":
+            # If deterministic generator proved CAD text is identical at this location (e.g. C5 == C5),
+            # trust deterministic vector proof over AI hallucination/misclassification.
+            det_orig = _normalize_core_text(det.original_value) or _normalize_core_text(det.text_content)
+            det_txt = _normalize_core_text(det.text_content)
+            if det_orig and det_txt and det_orig == det_txt:
+                result.confirmed.append(ReconciledFinding(det_candidate=det, ai_candidate=det))
+            else:
+                result.disputed.append(
+                    DisputedFinding(
+                        finding_id=f"det-{det_idx}-ai-{best_ai_idx}",
+                        det_candidate=det,
+                        ai_candidate=ai,
+                    )
+                )
         else:
             result.disputed.append(
                 DisputedFinding(

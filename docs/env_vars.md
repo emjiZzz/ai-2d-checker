@@ -14,6 +14,8 @@ This document specifies the variables used in the workspace `.env` configuration
 | `GEMINI_MODEL_PRO` | Highest-reasoning Gemini tier, used for the full-AI structured drawing comparison pipeline. | `gemini-3.1-pro-preview` | **Low** |
 | `GEMINI_MODEL_FLASH` | Fast/interactive Gemini tier, used for Copilot chat streaming and title block OCR. | `gemini-3.5-flash` | **Low** |
 | `GEMINI_MODEL_FALLBACK` | Last-resort model tried if PRO/FLASH error out (deprecation, rate limit, overload). | `gemini-flash-latest` | **Low** |
+| `OPENAI_API_KEY` | Developer OpenAI API Key. | `YOUR_OPENAI_API_KEY_HERE` | **Critical** (Redacted automatically in logs) |
+| `OPENAI_MODEL` | Target OpenAI model node (e.g., `gpt-4o`, `gpt-4o-mini`). | `gpt-4o` | **Low** |
 | `STORAGE_ROOT` | Absolute or relative path to the persistent workspace storage root. | `./storage` | **Low** |
 | `MAX_FILE_SIZE_MB` | Upper limit boundary on drawing upload requests. | `500` | **Low** |
 | `ODA_CONVERTER_PATH`| Path to the local installation of the ODA File Converter. | `C:/Program Files/ODA/ODAFileConverter...` | **Low** |
@@ -27,7 +29,7 @@ This document specifies the variables used in the workspace `.env` configuration
 
 To prevent sensitive credentials or private tokens from ever leaking into diagnostics files or console stdout, the backend structured logger contains an automated redact filter.
 
-- **Monitored Variables**: `API_TOKEN` and `GEMINI_API_KEY`.
+- **Monitored Variables**: `API_TOKEN`, `GEMINI_API_KEY`, and `OPENAI_API_KEY`.
 - **Formatting Rule**: If a logged message contains either of these keys in plaintext, the logger automatically replaces them with a mask sequence: `********`.
 - **Diagnostics Masking**: In startup diagnostics print statements, sensitive properties are printed as a masked string using `mask_secret()` (e.g. `AI_3...4Fh9`).
 - **Dynamic Derivation**: No raw key-material is ever written to log traces.

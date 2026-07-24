@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import Any
 from ...domain.models.drawing_document import DrawingDocument
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
@@ -36,11 +37,18 @@ def load_drawing_png(drawing_id: str) -> bytes | None:
         logger.warning(f"Failed to load drawing PNG for Vision (non-fatal): {e}")
     return None
 
-def build_structured_context(entities: list, drawing: DrawingDocument) -> dict:
+def build_structured_context(arg1: Any, arg2: Any) -> dict:
     """
     Pre-processes raw entity logs into structured engineering segments
     to optimize LLM prompt readability and token sizes.
+    Supports both (entities, drawing) and (drawing, entities) parameter order.
     """
+    if isinstance(arg1, DrawingDocument):
+        drawing: DrawingDocument = arg1
+        entities: list = arg2
+    else:
+        entities: list = arg1
+        drawing: DrawingDocument = arg2
     texts = [e for e in entities if e.entity_type == "text"]
     dimensions = [e for e in entities if e.entity_type == "dimension"]
     blocks = [e for e in entities if e.entity_type == "block"]

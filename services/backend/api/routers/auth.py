@@ -79,6 +79,27 @@ async def login_user(request: LoginRequest):
     )
 
 
+@router.post(
+    "/auth/logout",
+    response_model=StandardResponse[dict],
+    summary="Revoke the current session token"
+)
+async def logout_user(x_session_token: str = Header(..., alias="X-Session-Token")):
+    """
+    Marks the presented session as inactive. This is deliberately independent of
+    get_current_user (no full HMAC/expiry gate) — an already-expired or otherwise
+    invalid token should still be able to be logged out client-side without the
+    server 401ing the logout request itself; lookup is by the stored token value.
+    Idempotent: logging out an already-inactive or unknown session still succeeds.
+    """
+    session = await UserSessionDocument.find_one(UserSessionDocument.token == x_session_token)
+    if session and session.active:
+        session.active = False
+        await session.save()
+
+    return StandardResponse(success=True, data={"message": "Logged out."})
+
+
 @router.get(
     "/auth/me",
     response_model=StandardResponse[UserAccountResponse],
@@ -254,6 +275,41 @@ async def update_enterprise_user(username: str, request: UpdateUserRequest):
             created_at=user.created_at,
             permissions=user.permissions
         )
+    )
+
+
+@router.post(
+    "/admin/users/{username}/revoke-sessions",
+    response_model=StandardResponse[dict],
+    summary="Force-logout a user by revoking all of their active sessions",
+    dependencies=[Depends(require_role("admin"))]
+)
+async def revoke_user_sessions(username: str):
+    """
+    Admin-initiated force-logout: deactivates every currently-active
+    UserSessionDocument for this username. The user's existing session
+    token(s) will be rejected by get_current_user on their next request,
+    regardless of remaining HMAC/expiry validity.
+    """
+    user = await UserAccountDocument.find_one(UserAccountDocument.username == username)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found."
+        )
+
+    active_sessions = await UserSessionDocument.find(
+        UserSessionDocument.username == username,
+        UserSessionDocument.active == True  # noqa: E712
+    ).to_list()
+
+    for session in active_sessions:
+        session.active = False
+        await session.save()
+
+    return StandardResponse(
+        success=True,
+        data={"message": f"Revoked {len(active_sessions)} active session(s) for '{username}'."}
     )
 
 

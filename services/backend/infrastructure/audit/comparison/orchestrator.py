@@ -202,9 +202,10 @@ async def generate_deterministic_candidates(
 
     # Retrieve API key
     api_key = os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", None)
-    if not api_key:
-        logger.warning("GEMINI_API_KEY environment variable is not defined.")
-        raise ValueError("GEMINI_API_KEY is not configured.")
+    openai_key = os.environ.get("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
+    if not api_key and not openai_key:
+        logger.warning("Neither GEMINI_API_KEY nor OPENAI_API_KEY environment variable is defined.")
+        raise ValueError("Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured.")
 
     # Reconcile title block coordinates and dimensions
     ref_all_text_list = [e.properties.get("text", "") for e in ref_entities if getattr(e, "entity_type", "") == "text"]

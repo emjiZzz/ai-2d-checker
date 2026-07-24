@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -78,7 +78,7 @@ async def get_room(room_id: str):
             detail="Room not found.",
         )
 
-    room.last_opened_at = datetime.utcnow()
+    room.last_opened_at = datetime.now(timezone.utc)
     await room.save()
     return StandardResponse(success=True, data=_to_response(room))
 
@@ -109,7 +109,7 @@ async def update_room(room_id: str, payload: UpdateRoomRequest):
     for field, value in updates.items():
         setattr(room, field, value)
 
-    room.updated_at = datetime.utcnow()
+    room.updated_at = datetime.now(timezone.utc)
     await room.save()
 
     return StandardResponse(success=True, data=_to_response(room))
@@ -130,7 +130,7 @@ async def delete_room(room_id: str):
         )
 
     room.is_deleted = True
-    room.deleted_at = datetime.utcnow()
+    room.deleted_at = datetime.now(timezone.utc)
     await room.save()
     
     # Invalidate cache for associated drawings to prevent stale comparison results

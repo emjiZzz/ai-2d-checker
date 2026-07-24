@@ -3,19 +3,34 @@ import { expect, test, vi, describe, beforeEach } from 'vitest';
 import { DrawingCanvas } from './DrawingCanvas';
 
 // 1. Mock Zustand stores since we only want to test the component
-vi.mock('../../stores/reviewStore', () => ({
-  useReviewStore: vi.fn(() => ({
-    viewport: { x: 0, y: 0, scale: 1 },
-    showMarkerLabels: true,
-    toggleMarkerLabels: vi.fn(),
-  })),
-}));
+const mockReviewState = {
+  viewport: { x: 0, y: 0, scale: 1 },
+  showMarkerLabels: true,
+  toggleMarkerLabels: vi.fn(),
+};
 
-vi.mock('../../stores/workspaceStore', () => ({
-  useWorkspaceStore: vi.fn(() => ({
-    oldDrawing: null,
-  })),
-}));
+vi.mock('../../stores/reviewStore', () => {
+  const mockFn: any = vi.fn(() => mockReviewState);
+  mockFn.getState = () => mockReviewState;
+  mockFn.subscribe = vi.fn(() => () => {});
+  return {
+    useReviewStore: mockFn,
+  };
+});
+
+const mockWorkspaceState = {
+  oldDrawing: null,
+  newDrawing: null,
+};
+
+vi.mock('../../stores/workspaceStore', () => {
+  const mockFn: any = vi.fn(() => mockWorkspaceState);
+  mockFn.getState = () => mockWorkspaceState;
+  mockFn.subscribe = vi.fn(() => () => {});
+  return {
+    useWorkspaceStore: mockFn,
+  };
+});
 
 vi.mock('../../stores/themeStore', () => ({
   useThemeStore: vi.fn(() => ({
