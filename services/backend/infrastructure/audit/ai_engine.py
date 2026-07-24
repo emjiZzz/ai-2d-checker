@@ -31,8 +31,7 @@ class AIEngine:
     def _normalize_cad_text(text: str) -> str:
         """Normalizes CAD formatting codes to standard UTF-8 characters."""
         if not text:
-            return text
-        text = str(text)
+            return ""
         text = text.replace("%%c", "Ø").replace("%%C", "Ø")
         text = text.replace("%%d", "°").replace("%%D", "°")
         text = text.replace("%%p", "±").replace("%%P", "±")
@@ -154,11 +153,15 @@ class AIEngine:
             "Examine the image carefully and identify all visual and layout violations."
         )
 
+        if not _GENAI_AVAILABLE or genai is None or genai_types is None or not api_key:
+            logger.warning("Gemini SDK or API key not available; skipping AI vision pass.")
+            return []
+
         client = genai.Client(api_key=api_key)
 
         async def run_pass(instruction: str, prompt_text: str, is_visual: bool) -> list:
             content_parts = []
-            if is_visual and png_bytes and genai_types is not None:
+            if is_visual and png_bytes:
                 content_parts.append(
                     genai_types.Part.from_bytes(data=png_bytes, mime_type="image/png")
                 )
@@ -185,8 +188,23 @@ class AIEngine:
         
         p1_violations, p2_violations = await asyncio.gather(p1_task, p2_task)
 
-        # Consolidate and calibrate
+        # Deduplicate violations across passes (Pass 1 standards checks and Pass 2
+        # visual checks can independently flag the same underlying infraction).
+        seen_keys = set()
+        deduped_items = []
         for item in p1_violations + p2_violations:
+            key = (
+                item.get("target_entity_id", "SHEET_GLOBAL"),
+                item.get("category", ""),
+                item.get("description", "").strip().lower(),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped_items.append(item)
+
+        # Consolidate and calibrate
+        for item in deduped_items:
             ref = item.get("standard_reference", "")
             confidence = float(item.get("confidence", 0.8))
             target_entity_id = item.get("target_entity_id", "SHEET_GLOBAL")
@@ -281,8 +299,8 @@ class AIEngine:
 
         if has_tolerance_standard:
             # Check for general tolerance declarations in texts
-            texts_values = [e.properties.get("text", e.properties.get("value", "")) for e in entities if e.entity_type == "text"]
-            has_tolerance_decl = any(re.search(r"ISO\s*2768", val, re.IGNORECASE) for val in texts_values)
+            texts_values = [str(e.properties.get("text") or e.properties.get("value") or "") for e in entities if e.entity_type == "text"]
+            has_tolerance_decl = any(re.search(r"ISO\s*2768", val, re.IGNORECASE) is not None for val in texts_values)
             
             if not has_tolerance_decl:
                 violations.append(

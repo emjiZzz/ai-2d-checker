@@ -28,6 +28,8 @@ interface ReviewState {
   toggleMarkerLabels: () => void;
   showMinimap: boolean;
   toggleMinimap: () => void;
+  showAnnotations: boolean;
+  toggleAnnotations: () => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
 
@@ -99,6 +101,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
   toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
   showMinimap: true,
   toggleMinimap: () => set((state) => ({ showMinimap: !state.showMinimap })),
+  showAnnotations: false,
+  toggleAnnotations: () => set((state) => ({ showAnnotations: !state.showAnnotations })),
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
 

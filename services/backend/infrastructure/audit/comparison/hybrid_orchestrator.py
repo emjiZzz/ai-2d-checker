@@ -51,8 +51,11 @@ def _confirmed_both_feature(det: ComparisonCandidate, ai: ComparisonCandidate) -
 
 def _confidence_for_marking(marking: dict) -> float:
     """Per-finding confidence via candidate.py::calibrate_candidate_confidence — see Phase 5."""
+    verification = marking.get("verification")
+    valid_verifications = ("confirmed_both", "confirmed_single", "conflict", "corrected_to_matched", "unverified")
+    v_arg = verification if verification in valid_verifications else "unverified"
     return calibrate_candidate_confidence(
-        verification=marking.get("verification"),
+        verification=v_arg,  # type: ignore[arg-type]
         origin=marking.get("origin"),
         resolution_method=marking.get("resolution_method"),
     )
@@ -106,7 +109,10 @@ def _pick_cad_bbox(
 
 def _base_candidate_for_finding(finding: DisputedFinding) -> ComparisonCandidate:
     """Prefer det_candidate for display fields when both exist (exact coordinates/text); falls back to ai_candidate only when det never produced anything for this finding."""
-    return finding.det_candidate if finding.det_candidate is not None else finding.ai_candidate
+    cand = finding.det_candidate if finding.det_candidate is not None else finding.ai_candidate
+    if cand is None:
+        raise ValueError("DisputedFinding must have at least one valid candidate")
+    return cand
 
 
 def _resolve_disputed(finding: DisputedFinding, verdict: Optional[dict]) -> dict:
@@ -288,7 +294,7 @@ async def perform_hybrid_comparison(
             ai_details=ai_details,
         ))
 
-    verdicts = await run_crop_verification(api_key, verification_inputs) if verification_inputs else {}
+    verdicts = await run_crop_verification(api_key or openai_key, verification_inputs) if verification_inputs else {}
 
     final_markings: list[dict] = []
     counts = {"confirmed_both": 0, "confirmed_single": 0, "corrected_to_matched": 0, "conflicts": 0}

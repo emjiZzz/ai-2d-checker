@@ -15,17 +15,15 @@ interface TwoDRightPanelProps {
 }
 
 export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) => {
-  const {
-    newDrawing,
-    auditStatus,
-    complianceScore,
-    violations,
-    selectedViolation,
-    runAudit,
-    selectViolation,
-    selectedClient,
-    setSelectedClient
-  } = useWorkspaceStore();
+  const newDrawing = useWorkspaceStore((s) => s.newDrawing);
+  const auditStatus = useWorkspaceStore((s) => s.auditStatus);
+  const complianceScore = useWorkspaceStore((s) => s.complianceScore);
+  const violations = useWorkspaceStore((s) => s.violations);
+  const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
+  const runAudit = useWorkspaceStore((s) => s.runAudit);
+  const selectViolation = useWorkspaceStore((s) => s.selectViolation);
+  const selectedClient = useWorkspaceStore((s) => s.selectedClient);
+  const setSelectedClient = useWorkspaceStore((s) => s.setSelectedClient);
 
   const { clients } = useClients();
   const { activeJob } = useDrawingStore();

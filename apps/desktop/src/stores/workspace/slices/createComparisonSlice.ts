@@ -34,6 +34,9 @@ export const createComparisonSlice: StateCreator<WorkspaceState, [], [], Compari
       if (!get().newDrawing) {
         useReviewStore.getState().loadCustomRegions(drawing.id);
       }
+      // Annotations are per-drawing and each pane renders its own, so both
+      // sides are fetched regardless of which is "primary".
+      get().fetchAnnotations(drawing.id);
       get().fetchLayers(drawing.id, "old");
     }
   },
@@ -43,6 +46,7 @@ export const createComparisonSlice: StateCreator<WorkspaceState, [], [], Compari
     get().recalculateCompatibility();
     if (drawing) {
       useReviewStore.getState().loadCustomRegions(drawing.id);
+      get().fetchAnnotations(drawing.id);
       get().fetchLayers(drawing.id, "new");
     } else {
       useReviewStore.getState().loadCustomRegions(null);

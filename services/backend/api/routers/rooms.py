@@ -1,11 +1,11 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from ...domain.models.room import Room
 from ...logger import logger
-from ..dependencies import get_auth_token, get_or_404
+from ..dependencies import get_auth_token, get_or_404, resolve_username
 from ..schemas import RoomCreateRequest, RoomResponse, StandardResponse, UpdateRoomRequest
 
 router = APIRouter()
@@ -24,6 +24,7 @@ def _to_response(room: Room) -> RoomResponse:
         active_audit_session_id=room.active_audit_session_id,
         physical_comparison_results=json.loads(room.physical_comparison_results) if room.physical_comparison_results else None,
         comparison_method=room.comparison_method,
+        created_by=room.created_by,
         created_at=room.created_at,
         updated_at=room.updated_at,
         last_opened_at=room.last_opened_at,
@@ -36,17 +37,25 @@ def _to_response(room: Room) -> RoomResponse:
     summary="Create a new testing Room",
     dependencies=[Depends(get_auth_token)],
 )
-async def create_room(payload: RoomCreateRequest):
+async def create_room(
+    payload: RoomCreateRequest,
+    x_session_token: str | None = Header(None, alias="X-Session-Token"),
+):
     """
     Creates an isolated Room container for a comparison/testing session.
     Data isolation (linking drawings/audits to this room) is not implemented
     yet — see frontend-room-workflow-plan.md. This just creates the container.
+
+    created_by is derived from the session token, never the request body, so
+    ownership can't be spoofed. It stays nullable because rooms created before
+    this (and any api-token-only caller) legitimately have no owner.
     """
     room = Room(
         name=payload.name,
         description=payload.description,
         client_name=payload.client_name,
         comparison_method=payload.comparison_method,
+        created_by=resolve_username(x_session_token),
     )
     await room.save()
     logger.info(f"Room created: {room.id} ('{room.name}') method={room.comparison_method}")
@@ -59,8 +68,26 @@ async def create_room(payload: RoomCreateRequest):
     summary="List all active (non-deleted) Rooms",
     dependencies=[Depends(get_auth_token)],
 )
-async def list_rooms():
+async def list_rooms(
+    mine: bool = False,
+    x_session_token: str | None = Header(None, alias="X-Session-Token"),
+):
+    """
+    Lists non-deleted Rooms.
+
+    `mine=true` narrows to rooms the caller created. It is opt-in rather than
+    the default because every room created before created_by was populated has
+    created_by=None — defaulting to an owner filter would make those rooms
+    silently vanish from the UI. Legacy ownerless rooms are included in the
+    filtered view for the same reason: they'd otherwise be unreachable.
+    """
     rooms = await Room.find(Room.is_deleted == False).sort(-Room.updated_at).to_list()  # noqa: E712
+
+    if mine:
+        username = resolve_username(x_session_token)
+        if username:
+            rooms = [r for r in rooms if r.created_by == username or r.created_by is None]
+
     return StandardResponse(success=True, data=[_to_response(r) for r in rooms])
 
 

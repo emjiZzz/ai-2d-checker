@@ -94,6 +94,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       setContextMenu,
       isHoveringMarkerState,
       hoveredMarkerId,
+      hoveredAnnotationId,
       cursorStyle
     } = state;
 
@@ -251,6 +252,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             drawing={drawing}
             isHoveringMarkerState={isHoveringMarkerState}
             hoveredMarkerId={hoveredMarkerId}
+            hoveredAnnotationId={hoveredAnnotationId}
             isNeonCAD={false}
             bgImage={bgImage}
             lightBgImage={lightBgImage}

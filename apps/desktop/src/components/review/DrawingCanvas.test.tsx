@@ -21,6 +21,13 @@ vi.mock('../../stores/reviewStore', () => {
 const mockWorkspaceState = {
   oldDrawing: null,
   newDrawing: null,
+  // Annotation-pin state. This stub returns the whole object for every
+  // selector, so array-typed fields must exist or the annotation effects in
+  // useCanvasInteraction blow up on undefined.
+  annotations: [],
+  selectedAnnotationId: null,
+  isPlacingAnnotation: false,
+  pendingAnnotationText: "",
 };
 
 vi.mock('../../stores/workspaceStore', () => {

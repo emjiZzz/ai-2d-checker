@@ -26,7 +26,7 @@ def _auto_detect_oda_converter() -> str:
                 if sub_dir.is_dir() and "ODAFileConverter" in sub_dir.name:
                     exec_path = sub_dir / "ODAFileConverter.exe"
                     if exec_path.exists():
-                        return str(exec_path.resolve().as_posix())
+                        return exec_path.resolve().as_posix()
         except Exception:
             pass
             

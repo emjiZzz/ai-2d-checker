@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, RefObject, useRef } from 'react';
+import { useState, useEffect, useCallback, RefObject, useRef, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { getNormalization, screenToWorld, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
@@ -33,6 +33,11 @@ export function useCanvasInteraction({
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const selectViolation = useWorkspaceStore((s) => s.selectViolation);
   const violations = useWorkspaceStore((s) => s.violations);
+
+  const isPlacingAnnotation = useWorkspaceStore((s) => s.isPlacingAnnotation);
+  const createAnnotationAt = useWorkspaceStore((s) => s.createAnnotationAt);
+  const showAnnotations = useReviewStore((s) => s.showAnnotations);
+  const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
   // Removed subscription to prevent re-renders, we use .getState() instead
   // const hiddenViolationIds = useWorkspaceStore(s => s.hiddenViolationIds);
   const setViolations = useWorkspaceStore((s) => s.setViolations);
@@ -47,6 +52,7 @@ export function useCanvasInteraction({
   // Draggable Markers State
   const [dragMarkerId, setDragMarkerId] = useState<string | null>(null);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+  const [hoveredAnnotationId, setHoveredAnnotationId] = useState<string | null>(null);
   const [dragMarkerStartPos, setDragMarkerStartPos] = useState<[number, number] | null | undefined>(null);
   const [dragMarkerMouseStart, setDragMarkerMouseStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
   const [hasDragMarkerMoved, setHasDragMarkerMoved] = useState(false);
@@ -85,10 +91,12 @@ export function useCanvasInteraction({
     originalYMax: number;
   } | null>(null);
 
+  const bounds = useMemo(() => parseBounds(drawing?.metadata?.render_bounds), [drawing?.metadata?.render_bounds]);
+  const norm = useMemo(() => getNormalization(bounds), [bounds]);
+
   const clampViewport = useCallback((v: { x: number, y: number, scale: number }) => {
-    const bounds = parseBounds(drawing?.metadata?.render_bounds);
     return clampViewportShared(v, bounds, width, height);
-  }, [drawing?.metadata?.render_bounds, width, height]);
+  }, [bounds, width, height]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -152,9 +160,6 @@ export function useCanvasInteraction({
           return;
         }
 
-        const bounds = parseBounds(drawing?.metadata?.render_bounds);
-        const norm = getNormalization(bounds);
-
         // Safety Guard 2: Verify coordinates are within rendering bounds area (+20% margin)
         if (norm.hasBounds) {
           const marginX = (norm.xmax - norm.xmin) * 0.2;
@@ -171,7 +176,7 @@ export function useCanvasInteraction({
 
         let targetScale = 2.2;
         if (bounds && norm.normScale) {
-          const drawingDim = Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+          const drawingDim = Math.max(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin);
           if (drawingDim > 0) {
             targetScale = Math.min(6.0, Math.max(1.5, (width * 0.45) / (drawingDim * norm.normScale)));
           }
@@ -183,6 +188,42 @@ export function useCanvasInteraction({
       }
     }
   }, [selectedViolation, drawing, width, height, setViewport, clampViewport]);
+
+  // Zoom-to-focus selected annotation pin. Parallel to the violation effect
+  // above — annotation coordinates are stored in the same CAD (Y-up) space, so
+  // the transform math is identical; kept separate rather than abstracted because
+  // the violation effect carries violation-specific old/new-side and bounds guards.
+  useEffect(() => {
+    if (!selectedAnnotationId || !drawing) return;
+
+    const state = useWorkspaceStore.getState();
+    const ann = state.annotations.find(a => a.id === selectedAnnotationId);
+    // Only the canvas that owns this pin should recenter — its coordinates are
+    // in that drawing's CAD space and would land somewhere arbitrary elsewhere.
+    if (!ann || ann.drawing_id !== drawing.id) return;
+
+    const coords = ann.coordinates;
+    if (!coords || !Array.isArray(coords) || coords.length < 2) return;
+
+    const [ax, ay] = coords;
+    if (!Number.isFinite(ax) || !Number.isFinite(ay)) return;
+
+    const stdX = (ax - norm.xmin) * norm.normScale;
+    const ay_inverted = norm.hasBounds ? (norm.ymax + norm.ymin - ay) : ay;
+    const stdY = (ay_inverted - norm.ymin) * norm.normScale;
+
+    let targetScale = 2.2;
+    if (bounds && norm.normScale) {
+      const drawingDim = Math.max(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin);
+      if (drawingDim > 0) {
+        targetScale = Math.min(6.0, Math.max(1.5, (width * 0.45) / (drawingDim * norm.normScale)));
+      }
+    }
+    const targetX = width / 2 - stdX * targetScale;
+    const targetY = height / 2 - stdY * targetScale;
+
+    setViewport(clampViewport({ x: targetX, y: targetY, scale: targetScale }));
+  }, [selectedAnnotationId, drawing, width, height, setViewport, clampViewport]);
 
   // Keyboard shortcut actions
   useEffect(() => {
@@ -254,6 +295,23 @@ export function useCanvasInteraction({
     }
     if (e.button === 0) {
       const rect = canvasRef.current?.getBoundingClientRect();
+
+      // Annotation placement mode: a left-click drops a pin at the clicked
+      // point, attached to THIS canvas's drawing. Either pane can be pinned —
+      // a pin's coordinates only mean anything in its own drawing's CAD space,
+      // so the drawing that was clicked is the one it belongs to. (This was
+      // previously restricted to the primary pane, which made the reference
+      // canvas a silent dead zone and mis-attributed every pin to the new drawing.)
+      if (isPlacingAnnotation && rect && drawing?.id) {
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const world = screenToWorld(mx, my, norm, currentViewport);
+        const content = useWorkspaceStore.getState().pendingAnnotationText || "";
+        createAnnotationAt([world.x, world.y], content, drawing.id);
+        e.preventDefault();
+        return;
+      }
+
       if (rect) {
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
@@ -286,6 +344,21 @@ export function useCanvasInteraction({
             setHasDragMarkerMoved(false);
           }
           return;
+        }
+
+        // Annotation pin hit-test (select on click). Positions are stored under
+        // "ann:<id>" keys by renderAnnotationPins, in the same canvas-pixel space.
+        if (showAnnotations) {
+          const positions = markerPositionsRef.current;
+          const hitRadius = 10;
+          const ownPins = useWorkspaceStore.getState().annotations.filter(a => a.drawing_id === drawing?.id);
+          for (const ann of ownPins) {
+            const p = positions[`ann:${ann.id}`];
+            if (p && Math.hypot(p.x - mx, p.y - my) <= hitRadius) {
+              useWorkspaceStore.getState().selectAnnotation(ann.id);
+              return;
+            }
+          }
         }
       }
 
@@ -329,7 +402,7 @@ export function useCanvasInteraction({
         setDragStart({ x: e.clientX - currentViewport.x, y: e.clientY - currentViewport.y });
       }
     }
-  }, [isSpacePressed, violations, drawing, oldDrawing, showViolations, markerPositionsRef, isRoiEditModeEnabled, hoveredHandleInfo, customRegions, canvasRef]);
+  }, [isSpacePressed, violations, drawing, oldDrawing, showViolations, markerPositionsRef, isRoiEditModeEnabled, hoveredHandleInfo, customRegions, canvasRef, isPlacingAnnotation, createAnnotationAt, showAnnotations]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -341,7 +414,6 @@ export function useCanvasInteraction({
 
     // ── Marker drag ────────────────────────────────────────────────────────────
     if (dragMarkerId && dragMarkerStartPos) {
-      const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
       const effectiveScale = currentViewport.scale * norm.normScale;
       const deltaX = (e.clientX - dragMarkerMouseStart.x) / effectiveScale;
       let hasBounds = false;
@@ -381,7 +453,6 @@ export function useCanvasInteraction({
     }
 
     // ── Shared computation (only reached when NOT panning) ────────────────────
-    const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
     const effectiveScale = currentViewport.scale * norm.normScale;
 
     // ── Marker hover hit-test ─────────────────────────────────────────────────
@@ -407,6 +478,24 @@ export function useCanvasInteraction({
       }
     }
 
+    // ── Annotation pin hover hit-test ─────────────────────────────────────────
+    let hoveredAnnId: string | null = null;
+    const showAnnotations = useReviewStore.getState().showAnnotations;
+    if (showAnnotations && drawing?.id) {
+      const ownPins = useWorkspaceStore.getState().annotations.filter(a => a.drawing_id === drawing.id);
+      const positions = markerPositionsRef.current;
+      const hitRadius = 10;
+      for (const ann of ownPins) {
+        const p = positions[`ann:${ann.id}`];
+        if (p && Math.hypot(p.x - mx, p.y - my) <= hitRadius) {
+          hoveredAnnId = ann.id;
+          isHoveringMarker = true;
+          break;
+        }
+      }
+    }
+
+    setHoveredAnnotationId(hoveredAnnId);
     setIsHoveringMarkerState(isHoveringMarker);
     setHoveredMarkerId(hoveredMId);
 
@@ -498,7 +587,7 @@ export function useCanvasInteraction({
       updateCustomRegion(activeDragHandle.regionKey, currentBounds);
       setRedrawTrigger(prev => prev + 1);
     }
-  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport]);
+  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport, norm]);
 
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
@@ -579,6 +668,7 @@ export function useCanvasInteraction({
     setDragMarkerId(null);
     setDragMarkerStartPos(null);
     setHoveredMarkerId(null);
+    setHoveredAnnotationId(null);
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -594,7 +684,6 @@ export function useCanvasInteraction({
     const my = e.clientY - rect.top;
 
     const currentViewport = useReviewStore.getState().viewport;
-    const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
     const effectiveScale = currentViewport.scale * norm.normScale;
     const wx = norm.xmin + (mx - currentViewport.x) / effectiveScale;
     const worldPos = screenToWorld(mx, my, norm, currentViewport);
@@ -618,7 +707,7 @@ export function useCanvasInteraction({
       wx,
       wy
     });
-  }, [preventNextContextMenu, canvasRef, drawing, width, height]);
+  }, [preventNextContextMenu, canvasRef, drawing, width, height, norm]);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -642,12 +731,13 @@ export function useCanvasInteraction({
   }, [canvasRef, setViewport, clampViewport]);
 
   const getCursorStyle = () => {
+    if (isPlacingAnnotation) return 'crosshair';
     if (isSpacePressed) return isDragging ? 'grabbing' : 'grab';
     if (activeDragHandle) {
       return (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right') ? 'nwse-resize' : 'nesw-resize';
     }
     if (hoveredHandleInfo) return hoveredHandleInfo.cursor;
-    if (isHoveringMarkerState) return 'pointer';
+    if (isHoveringMarkerState || !!hoveredAnnotationId) return 'pointer';
     if (isDragging) return 'grabbing';
     return 'grab';
   };
@@ -667,6 +757,7 @@ export function useCanvasInteraction({
       setContextMenu,
       isHoveringMarkerState,
       hoveredMarkerId,
+      hoveredAnnotationId,
       cursorStyle: getCursorStyle(),
     }
   };

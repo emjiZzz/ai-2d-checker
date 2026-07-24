@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Maximize, Download, Map } from "lucide-react";
+import { Maximize, Download, Map, MessageSquare } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -12,6 +12,7 @@ import { Minimap } from "./Minimap";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
+import { AnnotationPanel } from "./AnnotationPanel";
 
 interface TwoDWorkspaceProps {
   currentNav: string;
@@ -36,7 +37,14 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
   useEffect(() => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
-        setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+        const newW = entry.contentRect.width;
+        const newH = entry.contentRect.height;
+        setSize((prev) => {
+          if (Math.abs(prev.width - newW) > 2 || Math.abs(prev.height - newH) > 2) {
+            return { width: newW, height: newH };
+          }
+          return prev;
+        });
       }
     });
     if (containerRef.current) resizeObserver.observe(containerRef.current);
@@ -97,7 +105,14 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
   useEffect(() => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
-        setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+        const newW = entry.contentRect.width;
+        const newH = entry.contentRect.height;
+        setSize((prev) => {
+          if (Math.abs(prev.width - newW) > 2 || Math.abs(prev.height - newH) > 2) {
+            return { width: newW, height: newH };
+          }
+          return prev;
+        });
       }
     });
     if (containerRef.current) resizeObserver.observe(containerRef.current);
@@ -151,6 +166,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showMinimap = useReviewStore(s => s.showMinimap);
   const toggleMinimap = useReviewStore(s => s.toggleMinimap);
+  const showAnnotations = useReviewStore(s => s.showAnnotations);
+  const toggleAnnotations = useReviewStore(s => s.toggleAnnotations);
 
   const drawingCanvasRefOld = useRef<any>(null);
   const drawingCanvasRefNew = useRef<any>(null);
@@ -339,17 +356,23 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                 <Button variant={showMinimap ? "primary" : "outline"} size="icon" onClick={toggleMinimap} title="Toggle Interactive Minimap">
                   <Map size={20} />
                 </Button>
+                <Button variant={showAnnotations ? "primary" : "outline"} size="icon" onClick={toggleAnnotations} title="Toggle Reviewer Annotations">
+                  <MessageSquare size={20} />
+                </Button>
               </div>
             </div>
           </div>
           
-          <div className="flex-grow relative min-h-0 min-w-0 workspace-flexlayout-container">
-            <Layout 
-              model={model} 
-              factory={factory} 
-              onModelChange={handleModelChange}
-              onAction={handleAction}
-            />
+          <div className="flex flex-grow min-h-0 min-w-0 overflow-hidden">
+            <div className="flex-grow relative min-h-0 min-w-0 workspace-flexlayout-container">
+              <Layout
+                model={model}
+                factory={factory}
+                onModelChange={handleModelChange}
+                onAction={handleAction}
+              />
+            </div>
+            {showAnnotations && <AnnotationPanel />}
           </div>
         </div>
       )}

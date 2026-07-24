@@ -7,6 +7,37 @@ interface ChecklistPanelProps {
   aiChecklistResults: Record<string, any>;
 }
 
+const parseTabularContent = (content: string) => {
+  if (!content) return [];
+  const lines = content.split("\n").filter((l: string) => l.trim());
+  const headerLine = lines.find((l: string) => l.includes("|"));
+  const isSeparatorRow = (l: string) =>
+    l.split("|").map(p => p.trim()).filter(p => p !== "").every(p => /^:?-{1,}:?$/.test(p));
+  const dataLines = lines.filter((l: string) => l.includes("|") && !isSeparatorRow(l) && l !== headerLine);
+
+  return dataLines.map((line: string) => {
+    const parts = line.split("|").map((p: string) => p.trim());
+    let cleanedParts = [...parts];
+    if (cleanedParts[0] === "") cleanedParts.shift();
+    if (cleanedParts[cleanedParts.length - 1] === "") cleanedParts.pop();
+
+    const field = cleanedParts[0] || "";
+    const original = cleanedParts[1] || "";
+    const kmti = cleanedParts[2] || "";
+    const rawStatus = cleanedParts[3] || "";
+
+    const normalizeStatus = (s: string): string => {
+      const u = s?.toUpperCase().trim() || "";
+      if (["MISMATCHED", "MISMATCH", "DIFFER", "DIFFERENT"].includes(u)) return "CHANGED";
+      return s?.trim() || "";
+    };
+    const status = normalizeStatus(rawStatus);
+    const isMatch = status.toUpperCase().includes("MATCHED") && !status.toUpperCase().includes("MIS");
+
+    return { field, original, kmti, status, isMatch };
+  });
+};
+
 export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResults }) => {
   const [expandedChecklistPanels, setExpandedChecklistPanels] = useState<Record<string, boolean>>({
     drawing_views: true,
@@ -17,56 +48,20 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
     other_engineering_references: true
   });
 
-  // Second-level (category-feature) collapse state, separate from the category-level
-  // one above (docs/checklist-taxonomy-grouping-implementation-plan.md, Phase 6).
-  // Sub-items with findings default open; empty ones default closed since there's
-  // nothing more to reveal than the single placeholder line already visible.
   const [expandedFeaturePanels, setExpandedFeaturePanels] = useState<Record<string, boolean>>({});
   const toggleFeaturePanel = (panelKey: string, defaultState: boolean) => {
     setExpandedFeaturePanels((prev) => ({ ...prev, [panelKey]: !(panelKey in prev ? prev[panelKey] : defaultState) }));
   };
 
-  const violations = useWorkspaceStore(s => s.violations);
-  const hiddenViolationIds = useWorkspaceStore(s => s.hiddenViolationIds);
-  const selectedViolation = useWorkspaceStore(s => s.selectedViolation);
-  const selectViolation = useWorkspaceStore(s => s.selectViolation);
-  const toggleViolationVisibility = useWorkspaceStore(s => s.toggleViolationVisibility);
-  const setViolationsVisibility = useWorkspaceStore(s => s.setViolationsVisibility);
+  const violations = useWorkspaceStore((s) => s.violations);
+  const hiddenViolationIds = useWorkspaceStore((s) => s.hiddenViolationIds);
+  const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
+  const selectViolation = useWorkspaceStore((s) => s.selectViolation);
+  const toggleViolationVisibility = useWorkspaceStore((s) => s.toggleViolationVisibility);
+  const setViolationsVisibility = useWorkspaceStore((s) => s.setViolationsVisibility);
 
   const toggleChecklistPanel = (key: string) => {
     setExpandedChecklistPanels((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const parseTabularContent = (content: string) => {
-    if (!content) return [];
-    const lines = content.split("\n").filter((l: string) => l.trim());
-    const headerLine = lines.find((l: string) => l.includes("|"));
-    const isSeparatorRow = (l: string) =>
-      l.split("|").map(p => p.trim()).filter(p => p !== "").every(p => /^:?-{1,}:?$/.test(p));
-    const dataLines = lines.filter((l: string) => l.includes("|") && !isSeparatorRow(l) && l !== headerLine);
-
-    return dataLines.map((line: string) => {
-      const parts = line.split("|").map((p: string) => p.trim());
-      let cleanedParts = [...parts];
-      if (cleanedParts[0] === "") cleanedParts.shift();
-      if (cleanedParts[cleanedParts.length - 1] === "") cleanedParts.pop();
-
-      // Support both 3-col (FIELD|ORIG|KMTI|STATUS) and 4-col (ANNOTATION|ORIG|REV|STATUS) formats
-      const field = cleanedParts[0] || "";
-      const original = cleanedParts[1] || "";
-      const kmti = cleanedParts[2] || "";
-      const rawStatus = cleanedParts[3] || "";
-
-      const normalizeStatus = (s: string): string => {
-        const u = s?.toUpperCase().trim() || "";
-        if (["MISMATCHED", "MISMATCH", "DIFFER", "DIFFERENT"].includes(u)) return "CHANGED";
-        return s?.trim() || "";
-      };
-      const status = normalizeStatus(rawStatus);
-      const isMatch = status.toUpperCase().includes("MATCHED") && !status.toUpperCase().includes("MIS");
-
-      return { field, original, kmti, status, isMatch };
-    });
   };
 
   // Renders one finding's card body — unchanged from the pre-Phase-6 flat-list layout

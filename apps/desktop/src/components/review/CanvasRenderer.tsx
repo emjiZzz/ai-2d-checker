@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle,
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
-import { renderEntities, renderViolationReticles } from './renderEntities';
+import { renderEntities, renderViolationReticles, renderAnnotationPins } from './renderEntities';
 import { DrawingCanvasRef } from './DrawingCanvas';
 
 interface CanvasRendererProps {
@@ -13,6 +14,7 @@ interface CanvasRendererProps {
   drawing: any;
   isHoveringMarkerState: boolean;
   hoveredMarkerId: string | null;
+  hoveredAnnotationId?: string | null;
   isNeonCAD: boolean;
   bgImage: HTMLImageElement | null;
   lightBgImage: HTMLImageElement | null;
@@ -31,6 +33,7 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
   layers,
   drawing,
   hoveredMarkerId,
+  hoveredAnnotationId,
   isNeonCAD,
   bgImage,
   lightBgImage,
@@ -62,6 +65,10 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
   const violations = useWorkspaceStore((s) => s.violations);
   const hiddenViolationIds = useWorkspaceStore((s) => s.hiddenViolationIds);
   const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
+  const annotations = useWorkspaceStore((s) => s.annotations);
+  const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
+  const showAnnotations = useReviewStore((s) => s.showAnnotations);
+  const annotationBadgeMap = useMemo(() => getAnnotationBadgeMap(annotations), [annotations]);
   const theme = useThemeStore((s) => s.theme);
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
@@ -85,7 +92,7 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
       return canvas.toDataURL('image/png');
     },
     getCanvasElement: () => canvasRef.current
-  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, visibleMarkerTypes]);
+  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes]);
 
   // Subscribe to viewport changes without triggering React re-renders.
   // On every setViewport call (each mouse pixel during pan), we update the ref and schedule
@@ -250,6 +257,19 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
         oldDrawing,
         visibleMarkerTypes
       });
+
+      if (showAnnotations) {
+        renderAnnotationPins({
+          // Only this drawing's pins. Coordinates are in the owning drawing's
+          // CAD space, so rendering all of them on every pane put pins at
+          // meaningless positions on the opposite drawing.
+          frame: frameData,
+          annotations: annotations.filter((a) => a.drawing_id === drawing?.id),
+          selectedAnnotationId,
+          hoveredAnnotationId,
+          badgeMap: annotationBadgeMap,
+        });
+      }
     }
 
     ctx.restore();
@@ -257,7 +277,7 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
 
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, visibleMarkerTypes, markerPositionsRef]);
+  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

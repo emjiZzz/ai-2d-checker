@@ -1,3 +1,4 @@
+from .annotation_document import AnnotationDocument
 from .audit import AuditResult
 from .audit_session import AuditSession
 from .audit_violation import AuditViolation
@@ -34,5 +35,6 @@ __all_models__ = [
     UserSessionDocument,
     RolePermissionsDocument,
     ClientDocument,
-    Room
+    Room,
+    AnnotationDocument
 ]

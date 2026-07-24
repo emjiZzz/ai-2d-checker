@@ -28,6 +28,45 @@ export interface ViolationItem {
   checker_remarks?: string;
 }
 
+export type AnnotationSeverity = "info" | "low" | "medium" | "high" | "critical";
+export type AnnotationPenType = "checker_blue" | "amber_gold" | "warning_orange" | "alert_red" | "resolved_green" | "resolved_pink";
+
+export const SEVERITY_PEN_MAP: Record<AnnotationSeverity, AnnotationPenType> = {
+  info: "checker_blue",
+  low: "checker_blue",
+  medium: "amber_gold",
+  high: "warning_orange",
+  critical: "alert_red",
+};
+
+export function getAnnotationBadgeMap(annotations: AnnotationItem[]): Record<string, string> {
+  const sorted = [...annotations].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  const map: Record<string, string> = {};
+  sorted.forEach((ann, idx) => {
+    map[ann.id] = `A${String(idx + 1).padStart(3, '0')}`;
+  });
+  return map;
+}
+
+export interface AnnotationItem {
+  id: string;
+  review_session_id: string;
+  drawing_id: string;
+  author_id: string;
+  annotation_type: string;
+  content: string;
+  severity: AnnotationSeverity;
+  coordinates: [number, number] | null;
+  target_entity_ids: string[];
+  violation_id: string | null;
+  status: string;
+  pen_type: AnnotationPenType;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UndoAction {
   type: "move" | "delete";
   violationId: string;
@@ -151,6 +190,33 @@ export interface UndoSlice {
   undoLastAction: () => void;
 }
 
+export interface AnnotationsSlice {
+  annotations: AnnotationItem[];
+  selectedAnnotationId: string | null;
+  isPlacingAnnotation: boolean;
+  pendingAnnotationText: string;
+  pendingAnnotationSeverity: AnnotationSeverity;
+
+  fetchAnnotations: (drawingId: string) => Promise<void>;
+  createAnnotationAt: (
+    coordinates: [number, number],
+    content: string,
+    drawingId: string,
+    severity?: AnnotationSeverity,
+    violationId?: string | null
+  ) => Promise<void>;
+  deleteAnnotationById: (id: string) => Promise<void>;
+  updateAnnotationDetails: (
+    id: string,
+    updates: Partial<{ content: string; status: string; severity: AnnotationSeverity; pen_type: AnnotationPenType }>
+  ) => Promise<void>;
+  updateAnnotationStatus: (id: string, status: string) => Promise<void>;
+  selectAnnotation: (id: string | null) => void;
+  setIsPlacingAnnotation: (v: boolean) => void;
+  setPendingAnnotationText: (text: string) => void;
+  setPendingAnnotationSeverity: (severity: AnnotationSeverity) => void;
+}
+
 export interface NavSlice {
   currentNav: "workspace" | "standards" | "history" | "settings";
   hasHydrated: boolean;
@@ -159,4 +225,4 @@ export interface NavSlice {
   resetWorkspace: () => void;
 }
 
-export type WorkspaceState = ComparisonSlice & UploadSlice & AuditSlice & ClientSlice & UndoSlice & NavSlice;
+export type WorkspaceState = ComparisonSlice & UploadSlice & AuditSlice & ClientSlice & UndoSlice & NavSlice & AnnotationsSlice;

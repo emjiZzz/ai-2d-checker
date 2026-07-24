@@ -200,6 +200,7 @@ class RoomResponse(BaseModel):
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
     comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = "rag"
+    created_by: str | None = None
     created_at: datetime
     updated_at: datetime
     last_opened_at: datetime | None = None
@@ -214,6 +215,43 @@ class UpdateRoomRequest(BaseModel):
     active_new_drawing_name: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
+
+AnnotationSeverity = Literal["info", "low", "medium", "high", "critical"]
+AnnotationPenType = Literal["checker_blue", "amber_gold", "warning_orange", "alert_red", "resolved_green", "resolved_pink"]
+
+class CreateAnnotationRequest(BaseModel):
+    review_session_id: str = Field(..., description="Active review session or room id")
+    drawing_id: str = Field(..., description="Drawing this annotation is pinned to")
+    annotation_type: str = "pin"
+    content: str
+    severity: AnnotationSeverity = "info"
+    coordinates: list[float] | None = Field(None, description="[x, y] world-space pin center")
+    target_entity_ids: list[str] = Field(default_factory=list)
+    violation_id: str | None = None
+    pen_type: AnnotationPenType = "checker_blue"
+
+class UpdateAnnotationRequest(BaseModel):
+    content: str | None = None
+    status: str | None = None
+    severity: AnnotationSeverity | None = None
+    coordinates: list[float] | None = None
+    pen_type: AnnotationPenType | None = None
+
+class AnnotationResponse(BaseModel):
+    id: str
+    review_session_id: str
+    drawing_id: str
+    author_id: str
+    annotation_type: str
+    content: str
+    severity: AnnotationSeverity
+    coordinates: list[float] | None = None
+    target_entity_ids: list[str]
+    violation_id: str | None = None
+    status: str
+    pen_type: AnnotationPenType
+    created_at: datetime
+    updated_at: datetime
 
 class ZoneComparisonResult(BaseModel):
     status: str

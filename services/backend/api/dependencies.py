@@ -15,6 +15,26 @@ async def get_auth_token(token: str = Depends(verify_api_token)) -> str:
     return token
 
 
+def resolve_username(x_session_token: str | None) -> str | None:
+    """
+    Best-effort username extraction from a session token, for attributing
+    created/authored records (Room.created_by, AnnotationDocument.author_id).
+
+    Deliberately non-raising: these routes authenticate via the API bearer
+    token (get_auth_token); the session token is an *additional* header that
+    identifies which local user acted. Callers that require a guaranteed user
+    should depend on get_current_user instead, which validates revocation and
+    account status and 401s.
+    """
+    if not x_session_token:
+        return None
+    try:
+        from ..core.auth import verify_session_token
+        return verify_session_token(x_session_token).get("username") or None
+    except Exception:
+        return None
+
+
 async def get_or_404(model, id: str, detail: str):
     """
     Shared Document.get() wrapper. Beanie raises InvalidId (not a clean

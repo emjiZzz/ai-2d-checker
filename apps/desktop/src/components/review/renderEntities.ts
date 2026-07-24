@@ -499,3 +499,106 @@ export const renderViolationReticles = ({
     ctx.restore();
   });
 };
+
+export interface RenderAnnotationPinsParams {
+  frame: RenderFrame;
+  annotations: any[];
+  selectedAnnotationId: string | null;
+  hoveredAnnotationId?: string | null;
+  badgeMap?: Record<string, string>;
+}
+
+const PEN_COLORS: Record<string, string> = {
+  alert_red: '#ff4d4f',
+  warning_orange: '#ffa940',
+  amber_gold: '#ffec3d',
+  checker_blue: '#00ffff',
+  resolved_green: '#39ff14',
+  resolved_pink: '#ff7ab6',
+};
+
+// Reviewer annotation pins.
+// Screen positions are stored under "ann:<id>" keys so annotation hit-testing
+// never collides with violation marker keys in the same markerPositionsRef.
+export const renderAnnotationPins = ({
+  frame,
+  annotations,
+  selectedAnnotationId,
+  hoveredAnnotationId,
+  badgeMap,
+}: RenderAnnotationPinsParams) => {
+  const { ctx, isExport, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
+
+  if (frame.isNeonModeActive && !isExport) {
+    ctx.filter = 'none';
+  }
+
+  annotations.forEach((ann, idx) => {
+    const coords = ann.coordinates;
+    if (!coords || !Array.isArray(coords) || coords.length < 2) return;
+
+    const [ax, ay] = coords;
+    if (!Number.isFinite(ax) || !Number.isFinite(ay)) return;
+
+    const screenPos = worldToScreen(ax, ay, norm, viewport);
+    const isSelected = selectedAnnotationId === ann.id;
+    const isHovered = hoveredAnnotationId === ann.id;
+    const isResolved = ann.status === 'resolved';
+
+    const color = isResolved ? '#39ff14' : (PEN_COLORS[ann.pen_type] || '#00ffff');
+    const badgeText = badgeMap?.[ann.id] || `A${String(idx + 1).padStart(3, '0')}`;
+
+    markerPositionsRef.current[`ann:${ann.id}`] = { x: screenPos.x, y: screenPos.y };
+
+    ctx.save();
+    const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+    ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
+
+    const r = (isSelected || isHovered ? 7 : 5) * resolutionMultiplier;
+
+    // Outer aura ring for hover/selection
+    if (isSelected || isHovered) {
+      ctx.beginPath();
+      ctx.strokeStyle = isSelected ? '#ffffff' : color;
+      ctx.lineWidth = 1.5 * resolutionMultiplier;
+      ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
+      ctx.arc(screenPos.x, screenPos.y, r + 4 * resolutionMultiplier, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Pin dot
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.arc(screenPos.x, screenPos.y, r, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.lineWidth = 1.5 * resolutionMultiplier;
+    ctx.strokeStyle = '#0b0b0b';
+    ctx.stroke();
+
+    // Content label & badge tag — visible when zoomed, hovered, or selected
+    const showLabel = (viewport.scale >= 0.5 || isSelected || isHovered) && ann.content;
+    if (showLabel) {
+      const raw = String(ann.content);
+      const text = `${badgeText}: ${raw.length > 28 ? raw.slice(0, 27) + '…' : raw}`;
+      ctx.font = `bold ${11 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
+      const textWidth = ctx.measureText(text).width;
+      const padX = 6 * resolutionMultiplier;
+      const boxH = 20 * resolutionMultiplier;
+      const boxX = screenPos.x + 10 * resolutionMultiplier;
+      const boxY = screenPos.y - boxH / 2;
+
+      ctx.fillStyle = 'rgba(11, 11, 11, 0.88)';
+      ctx.fillRect(boxX, boxY, textWidth + padX * 2, boxH);
+      ctx.lineWidth = 1 * resolutionMultiplier;
+      ctx.strokeStyle = color;
+      ctx.strokeRect(boxX, boxY, textWidth + padX * 2, boxH);
+
+      ctx.fillStyle = color;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, boxX + padX, screenPos.y);
+    }
+
+    ctx.restore();
+  });
+};

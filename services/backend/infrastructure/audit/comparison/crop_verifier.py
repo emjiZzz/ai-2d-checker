@@ -172,7 +172,7 @@ def execute_crop_verification(api_key: str, batch: list[CropVerificationInput]) 
     return json.loads(response.text)
 
 
-async def run_crop_verification(api_key: str, inputs: list[CropVerificationInput]) -> dict[str, dict]:
+async def run_crop_verification(api_key: Optional[str], inputs: list[CropVerificationInput]) -> dict[str, dict]:
     """
     Chunks `inputs` into batches of MAX_BATCH_SIZE and calls execute_crop_verification
     per batch, merging results into one dict keyed by finding_id.
@@ -194,6 +194,8 @@ async def run_crop_verification(api_key: str, inputs: list[CropVerificationInput
     the result as unresolved/CONFLICT rather than silently passing it through as
     confirmed.
     """
+    if not api_key or not inputs:
+        return {}
     batches = [inputs[i:i + MAX_BATCH_SIZE] for i in range(0, len(inputs), MAX_BATCH_SIZE)]
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_BATCHES)
     failed_batch_count = 0
