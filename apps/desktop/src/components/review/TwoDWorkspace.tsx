@@ -168,7 +168,12 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const [model, setModel] = useState<Model | null>(null);
 
   useEffect(() => {
-    const savedLayout = localStorage.getItem(`twod-workspace-layout-v8-${activeLayoutPreset}`);
+    // v9: earlier versions let a tabset (most often "AI Auditor") be dragged down to a
+    // near-zero-width sliver — just its bare tab-header strip, no visible label or content
+    // — and that squeezed state persisted forever since it's saved verbatim to localStorage.
+    // Bumping the key invalidates any such stuck layout so it regenerates fresh with the
+    // minWidth guard below, which stops it from happening again.
+    const savedLayout = localStorage.getItem(`twod-workspace-layout-v9-${activeLayoutPreset}`);
     if (savedLayout) {
       try {
         const parsed = JSON.parse(savedLayout);
@@ -197,32 +202,37 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     const newFileName = useWorkspaceStore.getState().newDrawing?.file_name;
     const hasResults = complianceScore !== null;
 
+    // Applied to every tabset below so no panel — including "AI Auditor", which only
+    // appears once an audit has results — can be drag-resized down to an unusable sliver
+    // (a bare tab-header strip with no visible label or content).
+    const MIN_TABSET_WIDTH = 220;
+
     if (activeLayoutPreset === 'left') {
       layoutNode = { type: "row", weight: 100, children: [
-        { type: "tabset", weight: 20, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
-        { type: "tabset", weight: 40, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-        { type: "tabset", weight: 40, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-        ...(hasResults ? [{ type: "tabset", weight: 20, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+        { type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
+        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+        ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
       ]};
     } else if (activeLayoutPreset === 'right') {
       layoutNode = { type: "row", weight: 100, children: [
-        { type: "tabset", weight: 40, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-        { type: "tabset", weight: 40, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-        ...(hasResults ? [{ type: "tabset", weight: 20, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+        ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
       ]};
     } else {
       // grid default
       layoutNode = { type: "row", weight: 100, children: [
-        { type: "tabset", weight: 20, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
-        { type: "tabset", weight: 32.5, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-        { type: "tabset", weight: 32.5, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-        ...(hasResults ? [{ type: "tabset", weight: 15, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+        { type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
+        { type: "tabset", weight: 32.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+        { type: "tabset", weight: 32.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+        ...(hasResults ? [{ type: "tabset", weight: 15, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
       ]};
     }
 
     const newJson: IJsonModel = { global: globalOpts, layout: layoutNode };
     setModel(Model.fromJson(newJson));
-    localStorage.setItem(`twod-workspace-layout-v8-${activeLayoutPreset}`, JSON.stringify(newJson));
+    localStorage.setItem(`twod-workspace-layout-v9-${activeLayoutPreset}`, JSON.stringify(newJson));
   }, [activeLayoutPreset]);
 
   // Rename tabs when filenames change
@@ -241,7 +251,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   }, [model, oldFileNameStr, newFileNameStr]);
 
   const handleModelChange = (model: Model, _action: Action) => {
-    localStorage.setItem(`twod-workspace-layout-v8-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
+    localStorage.setItem(`twod-workspace-layout-v9-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
   };
 
   const prevScoreRef = useRef(complianceScore);

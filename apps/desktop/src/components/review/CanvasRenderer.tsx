@@ -117,7 +117,7 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
     if (isExport) {
       ctx.fillStyle = '#ffffff';
     } else {
-      ctx.fillStyle = theme === 'hc-light' ? '#f4f4f5' : '#09090b';
+      ctx.fillStyle = theme === 'hc-light' ? '#fafafa' : '#262b36';
     }
     ctx.fillRect(0, 0, renderWidth, renderHeight);
 

@@ -17,7 +17,7 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="relative flex items-center justify-center w-screen h-screen bg-[#09090b] overflow-hidden select-none font-sans text-zinc-100">
+    <div className="relative flex items-center justify-center w-screen h-screen bg-[#262b36] overflow-hidden select-none font-sans text-zinc-100">
       {/* Soft Ambient Radial Background Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-cyan-500/[0.07] rounded-full blur-[160px] pointer-events-none" />
 

@@ -110,8 +110,11 @@ export const renderEntities = ({
   let totalEntities = 0;
   let drawnEntities = 0;
 
-  // Draw high-fidelity raster CAD background image if loaded, aligned exactly to CAD coordinates bounds
-  const targetImage = (isExport || theme === 'hc-light') ? lightBgImage : bgImage;
+  // Draw high-fidelity raster CAD background image if loaded, aligned exactly to CAD coordinates bounds.
+  // lightBgImage is computed asynchronously (see DrawingCanvas.tsx) and can briefly be null right
+  // after a theme switch or on first load — fall back to the raw dark-tuned bgImage rather than
+  // drawing nothing, so the canvas isn't blank while the light variant finishes processing.
+  const targetImage = (isExport || theme === 'hc-light') ? (lightBgImage || bgImage) : bgImage;
   if (targetImage && drawing?.metadata?.render_bounds) {
     const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
     ctx.drawImage(targetImage, xmin, ymin, xmax - xmin, ymax - ymin);
@@ -121,7 +124,9 @@ export const renderEntities = ({
 
   // If a high-fidelity raster image is loaded, skip ALL vector entity rendering.
   // The loop below is O(entities) and would be wasted work — the image covers everything.
-  const skipEntities = !!(bgImage && drawing?.metadata?.render_bounds);
+  // Must check targetImage (what was actually drawn above), not bgImage — bgImage is always
+  // truthy once fetched even when targetImage was null and nothing was painted.
+  const skipEntities = !!(targetImage && drawing?.metadata?.render_bounds);
 
   Object.entries(layers).forEach(([layerName, entities]) => {
     if (activeLayers[layerName] === false) return;
@@ -280,6 +285,14 @@ export const renderViolationReticles = ({
 
   if (!showViolations) return;
 
+  // Marker cards are drawn on the canvas (not DOM), so they don't pick up the app's
+  // CSS theme variables automatically — check the live theme attribute once per pass.
+  const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
+  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
+  const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
+  const cardSecondaryText = isLightTheme ? 'rgba(24, 24, 27, 0.7)' : 'rgba(255, 255, 255, 0.7)';
+  const cardBulletRing = isLightTheme ? '#fafafa' : '#262b36';
+
   const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
   const placedCardRects: { xMin: number; xMax: number; yMin: number; yMax: number }[] = [];
 
@@ -403,7 +416,7 @@ export const renderViolationReticles = ({
       ctx.shadowOffsetX = 2 * resolutionMultiplier;
       ctx.shadowOffsetY = 3 * resolutionMultiplier;
 
-      ctx.fillStyle = 'rgba(9, 9, 11, 0.95)';
+      ctx.fillStyle = cardBg;
       ctx.strokeStyle = bulletColor;
       ctx.lineWidth = 1.2 * resolutionMultiplier;
 
@@ -414,7 +427,7 @@ export const renderViolationReticles = ({
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
 
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = cardPrimaryText;
       ctx.font = `bold ${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
       ctx.fillText(`[${seqId}]`, labelX + 8 * resolutionMultiplier, labelY + 14 * resolutionMultiplier);
 
@@ -425,16 +438,16 @@ export const renderViolationReticles = ({
       ctx.beginPath();
       ctx.arc(cardBulletX, cardBulletY, cardBulletRadius, 0, 2 * Math.PI);
       ctx.fillStyle = bulletColor;
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = cardBulletRing;
       ctx.lineWidth = 1 * resolutionMultiplier;
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = cardPrimaryText;
       ctx.font = `bold ${12 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
       ctx.fillText(displayVal, labelX + 24 * resolutionMultiplier, labelY + 32 * resolutionMultiplier);
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.fillStyle = cardSecondaryText;
       ctx.font = `${10 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
       ctx.fillText(`Cat:  ${displayCat}`, labelX + 8 * resolutionMultiplier, labelY + 43 * resolutionMultiplier);
 

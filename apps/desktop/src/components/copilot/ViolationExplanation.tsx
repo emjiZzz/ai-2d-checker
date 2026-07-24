@@ -18,7 +18,7 @@ export const ViolationExplanation: React.FC = () => {
         <AIConfidenceBadge score={mockExplanation.confidence} />
       </div>
       
-      <div className="bg-white/3 border border-white/5 p-3 rounded-lg flex flex-col gap-1.5">
+      <div className="bg-sidebar-item-hover border border-border-color p-3 rounded-lg flex flex-col gap-1.5">
         <p className="text-xs font-semibold text-text-primary m-0">{mockExplanation.summary}</p>
         <p className="text-[11px] text-text-muted italic leading-relaxed m-0">{mockExplanation.detailed_reasoning}</p>
       </div>

@@ -17,16 +17,16 @@
 /* High Contrast Dark Mode Theme Variables (Default) */
 :root,
 [data-theme="hc-dark"] {
-  --bg-dark: #09090b;
-  --bg-card: #09090b;
-  --bg-sidebar: #18181b;
-  --bg-topbar: #18181b;
-  --border-color: #27272a;
+  --bg-dark: #262b36;
+  --bg-card: #262b36;
+  --bg-sidebar: #2e3440;
+  --bg-topbar: #2e3440;
+  --border-color: #3a4150;
 
   --text-primary: #e4e4e7;
   --text-secondary: #d4d4d8;
   --text-muted: #a1a1aa;
-  --bg-bubble-user: #1A1A1A;
+  --bg-bubble-user: #2e3440;
 
   --app-gradient: none;
   --sidebar-item-hover: rgba(255, 255, 255, 0.15);
@@ -45,16 +45,16 @@
 
 /* High Contrast Light Mode Theme Variables */
 [data-theme="hc-light"] {
-  --bg-dark: #f4f4f5;
-  --bg-card: #ffffff;
-  --bg-sidebar: #ffffff;
-  --bg-topbar: #ffffff;
-  --border-color: #e4e4e7;
+  --bg-dark: #e5e8ed;
+  --bg-card: #f8f9fb;
+  --bg-sidebar: #f8f9fb;
+  --bg-topbar: #f8f9fb;
+  --border-color: #d7dbe2;
 
   --text-primary: #18181b;
   --text-secondary: #3f3f46;
   --text-muted: #71717a;
-  --bg-bubble-user: #f4f4f5;
+  --bg-bubble-user: #f8f9fb;
 
   --app-gradient: none;
   --sidebar-item-hover: rgba(0, 0, 0, 0.05);

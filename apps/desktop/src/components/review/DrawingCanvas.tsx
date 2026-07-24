@@ -131,6 +131,37 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           img.onload = () => {
             if (!active) return;
 
+            // The raster rendering has thin, anti-aliased CAD linework that loses most of its
+            // pixel coverage when the browser downsamples it at low zoom — lines fade or vanish
+            // instead of just looking smaller. Thicken every line by ~1px before it's ever used,
+            // so it survives minification. Cheap GPU-accelerated approximation of morphological
+            // dilation: composite the same image at a few 1px offsets — any pixel that was line
+            // content in ANY of those offset copies ends up opaque in the result, growing every
+            // stroke outward by ~1px in each direction. Much faster than a manual per-pixel loop
+            // over an ~8000px-wide image.
+            const thickenCanvas = document.createElement('canvas');
+            thickenCanvas.width = img.width;
+            thickenCanvas.height = img.height;
+            const thickenCtx = thickenCanvas.getContext('2d');
+            if (thickenCtx) {
+              const offsets: [number, number][] = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+              offsets.forEach(([dx, dy]) => thickenCtx.drawImage(img, dx, dy));
+            }
+            const thickenedImg = new Image();
+            thickenedImg.onload = () => {
+              if (!active) return;
+              proceedWithImage(thickenedImg);
+            };
+            thickenedImg.onerror = () => {
+              // Fall back to the untouched raster if thickening somehow fails to encode.
+              if (active) proceedWithImage(img);
+            };
+            thickenedImg.src = thickenCtx ? thickenCanvas.toDataURL() : img.src;
+          };
+
+          const proceedWithImage = (img: HTMLImageElement) => {
+            if (!active) return;
+
             setBgImage(img);
             setRedrawTrigger((prev) => prev + 1);
 
@@ -146,7 +177,13 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
               const imgData = context.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
 
-              const PIXELS_PER_CHUNK = 250000;
+              // Chunked via setTimeout so a big rendering doesn't block the UI thread, but each
+              // setTimeout hop is throttled to a ~4ms floor by the browser — with too small a
+              // chunk size, that per-hop overhead dominates and the light-theme variant takes
+              // noticeably longer to finish than the processing itself needs, leaving the raw
+              // dark-tuned image (wrong colors for light theme) visible for a stretch. A larger
+              // chunk trades a slightly bigger per-chunk pause for far fewer hops overall.
+              const PIXELS_PER_CHUNK = 2000000;
               const CHUNK_SIZE = PIXELS_PER_CHUNK * 4;
               let offset = 0;
 
@@ -192,7 +229,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                 }
               };
 
-              setTimeout(processChunk, 0);
+              // Run the first chunk synchronously (no setTimeout hop) — only subsequent
+              // chunks need to yield back to the browser.
+              processChunk();
             }
           };
         } catch (err) {
@@ -397,7 +436,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         <div
           className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
             theme === 'hc-light'
-              ? 'bg-white/85 border-zinc-200/80 text-zinc-600'
+              ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
               : 'bg-zinc-950/80 border-white/10 text-zinc-400'
           }`}
         >

@@ -130,7 +130,7 @@ export const RoomsView: React.FC = () => {
           >
             <div style={{
               width: "100%", maxWidth: "560px",
-              backgroundColor: "#ffffff",
+              backgroundColor: "var(--bg-card)",
               borderRadius: "24px",
               boxShadow: "0 25px 60px rgba(0,0,0,0.25)",
               overflow: "hidden",
@@ -138,7 +138,7 @@ export const RoomsView: React.FC = () => {
               maxHeight: "90vh",
             }}>
               {/* Header */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "28px 32px 24px", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "28px 32px 24px", borderBottom: "1px solid var(--border-color)" }}>
                 <div style={{
                   width: 56, height: 56, borderRadius: 16, flexShrink: 0,
                   background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
@@ -152,12 +152,12 @@ export const RoomsView: React.FC = () => {
                   </svg>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>Initialize New Room</h2>
-                  <p style={{ margin: "4px 0 0", fontSize: 14, color: "#9ca3af", fontWeight: 400 }}>Set up a comparison workspace</p>
+                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.2 }}>Initialize New Room</h2>
+                  <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--text-muted)", fontWeight: 400 }}>Set up a comparison workspace</p>
                 </div>
                 <button
                   onClick={() => setIsCreating(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: "#9ca3af", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                   aria-label="Close"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -170,7 +170,7 @@ export const RoomsView: React.FC = () => {
               <form id="create-room-form" onSubmit={handleCreate} style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
                 {/* Room Name */}
                 <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151", marginBottom: 10 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
                     ROOM NAME <span style={{ color: "#ef4444" }}>*</span>
                   </label>
                   <input
@@ -182,20 +182,20 @@ export const RoomsView: React.FC = () => {
                     required
                     style={{
                       width: "100%", boxSizing: "border-box",
-                      background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+                      background: "var(--bg-dark)", border: "1.5px solid var(--border-color)",
                       borderRadius: 16, padding: "14px 20px",
-                      fontSize: 14, color: "#111827",
+                      fontSize: 14, color: "var(--text-primary)",
                       outline: "none", transition: "border-color 0.15s",
                     }}
                     onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#e5e7eb"; e.target.style.boxShadow = "none"; }}
+                    onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
                   />
                 </div>
 
                 {/* Client */}
                 <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151", marginBottom: 10 }}>
-                    CLIENT <span style={{ fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#9ca3af" }}>optional</span>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
+                    CLIENT <span style={{ fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-muted)" }}>optional</span>
                   </label>
                   <input
                     type="text"
@@ -204,20 +204,20 @@ export const RoomsView: React.FC = () => {
                     placeholder="e.g. Acme Corp"
                     style={{
                       width: "100%", boxSizing: "border-box",
-                      background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+                      background: "var(--bg-dark)", border: "1.5px solid var(--border-color)",
                       borderRadius: 16, padding: "14px 20px",
-                      fontSize: 14, color: "#111827",
+                      fontSize: 14, color: "var(--text-primary)",
                       outline: "none", transition: "border-color 0.15s",
                     }}
                     onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#e5e7eb"; e.target.style.boxShadow = "none"; }}
+                    onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
                   />
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151", marginBottom: 10 }}>
-                    DESCRIPTION <span style={{ fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#9ca3af" }}>optional</span>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
+                    DESCRIPTION <span style={{ fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-muted)" }}>optional</span>
                   </label>
                   <textarea
                     value={description}
@@ -226,40 +226,40 @@ export const RoomsView: React.FC = () => {
                     rows={4}
                     style={{
                       width: "100%", boxSizing: "border-box",
-                      background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+                      background: "var(--bg-dark)", border: "1.5px solid var(--border-color)",
                       borderRadius: 16, padding: "14px 20px",
-                      fontSize: 14, color: "#111827",
+                      fontSize: 14, color: "var(--text-primary)",
                       outline: "none", resize: "none", transition: "border-color 0.15s",
                       fontFamily: "inherit",
                     }}
                     onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#e5e7eb"; e.target.style.boxShadow = "none"; }}
+                    onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
                   />
                 </div>
 
                 {/* Comparison Engine */}
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151" }}>COMPARISON ENGINE</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)" }}>COMPARISON ENGINE</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 99, padding: "2px 8px" }}>DEV</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, background: "#f3f4f6", borderRadius: 20, padding: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, background: "var(--bg-dark)", borderRadius: 20, padding: 8 }}>
                     {/* RAG */}
                     <button
                       type="button"
                       id="method-rag"
                       onClick={() => setComparisonMethod("rag")}
                       style={{
-                        background: comparisonMethod === "rag" ? "#ffffff" : "transparent",
-                        border: comparisonMethod === "rag" ? "1.5px solid #e5e7eb" : "1.5px solid transparent",
+                        background: comparisonMethod === "rag" ? "var(--bg-sidebar)" : "transparent",
+                        border: comparisonMethod === "rag" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
                         borderRadius: 10, padding: "10px 6px", cursor: "pointer",
                         boxShadow: comparisonMethod === "rag" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag" ? "#7c3aed" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag" ? "#111827" : "#9ca3af" }}>RAG</span>
-                      <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>SpatialDiffer + BOM</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag" ? "var(--text-primary)" : "var(--text-muted)" }}>RAG</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>SpatialDiffer + BOM</span>
                     </button>
                     {/* RAG + AI */}
                     <button
@@ -267,16 +267,16 @@ export const RoomsView: React.FC = () => {
                       id="method-rag-ai"
                       onClick={() => setComparisonMethod("rag_ai")}
                       style={{
-                        background: comparisonMethod === "rag_ai" ? "#ffffff" : "transparent",
-                        border: comparisonMethod === "rag_ai" ? "1.5px solid #e5e7eb" : "1.5px solid transparent",
+                        background: comparisonMethod === "rag_ai" ? "var(--bg-sidebar)" : "transparent",
+                        border: comparisonMethod === "rag_ai" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
                         borderRadius: 10, padding: "10px 6px", cursor: "pointer",
                         boxShadow: comparisonMethod === "rag_ai" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag_ai" ? "#7c3aed" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag_ai" ? "#111827" : "#9ca3af" }}>RAG + AI</span>
-                      <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>Gemini (PNG+JSON)</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag_ai" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag_ai" ? "var(--text-primary)" : "var(--text-muted)" }}>RAG + AI</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Gemini (PNG+JSON)</span>
                     </button>
                     {/* AI Vision */}
                     <button
@@ -284,16 +284,16 @@ export const RoomsView: React.FC = () => {
                       id="method-ai-vision"
                       onClick={() => setComparisonMethod("ai_vision")}
                       style={{
-                        background: comparisonMethod === "ai_vision" ? "#ffffff" : "transparent",
-                        border: comparisonMethod === "ai_vision" ? "1.5px solid #e5e7eb" : "1.5px solid transparent",
+                        background: comparisonMethod === "ai_vision" ? "var(--bg-sidebar)" : "transparent",
+                        border: comparisonMethod === "ai_vision" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
                         borderRadius: 10, padding: "10px 6px", cursor: "pointer",
                         boxShadow: comparisonMethod === "ai_vision" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "ai_vision" ? "#7c3aed" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "ai_vision" ? "#111827" : "#9ca3af" }}>AI Vision</span>
-                      <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>Gemini (PNG Only)</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "ai_vision" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "ai_vision" ? "var(--text-primary)" : "var(--text-muted)" }}>AI Vision</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Gemini (PNG Only)</span>
                     </button>
                     {/* Hybrid */}
                     <button
@@ -301,27 +301,27 @@ export const RoomsView: React.FC = () => {
                       id="method-hybrid"
                       onClick={() => setComparisonMethod("hybrid")}
                       style={{
-                        background: comparisonMethod === "hybrid" ? "#ffffff" : "transparent",
-                        border: comparisonMethod === "hybrid" ? "1.5px solid #e5e7eb" : "1.5px solid transparent",
+                        background: comparisonMethod === "hybrid" ? "var(--bg-sidebar)" : "transparent",
+                        border: comparisonMethod === "hybrid" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
                         borderRadius: 10, padding: "10px 6px", cursor: "pointer",
                         boxShadow: comparisonMethod === "hybrid" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "hybrid" ? "#7c3aed" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "hybrid" ? "#111827" : "#9ca3af" }}>HYBRID</span>
-                      <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>2 gens + verify</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "hybrid" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "hybrid" ? "var(--text-primary)" : "var(--text-muted)" }}>HYBRID</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>2 gens + verify</span>
                     </button>
                   </div>
                 </div>
               </form>
 
               {/* Footer */}
-              <div style={{ padding: "20px 32px", borderTop: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+              <div style={{ padding: "20px 32px", borderTop: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
                 <button
                   type="button"
                   onClick={() => setIsCreating(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#6b7280", padding: "10px 20px", borderRadius: 12 }}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "var(--text-muted)", padding: "10px 20px", borderRadius: 12 }}
                 >
                   Cancel
                 </button>
@@ -330,7 +330,7 @@ export const RoomsView: React.FC = () => {
                   form="create-room-form"
                   disabled={!name.trim()}
                   style={{
-                    background: name.trim() ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "#d1d5db",
+                    background: name.trim() ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "var(--border-color)",
                     color: "#ffffff",
                     border: "none", cursor: name.trim() ? "pointer" : "not-allowed",
                     fontSize: 15, fontWeight: 700,
@@ -451,7 +451,7 @@ export const RoomsView: React.FC = () => {
                     {/* Reference Drawing */}
                     <div className="flex flex-col gap-2 w-full sm:w-[45%] text-left">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted ml-1">Reference</span>
-                      <div className="flex items-center gap-3 overflow-hidden bg-bg-sidebar px-4 py-3 rounded-xl border border-border-color">
+                      <div className="flex items-center gap-3 overflow-hidden bg-bg-dark px-4 py-3 rounded-xl border border-border-color">
                         <div className="w-7 h-7 rounded-md bg-bg-card flex items-center justify-center shrink-0 border border-border-color">
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
                         </div>
