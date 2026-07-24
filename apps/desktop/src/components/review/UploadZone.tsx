@@ -146,7 +146,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         <div className="flex flex-col items-center text-center gap-4 w-full max-w-[380px]">
           <div className={dropzoneBoxClass}>
             <div
-              className={`w-9 h-9 rounded-full bg-white/2 border border-border-color flex items-center justify-center text-text-muted transition-all duration-250 group-hover:-translate-y-0.5 ${
+              className={`w-9 h-9 rounded-full bg-sidebar-item-hover border border-border-color flex items-center justify-center text-text-muted transition-all duration-250 group-hover:-translate-y-0.5 ${
                 side === "old"
                   ? "group-hover:border-accent-cyan group-hover:text-accent-cyan group-hover:bg-blue-600/6"
                   : "group-hover:border-purple-500 group-hover:text-purple-400 group-hover:bg-purple-500/6"
@@ -209,7 +209,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
 
       {uploadState === "uploading" && (
         <div className="w-full flex flex-col items-center text-center p-8">
-          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-white/10 flex items-center justify-center mb-6 shadow-lg">
+          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-border-color flex items-center justify-center mb-6 shadow-lg">
             <Loader className="spin-animation text-accent-cyan" size={24} />
           </div>
           <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
@@ -222,7 +222,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Network Transfer</span>
               <span className="text-xs font-mono font-bold text-accent-cyan">{progress}%</span>
             </div>
-            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+            <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
               <div
                 className="h-full bg-accent-cyan transition-all duration-300 shadow-[0_0_10px_rgba(0,229,255,0.4)]"
                 style={{ width: `${progress}%` }}
@@ -234,7 +234,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
 
       {(uploadState === "processing" || uploadState === "validating") && (
         <div className="w-full flex flex-col items-center text-center p-8">
-          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-white/10 flex items-center justify-center mb-6 shadow-lg">
+          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-border-color flex items-center justify-center mb-6 shadow-lg">
             <Loader className="spin-animation text-accent-cyan" size={24} />
           </div>
           <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
@@ -253,7 +253,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
                 {Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%
               </span>
             </div>
-            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+            <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
               <div
                 className="h-full bg-accent-cyan transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(0,229,255,0.4)]"
                 style={{ width: `${Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%` }}

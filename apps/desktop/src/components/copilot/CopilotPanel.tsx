@@ -268,18 +268,18 @@ export const CopilotPanel: React.FC = () => {
         <button
           onClick={clearSession}
           title="Clear conversation"
-          className="bg-transparent border-0 text-text-muted cursor-pointer text-[11px] py-1 px-2 rounded-md hover:bg-white/5 transition-all"
+          className="bg-transparent border-0 text-text-muted cursor-pointer text-[11px] py-1 px-2 rounded-md hover:bg-sidebar-item-hover transition-all"
         >
           Clear
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-4 border-b border-white/6 pb-3">
+      <div className="flex gap-2 mb-4 border-b border-border-color pb-3">
         {(["chat", "violations", "insights"] as const).map((tab) => (
           <button
             key={tab}
-            className={`flex-1 bg-white/3 border border-white/4 text-text-muted text-[11px] font-semibold py-2 px-3 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/6 hover:text-text-primary ${
+            className={`flex-1 bg-sidebar-item-hover border border-border-color text-text-muted text-[11px] font-semibold py-2 px-3 rounded-lg cursor-pointer transition-all duration-200 hover:bg-sidebar-item-hover hover:text-text-primary ${
               activeTab === tab ? "bg-purple-600/15 border-purple-500/35 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.1)]" : ""
             }`}
             onClick={() => setActiveTab(tab)}
@@ -565,7 +565,7 @@ export const CopilotPanel: React.FC = () => {
             )}
 
             {/* Ask copilot about insights */}
-            <div className="bg-white/3 border border-white/5 p-3 rounded-lg flex flex-col gap-2 mt-4">
+            <div className="bg-sidebar-item-hover border border-border-color p-3 rounded-lg flex flex-col gap-2 mt-4">
               <h3 className="text-xs font-bold text-blue-400 m-0">AI Geometry Analysis</h3>
               <p className="text-xs text-text-muted m-0 leading-relaxed">Let the copilot analyze the drawing's structure and geometry patterns.</p>
               <button
@@ -585,12 +585,12 @@ export const CopilotPanel: React.FC = () => {
       </div>
 
       {/* Input area */}
-      <div className="mt-4 pt-4 border-t border-white/6">
+      <div className="mt-4 pt-4 border-t border-border-color">
         <div className="flex gap-2 items-center">
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 bg-black/25 border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary focus:outline-none focus:border-purple-500 focus:shadow-[0_0_10px_rgba(168,85,247,0.25)] transition-all outline-none disabled:opacity-50"
+            className="flex-1 bg-bg-dark border border-border-color rounded-lg py-2 px-3 text-xs text-text-primary focus:outline-none focus:border-purple-500 focus:shadow-[0_0_10px_rgba(168,85,247,0.25)] transition-all outline-none disabled:opacity-50"
             placeholder={
               isSending ? "Copilot is thinking..." : "Ask about standards, violations, or geometry..."
             }

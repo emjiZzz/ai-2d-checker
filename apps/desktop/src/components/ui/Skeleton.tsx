@@ -7,7 +7,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className, ...props }) => {
   return (
     <div
       className={twMerge(
-        'animate-pulse rounded-md bg-white/10 border border-white/5 shadow-inner',
+        'animate-pulse rounded-md bg-sidebar-item-hover border border-border-color shadow-inner',
         className
       )}
       {...props}

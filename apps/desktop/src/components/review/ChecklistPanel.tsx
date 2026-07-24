@@ -109,16 +109,17 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           }
         }}
         style={{
-          background: isSelected ? "rgba(0, 229, 255, 0.06)" : "rgba(255,255,255,0.02)",
-          border: isSelected ? "1px solid var(--accent-cyan)" : "1px solid rgba(255,255,255,0.06)",
-          borderRadius: "8px",
-          padding: "12px",
+          background: isSelected ? "rgba(37, 99, 235, 0.05)" : "var(--bg-card)",
+          border: isSelected ? "1.5px solid var(--accent-cyan)" : "1px solid var(--border-color)",
+          borderRadius: "14px",
+          padding: "14px",
           display: "flex",
           flexDirection: "column",
-          gap: "8px",
+          gap: "10px",
           cursor: matchingViolation ? "pointer" : "default",
           opacity: isHidden ? 0.4 : 1,
-          transition: "opacity 0.2s ease"
+          boxShadow: isSelected ? "0 6px 20px rgba(37,99,235,0.12)" : "0 1px 3px rgba(24,24,27,0.04)",
+          transition: "all 0.2s ease"
         }}
       >
         {/* Badge Row */}
@@ -132,7 +133,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             }}
             style={{
               cursor: matchingViolation ? "pointer" : "default",
-              color: isHidden ? "#52525b" : "var(--accent-cyan)",
+              color: isHidden ? "var(--text-muted)" : "var(--accent-cyan)",
               display: "flex",
               alignItems: "center"
             }}
@@ -142,39 +143,41 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             )}
           </div>
           <span style={{
-            fontSize: "0.62rem", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
-            color: cellBadgeColor, background: cellBadgeBg, border: `1px solid ${cellBadgeColor}33`,
-            textTransform: "uppercase"
+            display: "inline-flex", alignItems: "center", gap: "5px",
+            fontSize: "0.62rem", fontWeight: 700, padding: "3px 10px", borderRadius: "999px",
+            color: cellBadgeColor, background: cellBadgeBg,
+            textTransform: "uppercase", letterSpacing: "0.04em"
           }}>
+            <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: cellBadgeColor, flexShrink: 0 }} />
             {statusText}
           </span>
         </div>
 
         {/* Comparison Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", textAlign: "center", background: "rgba(0,0,0,0.2)", padding: "10px", borderRadius: "6px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", textAlign: "center", background: "var(--bg-dark)", padding: "12px", borderRadius: "10px" }}>
           {/* Field Title */}
-          <div style={{ gridColumn: "span 2", fontSize: "0.8rem", fontWeight: 700, color: "var(--accent-cyan)", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "6px", textTransform: "uppercase", textAlign: "left" }}>
+          <div style={{ gridColumn: "span 2", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "2px", textTransform: "uppercase", textAlign: "left", letterSpacing: "0.02em" }}>
             {row.field}
           </div>
 
           {/* Column Headers */}
-          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", marginTop: "4px" }}>
-            ORIGINAL
+          <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Original
           </div>
-          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--accent-cyan)", marginTop: "4px" }}>
-            REVISION
+          <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--accent-cyan)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Revision
           </div>
 
           {/* Values */}
           <div style={{
-            fontSize: "0.75rem", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "0.8rem", color: "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace",
             textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
             wordBreak: "break-word"
           }}>
             {row.original || "-"}
           </div>
           <div style={{
-            fontSize: "0.75rem", color: statusText.toUpperCase() === "MATCHED" ? "#a7f3d0" : "#e2e8f0",
+            fontSize: "0.8rem", color: statusText.toUpperCase() === "MATCHED" ? "#059669" : "var(--text-primary)",
             fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
             wordBreak: "break-word"
           }}>
@@ -188,11 +191,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexGrow: 1, paddingBottom: "24px" }}>
       <div style={{
-        background: "linear-gradient(135deg, rgba(30,30,40,0.5) 0%, rgba(15,15,20,0.5) 100%)",
-        border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: "8px",
+        background: "linear-gradient(135deg, var(--bg-sidebar) 0%, var(--bg-card) 100%)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "14px",
         padding: "14px",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+        boxShadow: "0 2px 10px rgba(24,24,27,0.06)",
         backdropFilter: "blur(15px)",
         display: "flex",
         flexDirection: "column",
@@ -216,8 +219,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             else if (res.status === "ADDED") color = "#3b82f6";
             else if (res.status === "REMOVED" || res.status === "MISSING") color = "#ef4444";
             return (
-              <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.02)", padding: "5px 8px", borderRadius: "5px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                <span style={{ fontSize: "0.72rem", color: "#a1a1aa", fontWeight: 400 }}>{label}</span>
+              <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--sidebar-item-hover)", padding: "5px 8px", borderRadius: "5px", border: "1px solid var(--border-color)" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 400 }}>{label}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "0.68rem", fontWeight: 600, color, letterSpacing: "0.02em" }}>
                   {res.status === "MATCHED" && (
                     <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -237,11 +240,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           const pct = total > 0 ? Math.round((matched / total) * 100) : 0;
           return (
             <div style={{ marginTop: "4px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "#e4e4e7", marginBottom: "5px", fontWeight: 500 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-primary)", marginBottom: "5px", fontWeight: 500 }}>
                 <span>Completion Parity</span>
                 <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{pct}% MATCHED</span>
               </div>
-              <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden" }}>
+              <div style={{ width: "100%", height: "4px", background: "var(--border-color)", borderRadius: "2px", overflow: "hidden" }}>
                 <div style={{ height: "100%", background: "var(--accent-cyan)", width: `${pct}%`, transition: "width 0.5s ease" }}></div>
               </div>
             </div>
@@ -353,11 +356,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           <div
             key={key}
             style={{
-              background: "rgba(22,22,26,0.7)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              borderRadius: "8px",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "14px",
               overflow: "hidden",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+              boxShadow: "0 2px 8px rgba(24,24,27,0.06)"
             }}
           >
             <div
@@ -369,8 +372,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                 padding: "12px 14px",
                 cursor: "pointer",
                 userSelect: "none",
-                background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent",
-                borderBottom: isExpanded ? "1px solid rgba(255,255,255,0.05)" : "none"
+                background: isExpanded ? "var(--sidebar-item-hover)" : "transparent",
+                borderBottom: isExpanded ? "1px solid var(--border-color)" : "none"
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -383,23 +386,23 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                   }}
                   style={{
                     cursor: categoryViolationIds.length > 0 ? "pointer" : "default",
-                    color: categoryViolationIds.length > 0 ? (allHidden ? "#52525b" : "var(--accent-cyan)") : "rgba(255,255,255,0.1)",
+                    color: categoryViolationIds.length > 0 ? (allHidden ? "var(--text-muted)" : "var(--accent-cyan)") : "var(--border-color)",
                     display: "flex",
                     alignItems: "center"
                   }}
                 >
                   {allHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                 </div>
-                <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "#ffffff", letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "var(--text-primary)", letterSpacing: "0.03em", textTransform: "uppercase" }}>
                   {label}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{
                   display: "flex", alignItems: "center", gap: "5px",
-                  fontSize: "0.72rem", fontWeight: 600, padding: "3px 8px", borderRadius: "5px",
-                  color: badgeColor, border: `1px solid ${badgeColor}40`, background: `${badgeColor}12`,
-                  letterSpacing: "0.04em"
+                  fontSize: "0.72rem", fontWeight: 700, padding: "4px 11px", borderRadius: "999px",
+                  color: badgeColor, background: `${badgeColor}14`,
+                  letterSpacing: "0.04em", textTransform: "uppercase"
                 }}>
                   {result.status === "MATCHED" && (
                     <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -408,12 +411,12 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                   )}
                   {result.status}
                 </span>
-                {isExpanded ? <ChevronDown size={14} color="#a1a1aa" /> : <ChevronRight size={14} color="#a1a1aa" />}
+                {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
               </div>
             </div>
 
             {isExpanded && (
-              <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.25)", display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ padding: "14px 16px", background: "var(--bg-dark)", display: "flex", flexDirection: "column", gap: "14px" }}>
 
                 {/* ── MATCHED: All-Clear confirmation block ── */}
                 {result.status === "MATCHED" && (
@@ -494,41 +497,41 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                             }
 
                             return (
-                              <div key={panelKey} style={{ border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden" }}>
+                              <div key={panelKey} style={{ border: "1px solid var(--border-color)", borderRadius: "6px", overflow: "hidden" }}>
                                 <div
                                   onClick={() => hasRows && toggleFeaturePanel(panelKey, defaultOpen)}
                                   style={{
                                     display: "flex", justifyContent: "space-between", alignItems: "center",
                                     padding: "8px 10px", cursor: hasRows ? "pointer" : "default", userSelect: "none",
-                                    background: "rgba(255,255,255,0.015)"
+                                    background: "var(--bg-card)"
                                   }}
                                 >
-                                  <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#d4d4d8", letterSpacing: "0.02em" }}>
+                                  <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.02em" }}>
                                     {group.label}
                                   </span>
                                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                     {hasRows && (
                                       <span style={{
                                         fontSize: "0.62rem", fontWeight: 700, color: subBadgeColor,
-                                        background: `${subBadgeColor}14`, border: `1px solid ${subBadgeColor}33`,
-                                        borderRadius: "10px", padding: "1px 7px"
+                                        background: `${subBadgeColor}16`,
+                                        borderRadius: "999px", padding: "2px 8px"
                                       }}>
                                         {group.rows.length}
                                       </span>
                                     )}
-                                    {hasRows && (isOpen ? <ChevronDown size={12} color="#71717a" /> : <ChevronRight size={12} color="#71717a" />)}
+                                    {hasRows && (isOpen ? <ChevronDown size={12} color="var(--text-muted)" /> : <ChevronRight size={12} color="var(--text-muted)" />)}
                                   </div>
                                 </div>
                                 {isDeferred ? (
-                                  <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "#71717a", fontStyle: "italic", background: "rgba(255,255,255,0.01)" }}>
+                                  <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "var(--text-muted)", fontStyle: "italic", background: "var(--bg-card)" }}>
                                     Not yet supported for automatic checking.
                                   </div>
                                 ) : !hasRows ? (
-                                  <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "#52525b", background: "rgba(255,255,255,0.01)" }}>
+                                  <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "var(--text-muted)", background: "var(--bg-card)" }}>
                                     No changes detected.
                                   </div>
                                 ) : isOpen ? (
-                                  <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "8px", background: "rgba(0,0,0,0.1)" }}>
+                                  <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "8px", background: "var(--bg-dark)" }}>
                                     {group.rows.map(({ row, idx, violation }) => renderDiffRowCard(row, violation, `${key}-${idx}`))}
                                   </div>
                                 ) : null}
@@ -543,15 +546,15 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ fontSize: "0.8rem", fontWeight: 650, color: "var(--accent-cyan)", marginBottom: "4px", letterSpacing: "0.05em" }}>COMPARATIVE CONTENTS</div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", padding: "10px", borderRadius: "6px" }}>
+                          <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "10px", borderRadius: "6px" }}>
                             <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: "6px" }}>Original Drawing</div>
-                            <div style={{ fontSize: "0.78rem", color: "#94a3b8", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "monospace" }}>
+                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "monospace" }}>
                               {result.reference_content || "-"}
                             </div>
                           </div>
                           <div style={{ background: "rgba(0,229,255,0.01)", border: "1px solid rgba(0,229,255,0.1)", padding: "10px", borderRadius: "6px" }}>
                             <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--accent-cyan)", marginBottom: "6px" }}>KMTI Drawing</div>
-                            <div style={{ fontSize: "0.78rem", color: "#e2e8f0", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "monospace" }}>
+                            <div style={{ fontSize: "0.78rem", color: "var(--text-primary)", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "monospace" }}>
                               {result.revision_content || "-"}
                             </div>
                           </div>
@@ -564,7 +567,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                 {result.difference_summary && (
                   <div>
                     <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>DETAILED SUMMARY REPORT</div>
-                    <div style={{ fontSize: "0.85rem", color: "#e4e4e7", lineHeight: "1.5", fontWeight: 300 }}>{result.difference_summary}</div>
+                    <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", lineHeight: "1.5", fontWeight: 300, background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: "6px", padding: "10px 12px" }}>{result.difference_summary}</div>
                   </div>
                 )}
 
@@ -573,7 +576,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                     <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>PROFESSIONAL SUGGESTION</div>
                     <div style={{
                       fontSize: "0.85rem",
-                      color: result.status === "MATCHED" ? "#a7f3d0" : "#fecaca",
+                      color: result.status === "MATCHED" ? "#10b981" : "#ef4444",
                       background: result.status === "MATCHED" ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
                       borderLeft: `4px solid ${badgeColor}`,
                       padding: "8px 12px",
@@ -596,9 +599,9 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                         .map(v => {
                           const isSelected = selectedViolation?.id === v.id;
                           const isHidden = !!hiddenViolationIds[v.id];
-                          let markerBg = "rgba(255,255,255,0.04)";
-                          let markerBorder = "rgba(255,255,255,0.08)";
-                          let markerText = "#e2e8f0";
+                          let markerBg = "var(--sidebar-item-hover)";
+                          let markerBorder = "var(--border-color)";
+                          let markerText = "var(--text-primary)";
 
                           if (isSelected) {
                             markerBg = "rgba(0, 229, 255, 0.1)";

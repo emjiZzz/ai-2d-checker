@@ -70,13 +70,13 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={cn(
-          "w-full bg-white border border-gray-200 rounded-3xl shadow-2xl shadow-black/20 animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
+          "w-full bg-bg-card border border-border-color rounded-3xl shadow-2xl shadow-black/20 animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
           maxWidthClassName,
           className
         )}
       >
         {(title || !disableDismiss) && (
-          <div className="flex items-start gap-4 px-7 py-6 border-b border-gray-100 shrink-0">
+          <div className="flex items-start gap-4 px-7 py-6 border-b border-border-color shrink-0">
             {icon && <div className="shrink-0 mt-0.5">{icon}</div>}
             <div className="flex-1 min-w-0">
               {title && (
@@ -106,7 +106,7 @@ export const Modal: React.FC<ModalProps> = ({
         <div className="px-7 py-6 overflow-y-auto">{children}</div>
 
         {footer && (
-          <div className="px-7 py-5 shrink-0 border-t border-gray-100">
+          <div className="px-7 py-5 shrink-0 border-t border-border-color">
             {footer}
           </div>
         )}

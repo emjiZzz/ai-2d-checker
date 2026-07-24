@@ -8,13 +8,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         // Neutral solid — theme-aware surface with soft elevation
-        default: "bg-bg-card text-text-primary border border-white/10 hover:border-white/20 hover:bg-white/5 shadow-sm",
+        default: "bg-bg-card text-text-primary border border-border-color hover:border-border-color hover:bg-sidebar-item-hover shadow-sm",
         // The primary brand action — subtle glowing accent
         primary: "bg-accent-cyan text-on-accent font-bold hover:brightness-110 shadow-[0_0_15px_-3px_rgba(0,229,255,0.4)] border border-cyan-300/30",
         destructive: "bg-danger text-white hover:bg-danger/90 shadow-[0_0_12px_-2px_rgba(239,68,68,0.4)] border border-red-400/30",
-        outline: "border border-border-color bg-transparent text-text-primary hover:bg-white/5 hover:border-white/20",
-        secondary: "bg-white/5 text-text-primary border border-white/5 hover:bg-white/10 hover:border-white/10",
-        ghost: "bg-transparent text-text-muted hover:bg-white/5 hover:text-text-primary",
+        outline: "border border-border-color bg-transparent text-text-primary hover:bg-sidebar-item-hover hover:border-border-color",
+        secondary: "bg-sidebar-item-hover text-text-primary border border-border-color hover:bg-sidebar-item-hover hover:border-border-color",
+        ghost: "bg-transparent text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary",
         link: "text-accent-cyan underline-offset-4 hover:underline",
       },
       size: {

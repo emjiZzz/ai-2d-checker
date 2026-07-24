@@ -1,11 +1,86 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
+import { useThemeStore } from '../../stores/themeStore';
 import { fetchWithAuth } from '../../services/fetchUtils';
 import { getNormalization, parseBounds, clampViewport } from '../../utils/coordinateTransform';
 import { Map as MapIcon } from 'lucide-react';
 
 // Shared cache to prevent duplicate network requests when both Old and New panels load the same drawing
 const thumbnailCache = new Map<string, Promise<HTMLImageElement>>();
+// Lazily-computed light-theme variant per drawing, keyed the same as thumbnailCache
+const lightThumbnailCache = new Map<string, HTMLImageElement>();
+
+// The backend rendering is tuned for a dark viewport (near-white linework, bright
+// cyan/yellow markers) and anti-aliases thin CAD linework, leaving most line-edge
+// pixels at low partial alpha. On a light minimap frame that reads as nearly
+// invisible, so for hc-light we derive a variant the same way DrawingCanvas.tsx
+// does for the main canvas — invert near-grayscale pixels, darken bright saturated
+// ones — PLUS an alpha gamma-lift the main canvas doesn't need: the minimap squeezes
+// the ~8000px-wide native rendering down to 200x150 (a ~40x downscale), and synthetic
+// testing confirmed that at realistic anti-aliased alphas (~0.15) that downscale
+// dilutes line content to fully invisible (0 visible pixels) unless boosted first.
+// The lift is monotonic (never reduces alpha) so it can't hide anything that was
+// already visible.
+const ALPHA_GAMMA = 0.35;
+
+function buildLightVariant(img: HTMLImageElement): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { reject(new Error('no 2d context')); return; }
+
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+
+    // Chunked (not one giant synchronous pass) so an ~8000px-wide rendering doesn't
+    // freeze the UI thread — mirrors the pattern already used for the same job in
+    // DrawingCanvas.tsx.
+    const PIXELS_PER_CHUNK = 250000;
+    const CHUNK_SIZE = PIXELS_PER_CHUNK * 4;
+    let offset = 0;
+
+    const processChunk = () => {
+      const end = Math.min(offset + CHUNK_SIZE, data.length);
+      for (let i = offset; i < end; i += 4) {
+        const a = data[i + 3];
+        if (a === 0) continue;
+
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) < 25) {
+          data[i] = 255 - r;
+          data[i + 1] = 255 - g;
+          data[i + 2] = 255 - b;
+        } else {
+          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+          if (brightness > 150) {
+            data[i] = Math.round(r * 0.45);
+            data[i + 1] = Math.round(g * 0.45);
+            data[i + 2] = Math.round(b * 0.45);
+          }
+        }
+
+        const boostedAlpha = 255 * Math.pow(a / 255, ALPHA_GAMMA);
+        data[i + 3] = Math.max(a, Math.round(boostedAlpha));
+      }
+      offset = end;
+
+      if (offset < data.length) {
+        setTimeout(processChunk, 0);
+      } else {
+        ctx.putImageData(imgData, 0, 0);
+        const lightImg = new Image();
+        lightImg.onload = () => resolve(lightImg);
+        lightImg.onerror = reject;
+        lightImg.src = canvas.toDataURL();
+      }
+    };
+
+    processChunk();
+  });
+}
 
 interface MinimapProps {
   drawing: any;
@@ -17,11 +92,13 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
   const viewportRef = useRef(useReviewStore.getState().viewport);
   const setViewport = useReviewStore(s => s.setViewport);
   const showMinimap = useReviewStore(s => s.showMinimap);
+  const theme = useThemeStore(s => s.theme);
   const mapRef = useRef<HTMLDivElement>(null);
   const thumbCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewportBoxRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [thumbImage, setThumbImage] = useState<HTMLImageElement | null>(null);
+  const [lightThumbImage, setLightThumbImage] = useState<HTMLImageElement | null>(null);
 
   // Constants
   const MINIMAP_WIDTH = 200;
@@ -35,10 +112,12 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
   useEffect(() => {
     if (!drawing?.id) {
       setThumbImage(null);
+      setLightThumbImage(null);
       return;
     }
 
     let active = true;
+    setLightThumbImage(lightThumbnailCache.get(drawing.id) || null);
 
     if (!thumbnailCache.has(drawing.id)) {
       const fetchPromise = fetchWithAuth(`/api/v1/drawings/${drawing.id}/rendering`, { headers: { "Accept": "image/png" } })
@@ -64,6 +143,22 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
 
     return () => { active = false; };
   }, [drawing?.id]);
+
+  // Derive the light-theme variant once per drawing, the first time it's actually needed
+  useEffect(() => {
+    if (theme !== 'hc-light' || !thumbImage || !drawing?.id) return;
+    if (lightThumbnailCache.has(drawing.id)) return;
+
+    let active = true;
+    buildLightVariant(thumbImage)
+      .then((lightImg) => {
+        lightThumbnailCache.set(drawing.id, lightImg);
+        if (active) setLightThumbImage(lightImg);
+      })
+      .catch(() => { /* fall back to the raw dark-tuned rendering */ });
+
+    return () => { active = false; };
+  }, [theme, thumbImage, drawing?.id]);
 
   const calculateViewportBox = useCallback((vp = viewportRef.current) => {
     if (!norm.hasBounds || !bounds) return { left: 0, top: 0, width: 0, height: 0, minScale: 1, offsetX: 0, offsetY: 0 };
@@ -132,7 +227,7 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
     return unsub;
   }, [calculateViewportBox]);
 
-  // Paint thumbnail onto the minimap canvas whenever image changes (NOT on viewport change)
+  // Paint thumbnail onto the minimap canvas whenever the image or theme changes (NOT on viewport change)
   useEffect(() => {
     const canvas = thumbCanvasRef.current;
     if (!canvas) return;
@@ -142,17 +237,19 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
     const box = calculateViewportBox();
     ctx.clearRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
 
-    if (thumbImage && bounds) {
+    const imageToDraw = theme === 'hc-light' && lightThumbImage ? lightThumbImage : thumbImage;
+
+    if (imageToDraw && bounds) {
       // Draw the thumbnail scaled to fit the drawing-bounds region
       ctx.drawImage(
-        thumbImage,
+        imageToDraw,
         box.offsetX,
         box.offsetY,
         (box as any).drawW ?? (bounds.xmax - bounds.xmin) * box.minScale,
         (box as any).drawH ?? (norm.ymax - norm.ymin) * box.minScale,
       );
     }
-  }, [thumbImage, calculateViewportBox, bounds, norm]);
+  }, [thumbImage, lightThumbImage, theme, calculateViewportBox, bounds, norm]);
 
   const updateViewportFromMinimap = (e: React.PointerEvent) => {
     if (!mapRef.current || !norm.hasBounds) return;
@@ -214,8 +311,8 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
         left: '8px',
         width: `${MINIMAP_WIDTH}px`,
         height: `${MINIMAP_HEIGHT}px`,
-        background: 'rgba(9, 9, 11, 0.88)',
-        border: '1px solid rgba(255,255,255,0.12)',
+        background: theme === 'hc-light' ? '#EBEBEB' : 'var(--bg-sidebar)',
+        border: '1px solid var(--border-color)',
         borderRadius: '6px',
         boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
         zIndex: 50,
@@ -238,7 +335,7 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
-          color: 'rgba(255,255,255,0.45)',
+          color: 'var(--text-muted)',
           fontSize: '0.6rem',
           fontWeight: 700,
           pointerEvents: 'none',
@@ -250,7 +347,8 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
         <MapIcon size={10} /> Map
       </div>
 
-      {/* Drawing thumbnail canvas */}
+      {/* Drawing thumbnail canvas — draws the theme-appropriate variant (see
+          buildLightVariant above), so no synthetic backdrop is needed here. */}
       <canvas
         ref={thumbCanvasRef}
         width={MINIMAP_WIDTH}
@@ -261,7 +359,7 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
           left: 0,
           width: '100%',
           height: '100%',
-          opacity: 0.7,
+          opacity: 0.9,
           pointerEvents: 'none',
         }}
       />
@@ -276,8 +374,8 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
             top: `${box.offsetY}px`,
             width: `${(bounds.xmax - bounds.xmin) * box.minScale}px`,
             height: `${(norm.ymax - norm.ymin) * box.minScale}px`,
-            border: '1px solid rgba(255,255,255,0.2)',
-            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid var(--border-color)',
+            background: 'var(--sidebar-item-hover)',
             pointerEvents: 'none',
           }}
         />

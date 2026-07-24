@@ -223,7 +223,7 @@ export const BackupRecovery: React.FC = () => {
 
         .btn-close-overlay:hover {
           color: var(--text-primary);
-          background: rgba(255, 255, 255, 0.05);
+          background: var(--sidebar-item-hover);
         }
 
         /* Custom premium Danger confirm button */

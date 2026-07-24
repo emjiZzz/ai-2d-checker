@@ -147,7 +147,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             <p className="text-xs text-text-muted mt-1 leading-relaxed">View historically logged revision comparison sessions and compliance reports.</p>
           </div>
           {sessions && sessions.length > 0 && (
-            <span className="text-xs text-text-muted bg-white/3 py-1 px-2.5 rounded-full border border-white/5">
+            <span className="text-xs text-text-muted bg-sidebar-item-hover py-1 px-2.5 rounded-full border border-border-color">
               Total sessions loaded: <strong className="text-text-primary">{sessions.length}</strong>
             </span>
           )}
@@ -246,7 +246,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <div className="bg-bg-card border border-border-color rounded-xl p-0 overflow-hidden shadow-sm">
             <table className="w-full border-collapse">
               <thead>
-                <tr className="border-b border-border-color bg-white/1">
+                <tr className="border-b border-border-color bg-sidebar-item-hover">
                   <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5 w-[90px]">ID</th>
                   <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">Original Drawing</th>
                   <th className="text-text-muted text-[11px] font-bold uppercase tracking-wider text-left p-3.5">KMTI Drawing</th>
@@ -273,7 +273,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   return (
                     <tr
                       key={session.id}
-                      className="border-b border-border-color hover:bg-white/1 transition-colors duration-200"
+                      className="border-b border-border-color hover:bg-sidebar-item-hover transition-colors duration-200"
                     >
                       {/* ID Column */}
                       <td className="p-3.5 text-xs text-text-primary align-middle">
@@ -402,8 +402,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         ) : (
           /* GLASSMORPHIC EMPTY STATE FALLBACK */
-          <div className="flex flex-col items-center justify-center p-12 text-center bg-white/1 border border-dashed border-white/5 rounded-xl mt-3 shadow-xs">
-            <div className="w-12 h-12 rounded-full bg-white/2 border border-white/5 flex items-center justify-center text-text-muted mb-4.5">
+          <div className="flex flex-col items-center justify-center p-12 text-center bg-sidebar-item-hover border border-dashed border-border-color rounded-xl mt-3 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-sidebar-item-hover border border-border-color flex items-center justify-center text-text-muted mb-4.5">
               <Database size={24} />
             </div>
             <h4 className="font-bold text-text-primary text-base mb-2">No matching archives found</h4>

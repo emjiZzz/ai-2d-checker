@@ -158,7 +158,7 @@ export const AuditConsole: React.FC = () => {
             onClick={handleStartAudit}
             disabled={!selectedDrawingId || !selectedStandardId}
           >
-            <Play size={18} fill="#fff" /> Run Comparative Standards Compliance Audit
+            <Play size={18} fill="currentColor" /> Run Comparative Standards Compliance Audit
           </Button>
         </div>
       )}
@@ -519,12 +519,12 @@ export const AuditConsole: React.FC = () => {
         .loading-card h4 {
           font-size: 1.15rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
           margin-bottom: 4px;
         }
         .loading-sub {
           font-size: 0.78rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
           margin-bottom: 24px;
         }
         .loading-steps-list {
@@ -534,17 +534,17 @@ export const AuditConsole: React.FC = () => {
           text-align: left;
           width: 100%;
           max-width: 450px;
-          background: rgba(0,0,0,0.15);
+          background: var(--bg-dark);
           padding: 16px;
           border-radius: 8px;
-          border: 1px solid rgba(255,255,255,0.03);
+          border: 1px solid var(--border-color);
         }
         .step-item {
           display: flex;
           align-items: center;
           gap: 10px;
           font-size: 0.82rem;
-          color: #71717a;
+          color: var(--text-muted);
         }
         .step-item.active {
           color: #e4e4e7;
@@ -584,18 +584,18 @@ export const AuditConsole: React.FC = () => {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 24px;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
+          border-bottom: 1px solid var(--border-color);
           padding-bottom: 16px;
         }
         .results-title {
           font-size: 1.15rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
           margin-bottom: 2px;
         }
         .results-subtitle {
           font-size: 0.82rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
         }
         
         .scores-grid {
@@ -613,7 +613,7 @@ export const AuditConsole: React.FC = () => {
         .score-label {
           font-size: 0.78rem;
           font-weight: 600;
-          color: #a1a1aa;
+          color: var(--text-muted);
           text-transform: uppercase;
           letter-spacing: 0.05em;
           margin-bottom: 16px;
@@ -648,7 +648,7 @@ export const AuditConsole: React.FC = () => {
         }
         .confidence-desc {
           font-size: 0.72rem;
-          color: #71717a;
+          color: var(--text-muted);
           text-align: center;
           max-width: 250px;
           line-height: 1.3;
@@ -669,12 +669,12 @@ export const AuditConsole: React.FC = () => {
         .timing-title {
           font-size: 0.85rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
           display: flex;
           align-items: center;
           gap: 6px;
           margin-bottom: 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.03);
+          border-bottom: 1px solid var(--border-color);
           padding-bottom: 8px;
         }
         .timing-grid {
@@ -689,7 +689,7 @@ export const AuditConsole: React.FC = () => {
         }
         .timing-label {
           font-size: 0.72rem;
-          color: #71717a;
+          color: var(--text-muted);
         }
         .timing-value {
           font-size: 0.88rem;
@@ -710,20 +710,20 @@ export const AuditConsole: React.FC = () => {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: rgba(0,0,0,0.25);
+          background: var(--bg-dark);
           padding: 4px 8px;
           border-radius: 6px;
-          border: 1px solid rgba(255,255,255,0.04);
+          border: 1px solid var(--border-color);
         }
         .filter-label {
           font-size: 0.72rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
           margin-right: 4px;
         }
         .btn-filter {
           background: none;
           border: none;
-          color: #71717a;
+          color: var(--text-muted);
           font-size: 0.72rem;
           font-weight: 600;
           padding: 3px 8px;
@@ -731,29 +731,29 @@ export const AuditConsole: React.FC = () => {
           cursor: pointer;
         }
         .btn-filter:hover {
-          color: #fff;
+          color: var(--text-primary);
         }
         .btn-filter.active {
           color: #fff;
           background: #a855f7;
         }
-        
+
         .empty-feed-card {
-          background: rgba(0,0,0,0.15);
-          border: 1px solid rgba(255,255,255,0.04);
+          background: var(--bg-dark);
+          border: 1px solid var(--border-color);
           border-radius: 8px;
           padding: 30px;
           text-align: center;
         }
         .empty-feed-card h4 {
           font-size: 0.95rem;
-          color: #fff;
+          color: var(--text-primary);
           font-weight: 500;
           margin-bottom: 4px;
         }
         .empty-feed-card p {
           font-size: 0.78rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
         }
         
         .infractions-list {
@@ -782,7 +782,7 @@ export const AuditConsole: React.FC = () => {
         .violation-category {
           font-size: 0.95rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
         }
         .severity-badge {
           font-size: 0.65rem;
@@ -797,20 +797,20 @@ export const AuditConsole: React.FC = () => {
           font-weight: 600;
           padding: 2px 6px;
           border-radius: 4px;
-          background: rgba(255,255,255,0.06);
-          color: #a1a1aa;
+          background: var(--sidebar-item-hover);
+          color: var(--text-muted);
           display: flex;
           align-items: center;
         }
         .violation-desc {
           font-size: 0.82rem;
-          color: #d4d4d8;
+          color: var(--text-secondary);
           line-height: 1.4;
           margin-bottom: 14px;
         }
         .violation-recommendation-box {
-          background: rgba(0,0,0,0.18);
-          border: 1px solid rgba(255,255,255,0.03);
+          background: var(--bg-dark);
+          border: 1px solid var(--border-color);
           border-radius: 6px;
           padding: 10px 14px;
           margin-bottom: 14px;
@@ -826,7 +826,7 @@ export const AuditConsole: React.FC = () => {
         }
         .rec-text {
           font-size: 0.8rem;
-          color: #e4e4e7;
+          color: var(--text-primary);
           line-height: 1.45;
         }
         .violation-footer {
@@ -839,8 +839,8 @@ export const AuditConsole: React.FC = () => {
           align-items: center;
           gap: 5px;
           font-size: 0.7rem;
-          color: #71717a;
-          background: rgba(0,0,0,0.12);
+          color: var(--text-muted);
+          background: var(--sidebar-item-hover);
           padding: 2px 8px;
           border-radius: 4px;
         }
