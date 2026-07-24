@@ -170,12 +170,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: false,
       error: null,
     });
-
-    // Hard reload the frontend to cleanly wipe all Zustand store memory (workspace, audit, admin)
-    // preventing data leaks between user accounts.
-    setTimeout(() => {
-      window.location.reload();
-    }, 50);
   },
 
   initialize: async () => {
