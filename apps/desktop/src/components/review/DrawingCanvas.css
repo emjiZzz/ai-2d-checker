@@ -1,57 +1,78 @@
-        .custom-context-menu {
-          position: absolute;
-          background: rgba(18, 18, 24, 0.95);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 8px;
-          padding: 6px 0;
-          min-width: 190px;
-          z-index: 10000;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-          display: flex;
-          flex-direction: column;
-        }
+.custom-context-menu {
+  position: absolute;
+  background: var(--bg-card, rgba(18, 18, 24, 0.96));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 0 !important;
+  padding: 4px 0;
+  min-width: 165px;
+  z-index: 10000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
 
-        .context-menu-item {
-          padding: 8px 14px;
-          font-size: 0.95rem;
-          color: #e4e4e7;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          transition: background 0.15s ease, color 0.15s ease;
-          position: relative;
-        }
+[data-theme='hc-light'] .custom-context-menu {
+  background: #ffffff;
+  border-color: #d4d4d8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
 
-        .context-menu-item:hover {
-          background: rgba(0, 229, 255, 0.1);
-          color: var(--accent-cyan);
-        }
+.context-menu-item {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-primary, #f4f4f5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.12s ease, color 0.12s ease;
+  position: relative;
+  border-radius: 0 !important;
+}
 
-        .context-menu-item.disabled {
-          color: #52525b;
-          pointer-events: none;
-          opacity: 0.5;
-        }
+[data-theme='hc-light'] .context-menu-item {
+  color: #18181b;
+}
 
-        .context-submenu {
-          position: absolute;
-          left: 100%;
-          top: 0;
-          background: rgba(18, 18, 24, 0.98);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 8px;
-          padding: 6px 0;
-          min-width: 145px;
-          display: none;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
+.context-menu-item:hover {
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--accent-cyan, #00e5ff);
+}
 
-        .context-menu-item.has-submenu:hover .context-submenu {
-          display: flex;
-          flex-direction: column;
-        }
+[data-theme='hc-light'] .context-menu-item:hover {
+  background: rgba(0, 168, 204, 0.12);
+  color: #007799;
+}
 
+.context-menu-item.disabled {
+  color: var(--text-muted, #71717a);
+  pointer-events: none;
+  opacity: 0.4;
+}
 
+.context-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: var(--bg-card, rgba(18, 18, 24, 0.98));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 0 !important;
+  padding: 4px 0;
+  min-width: 135px;
+  display: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='hc-light'] .context-submenu {
+  background: #ffffff;
+  border-color: #d4d4d8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.context-menu-item.has-submenu:hover .context-submenu {
+  display: flex;
+  flex-direction: column;
+}

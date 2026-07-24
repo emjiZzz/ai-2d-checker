@@ -1,12 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { AnnotationSeverity, getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { fetchWithAuth } from '../../services/fetchUtils';
 import { useThemeStore } from '../../stores/themeStore';
 import { useCanvasInteraction } from './useCanvasInteraction';
 import { CanvasRenderer } from './CanvasRenderer';
+import { CanvasContextMenu } from './CanvasContextMenu';
+import { AnnotationCreateModal } from './AnnotationCreateModal';
+import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, RotateCcw, Pin, Plus, X } from 'lucide-react';
 import { Skeleton } from '../ui/Skeleton';
 import './DrawingCanvas.css';
 
@@ -47,11 +51,31 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
     const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
     const toggleMarkerLabels = useReviewStore(s => s.toggleMarkerLabels);
+    const showAnnotations = useReviewStore(s => s.showAnnotations);
+    const toggleAnnotations = useReviewStore(s => s.toggleAnnotations);
+    const createAnnotationAt = useWorkspaceStore((s) => s.createAnnotationAt);
+    const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
+    const selectAnnotation = useWorkspaceStore((s) => s.selectAnnotation);
+    const annotations = useWorkspaceStore((s) => s.annotations);
+    // Stable A001/A002… labels derived from annotation order; recomputed only
+    // when the annotation set changes. No such field exists on the store —
+    // it's a pure projection of `annotations`.
+    const annotationBadgeMap = useMemo(() => getAnnotationBadgeMap(annotations), [annotations]);
     const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
     const theme = useThemeStore((s) => s.theme);
 
     const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
     const [redrawTrigger, setRedrawTrigger] = useState(0);
+
+    const [annotationModal, setAnnotationModal] = useState<{
+      visible: boolean;
+      x: number;
+      y: number;
+      wx: number;
+      wy: number;
+      severity: AnnotationSeverity;
+      content: string;
+    } | null>(null);
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
     const [lightBgImage, setLightBgImage] = useState<HTMLImageElement | null>(null);
@@ -305,6 +329,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           />
         </ErrorBoundary>
 
+        <AnnotationSummaryOverlay drawingId={drawing?.id} theme={theme} />
+
 
 
         {isFetchingBg && (
@@ -319,134 +345,79 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           </div>
         )}
 
-        {contextMenu && (
-          <div
-            className="custom-context-menu"
-            style={{
-              position: 'absolute',
-              left: contextMenu.x,
-              top: contextMenu.y,
+        {contextMenu && contextMenu.visible && (
+          <CanvasContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            wx={contextMenu.wx}
+            wy={contextMenu.wy}
+            drawingId={drawing?.id}
+            canvasWidth={width}
+            canvasHeight={height}
+            theme={theme}
+            onOpenAnnotationModal={(severity) => {
+              setAnnotationModal({
+                visible: true,
+                x: contextMenu.x,
+                y: contextMenu.y,
+                wx: contextMenu.wx,
+                wy: contextMenu.wy,
+                severity,
+                content: '',
+              });
+              setContextMenu(null);
             }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="context-menu-item"
-              onClick={() => {
-                toggleMarkerLabels();
-                setContextMenu(null);
-              }}
-            >
-              {showMarkerLabels ? "捷 Hide Labels" : "捷 Show Labels"}
-            </div>
-            <div
-              className={`context-menu-item ${useWorkspaceStore.getState().deletedViolationsStack.length === 0 ? "disabled" : ""}`}
-              onClick={() => {
-                useWorkspaceStore.getState().popAndRestoreViolation();
-                setContextMenu(null);
-              }}
-            >
-              <span>竊ｩ Undo Delete</span>
-              {useWorkspaceStore.getState().deletedViolationsStack.length > 0 && (
-                <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', marginLeft: '6px' }}>
-                  {useWorkspaceStore.getState().deletedViolationsStack.length}
-                </span>
-              )}
-            </div>
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
-            <div style={{ padding: '4px 14px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#71717a', fontWeight: 600 }}>Filter Markers</div>
-            {/*
-              Keys here MUST match the markerType values renderViolationReticles
-              derives from pen_type (see renderEntities.ts) and reviewStore's
-              visibleMarkerTypes default state: MISMATCHED/CHANGED/ADDED/MATCHED/CONFLICT.
-              A prior refactor swapped these for dimensional/clearance/missing_entity,
-              which renderViolationReticles never reads — the checkboxes rendered
-              but silently did nothing. Restored to the working taxonomy.
-              CONFLICT is hybrid-method-only (docs/hybrid-comparison-engine-
-              implementation-plan.md) — the two generators disagreed and the crop
-              verifier couldn't confirm either side; never emitted by rag/rag_ai/ai_vision.
-            */}
-            {[
-              { label: "MISMATCHED", key: "MISMATCHED", color: "#ef4444" },
-              { label: "CHANGED", key: "CHANGED", color: "#f97316" },
-              { label: "ADDED", key: "ADDED", color: "#3b82f6" },
-              { label: "MATCHED", key: "MATCHED", color: "#10b981" },
-              { label: "CONFLICT", key: "CONFLICT", color: "#a855f7" }
-            ].map(item => {
-              const isActive = useReviewStore.getState().visibleMarkerTypes[item.key] ?? true;
-              return (
-                <div
-                  key={item.key}
-                  className="context-menu-item"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    useReviewStore.getState().toggleMarkerTypeVisibility(item.key);
-                    setRedrawTrigger(prev => prev + 1);
-                  }}
-                  style={{ opacity: isActive ? 1 : 0.5 }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: item.color }} />
-                    {item.label}
-                  </div>
-                  {!isActive && <span style={{ fontSize: '0.7rem' }}>Hidden</span>}
-                </div>
-              );
-            })}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', margin: '4px 0' }} />
-            <div className="context-menu-item has-submenu">
-              <span>Add Marker</span>
-              <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▶</span>
-              <div className="context-submenu">
-                {[
-                  { label: "MATCHED", type: "ai_green", isResolved: true, status: "MATCHED" },
-                  { label: "MISMATCHED", type: "ai_red", isResolved: false, status: "MISMATCHED" },
-                  { label: "CHANGED", type: "ai_orange", isResolved: false, status: "CHANGED" },
-                  { label: "ADDED", type: "checker_blue", isResolved: false, status: "ADDED" }
-                ].map((opt) => (
-                  <div
-                    key={opt.label}
-                    className="context-menu-item"
-                    onClick={() => {
-                      const newMarker: any = {
-                        id: `custom_marker_${Date.now()}`,
-                        severity: opt.status === "MATCHED" ? "low" : "high",
-                        category: "Manual Marker",
-                        description: "Manually added marker",
-                        recommendation: "Manual verification check",
-                        affected_entities: [],
-                        confidence: 1.0,
-                        coordinates: [contextMenu.wx, contextMenu.wy] as [number, number],
-                        ref_coordinates: [contextMenu.wx, contextMenu.wy] as [number, number],
-                        pen_type: opt.type,
-                        is_resolved: opt.isResolved,
-                        status: opt.status
-                      };
-                      // Named store action (setViolations), not useWorkspaceStore.setState —
-                      // keeps this consistent with the Phase 8 ESLint guard.
-                      const current = useWorkspaceStore.getState().violations;
-                      useWorkspaceStore.getState().setViolations([...current, newMarker]);
-                      setRedrawTrigger(prev => prev + 1);
-                      setContextMenu(null);
-                    }}
-                  >
-                    {opt.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+            onClose={() => setContextMenu(null)}
+            setRedrawTrigger={setRedrawTrigger}
+          />
         )}
+
+        {annotationModal && annotationModal.visible && (
+          <AnnotationCreateModal
+            x={annotationModal.x}
+            y={annotationModal.y}
+            wx={annotationModal.wx}
+            wy={annotationModal.wy}
+            severity={annotationModal.severity}
+            drawingId={drawing?.id}
+            canvasWidth={width}
+            canvasHeight={height}
+            theme={theme}
+            onClose={() => setAnnotationModal(null)}
+            setRedrawTrigger={setRedrawTrigger}
+          />
+        )}
+
+        {(() => {
+          if (!selectedAnnotationId || !Array.isArray(annotations)) return null;
+          const selectedAnn = annotations.find((a) => a.id === selectedAnnotationId);
+          if (!selectedAnn || selectedAnn.drawing_id !== drawing?.id) return null;
+          const pos = markerPositionsRef.current ? markerPositionsRef.current[`ann:${selectedAnnotationId}`] : null;
+          if (!pos) return null;
+
+          return (
+            <AnnotationCardPopover
+              annotation={selectedAnn}
+              badgeNumber={annotationBadgeMap ? annotationBadgeMap[selectedAnn.id] : undefined}
+              x={pos.x}
+              y={pos.y}
+              canvasWidth={width}
+              canvasHeight={height}
+              theme={theme}
+              onClose={() => selectAnnotation(null)}
+              setRedrawTrigger={setRedrawTrigger}
+            />
+          );
+        })()}
 
 
 
         {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
         <div
-          className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
-            theme === 'hc-light'
-              ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
-              : 'bg-zinc-950/80 border-white/10 text-zinc-400'
-          }`}
+          className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${theme === 'hc-light'
+            ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
+            : 'bg-zinc-950/80 border-white/10 text-zinc-400'
+            }`}
         >
           <ZoomDisplay />
           <div className="w-[1px] h-3 bg-white/10" />
@@ -472,4 +443,69 @@ const ZoomDisplay = () => {
   }, []);
   const initScale = useReviewStore.getState().viewport.scale;
   return <div>ZOOM: <span ref={spanRef} style={{ color: '#00e5ff', fontWeight: 600 }}>{(initScale * 100).toFixed(0)}%</span></div>;
+};
+
+const SEVERITY_ORDER: AnnotationSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
+
+/**
+ * Sticky, text-only warning summary for THIS canvas's open annotations — pinned
+ * to the top-right corner so a reviewer can tell "this drawing has open notes"
+ * without hunting the linework for a small '!' pin first. Each canvas gets its
+ * own instance (mirrors the per-drawing filtering renderAnnotationPins already
+ * does), so the old/new panes never leak counts into each other.
+ */
+const AnnotationSummaryOverlay: React.FC<{ drawingId?: string; theme: string }> = ({ drawingId, theme }) => {
+  // Deliberately NOT gated behind showAnnotations — this is the passive "you have
+  // open notes" signal, so it needs to work precisely when the panel/pins are
+  // hidden. Gating it the same as the panel made it useless (it only appeared
+  // once the panel was already open, which already lists everything).
+  const annotations = useWorkspaceStore((s) => s.annotations);
+  const selectAnnotation = useWorkspaceStore((s) => s.selectAnnotation);
+  const toggleAnnotations = useReviewStore((s) => s.toggleAnnotations);
+  const showAnnotations = useReviewStore((s) => s.showAnnotations);
+  const showMinimap = useReviewStore((s) => s.showMinimap);
+
+  const openForDrawing = useMemo(
+    () => (Array.isArray(annotations) ? annotations.filter((a) => a.drawing_id === drawingId && a.status !== 'resolved') : []),
+    [annotations, drawingId]
+  );
+
+  if (!drawingId || openForDrawing.length === 0) return null;
+
+  const counts: Partial<Record<AnnotationSeverity, number>> = {};
+  openForDrawing.forEach((a) => {
+    const sev = (a.severity as AnnotationSeverity) || 'info';
+    counts[sev] = (counts[sev] || 0) + 1;
+  });
+
+  const presentSeverities = SEVERITY_ORDER.filter((s) => counts[s]);
+  const summary = presentSeverities.map((s) => `${counts[s]} ${s[0].toUpperCase()}${s.slice(1)}`).join(' · ');
+
+  // Clicking jumps to the single highest-severity open pin — reuses the
+  // existing selectedAnnotationId zoom-to-focus effect in useCanvasInteraction.ts,
+  // so this doubles as a one-click "take me to what matters most" shortcut. Also
+  // opens the panel/pins if they were hidden, since that's the whole point of
+  // clicking a summary that was visible precisely because they were hidden.
+  const topSeverity = presentSeverities[0];
+  const jumpTarget = openForDrawing.find((a) => a.severity === topSeverity);
+
+  return (
+    <div
+      onClick={() => {
+        if (!showAnnotations) toggleAnnotations();
+        if (jumpTarget) selectAnnotation(jumpTarget.id);
+      }}
+      title="Click to jump to the highest-severity open annotation"
+      className={`absolute top-3 right-3 z-40 flex items-center gap-1.5 font-mono text-xs font-bold cursor-pointer transition-colors select-none drop-shadow-md ${showMinimap ? 'max-w-[calc(100%-224px)]' : 'max-w-[calc(100%-24px)]'
+        } ${theme === 'hc-light'
+          ? 'text-amber-700 hover:text-amber-600'
+          : 'text-amber-300 hover:text-amber-200'
+        }`}
+    >
+      <span className="shrink-0 text-red font-bold">⚠</span>
+      <span className="truncate">
+        {openForDrawing.length} Open Annotation{openForDrawing.length === 1 ? '' : 's'} — {summary}
+      </span>
+    </div>
+  );
 };

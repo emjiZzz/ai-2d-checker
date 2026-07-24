@@ -98,14 +98,16 @@ describe('annotation pin placement round-trip', () => {
 
     const drawingDim = Math.max(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin);
     const targetScale = Math.min(6.0, Math.max(1.5, (width * 0.45) / (drawingDim * norm.normScale)));
-    const targetX = width / 2 - stdX * targetScale;
-    const targetY = height / 2 - stdY * targetScale;
+    const popoverOffsetX = 80;
+    const popoverOffsetY = -50;
+    const targetX = width / 2 - stdX * targetScale - popoverOffsetX;
+    const targetY = height / 2 - stdY * targetScale - popoverOffsetY;
 
     // Feeding the computed viewport back through worldToScreen must land the
-    // pin at the canvas centre.
+    // pin at the canvas offset center.
     const screen = worldToScreen(ax, ay, norm, { x: targetX, y: targetY, scale: targetScale });
-    expect(screen.x).toBeCloseTo(width / 2, 6);
-    expect(screen.y).toBeCloseTo(height / 2, 6);
+    expect(screen.x).toBeCloseTo(width / 2 - popoverOffsetX, 6);
+    expect(screen.y).toBeCloseTo(height / 2 - popoverOffsetY, 6);
 
     // Scale must stay inside the clamp range the effect promises.
     expect(targetScale).toBeGreaterThanOrEqual(1.5);

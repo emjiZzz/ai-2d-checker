@@ -39,13 +39,16 @@ export const SEVERITY_PEN_MAP: Record<AnnotationSeverity, AnnotationPenType> = {
   critical: "alert_red",
 };
 
-export function getAnnotationBadgeMap(annotations: AnnotationItem[]): Record<string, string> {
-  const sorted = [...annotations].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+export function getAnnotationBadgeMap(annotations?: AnnotationItem[]): Record<string, string> {
+  const list = Array.isArray(annotations) ? annotations : [];
+  const sorted = [...list].sort(
+    (a, b) => new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime()
   );
   const map: Record<string, string> = {};
   sorted.forEach((ann, idx) => {
-    map[ann.id] = `A${String(idx + 1).padStart(3, '0')}`;
+    if (ann?.id) {
+      map[ann.id] = `A${String(idx + 1).padStart(3, '0')}`;
+    }
   });
   return map;
 }
@@ -208,9 +211,14 @@ export interface AnnotationsSlice {
   deleteAnnotationById: (id: string) => Promise<void>;
   updateAnnotationDetails: (
     id: string,
-    updates: Partial<{ content: string; status: string; severity: AnnotationSeverity; pen_type: AnnotationPenType }>
+    updates: Partial<{ content: string; status: string; severity: AnnotationSeverity; pen_type: AnnotationPenType; coordinates: [number, number] | null }>
   ) => Promise<void>;
   updateAnnotationStatus: (id: string, status: string) => Promise<void>;
+  // Local-only coordinate update for drag-in-progress — no network round trip.
+  // Callers must follow up with updateAnnotationDetails({ coordinates }) on
+  // drag end to persist; this exists purely so the pin can track the cursor
+  // at 60fps without hitting the PATCH endpoint on every mousemove.
+  moveAnnotationLocal: (id: string, coordinates: [number, number]) => void;
   selectAnnotation: (id: string | null) => void;
   setIsPlacingAnnotation: (v: boolean) => void;
   setPendingAnnotationText: (text: string) => void;

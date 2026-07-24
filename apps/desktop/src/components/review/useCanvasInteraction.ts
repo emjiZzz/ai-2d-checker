@@ -58,6 +58,15 @@ export function useCanvasInteraction({
   const [hasDragMarkerMoved, setHasDragMarkerMoved] = useState(false);
   const [dragMarkerOriginalCoords, setDragMarkerOriginalCoords] = useState<{ coordinates?: [number, number], ref_coordinates?: [number, number] } | null>(null);
 
+  // Draggable Annotation Pin State — same threshold-based lifecycle as marker
+  // drag above: mousedown arms a candidate, mousemove tracks the cursor only
+  // past a 3px threshold (so a plain click doesn't nudge the pin), mouseup
+  // either selects (no movement) or persists the new position.
+  const [dragAnnotationId, setDragAnnotationId] = useState<string | null>(null);
+  const [dragAnnotationStartPos, setDragAnnotationStartPos] = useState<[number, number] | null>(null);
+  const [dragAnnotationMouseStart, setDragAnnotationMouseStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
+  const [hasDragAnnotationMoved, setHasDragAnnotationMoved] = useState(false);
+
   // Custom Context Menu State
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -197,7 +206,7 @@ export function useCanvasInteraction({
     if (!selectedAnnotationId || !drawing) return;
 
     const state = useWorkspaceStore.getState();
-    const ann = state.annotations.find(a => a.id === selectedAnnotationId);
+    const ann = Array.isArray(state.annotations) ? state.annotations.find(a => a.id === selectedAnnotationId) : null;
     // Only the canvas that owns this pin should recenter — its coordinates are
     // in that drawing's CAD space and would land somewhere arbitrary elsewhere.
     if (!ann || ann.drawing_id !== drawing.id) return;
@@ -219,8 +228,12 @@ export function useCanvasInteraction({
         targetScale = Math.min(6.0, Math.max(1.5, (width * 0.45) / (drawingDim * norm.normScale)));
       }
     }
-    const targetX = width / 2 - stdX * targetScale;
-    const targetY = height / 2 - stdY * targetScale;
+    // Offset camera target so that both the popover callout card and pin reticle are comfortably centered
+    const popoverOffsetX = 80;
+    const popoverOffsetY = -50;
+
+    const targetX = width / 2 - stdX * targetScale - popoverOffsetX;
+    const targetY = height / 2 - stdY * targetScale - popoverOffsetY;
 
     setViewport(clampViewport({ x: targetX, y: targetY, scale: targetScale }));
   }, [selectedAnnotationId, drawing, width, height, setViewport, clampViewport]);
@@ -242,6 +255,7 @@ export function useCanvasInteraction({
       if (key === 'escape') {
         e.preventDefault();
         selectViolation(null);
+        useWorkspaceStore.getState().selectAnnotation(null);
       } else if (key === 'f') {
         e.preventDefault();
         if (selectedViolation && selectedViolation.coordinates && drawing) {
@@ -282,7 +296,12 @@ export function useCanvasInteraction({
     const currentViewport = useReviewStore.getState().viewport;
     mouseDownRawPosRef.current = { x: e.clientX, y: e.clientY };
 
-    if (e.button === 1 || e.button === 2 || isSpacePressed) {
+    // Restrict panning strictly to primary left mouse button (e.button === 0) or space key pan shortcut
+    if (e.button !== 0 && !isSpacePressed) {
+      return;
+    }
+
+    if (isSpacePressed) {
       setIsDragging(true);
       isDraggingRef.current = true;
       if (dragDebounceTimerRef.current) {
@@ -346,18 +365,24 @@ export function useCanvasInteraction({
           return;
         }
 
-        // Annotation pin hit-test (select on click). Positions are stored under
-        // "ann:<id>" keys by renderAnnotationPins, in the same canvas-pixel space.
-        if (showAnnotations) {
-          const positions = markerPositionsRef.current;
-          const hitRadius = 10;
-          const ownPins = useWorkspaceStore.getState().annotations.filter(a => a.drawing_id === drawing?.id);
-          for (const ann of ownPins) {
-            const p = positions[`ann:${ann.id}`];
-            if (p && Math.hypot(p.x - mx, p.y - my) <= hitRadius) {
-              useWorkspaceStore.getState().selectAnnotation(ann.id);
-              return;
-            }
+        // Annotation pin hit-test. Positions are stored under "ann:<id>" keys by
+        // renderAnnotationPins, in the same canvas-pixel space. Arms a drag
+        // candidate rather than selecting immediately — mirrors the marker
+        // drag flow so a plain click still selects (handled in mouseup when
+        // the 3px move threshold isn't crossed) while a press-and-drag moves
+        // the pin.
+        // Annotation pin hit-test (always active on canvas regardless of side panel visibility)
+        const positions = markerPositionsRef.current;
+        const hitRadius = 10;
+        const ownPins = useWorkspaceStore.getState().annotations.filter(a => a.drawing_id === drawing?.id);
+        for (const ann of ownPins) {
+          const p = positions[`ann:${ann.id}`];
+          if (p && Math.hypot(p.x - mx, p.y - my) <= hitRadius) {
+            setDragAnnotationId(ann.id);
+            setDragAnnotationStartPos(ann.coordinates ? [...ann.coordinates] : [0, 0]);
+            setDragAnnotationMouseStart({ x: e.clientX, y: e.clientY });
+            setHasDragAnnotationMoved(false);
+            return;
           }
         }
       }
@@ -443,12 +468,32 @@ export function useCanvasInteraction({
       return;
     }
 
+    // ── Annotation pin drag ───────────────────────────────────────────────────
+    // Same delta/Y-flip math as marker drag above (identical coordinate space).
+    // Position updates go through moveAnnotationLocal (no network call per
+    // frame) — the final position is persisted once in mouseup.
+    if (dragAnnotationId && dragAnnotationStartPos) {
+      const effectiveScale = currentViewport.scale * norm.normScale;
+      const deltaX = (e.clientX - dragAnnotationMouseStart.x) / effectiveScale;
+      const deltaY = (e.clientY - dragAnnotationMouseStart.y) / effectiveScale;
+      const adjustedDeltaY = norm.hasBounds ? -deltaY : deltaY;
+
+      const newX = dragAnnotationStartPos[0] + deltaX;
+      const newY = dragAnnotationStartPos[1] + adjustedDeltaY;
+
+      if (Math.hypot(e.clientX - dragAnnotationMouseStart.x, e.clientY - dragAnnotationMouseStart.y) > 3) {
+        setHasDragAnnotationMoved(true);
+      }
+
+      useWorkspaceStore.getState().moveAnnotationLocal(dragAnnotationId, [newX, newY]);
+      return;
+    }
+
     // ── FAST PATH: Simple viewport pan ────────────────────────────────────────
     // Skip ALL expensive work: hit-tests, getNormalization(), state setters.
     // This is the most-frequently-hit code path (every mouse pixel while panning).
     if (isDragging && !activeDragHandle) {
       setViewport(clampViewport({ ...currentViewport, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
-      if (e.buttons === 2) setPreventNextContextMenu(true);
       return;
     }
 
@@ -480,8 +525,7 @@ export function useCanvasInteraction({
 
     // ── Annotation pin hover hit-test ─────────────────────────────────────────
     let hoveredAnnId: string | null = null;
-    const showAnnotations = useReviewStore.getState().showAnnotations;
-    if (showAnnotations && drawing?.id) {
+    if (drawing?.id) {
       const ownPins = useWorkspaceStore.getState().annotations.filter(a => a.drawing_id === drawing.id);
       const positions = markerPositionsRef.current;
       const hitRadius = 10;
@@ -587,7 +631,7 @@ export function useCanvasInteraction({
       updateCustomRegion(activeDragHandle.regionKey, currentBounds);
       setRedrawTrigger(prev => prev + 1);
     }
-  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport, norm]);
+  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport, norm, dragAnnotationId, dragAnnotationStartPos, dragAnnotationMouseStart]);
 
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
@@ -608,6 +652,17 @@ export function useCanvasInteraction({
       const dy = e.clientY - mouseDownRawPosRef.current.y;
       if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
         selectViolation(null);
+      }
+    }
+
+    // Same "click outside" dismissal for the selected annotation pin — previously
+    // only violations had this; annotations had no deselect path at all (not from
+    // the canvas, the list, or Escape — all three are now fixed together).
+    if (!dragAnnotationId && selectedAnnotationId) {
+      const dx = e.clientX - mouseDownRawPosRef.current.x;
+      const dy = e.clientY - mouseDownRawPosRef.current.y;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        useWorkspaceStore.getState().selectAnnotation(null);
       }
     }
 
@@ -652,7 +707,28 @@ export function useCanvasInteraction({
       setDragMarkerStartPos(null);
       setDragMarkerOriginalCoords(null);
     }
-  }, [dragMarkerId, hasDragMarkerMoved, dragMarkerOriginalCoords, selectedViolation, selectViolation]);
+
+    // ── Annotation pin drag finalize ────────────────────────────────────────
+    // No movement past the 3px threshold → treat as a plain click and select.
+    // Movement past it → persist the position dragged in mousemove (which was
+    // only ever applied locally via moveAnnotationLocal, never sent over the
+    // wire) via a single PATCH here.
+    if (dragAnnotationId) {
+      if (!hasDragAnnotationMoved) {
+        useWorkspaceStore.getState().selectAnnotation(dragAnnotationId);
+        if (!useReviewStore.getState().showAnnotations) {
+          useReviewStore.getState().toggleAnnotations();
+        }
+      } else {
+        const ann = useWorkspaceStore.getState().annotations.find(a => a.id === dragAnnotationId);
+        if (ann?.coordinates) {
+          useWorkspaceStore.getState().updateAnnotationDetails(dragAnnotationId, { coordinates: ann.coordinates });
+        }
+      }
+      setDragAnnotationId(null);
+      setDragAnnotationStartPos(null);
+    }
+  }, [dragMarkerId, hasDragMarkerMoved, dragMarkerOriginalCoords, selectedViolation, selectViolation, dragAnnotationId, hasDragAnnotationMoved, selectedAnnotationId]);
 
   const handleMouseLeave = useCallback(() => {
     setIsDragging(false);
@@ -669,6 +745,11 @@ export function useCanvasInteraction({
     setDragMarkerStartPos(null);
     setHoveredMarkerId(null);
     setHoveredAnnotationId(null);
+    // Cursor left the canvas mid-drag — drop the candidate rather than leave
+    // it armed (would otherwise resume dragging on the NEXT mousemove inside
+    // the canvas, jumping the pin to wherever the cursor re-entered).
+    setDragAnnotationId(null);
+    setDragAnnotationStartPos(null);
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -737,6 +818,7 @@ export function useCanvasInteraction({
       return (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right') ? 'nwse-resize' : 'nesw-resize';
     }
     if (hoveredHandleInfo) return hoveredHandleInfo.cursor;
+    if (dragAnnotationId) return 'grabbing';
     if (isHoveringMarkerState || !!hoveredAnnotationId) return 'pointer';
     if (isDragging) return 'grabbing';
     return 'grab';

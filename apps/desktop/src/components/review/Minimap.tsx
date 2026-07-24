@@ -298,6 +298,8 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
 
   if (!showMinimap) return null;
   if (!drawing || !norm.hasBounds || !bounds) return null;
+  // Auto-hide minimap on narrow panes/screens to prevent obstructing canvas view
+  if (canvasWidth < 480 || canvasHeight < 350) return null;
 
   const box = calculateViewportBox();
 

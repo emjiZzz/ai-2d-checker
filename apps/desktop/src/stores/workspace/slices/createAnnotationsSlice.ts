@@ -90,6 +90,14 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
     return get().updateAnnotationDetails(id, { status });
   },
 
+  // Drag-in-progress only — mutates the pin's position in local state so
+  // rendering tracks the cursor without a PATCH per mousemove frame. The
+  // caller (useCanvasInteraction) persists via updateAnnotationDetails once
+  // the drag ends.
+  moveAnnotationLocal: (id, coordinates) => set((state) => ({
+    annotations: state.annotations.map((a) => (a.id === id ? { ...a, coordinates } : a)),
+  })),
+
   selectAnnotation: (id) => set({ selectedAnnotationId: id }),
   setIsPlacingAnnotation: (v) => set({ isPlacingAnnotation: v }),
   setPendingAnnotationText: (text) => set({ pendingAnnotationText: text }),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Maximize, Download, Map, MessageSquare } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
@@ -12,13 +12,10 @@ import { Minimap } from "./Minimap";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
-import { AnnotationPanel } from "./AnnotationPanel";
 
 interface TwoDWorkspaceProps {
   currentNav: string;
 }
-
-// defaultLayoutJson removed as it was unused and contained syntax errors or type incompatibilities
 
 const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObject<any>, currentNav: string }) => {
   const drawing = useWorkspaceStore(s => s.oldDrawing);
@@ -162,6 +159,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const complianceScore = useWorkspaceStore(s => s.complianceScore);
   const violations = useWorkspaceStore(s => s.violations);
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
+  const annotations = useWorkspaceStore(s => s.annotations);
+  const hasOpenAnnotations = useMemo(() => annotations.some((a) => a.status !== "resolved"), [annotations]);
 
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showMinimap = useReviewStore(s => s.showMinimap);
@@ -185,23 +184,18 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const [model, setModel] = useState<Model | null>(null);
 
   useEffect(() => {
-    // v9: earlier versions let a tabset (most often "AI Auditor") be dragged down to a
-    // near-zero-width sliver — just its bare tab-header strip, no visible label or content
-    // — and that squeezed state persisted forever since it's saved verbatim to localStorage.
-    // Bumping the key invalidates any such stuck layout so it regenerates fresh with the
-    // minWidth guard below, which stops it from happening again.
-    const savedLayout = localStorage.getItem(`twod-workspace-layout-v9-${activeLayoutPreset}`);
+    // v11: Bumping layout version to set Comparison Results panel width to 15%
+    const savedLayout = localStorage.getItem(`twod-workspace-layout-v11-${activeLayoutPreset}`);
     if (savedLayout) {
       try {
         const parsed = JSON.parse(savedLayout);
         setModel(Model.fromJson(parsed));
-        return; // Early return, layout hydrated from storage
+        return;
       } catch (e) {
         console.error("Failed to parse saved layout", e);
       }
     }
 
-    // Generate layout based on preset if no saved layout exists
     const globalOpts = {
       tabEnableClose: true,
       tabSetHeaderHeight: 32,
@@ -218,38 +212,55 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     const oldFileName = useWorkspaceStore.getState().oldDrawing?.file_name;
     const newFileName = useWorkspaceStore.getState().newDrawing?.file_name;
     const hasResults = complianceScore !== null;
+    const bothUploaded = Boolean(useWorkspaceStore.getState().oldDrawing && useWorkspaceStore.getState().newDrawing);
 
-    // Applied to every tabset below so no panel — including "AI Auditor", which only
-    // appears once an audit has results — can be drag-resized down to an unusable sliver
-    // (a bare tab-header strip with no visible label or content).
     const MIN_TABSET_WIDTH = 220;
 
+    const leftTabset = {
+      type: "tabset",
+      weight: 15,
+      minWidth: MIN_TABSET_WIDTH,
+      children: [{ type: "tab", id: "leftPanelTab", name: "Comparison Results", component: "leftPanel", enableClose: true }]
+    };
+
     if (activeLayoutPreset === 'left') {
-      layoutNode = { type: "row", weight: 100, children: [
-        { type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
-        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-        ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
-      ]};
+      layoutNode = {
+        type: "row",
+        weight: 100,
+        children: [
+          ...(bothUploaded ? [leftTabset] : []),
+          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+        ]
+      };
     } else if (activeLayoutPreset === 'right') {
-      layoutNode = { type: "row", weight: 100, children: [
-        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-        { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-        ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
-      ]};
+      layoutNode = {
+        type: "row",
+        weight: 100,
+        children: [
+          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+        ]
+      };
     } else {
       // grid default
-      layoutNode = { type: "row", weight: 100, children: [
-        { type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", name: "Comparison Results", component: "leftPanel", enableClose: true }] },
-        { type: "tabset", weight: 32.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-        { type: "tabset", weight: 32.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-        ...(hasResults ? [{ type: "tabset", weight: 15, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
-      ]};
+      layoutNode = {
+        type: "row",
+        weight: 100,
+        children: [
+          ...(bothUploaded ? [leftTabset] : []),
+          { type: "tabset", weight: bothUploaded ? 42.5 : 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
+          { type: "tabset", weight: bothUploaded ? 42.5 : 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+          ...(hasResults ? [{ type: "tabset", weight: 15, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+        ]
+      };
     }
 
     const newJson: IJsonModel = { global: globalOpts, layout: layoutNode };
     setModel(Model.fromJson(newJson));
-    localStorage.setItem(`twod-workspace-layout-v9-${activeLayoutPreset}`, JSON.stringify(newJson));
+    localStorage.setItem(`twod-workspace-layout-v11-${activeLayoutPreset}`, JSON.stringify(newJson));
   }, [activeLayoutPreset]);
 
   // Rename tabs when filenames change
@@ -268,9 +279,29 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   }, [model, oldFileNameStr, newFileNameStr]);
 
   const handleModelChange = (model: Model, _action: Action) => {
-    localStorage.setItem(`twod-workspace-layout-v9-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
+    localStorage.setItem(`twod-workspace-layout-v10-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
   };
 
+  // Dynamic show/hide for Comparison Results panel based on whether BOTH drawings are uploaded/ingested
+  useEffect(() => {
+    if (!model) return;
+
+    const leftNode = model.getNodeById("leftPanelTab");
+    const bothUploaded = Boolean(oldDrawing && newDrawing);
+
+    if (!bothUploaded && leftNode) {
+      model.doAction(Actions.deleteTab("leftPanelTab"));
+    } else if (bothUploaded && !leftNode) {
+      model.doAction(Actions.addNode(
+        { type: "tab", id: "leftPanelTab", name: "Comparison Results", component: "leftPanel", enableClose: true },
+        model.getRootRow().getId(),
+        DockLocation.LEFT,
+        -1
+      ));
+    }
+  }, [oldDrawing, newDrawing, model]);
+
+  // Dynamic show/hide for AI Auditor right panel based on complianceScore results
   const prevScoreRef = useRef(complianceScore);
   const isInitialModelLoadRef = useRef(true);
 
@@ -347,42 +378,56 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       {currentNav === "workspace" && (
         <div className="flex flex-grow h-full overflow-hidden min-w-0 flex-col">
           <div className="flex items-center justify-between bg-bg-dark border-b border-border-color py-2 px-4 gap-3 shrink-0 w-full z-10 shadow-sm data-[theme=hc-dark]:shadow-md">
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <h3 className="text-sm font-bold flex items-center border-l-[3px] border-accent-cyan pl-2.5 text-text-primary m-0">
-                Stage 1: Drawing Pair Ingestion
-              </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text-primary">2D Review Workspace</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              {newDrawing && (
-                <Button variant="outline" size="sm" onClick={exportToPDF} className="h-8 text-xs border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1.5" title="Export drawing pair as PDF">
-                  <Download size={14} /> PDF
-                </Button>
-              )}
-              <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="icon" onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })} title="Reset Viewport">
-                  <Maximize size={20} />
-                </Button>
-                <div className="w-px h-6 bg-border-color mx-1"></div>
-                <Button variant={showMinimap ? "primary" : "outline"} size="icon" onClick={toggleMinimap} title="Toggle Interactive Minimap">
-                  <Map size={20} />
-                </Button>
-                <Button variant={showAnnotations ? "primary" : "outline"} size="icon" onClick={toggleAnnotations} title="Toggle Reviewer Annotations">
-                  <MessageSquare size={20} />
-                </Button>
-              </div>
+            
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showMinimap ? "primary" : "secondary"}
+                size="sm"
+                onClick={toggleMinimap}
+                className="gap-1.5"
+                title="Toggle CAD Minimap Overlay"
+              >
+                <Map size={14} />
+                <span>Minimap</span>
+              </Button>
+
+              <Button
+                variant={showAnnotations ? "primary" : "secondary"}
+                size="sm"
+                onClick={toggleAnnotations}
+                className="gap-1.5 relative"
+                title="Toggle Drawing Canvas Annotations"
+              >
+                <MessageSquare size={14} />
+                <span>Annotations</span>
+                {hasOpenAnnotations && (
+                  <span className="w-2 h-2 rounded-full bg-accent-amber animate-pulse" />
+                )}
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={exportToPDF}
+                className="gap-1.5"
+                title="Export PDF Compliance Audit Report"
+              >
+                <Download size={14} />
+                <span>Export Report</span>
+              </Button>
             </div>
           </div>
-          
-          <div className="flex flex-grow min-h-0 min-w-0 overflow-hidden">
-            <div className="flex-grow relative min-h-0 min-w-0 workspace-flexlayout-container">
-              <Layout
-                model={model}
-                factory={factory}
-                onModelChange={handleModelChange}
-                onAction={handleAction}
-              />
-            </div>
-            {showAnnotations && <AnnotationPanel />}
+
+          <div className="flex-grow h-full relative">
+            <Layout
+              model={model}
+              factory={factory}
+              onModelChange={handleModelChange}
+              onAction={handleAction}
+            />
           </div>
         </div>
       )}

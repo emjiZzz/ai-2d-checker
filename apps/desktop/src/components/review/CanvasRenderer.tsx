@@ -258,18 +258,17 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
         visibleMarkerTypes
       });
 
-      if (showAnnotations) {
-        renderAnnotationPins({
-          // Only this drawing's pins. Coordinates are in the owning drawing's
-          // CAD space, so rendering all of them on every pane put pins at
-          // meaningless positions on the opposite drawing.
-          frame: frameData,
-          annotations: annotations.filter((a) => a.drawing_id === drawing?.id),
-          selectedAnnotationId,
-          hoveredAnnotationId,
-          badgeMap: annotationBadgeMap,
-        });
-      }
+      // Always render annotation pins on the canvas even when the side panel is collapsed
+      renderAnnotationPins({
+        // Only this drawing's pins. Coordinates are in the owning drawing's
+        // CAD space, so rendering all of them on every pane put pins at
+        // meaningless positions on the opposite drawing.
+        frame: frameData,
+        annotations: Array.isArray(annotations) ? annotations.filter((a) => a.drawing_id === drawing?.id) : [],
+        selectedAnnotationId,
+        hoveredAnnotationId,
+        badgeMap: annotationBadgeMap,
+      });
     }
 
     ctx.restore();

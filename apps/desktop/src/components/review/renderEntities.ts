@@ -542,9 +542,17 @@ export const renderAnnotationPins = ({
 }: RenderAnnotationPinsParams) => {
   const { ctx, isExport, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
+  if (!Array.isArray(annotations)) return;
+
   if (frame.isNeonModeActive && !isExport) {
     ctx.filter = 'none';
   }
+
+  // Cards are drawn on the canvas (not DOM), so they don't pick up the app's CSS
+  // theme variables automatically — same pattern renderViolationReticles uses.
+  const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
+  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
+  const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
 
   annotations.forEach((ann, idx) => {
     const coords = ann.coordinates;
@@ -567,7 +575,7 @@ export const renderAnnotationPins = ({
     const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
     ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
 
-    const r = (isSelected || isHovered ? 7 : 5) * resolutionMultiplier;
+    const r = (isSelected || isHovered ? 9 : 7) * resolutionMultiplier;
 
     // Outer aura ring for hover/selection
     if (isSelected || isHovered) {
@@ -580,37 +588,17 @@ export const renderAnnotationPins = ({
       ctx.setLineDash([]);
     }
 
-    // Pin dot
-    ctx.beginPath();
+    // Pin glyph — just the '!' (or a check for resolved) in the severity color,
+    // no disc and no outline stroke either — a plain colored glyph.
+    const glyphChar = isResolved ? '\u2713' : '!';
+    const glyphSize = Math.round(r * 3.6);
+    ctx.font = `900 ${glyphSize}px "Yu Gothic", "MS Gothic", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
-    ctx.arc(screenPos.x, screenPos.y, r, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.lineWidth = 1.5 * resolutionMultiplier;
-    ctx.strokeStyle = '#0b0b0b';
-    ctx.stroke();
-
-    // Content label & badge tag — visible when zoomed, hovered, or selected
-    const showLabel = (viewport.scale >= 0.5 || isSelected || isHovered) && ann.content;
-    if (showLabel) {
-      const raw = String(ann.content);
-      const text = `${badgeText}: ${raw.length > 28 ? raw.slice(0, 27) + '…' : raw}`;
-      ctx.font = `bold ${11 * resolutionMultiplier}px "Yu Gothic", "MS Gothic", monospace`;
-      const textWidth = ctx.measureText(text).width;
-      const padX = 6 * resolutionMultiplier;
-      const boxH = 20 * resolutionMultiplier;
-      const boxX = screenPos.x + 10 * resolutionMultiplier;
-      const boxY = screenPos.y - boxH / 2;
-
-      ctx.fillStyle = 'rgba(11, 11, 11, 0.88)';
-      ctx.fillRect(boxX, boxY, textWidth + padX * 2, boxH);
-      ctx.lineWidth = 1 * resolutionMultiplier;
-      ctx.strokeStyle = color;
-      ctx.strokeRect(boxX, boxY, textWidth + padX * 2, boxH);
-
-      ctx.fillStyle = color;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, boxX + padX, screenPos.y);
-    }
+    ctx.fillText(glyphChar, screenPos.x, screenPos.y);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
 
     ctx.restore();
   });
