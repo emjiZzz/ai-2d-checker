@@ -441,19 +441,21 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
 
         {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
-        <div
-          className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
-            theme === 'hc-light'
-              ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
-              : 'bg-zinc-950/80 border-white/10 text-zinc-400'
-          }`}
-        >
-          <ZoomDisplay />
-          <div className="w-[1px] h-3 bg-white/10" />
-          <div>VIRTUALIZED: <span className="text-emerald-400 font-bold">{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
-          <div className="w-[1px] h-3 bg-white/10" />
-          <div>RENDER: <span className="text-amber-400 font-bold">{renderDiagnostics.renderTimeMs}ms</span></div>
-        </div>
+        {useReviewStore(s => s.showCanvasStats) && (
+          <div
+            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
+              theme === 'hc-light'
+                ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
+                : 'bg-zinc-950/80 border-white/10 text-zinc-400'
+            }`}
+          >
+            <ZoomDisplay />
+            <div className="w-[1px] h-3 bg-white/10" />
+            <div>VIRTUALIZED: <span className="text-emerald-400 font-bold">{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
+            <div className="w-[1px] h-3 bg-white/10" />
+            <div>RENDER: <span className="text-amber-400 font-bold">{renderDiagnostics.renderTimeMs}ms</span></div>
+          </div>
+        )}
       </div>
     );
   }

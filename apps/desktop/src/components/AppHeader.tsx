@@ -181,9 +181,13 @@ export const AppHeader: React.FC = () => {
             <button
               onClick={toggleTheme}
               title="Toggle Theme"
-              className="flex p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover transition-all duration-150 active:scale-95"
+              className="flex p-1.5 rounded-md text-text-muted hover:bg-sidebar-item-hover transition-all duration-150 active:scale-95"
             >
-              {theme === "hc-dark" ? <Moon size={15} /> : <Sun size={15} />}
+              {theme === "hc-dark" ? (
+                <Moon size={15} className="text-purple-400 fill-purple-400/20" />
+              ) : (
+                <Sun size={15} className="text-amber-500 fill-amber-400/20" />
+              )}
             </button>
             <button
               onClick={() => logout()}
