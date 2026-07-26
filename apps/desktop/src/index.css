@@ -45,16 +45,16 @@
 
 /* High Contrast Light Mode Theme Variables */
 [data-theme="hc-light"] {
-  --bg-dark: #e5e8ed;
-  --bg-card: #f8f9fb;
-  --bg-sidebar: #f8f9fb;
-  --bg-topbar: #f8f9fb;
-  --border-color: #d7dbe2;
+  --bg-dark: #dbe0e8;
+  --bg-card: #e5e9f0;
+  --bg-sidebar: #e0e4ec;
+  --bg-topbar: #e0e4ec;
+  --border-color: #c9d0dc;
 
   --text-primary: #18181b;
   --text-secondary: #3f3f46;
-  --text-muted: #71717a;
-  --bg-bubble-user: #f8f9fb;
+  --text-muted: #64748b;
+  --bg-bubble-user: #e5e9f0;
 
   --app-gradient: none;
   --sidebar-item-hover: rgba(0, 0, 0, 0.05);

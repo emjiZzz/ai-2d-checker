@@ -161,10 +161,10 @@ export function useCanvasInteraction({
         }
 
         // Safety Guard 2: Verify coordinates are within rendering bounds area (+20% margin)
-        if (norm.hasBounds) {
-          const marginX = (norm.xmax - norm.xmin) * 0.2;
-          const marginY = (norm.ymax - norm.ymin) * 0.2;
-          if (vx < norm.xmin - marginX || vx > norm.xmax + marginX || vy < norm.ymin - marginY || vy > norm.ymax + marginY) {
+        if (bounds) {
+          const marginX = (bounds.xmax - bounds.xmin) * 0.2;
+          const marginY = (bounds.ymax - bounds.ymin) * 0.2;
+          if (vx < bounds.xmin - marginX || vx > bounds.xmax + marginX || vy < bounds.ymin - marginY || vy > bounds.ymax + marginY) {
             console.warn("[Smart Navigation] Skipping camera auto-focus for out-of-bounds coordinates:", coords);
             return;
           }

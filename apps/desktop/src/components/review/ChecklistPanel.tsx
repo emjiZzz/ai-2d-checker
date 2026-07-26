@@ -70,34 +70,29 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
   // feature-grouped list below and (if ever needed) any other caller can reuse the
   // exact same JSX instead of duplicating it.
   const renderDiffRowCard = (row: any, matchingViolation: any, rowId: string) => {
-    const statusUp = (row.status || "").toUpperCase();
-    let cellBadgeColor = "#10b981"; // green = MATCHED default
-    let cellBadgeBg = "rgba(16, 185, 129, 0.08)";
+    const statusUp = (row.status || "").toUpperCase();    let cellBadgeColor = "#10b981"; // green = MATCHED default
+    let cellBadgeBg = "rgba(16, 185, 129, 0.14)";
     let statusText = row.status || "MATCHED";
 
     if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) {
-      cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; statusText = "CHANGED";
+      cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.14)"; statusText = "CHANGED";
     } else if (statusUp.includes("ADD")) {
-      cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; statusText = "ADDED";
+      cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.14)"; statusText = "ADDED";
     } else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) {
-      cellBadgeColor = "#ef4444"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; statusText = "REMOVED";
+      cellBadgeColor = "#ef4444"; cellBadgeBg = "rgba(239, 68, 68, 0.14)"; statusText = "REMOVED";
     }
 
     if (matchingViolation) {
       const pt = matchingViolation.pen_type || "";
-      if (pt === "ai_orange") { cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.08)"; }
-      else if (pt === "checker_blue") { cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.08)"; }
-      else if (pt === "ai_red") { cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.08)"; }
-      else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.08)"; }
-      // CONFLICT (hybrid method, docs/hybrid-comparison-engine-implementation-plan.md) — the
-      // pre-Phase-6 flat card never handled this pen_type at all, which would have silently
-      // rendered a disputed finding with the MATCHED-green default. Real gap, fixed here.
-      else if (pt === "ai_conflict") { cellBadgeColor = "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = "rgba(168, 85, 247, 0.08)"; }
+      if (pt === "ai_orange") { cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.14)"; }
+      else if (pt === "checker_blue") { cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.14)"; }
+      else if (pt === "ai_red") { cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.14)"; }
+      else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.14)"; }
+      else if (pt === "ai_conflict") { cellBadgeColor = "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = "rgba(168, 85, 247, 0.14)"; }
     }
 
     const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id &&
       ((selectedViolation as any)._rowId === rowId || !(selectedViolation as any)._rowId));
-
     const isHidden = matchingViolation ? !!hiddenViolationIds[matchingViolation.id] : false;
 
     return (
@@ -109,7 +104,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           }
         }}
         style={{
-          background: isSelected ? "rgba(37, 99, 235, 0.05)" : "var(--bg-card)",
+          background: isSelected ? "rgba(37, 99, 235, 0.08)" : "var(--bg-card)",
           border: isSelected ? "1.5px solid var(--accent-cyan)" : "1px solid var(--border-color)",
           borderRadius: "14px",
           padding: "14px",
@@ -118,7 +113,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           gap: "10px",
           cursor: matchingViolation ? "pointer" : "default",
           opacity: isHidden ? 0.4 : 1,
-          boxShadow: isSelected ? "0 6px 20px rgba(37,99,235,0.12)" : "0 1px 3px rgba(24,24,27,0.04)",
+          boxShadow: isSelected ? "0 6px 20px rgba(37,99,235,0.15)" : "0 1px 4px rgba(0,0,0,0.05)",
           transition: "all 0.2s ease"
         }}
       >
@@ -154,7 +149,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         </div>
 
         {/* Comparison Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", textAlign: "center", background: "var(--bg-dark)", padding: "12px", borderRadius: "10px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", textAlign: "center", background: "var(--sidebar-item-hover)", border: "1px solid var(--border-color)", padding: "12px", borderRadius: "10px" }}>
           {/* Field Title */}
           <div style={{ gridColumn: "span 2", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "2px", textTransform: "uppercase", textAlign: "left", letterSpacing: "0.02em" }}>
             {row.field}

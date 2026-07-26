@@ -32,6 +32,8 @@ interface ReviewState {
   toggleAnnotations: () => void;
   showCanvasStats: boolean;
   toggleCanvasStats: () => void;
+  showGrid: boolean;
+  toggleGrid: () => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
 
@@ -107,6 +109,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
   toggleAnnotations: () => set((state) => ({ showAnnotations: !state.showAnnotations })),
   showCanvasStats: true,
   toggleCanvasStats: () => set((state) => ({ showCanvasStats: !state.showCanvasStats })),
+  showGrid: false,
+  toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
 

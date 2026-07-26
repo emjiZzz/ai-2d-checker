@@ -300,7 +300,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
       <div style={{
         position: 'absolute', top: 16, left: 16,
         padding: '12px 16px',
-        backgroundColor: theme === 'hc-light' ? 'rgba(255,255,255,0.95)' : 'rgba(9,9,11,0.95)',
+        backgroundColor: theme === 'hc-light' ? 'rgba(226,230,237,0.95)' : 'rgba(9,9,11,0.95)',
         border: `1px solid ${theme === 'hc-light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
         borderRadius: 8,
         backdropFilter: 'blur(8px)',

@@ -200,10 +200,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                 for (let i = offset; i < end; i += 4) {
                   if (data[i + 3] === 0) continue;
                   const r = data[i], g = data[i + 1], b = data[i + 2];
-                  if (Math.max(r, g, b) - Math.min(r, g, b) < 25) {
-                    data[i] = 255 - r;
-                    data[i + 1] = 255 - g;
-                    data[i + 2] = 255 - b;
+                  if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
+                    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                    if (brightness < 70) {
+                      data[i] = 229;
+                      data[i + 1] = 233;
+                      data[i + 2] = 240;
+                    } else {
+                      data[i] = 255 - r;
+                      data[i + 1] = 255 - g;
+                      data[i + 2] = 255 - b;
+                    }
                   } else {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
                     if (brightness > 150) {
