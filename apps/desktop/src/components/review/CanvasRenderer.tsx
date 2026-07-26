@@ -27,7 +27,11 @@ interface CanvasRendererProps {
   isDraggingRef?: React.MutableRefObject<boolean>;
 }
 
-export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(({
+// Memoized: with a stable `canvasInteractionHandlers` object (see
+// useCanvasInteraction) and value-stable `cursorStyle`, a parent re-render
+// caused by an unrelated DrawingCanvas state change (e.g. the throttled render
+// diagnostics flush) no longer cascades into a canvas re-render.
+export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRendererProps>(({
   width,
   height,
   layers,
@@ -54,6 +58,9 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
   const viewportRef = useRef(useReviewStore.getState().viewport);
   /** Stable ref to the latest drawCanvas — used by the imperative viewport subscription below. */
   const drawCanvasFnRef = useRef<() => void>(() => { });
+  /** Latest render stats, flushed to React state on a trailing throttle (see drawCanvas). */
+  const latestDiagRef = useRef({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
+  const diagFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // viewport intentionally NOT subscribed via React hook — managed via viewportRef + store subscription
   const activeLayers = useReviewStore(s => s.activeLayers);
@@ -296,11 +303,23 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
     const endTime = performance.now();
 
     if (stats) {
-      setRenderDiagnostics({
+      // Throttle diagnostics to ~3x/sec. Calling setRenderDiagnostics every
+      // frame would re-render DrawingCanvas + CanvasRenderer on every pan/zoom
+      // pixel, defeating the viewportRef path that deliberately keeps pans off
+      // the React render pipeline. Stats accumulate in a ref; a single trailing
+      // timer flushes the most recent value, so the readout still converges to
+      // the final frame after activity settles.
+      latestDiagRef.current = {
         entityCount: stats.totalEntities,
         drawCount: stats.drawnEntities,
         renderTimeMs: Math.round((endTime - startTime) * 100) / 100
-      });
+      };
+      if (diagFlushTimerRef.current === null) {
+        diagFlushTimerRef.current = setTimeout(() => {
+          diagFlushTimerRef.current = null;
+          setRenderDiagnostics(latestDiagRef.current);
+        }, 300);
+      }
     }
   }, [renderContent, setRenderDiagnostics]);
 
@@ -308,6 +327,17 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
   useEffect(() => {
     drawCanvasFnRef.current = drawCanvas;
   });
+
+  // Cancel any pending diagnostics flush on unmount so setState can't fire on
+  // a torn-down component (e.g. when the workspace tab is switched away).
+  useEffect(() => {
+    return () => {
+      if (diagFlushTimerRef.current) {
+        clearTimeout(diagFlushTimerRef.current);
+        diagFlushTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Schedule canvas redraws for all non-viewport invalidations (layer toggles, violations, hover, etc.).
   // Viewport-driven redraws are handled imperatively by the store subscription above.
@@ -351,4 +381,4 @@ export const CanvasRenderer = forwardRef<DrawingCanvasRef, CanvasRendererProps>(
       }}
     />
   );
-});
+}));

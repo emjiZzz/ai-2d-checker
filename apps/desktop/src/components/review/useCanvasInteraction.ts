@@ -824,15 +824,20 @@ export function useCanvasInteraction({
     return 'grab';
   };
 
+  // Stable handlers object so a React.memo'd CanvasRenderer isn't re-rendered
+  // just because this object was re-created. The individual handlers are
+  // already useCallback'd, so this only changes identity when one of them does.
+  const handlers = useMemo(() => ({
+    onMouseDown: handleMouseDown,
+    onMouseMove: handleMouseMove,
+    onMouseUp: handleMouseUp,
+    onMouseLeave: handleMouseLeave,
+    onContextMenu: handleContextMenu,
+    onWheel: handleWheel,
+  }), [handleMouseDown, handleMouseMove, handleMouseUp, handleMouseLeave, handleContextMenu, handleWheel]);
+
   return {
-    handlers: {
-      onMouseDown: handleMouseDown,
-      onMouseMove: handleMouseMove,
-      onMouseUp: handleMouseUp,
-      onMouseLeave: handleMouseLeave,
-      onContextMenu: handleContextMenu,
-      onWheel: handleWheel,
-    },
+    handlers,
     state: {
       isDraggingRef,
       contextMenu,

@@ -161,20 +161,27 @@ export const AuditWorkspace: React.FC = () => {
         <SettingsView />
       )}
 
-      {currentNav === "workspace" && (
-        activeRoom ? (
-          <div className="flex flex-col w-full h-full">
-            <div className="flex items-center justify-between px-4 py-2 bg-bg-dark border-b border-border-color shrink-0">
-              <span className="text-sm font-semibold text-text-primary">
-                Room: <span className="text-accent-cyan">{activeRoom.name}</span>
-              </span>
-              <Button variant="ghost" size="sm" onClick={leaveRoom}>← Back to Rooms</Button>
-            </div>
-            <WorkspaceView currentNav={currentNav} />
+      {/* 2D workspace is kept MOUNTED while a room is active and merely hidden
+          when off-tab, so returning to it doesn't re-fetch layers + the
+          background PNG or rebuild the canvas. Only 2D is kept warm; 3D still
+          unmounts below. The inner WorkspaceView is pinned to "workspace" so
+          this instance always renders the 2D canvas regardless of the tab.
+          `hidden` collapses the canvas to 0x0, but its ResizeObserver restores
+          the size on re-show and no redraws run while hidden. */}
+      {activeRoom && (
+        <div className={`flex-col w-full h-full ${currentNav === "workspace" ? "flex" : "hidden"}`}>
+          <div className="flex items-center justify-between px-4 py-2 bg-bg-dark border-b border-border-color shrink-0">
+            <span className="text-sm font-semibold text-text-primary">
+              Room: <span className="text-accent-cyan">{activeRoom.name}</span>
+            </span>
+            <Button variant="ghost" size="sm" onClick={leaveRoom}>← Back to Rooms</Button>
           </div>
-        ) : (
-          <RoomsView />
-        )
+          <WorkspaceView currentNav="workspace" />
+        </div>
+      )}
+
+      {currentNav === "workspace" && !activeRoom && (
+        <RoomsView />
       )}
 
       {/* 3D workspace is intentionally not Room-gated: it runs on its own
