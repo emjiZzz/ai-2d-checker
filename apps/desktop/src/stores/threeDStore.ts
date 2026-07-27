@@ -124,34 +124,19 @@ export const useThreeDStore = create<ThreeDStoreState>((set) => ({
   selectViolation: (id) => set({ selectedViolation: id }),
 
   runAudit: async (_clientName) => {
-    set({ auditStatus: "auditing" });
-    // Mock a 3D audit execution wait
-    await new Promise((res) => setTimeout(res, 2000));
+    // There is no 3D audit. This used to sleep 2s and then return a hardcoded score of
+    // 85 with two invented violations citing ISO-2768-m and ASME Y14.5 — presented in
+    // the same UI as real 2D findings, with confidence percentages attached. A user had
+    // no way to tell the difference between that and an actual audit of their part.
+    //
+    // Failing honestly is the only defensible behaviour until a real 3D audit endpoint
+    // exists: no score, no findings, and a message that says why.
     set({
-      auditStatus: "completed",
-      complianceScore: 85,
-      violations: [
-        {
-          id: "v_3d_01",
-          severity: "high",
-          category: "Dimensional Tolerance",
-          description: "Pillar height exceeds maximum mounting footprint by 1.2mm in Z-axis.",
-          recommendation: "Reduce vertical pillar extrusion to match bracket specification standard.",
-          confidence: 0.94,
-          standard_reference: "ISO-2768-m",
-          affected_entities: []
-        },
-        {
-          id: "v_3d_02",
-          severity: "medium",
-          category: "Feature Clearance",
-          description: "Counterbore depth leaves thin wall thickness of 0.85mm at bottom face.",
-          recommendation: "Increase bottom pocket wall thickness to at least 1.50mm to prevent shear cracking.",
-          confidence: 0.87,
-          standard_reference: "ASME Y14.5",
-          affected_entities: []
-        }
-      ]
+      auditStatus: "failed",
+      complianceScore: null,
+      violations: [],
+      errorMessage:
+        "3D compliance auditing is not implemented yet. No analysis was performed on this model.",
     });
   },
 

@@ -68,6 +68,17 @@ export interface AnnotationItem {
   pen_type: AnnotationPenType;
   created_at: string;
   updated_at: string;
+  /**
+   * Coordinate provenance, unwrapped from the backend's CadPoint envelope in
+   * services/annotationsApi.ts. The canvas keeps working in bare [x, y]; these two carry
+   * the information the pair alone cannot.
+   */
+  coordinate_space?: "model" | "paper" | "render" | null;
+  /**
+   * True when the drawing was re-rendered against different bounds since this pin was
+   * placed, so its stored position no longer marks what the user marked.
+   */
+  coordinate_drift?: boolean;
 }
 
 export interface UndoAction {

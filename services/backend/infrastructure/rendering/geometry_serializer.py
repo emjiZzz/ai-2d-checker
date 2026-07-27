@@ -46,6 +46,7 @@ class GeometrySerializer:
             
             payload = {
                 "id": str(ent.id),
+                "handle": getattr(ent, "handle", None) or ent.properties.get("handle"),
                 "type": ent.entity_type.lower(),
                 "geometry": ent.geometry,
                 "properties": ent.properties,

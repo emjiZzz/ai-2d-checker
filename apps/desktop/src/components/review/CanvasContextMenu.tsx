@@ -51,6 +51,10 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      <div className={`px-2.5 py-1 text-[10px] font-mono text-cyan-400 border-b flex items-center justify-between ${theme === 'hc-light' ? 'border-zinc-200 bg-zinc-50 text-cyan-700' : 'border-white/10 bg-black/40'}`}>
+        <span>CAD World</span>
+        <span className="font-bold">({wx.toFixed(1)}, {wy.toFixed(1)})</span>
+      </div>
       {/* 1. Direct Annotation Pin Creation -> Opens Modal */}
       <div
         className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${theme === 'hc-light'

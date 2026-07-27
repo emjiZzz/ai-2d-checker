@@ -73,7 +73,7 @@ async def generate_ai_vision_candidates(
         "Perform a complete engineering comparison using ONLY the provided images. "
         "Return your findings as a structured JSON object matching the required schema."
     )
-    contents = build_multimodal_contents(ref_drawing, rev_drawing, prompt_text)
+    contents = await build_multimodal_contents(ref_drawing, rev_drawing, prompt_text)
 
     logger.info(
         f"[hybrid/gen_b] Dispatching AI Vision scan for "
@@ -221,7 +221,7 @@ async def perform_full_ai_comparison(
             "Return your findings as a structured JSON object matching the required schema."
         )
 
-    contents = build_multimodal_contents(ref_drawing, rev_drawing, prompt_text)
+    contents = await build_multimodal_contents(ref_drawing, rev_drawing, prompt_text)
 
     logger.info(f"[full_ai] Dispatching Gemini cascade for ref={ref_drawing.file_name} vs rev={rev_drawing.file_name}")
     raw_json_text, model_used = await asyncio.to_thread(

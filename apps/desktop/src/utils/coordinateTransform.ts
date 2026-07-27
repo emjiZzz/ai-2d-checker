@@ -1,28 +1,57 @@
 /**
  * coordinateTransform.ts
  *
- * Consolidates 6-7 duplicated inline coordinate-math blocks from DrawingCanvas.tsx
- * into a single verified implementation.
+ * The single implementation of screen <-> world coordinate maths for the review canvas.
  *
- * Verified call-site inventory (DrawingCanvas.tsx as of 2026-07-07):
+ * ## Three conversions, not one
  *
- *  Site A  ~line 340   renderContent()         — derives normalizationScale/normXMin/normYMin.
- *                                                No ymax extracted here. Y-flip done inline per-marker later.
- *  Site B  ~line 1005  selectedViolation effect — full 4-tuple [xmin,ymin,xmax,ymax], worldToScreen pattern.
- *  Site C  ~line 1055  handleKeyDown 'f'        — identical to Site B.
- *  Site D  ~line 1152  handleMouseDown (hit)    — 3-tuple [xmin,ymin], no ymax; Y-flip via separate hasBounds block.
- *  Site E  ~line 1222  handleMouseDown (ROI)    — 3-tuple [xmin,ymin], NO Y-flip (intentional: percentage space).
- *  Site F  ~line 1274  handleMouseMove (laser)  — 3-tuple [xmin,ymin], sign-inverted Y
- *                                                 (stdY = ymin - (my - viewport.y) / effectiveScale).
- *                                                 // REFACTOR-NOTE: sign inversion vs all other sites is intentional —
- *                                                 // laser-sync stores a "CAD Y going up" value directly, not screen-Y.
- *                                                 // Do not "fix" to match the others; this is the correct behavior.
- *  Site G  ~line 1568  handleContextMenu        — 3-tuple [xmin,ymin], Y-flip via separate hasBounds block.
+ * Most call sites want `worldToScreen` / `screenToWorld`, which apply the CAD Y-flip
+ * (CAD Y increases upward, canvas Y increases downward). Two call sites deliberately do
+ * not, and they used to hand-roll their own inline maths with a "do not fix this" comment
+ * as the only thing holding the deviation in place. They are now named functions, so the
+ * deviation is expressed in the call rather than in a comment a future refactor can miss:
  *
- * Sites B, C, D, G all Y-flip using the same pattern: hasBounds ? (ymax + ymin - raw_vy) : raw_vy
- * Site E skips the Y-flip deliberately (percentage-space ROI calculation, Y axis isn't flipped there).
- * Site F sign-inverts Y deliberately (laser-sync coordinate convention, documented above).
+ *  - `screenToWorldUnflipped` — ROI region editing works in percentage space against
+ *    `render_bounds` directly, where the Y axis is not inverted. Applying the flip here
+ *    would mirror every region box vertically.
+ *
+ *  - `screenDeltaToWorldDelta` — dragging a marker or pin converts a screen *delta*, not
+ *    a point. The Y-flip `y -> (ymax + ymin) - y` has linear part -1, so it negates
+ *    differences: a downward drag must decrease world Y. Transforming both endpoints and
+ *    subtracting yields the same number, but a drag is tracked as a delta from a start
+ *    position, so expressing it directly is what the call sites actually need — and it
+ *    puts the sign inversion in one named place instead of four inline copies.
+ *
+ * ## Coordinate provenance
+ *
+ * Persisted coordinates carry a `CadPoint` envelope (space, layout, viewport index,
+ * transform version, and the render bounds they were authored against) — see
+ * `packages/types/src/coordinates.ts`. The canvas still works in bare `[x, y]`; the
+ * envelope is unwrapped at the API boundary in `services/annotationsApi.ts`. Use
+ * `boundsMatch` to check whether a stored point still refers to the bounds currently in
+ * force before trusting its on-screen position.
  */
+
+/**
+ * NOTE: these mirror `packages/types/src/coordinates.ts` and
+ * `services/backend/domain/models/cad_point.py`. They are redeclared here rather than
+ * imported because `apps/desktop` has no dependency on `@ai-2d-checker/types` — nothing
+ * in the app imports that package today, and wiring it up is a build-system change
+ * (workspace dep, tsconfig paths, turbo build ordering) rather than a typing one.
+ * Keep all three in step until that is addressed.
+ */
+export type CoordinateSpace = "model" | "paper" | "render";
+
+export interface CadPoint {
+  x: number;
+  y: number;
+  space: CoordinateSpace;
+  layout: string | null;
+  viewport_index: number;
+  transform_version: number;
+  /** Snapshot of render_bounds [xmin, ymin, xmax, ymax] at authoring time. */
+  bounds: number[] | null;
+}
 
 export interface RenderBounds {
   xmin: number;
@@ -122,6 +151,104 @@ export function screenToWorld(
     // Apply Y-flip inverse: same formula as worldToScreen (it's its own inverse for the flip)
     y: norm.hasBounds ? norm.ymax + norm.ymin - rawWy : rawWy,
   };
+}
+
+/**
+ * Screen -> world WITHOUT the CAD Y-flip.
+ *
+ * ROI region editing works in percentage space measured directly against
+ * `render_bounds`, where the Y axis is not inverted. Applying the flip would mirror
+ * every region box vertically.
+ *
+ * This is a deliberate deviation from `screenToWorld`, not an oversight — it exists as
+ * its own named function so the difference is visible at the call site instead of living
+ * in a comment. Previously both ROI call sites hand-rolled this maths inline.
+ */
+export function screenToWorldUnflipped(
+  sx: number,
+  sy: number,
+  norm: NormalizationResult,
+  viewport: Viewport,
+): { x: number; y: number } {
+  const effectiveScale = viewport.scale * norm.normScale;
+  return {
+    x: norm.xmin + (sx - viewport.x) / effectiveScale,
+    y: norm.ymin + (sy - viewport.y) / effectiveScale,
+  };
+}
+
+/**
+ * Converts a screen-space drag delta into a world-space delta.
+ *
+ * The Y-flip negates differences (its linear part is -1), so under bounds a downward
+ * drag must *decrease* world Y. With no bounds there is no flip and the delta passes
+ * through unchanged.
+ *
+ * Transforming both drag endpoints and subtracting gives the same result; this exists
+ * because drags are tracked as a delta from a start position, and because the sign
+ * inversion was previously copy-pasted inline at each drag site.
+ */
+export function screenDeltaToWorldDelta(
+  dx: number,
+  dy: number,
+  norm: NormalizationResult,
+  viewport: Viewport,
+): { dx: number; dy: number } {
+  const effectiveScale = viewport.scale * norm.normScale;
+  const worldDx = dx / effectiveScale;
+  const worldDy = dy / effectiveScale;
+  return {
+    dx: worldDx,
+    dy: norm.hasBounds ? -worldDy : worldDy,
+  };
+}
+
+/**
+ * Projects a provenance-carrying CadPoint to screen space.
+ *
+ * Convenience over `worldToScreen` for callers holding an envelope rather than a pair.
+ * It does not attempt to re-project across spaces: a point stamped in a different space
+ * than the canvas is currently displaying cannot be corrected here, only detected — see
+ * `boundsMatch`.
+ */
+export function cadPointToScreen(
+  point: CadPoint,
+  norm: NormalizationResult,
+  viewport: Viewport,
+): { x: number; y: number } {
+  return worldToScreen(point.x, point.y, norm, viewport);
+}
+
+/**
+ * Whether a stored point's authoring bounds still match the bounds now in force.
+ *
+ * `false` means the drawing was re-rendered against different bounds since the point was
+ * placed, so its on-screen position no longer marks what the user marked. This condition
+ * was previously undetectable — the pin simply moved. The backend reports the same thing
+ * as `coordinate_drift` on annotation responses; this is the client-side equivalent for
+ * points already in hand.
+ *
+ * Returns `true` when either side is unknown: absence of evidence is not drift.
+ */
+export function boundsMatch(
+  point: CadPoint | null | undefined,
+  bounds: RenderBounds | null | undefined,
+  epsilon = 1e-6,
+): boolean {
+  if (!point?.bounds || point.bounds.length < 4 || !bounds) return true;
+  const [xmin, ymin, xmax, ymax] = point.bounds;
+  return (
+    Math.abs(xmin - bounds.xmin) <= epsilon &&
+    Math.abs(ymin - bounds.ymin) <= epsilon &&
+    Math.abs(xmax - bounds.xmax) <= epsilon &&
+    Math.abs(ymax - bounds.ymax) <= epsilon
+  );
+}
+
+/** Extract the bare `[x, y]` the canvas works in from a coordinate envelope. */
+export function cadPointToPair(point: CadPoint | null | undefined): [number, number] | null {
+  if (!point || typeof point.x !== "number" || typeof point.y !== "number") return null;
+  return [point.x, point.y];
 }
 
 /**

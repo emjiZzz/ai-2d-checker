@@ -3,6 +3,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Header
 
 from ...domain.models.annotation_document import AnnotationDocument
+from ...domain.models.drawing_document import DrawingDocument
+from ...infrastructure.cad.coordinate_stamp import has_drifted, stamp_pair
 from ...logger import logger
 from ..dependencies import get_auth_token, get_or_404, resolve_username
 from ..schemas import (
@@ -15,7 +17,20 @@ from ..schemas import (
 router = APIRouter()
 
 
-def _to_response(a: AnnotationDocument) -> AnnotationResponse:
+async def _load_drawing(drawing_id: str) -> DrawingDocument | None:
+    """Fetch the drawing a coordinate belongs to, tolerating a missing record.
+
+    A malformed or deleted drawing_id must not block annotation CRUD -- the point is
+    simply stamped with default provenance instead.
+    """
+    try:
+        return await DrawingDocument.get(drawing_id)
+    except Exception as exc:
+        logger.debug(f"Could not load drawing {drawing_id} for coordinate stamping: {exc}")
+        return None
+
+
+def _to_response(a: AnnotationDocument, drawing: DrawingDocument | None = None) -> AnnotationResponse:
     return AnnotationResponse(
         id=str(a.id),
         review_session_id=a.review_session_id,
@@ -31,6 +46,7 @@ def _to_response(a: AnnotationDocument) -> AnnotationResponse:
         pen_type=a.pen_type,
         created_at=a.created_at,
         updated_at=a.updated_at,
+        coordinate_drift=has_drifted(a.coordinates, drawing),
     )
 
 
@@ -44,6 +60,7 @@ async def create_annotation(
     payload: CreateAnnotationRequest,
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
 ):
+    drawing = await _load_drawing(payload.drawing_id)
     annotation = AnnotationDocument(
         review_session_id=payload.review_session_id,
         drawing_id=payload.drawing_id,
@@ -51,14 +68,14 @@ async def create_annotation(
         annotation_type=payload.annotation_type,
         content=payload.content,
         severity=payload.severity,
-        coordinates=payload.coordinates,
+        coordinates=stamp_pair(payload.coordinates, drawing),
         target_entity_ids=payload.target_entity_ids,
         violation_id=payload.violation_id,
         pen_type=payload.pen_type,
     )
     await annotation.save()
     logger.info(f"Annotation created: {annotation.id} on drawing {annotation.drawing_id} by {annotation.author_id}")
-    return StandardResponse(success=True, data=_to_response(annotation))
+    return StandardResponse(success=True, data=_to_response(annotation, drawing))
 
 
 @router.get(
@@ -78,7 +95,16 @@ async def list_annotations(
         query = AnnotationDocument.find(AnnotationDocument.review_session_id == review_session_id)
 
     annotations = await query.sort(-AnnotationDocument.created_at).to_list()
-    return StandardResponse(success=True, data=[_to_response(a) for a in annotations])
+
+    # Drift is per-drawing; a review session can span several, so resolve each once.
+    drawing_cache: dict[str, DrawingDocument | None] = {}
+    responses = []
+    for a in annotations:
+        if a.drawing_id not in drawing_cache:
+            drawing_cache[a.drawing_id] = await _load_drawing(a.drawing_id)
+        responses.append(_to_response(a, drawing_cache[a.drawing_id]))
+
+    return StandardResponse(success=True, data=responses)
 
 
 @router.get(
@@ -89,7 +115,8 @@ async def list_annotations(
 )
 async def get_annotation(annotation_id: str):
     annotation = await get_or_404(AnnotationDocument, annotation_id, "Annotation not found.")
-    return StandardResponse(success=True, data=_to_response(annotation))
+    drawing = await _load_drawing(annotation.drawing_id)
+    return StandardResponse(success=True, data=_to_response(annotation, drawing))
 
 
 @router.patch(
@@ -101,13 +128,19 @@ async def get_annotation(annotation_id: str):
 async def update_annotation(annotation_id: str, payload: UpdateAnnotationRequest):
     annotation = await get_or_404(AnnotationDocument, annotation_id, "Annotation not found.")
 
+    drawing = await _load_drawing(annotation.drawing_id)
+
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
+        # A move re-stamps provenance against the drawing as it is now, which also
+        # clears any drift flag the old position carried.
+        if field == "coordinates":
+            value = stamp_pair(value, drawing)
         setattr(annotation, field, value)
 
     annotation.updated_at = datetime.utcnow()
     await annotation.save()
-    return StandardResponse(success=True, data=_to_response(annotation))
+    return StandardResponse(success=True, data=_to_response(annotation, drawing))
 
 
 @router.delete(

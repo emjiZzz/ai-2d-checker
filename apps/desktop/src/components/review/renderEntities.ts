@@ -1,4 +1,5 @@
 import { getNormalization, worldToScreen } from '../../utils/coordinateTransform';
+import { useReviewStore } from '../../stores/reviewStore';
 
 // Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags
 export const cleanCadText = (text: string): string => {
@@ -112,21 +113,22 @@ export const renderEntities = ({
 
   // Draw high-fidelity raster CAD background image if loaded, aligned exactly to CAD coordinates bounds.
   // lightBgImage is computed asynchronously (see DrawingCanvas.tsx) and can briefly be null right
+  const renderMode = useReviewStore.getState().renderMode || 'hybrid';
+
   // after a theme switch or on first load — fall back to the raw dark-tuned bgImage rather than
   // drawing nothing, so the canvas isn't blank while the light variant finishes processing.
   const targetImage = (isExport || theme === 'hc-light') ? (lightBgImage || bgImage) : bgImage;
-  if (targetImage && drawing?.metadata?.render_bounds) {
+  const hasBg = !!(targetImage && drawing?.metadata?.render_bounds);
+
+  if (hasBg && renderMode !== 'vector') {
     const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
     ctx.drawImage(targetImage, xmin, ymin, xmax - xmin, ymax - ymin);
   }
 
   const pathBatches: Record<string, { stroke: string, width: number, path: Path2D }> = {};
 
-  // If a high-fidelity raster image is loaded, skip ALL vector entity rendering.
-  // The loop below is O(entities) and would be wasted work — the image covers everything.
-  // Must check targetImage (what was actually drawn above), not bgImage — bgImage is always
-  // truthy once fetched even when targetImage was null and nothing was painted.
-  const skipEntities = !!(targetImage && drawing?.metadata?.render_bounds);
+  // Skip vector entity loop if renderMode is raster, or hybrid with a loaded background image
+  const skipEntities = renderMode === 'raster' || (renderMode === 'hybrid' && hasBg);
 
   Object.entries(layers).forEach(([layerName, entities]) => {
     if (activeLayers[layerName] === false) return;
@@ -533,12 +535,17 @@ const PEN_COLORS: Record<string, string> = {
 // Reviewer annotation pins.
 // Screen positions are stored under "ann:<id>" keys so annotation hit-testing
 // never collides with violation marker keys in the same markerPositionsRef.
+// NOTE — unfinished feature, not dead code: `badgeMap` is fully plumbed through from
+// CanvasRenderer.tsx (built by getAnnotationBadgeMap, which assigns stable A001/A002…
+// labels by creation order) but no draw call ever uses it, so pins currently render as
+// a bare "!" or "✓" glyph with no label. The parameter is kept rather than deleted so
+// the intent — and the missing half — stays discoverable.
 export const renderAnnotationPins = ({
   frame,
   annotations,
   selectedAnnotationId,
   hoveredAnnotationId,
-  badgeMap,
+  badgeMap: _badgeMap,
 }: RenderAnnotationPinsParams) => {
   const { ctx, isExport, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
@@ -548,13 +555,8 @@ export const renderAnnotationPins = ({
     ctx.filter = 'none';
   }
 
-  // Cards are drawn on the canvas (not DOM), so they don't pick up the app's CSS
-  // theme variables automatically — same pattern renderViolationReticles uses.
-  const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
-  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
-  const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
 
-  annotations.forEach((ann, idx) => {
+  annotations.forEach((ann) => {
     const coords = ann.coordinates;
     if (!coords || !Array.isArray(coords) || coords.length < 2) return;
 
@@ -567,7 +569,6 @@ export const renderAnnotationPins = ({
     const isResolved = ann.status === 'resolved';
 
     const color = isResolved ? '#39ff14' : (PEN_COLORS[ann.pen_type] || '#00ffff');
-    const badgeText = badgeMap?.[ann.id] || `A${String(idx + 1).padStart(3, '0')}`;
 
     markerPositionsRef.current[`ann:${ann.id}`] = { x: screenPos.x, y: screenPos.y };
 

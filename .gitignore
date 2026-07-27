@@ -26,6 +26,11 @@ downloads/
 # === Runtime Local Storage (NEVER commit raw or metadata files) ===
 /storage/
 services/storage/uploads/
+# The `/storage/` rule above is anchored to the repo root, so it does NOT cover the
+# backend's own storage tree — which is how services/backend/storage/secure/.api-token
+# came to be committed. That token is generated at startup by
+# core/security.py::initialize_local_api_token and regenerates if absent.
+services/backend/storage/
 
 # === Environment & Local Configs ===
 .env

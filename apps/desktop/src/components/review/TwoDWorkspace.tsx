@@ -5,13 +5,25 @@ import 'flexlayout-react/style/dark.css';
 
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useReviewStore } from "../../stores/reviewStore";
+import { useAuditStore } from "../../stores/auditStore";
 import { useComplianceReportExport } from "../../hooks/useComplianceReportExport";
+import { downloadRedlineDxf } from "../../services/reportsApi";
 import { DrawingCanvas } from "./DrawingCanvas";
 import { UploadZone } from "./UploadZone";
 import { Minimap } from "./Minimap";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
+
+/**
+ * localStorage key prefix for the persisted flexlayout model, per layout preset.
+ *
+ * Defined once because it previously was not: the read path and the default-seed write
+ * used `v11` while `handleModelChange` wrote `v10`, so every layout the user rearranged
+ * was saved to a key nothing ever read and silently lost on reload. Bump this when the
+ * layout schema changes in a way that makes stored models unreadable.
+ */
+const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v11";
 
 interface TwoDWorkspaceProps {
   currentNav: string;
@@ -171,6 +183,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const toggleCanvasStats = useReviewStore(s => s.toggleCanvasStats);
   const showGrid = useReviewStore(s => s.showGrid);
   const toggleGrid = useReviewStore(s => s.toggleGrid);
+  const renderMode = useReviewStore(s => s.renderMode);
+  const setRenderMode = useReviewStore(s => s.setRenderMode);
 
   const drawingCanvasRefOld = useRef<any>(null);
   const drawingCanvasRefNew = useRef<any>(null);
@@ -185,6 +199,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
   const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
 
+  const activeSession = useAuditStore(s => s.activeSession);
+  const [isExportingRedline, setIsExportingRedline] = useState(false);
   const [model, setModel] = useState<Model | null>(null);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
@@ -201,7 +217,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
   useEffect(() => {
     // v11: Bumping layout version to set Comparison Results panel width to 15%
-    const savedLayout = localStorage.getItem(`twod-workspace-layout-v11-${activeLayoutPreset}`);
+    const savedLayout = localStorage.getItem(`${LAYOUT_STORAGE_PREFIX}-${activeLayoutPreset}`);
     if (savedLayout) {
       try {
         const parsed = JSON.parse(savedLayout);
@@ -276,7 +292,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
     const newJson: IJsonModel = { global: globalOpts, layout: layoutNode };
     setModel(Model.fromJson(newJson));
-    localStorage.setItem(`twod-workspace-layout-v11-${activeLayoutPreset}`, JSON.stringify(newJson));
+    localStorage.setItem(`${LAYOUT_STORAGE_PREFIX}-${activeLayoutPreset}`, JSON.stringify(newJson));
   }, [activeLayoutPreset]);
 
   // Rename tabs when filenames change
@@ -295,7 +311,10 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   }, [model, oldFileNameStr, newFileNameStr]);
 
   const handleModelChange = (model: Model, _action: Action) => {
-    localStorage.setItem(`twod-workspace-layout-v10-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
+    // v11, matching the key this component reads on mount and writes when seeding a
+    // default layout. This wrote v10 — a key nothing ever read back — so every layout
+    // the user rearranged was saved and then silently discarded on reload.
+    localStorage.setItem(`${LAYOUT_STORAGE_PREFIX}-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
   };
 
   // Dynamic show/hide for Comparison Results panel based on whether BOTH drawings are uploaded/ingested
@@ -403,6 +422,32 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   <Download size={14} /> PDF
                 </Button>
               )}
+              {activeSession?.id && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={async () => {
+                    try {
+                      setIsExportingRedline(true);
+                      await downloadRedlineDxf(activeSession.id, `redline_${newDrawing?.file_name || activeSession.id}.dxf`);
+                    } catch (err: any) {
+                      alert(`Redline DXF Export: ${err.message}`);
+                    } finally {
+                      setIsExportingRedline(false);
+                    }
+                  }} 
+                  disabled={isExportingRedline}
+                  className="h-8 text-xs border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white gap-1.5" 
+                  title="Export CAD Redline layer as a DXF file"
+                >
+                  {isExportingRedline ? (
+                    <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  <span>Redline DXF</span>
+                </Button>
+              )}
               <div className="flex items-center gap-1.5">
                 <Button 
                   variant="outline" 
@@ -483,6 +528,24 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         </div>
                         {showGrid && <Check size={14} className="text-accent-cyan" />}
                       </button>
+
+                      <div className="h-px bg-border-color my-0.5"></div>
+                      <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">Canvas Engine Mode</div>
+                      <div className="flex items-center gap-1 px-1.5 py-1 bg-bg-dark rounded-lg border border-border-color">
+                        {(['hybrid', 'vector', 'raster'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() => { setRenderMode(mode); setIsViewMenuOpen(false); }}
+                            className={`flex-1 py-1 text-[10px] font-bold capitalize rounded transition-colors cursor-pointer ${
+                              renderMode === mode
+                                ? "bg-accent-cyan text-zinc-950 shadow-xs"
+                                : "text-text-muted hover:text-text-primary"
+                            }`}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
 
                       <div className="h-px bg-border-color my-0.5"></div>
 

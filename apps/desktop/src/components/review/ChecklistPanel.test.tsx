@@ -117,4 +117,29 @@ describe('ChecklistPanel row-to-violation text matching', () => {
     );
     expect(badgeTextForRow('MaterialGrade')).toBe('CONFLICT'); // linked -> violation's pen_type wins
   });
+
+  test('calculates Completion Parity at item-level rather than all-or-nothing category level', () => {
+    mockWorkspace([]);
+    const header = '| FIELD | ORIGINAL | KMTI | STATUS |';
+    const separator = '|---|---|---|---|';
+    const rows = [
+      '| Field1 | A | A | MATCHED |',
+      '| Field2 | B | B | MATCHED |',
+      '| Field3 | C | C | MATCHED |',
+      '| Field4 | D | D | MATCHED |',
+      '| Field5 | E | F | CHANGED |',
+    ];
+    render(
+      <ChecklistPanel
+        aiChecklistResults={{
+          title_block: {
+            status: 'CHANGED', // Top-level status is CHANGED
+            reference_content: [header, separator, ...rows].join('\n'),
+          },
+        }}
+      />
+    );
+    // 4 out of 5 rows are MATCHED -> 80% MATCHED
+    expect(screen.getByText('80% MATCHED')).toBeInTheDocument();
+  });
 });

@@ -4,6 +4,34 @@
 
 import { buildHeaders, baseUrl, parseOrThrow } from "./fetchUtils";
 import type { AnnotationItem, AnnotationSeverity, AnnotationPenType } from "../stores/workspace/types";
+import { cadPointToPair, type CadPoint } from "../utils/coordinateTransform";
+
+/**
+ * Wire shape of an annotation. `coordinates` is a provenance-carrying envelope
+ * (see services/backend/domain/models/cad_point.py); the canvas works in bare pairs, so
+ * the envelope is unwrapped here at the boundary rather than threaded through the stores.
+ */
+interface AnnotationWire extends Omit<AnnotationItem, "coordinates"> {
+  coordinates: CadPoint | null;
+  coordinate_drift?: boolean;
+}
+
+/**
+ * Unwrap the coordinate envelope, preserving the provenance the UI can act on.
+ *
+ * `coordinate_drift` is the backend's verdict that the drawing was re-rendered against
+ * different bounds since this pin was placed, so its stored position no longer marks what
+ * the user marked. Surfacing it is the point of the envelope — previously that situation
+ * was silent and unrecoverable.
+ */
+function fromWire(wire: AnnotationWire): AnnotationItem {
+  return {
+    ...wire,
+    coordinates: cadPointToPair(wire.coordinates),
+    coordinate_space: wire.coordinates?.space ?? null,
+    coordinate_drift: wire.coordinate_drift ?? false,
+  };
+}
 
 export interface CreateAnnotationPayload {
   review_session_id: string;
@@ -31,7 +59,8 @@ export async function fetchAnnotations(drawingId: string, signal?: AbortSignal):
     headers: buildHeaders(),
     signal,
   });
-  return parseOrThrow<AnnotationItem[]>(res);
+  const items = await parseOrThrow<AnnotationWire[]>(res);
+  return items.map(fromWire);
 }
 
 /** POST /api/v1/annotations — create a pin. author_id is derived server-side. */
@@ -41,7 +70,7 @@ export async function createAnnotation(payload: CreateAnnotationPayload): Promis
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
-  return parseOrThrow<AnnotationItem>(res);
+  return fromWire(await parseOrThrow<AnnotationWire>(res));
 }
 
 /** PATCH /api/v1/annotations/:id — partial update (content, status, etc.). */
@@ -51,7 +80,7 @@ export async function updateAnnotation(id: string, payload: Partial<UpdateAnnota
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
-  return parseOrThrow<AnnotationItem>(res);
+  return fromWire(await parseOrThrow<AnnotationWire>(res));
 }
 
 /** DELETE /api/v1/annotations/:id */

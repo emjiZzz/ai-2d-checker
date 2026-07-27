@@ -191,7 +191,17 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
               }}
             >
               <div className="flex justify-between items-center mb-2">
-                <span className={getSevBadgeClass(v.severity)}>{v.severity.toUpperCase()}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={getSevBadgeClass(v.severity)}>{v.severity.toUpperCase()}</span>
+                  {(v as any).entity_handle && (
+                    <span
+                      className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                      title={`CAD Entity Handle: ${(v as any).entity_handle}`}
+                    >
+                      [ID: {(v as any).entity_handle}]
+                    </span>
+                  )}
+                </div>
                 <span className="text-sm font-mono text-text-muted">{v.standard_reference || "General"}</span>
               </div>
 

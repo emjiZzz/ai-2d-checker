@@ -19,7 +19,7 @@ class AnnotationMapper:
                 "type": ann.annotation_type,
                 "content": ann.content,
                 "severity": ann.severity,
-                "coordinates": ann.coordinates,
+                "coordinates": ann.coordinates.as_pair() if ann.coordinates else None,
                 "author": ann.author_id,
                 "status": ann.status,
                 "target_entities": ann.target_entity_ids,

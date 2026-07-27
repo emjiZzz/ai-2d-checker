@@ -16,7 +16,15 @@ class DrawingDocument(Document):
     entity_counts: dict[str, int] = Field(default_factory=dict, description="Counts of lines, circles, dimensions, etc.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Extracted structural drawing metadata")
     ai_summary: dict[str, Any] | None = Field(None, description="Detailed 6-view AI summary of the drawing")
-    
+
+    # --- PHASE 1: extraction provenance ---
+    # Version stamps make a stale extraction detectable without re-reading entities.
+    # There is no backfill path by design: existing drawings are re-ingested rather
+    # than migrated, so nothing reads an older value -- these exist for future
+    # schema changes.
+    extraction_schema_version: int = Field(0, description="Version of the entity extraction schema used")
+    transform_version: int = Field(0, description="Version of the model<->paper viewport transform maths used")
+
     # --- PHASE 7.1: DrawingDocument Revision Chain fields ---
     part_number: str | None = Field(None, description="Extracted part number identifier")
     revision_letter: str | None = Field(None, description="Drawing revision index (e.g. A, B, C)")

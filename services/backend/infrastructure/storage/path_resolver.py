@@ -18,6 +18,7 @@ def bootstrap_storage() -> bool:
         "cache",
         "temp",
         "quarantine",
+        "redlines",
         "reports",
         "logs/backend",
         "logs/app",

@@ -2,8 +2,10 @@ from datetime import datetime
 from typing import Any
 
 from beanie import Document
-from pydantic import Field
+from pydantic import Field, field_validator
 from pymongo import ASCENDING, DESCENDING, IndexModel
+
+from .cad_point import CadPoint, coerce_cad_point_list
 
 
 class AuditViolation(Document):
@@ -15,7 +17,12 @@ class AuditViolation(Document):
     affected_entities: list[dict[str, Any]] = Field(default_factory=list, description="List of drawing entities affected by this violation")
     confidence: float = Field(default_factory=lambda: 1.0, description="Hallucination/matching confidence level from 0.0 to 1.0")
     source: str = Field(..., description="Violation detector source: rule_engine or gemini_vision")
-    coordinates: list[list[float]] | None = Field(None, description="Visual boundary coordinates: [[x1, y1], [x2, y2]] or coordinates of affected points")
+    # Typed envelope, same reasoning as AnnotationDocument.coordinates. Violations are
+    # regenerated on each audit run, so drift self-heals here -- but Phase 5 writeback
+    # needs the space/layout/viewport provenance to invert a finding back into the
+    # source file's model space.
+    coordinates: list[CadPoint] | None = Field(None, description="Affected point(s) with coordinate-space provenance")
+    entity_handle: str | None = Field(None, description="Source CAD entity handle cited by AI")
     standard_reference: str | None = Field(None, description=" Grounding text or section identifier in the standard document")
     pen_type: str = Field("ai_red", description="Virtual pen color: ai_green, ai_red, checker_blue, resolved_green, resolved_pink")
     resolution_type: str | None = Field(None, description="Resolution classification: confirmed or rejected_hallucination")
@@ -23,6 +30,18 @@ class AuditViolation(Document):
     resolved_at: datetime | None = Field(None, description="Timestamp when the violation was verified as resolved")
     checker_remarks: str | None = Field(None, description="Supervisor or checker feedback comment")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("coordinates", mode="before")
+    @classmethod
+    def _coerce_coordinates(cls, value: object) -> list[CadPoint] | None:
+        """Normalise the shapes the ~8 violation producers pass.
+
+        They range from a single `[x, y]` (title_block_rules, row_extractor) to a list
+        of pairs (layer_rules) to already-stamped CadPoints (persistence_handler).
+        Coercing centrally keeps the stored type uniform without threading a
+        DrawingDocument into rule engines that have no access to one.
+        """
+        return coerce_cad_point_list(value)
 
     class Settings:
         name = "audit_violations"

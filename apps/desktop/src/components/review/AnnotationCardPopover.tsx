@@ -3,6 +3,8 @@ import { X, Edit2, Check, Trash2, Save } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { AnnotationItem, AnnotationSeverity, SEVERITY_PEN_MAP } from '../../stores/workspace/types';
 
+import { boundsMatch, parseBounds } from '../../utils/coordinateTransform';
+
 interface AnnotationCardPopoverProps {
   annotation: AnnotationItem;
   badgeNumber?: string;
@@ -49,6 +51,10 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
   const updateAnnotationDetails = useWorkspaceStore((s) => s.updateAnnotationDetails);
   const updateAnnotationStatus = useWorkspaceStore((s) => s.updateAnnotationStatus);
   const deleteAnnotationById = useWorkspaceStore((s) => s.deleteAnnotationById);
+  const newDrawing = useWorkspaceStore((s) => s.newDrawing);
+
+  const currentBounds = parseBounds(newDrawing?.metadata?.render_bounds);
+  const isDrifted = !boundsMatch(annotation.coordinates as any, currentBounds);
 
   const dateStr = annotation.created_at
     ? new Date(annotation.created_at).toLocaleDateString()
@@ -170,6 +176,14 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
             <span className={`font-semibold truncate ${theme === 'hc-light' ? 'text-zinc-900' : 'text-zinc-100'}`}>
               {annotation.author_id}
             </span>
+            {isDrifted && (
+              <span
+                className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0"
+                title="Render bounds shifted since annotation was authored"
+              >
+                ⚠️ Drifted
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-zinc-400 font-mono">{dateStr}</span>

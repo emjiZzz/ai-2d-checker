@@ -70,7 +70,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
   // feature-grouped list below and (if ever needed) any other caller can reuse the
   // exact same JSX instead of duplicating it.
   const renderDiffRowCard = (row: any, matchingViolation: any, rowId: string) => {
-    const statusUp = (row.status || "").toUpperCase();    let cellBadgeColor = "#10b981"; // green = MATCHED default
+    const statusUp = (row.status || "").toUpperCase(); let cellBadgeColor = "#10b981"; // green = MATCHED default
     let cellBadgeBg = "rgba(16, 185, 129, 0.14)";
     let statusText = row.status || "MATCHED";
 
@@ -230,9 +230,40 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         </div>
         {(() => {
           const keys = ["drawing_views", "notes_section", "bill_of_materials", "title_block", "isometric_view"];
-          const total = keys.filter(k => aiChecklistResults[k]).length;
-          const matched = keys.filter(k => aiChecklistResults[k]?.status === "MATCHED").length;
-          const pct = total > 0 ? Math.round((matched / total) * 100) : 0;
+          let totalItems = 0;
+          let matchedItems = 0;
+
+          keys.forEach(key => {
+            const res = aiChecklistResults[key];
+            if (!res) return;
+
+            const isTabular = (res.reference_content && res.reference_content.includes("|")) ||
+              (res.revision_content && res.revision_content.includes("|"));
+
+            if (isTabular) {
+              const tableRows = parseTabularContent(res.reference_content || res.revision_content);
+              const uniqueRowsMap = new Map();
+              tableRows.forEach(row => {
+                if (!uniqueRowsMap.has(row.field)) {
+                  uniqueRowsMap.set(row.field, row);
+                }
+              });
+              const diffRows = Array.from(uniqueRowsMap.values());
+              diffRows.forEach(row => {
+                totalItems++;
+                if (row.isMatch || (row.status || "").toUpperCase() === "MATCHED") {
+                  matchedItems++;
+                }
+              });
+            } else {
+              totalItems++;
+              if (res.status === "MATCHED") {
+                matchedItems++;
+              }
+            }
+          });
+
+          const pct = totalItems > 0 ? Math.round((matchedItems / totalItems) * 100) : 0;
           return (
             <div style={{ marginTop: "4px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-primary)", marginBottom: "5px", fontWeight: 500 }}>
@@ -266,7 +297,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         else if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#ef4444";
 
         const pKey = key.toLowerCase().replace(/_/g, "");
-        
+
         // 1. Parse tabular content to get diffRows
         let diffRows: any[] = [];
         const isTabular = (result.reference_content && result.reference_content.includes("|")) ||
@@ -293,7 +324,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             const kmtiText = (row.kmti || "").trim().toLowerCase();
             const origText = (row.original || "").trim().toLowerCase();
             const descLower = desc.toLowerCase();
-            
+
             let matchesText = false;
             if (descLower) {
               const isMatch = (target: string) => {
@@ -313,7 +344,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
             const vCat = v.category ? v.category.toLowerCase().replace(/_/g, "") : "";
             let matchesCategory = false;
-            
+
             if (vCat) {
               matchesCategory = vCat === pKey || vCat.includes(pKey) || pKey.includes(vCat);
               if (!matchesCategory && row.field) {
@@ -326,7 +357,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
               // If AI gave no category, rely purely on text match
               matchesCategory = true;
             }
-            
+
             return matchesText && matchesCategory;
           });
 
@@ -372,7 +403,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <div 
+                <div
                   onClick={(e) => {
                     e.stopPropagation();
                     if (categoryViolationIds.length > 0) {
@@ -485,7 +516,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                               const pt = violation?.pen_type;
                               const s = pt === "ai_red" ? "REMOVED" : pt === "ai_conflict" ? "CONFLICT"
                                 : pt === "ai_orange" ? "CHANGED" : pt === "checker_blue" ? "ADDED"
-                                : (row.status || "").toUpperCase();
+                                  : (row.status || "").toUpperCase();
                               if ((s.includes("REMOV") || s === "CONFLICT") && severity < 3) { severity = 3; subBadgeColor = s === "CONFLICT" ? "#a855f7" : "#ef4444"; }
                               else if (s.includes("CHANGE") && severity < 2) { severity = 2; subBadgeColor = "#f97316"; }
                               else if (s.includes("ADD") && severity < 1) { severity = 1; subBadgeColor = "#3b82f6"; }

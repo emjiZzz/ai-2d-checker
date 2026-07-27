@@ -420,10 +420,18 @@ class ThreeDPipeline:
             n_tris = total_triangles or (sum(len(g["indices"]) for g in color_groups.values()) // 3)
             if face_count == 0:
                 face_count = n_tris
+
+            # Volume and surface area were previously invented as `face_count * 1423.5`
+            # and `face_count * 312.4` whenever the OCC kernel reported zero. Those are
+            # engineering quantities a user could reasonably act on -- fabricating them
+            # is worse than not having them. Report None so the absence is visible
+            # rather than dressed up as a measurement.
             if volume == 0.0:
-                volume = float(face_count * 1423.5)
+                logger.warning(f"Volume unavailable for {filename}; the geometry kernel reported zero.")
+                volume = None
             if surface_area == 0.0:
-                surface_area = float(face_count * 312.4)
+                logger.warning(f"Surface area unavailable for {filename}; the geometry kernel reported zero.")
+                surface_area = None
 
             metadata: Dict[str, Any] = {
                 "file_name":        filename,

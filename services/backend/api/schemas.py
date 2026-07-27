@@ -2,6 +2,11 @@ from typing import Any, TypeVar, Optional, Literal
 
 from pydantic import BaseModel, Field
 
+from ..domain.models.cad_point import CadPoint, CoordinateSpace
+
+# Re-exported so API consumers import the coordinate envelope from one place.
+__all_coordinate_types__ = ("CadPoint", "CoordinateSpace")
+
 T = TypeVar("T")
 
 class ErrorDetail(BaseModel):
@@ -133,7 +138,8 @@ class AuditViolationResponse(BaseModel):
     affected_entities: list
     confidence: float
     source: str
-    coordinates: list | None = None
+    coordinates: list[CadPoint] | None = None
+    entity_handle: str | None = None
     standard_reference: str | None = None
     pen_type: str
     is_resolved: bool
@@ -225,7 +231,11 @@ class CreateAnnotationRequest(BaseModel):
     annotation_type: str = "pin"
     content: str
     severity: AnnotationSeverity = "info"
-    coordinates: list[float] | None = Field(None, description="[x, y] world-space pin center")
+    # Requests carry a bare [x, y]; the server stamps coordinate-space provenance from
+    # the DrawingDocument it is attached to (see infrastructure/cad/coordinate_stamp.py).
+    # Clients cannot know the drawing's layout or transform version, and trusting them
+    # to supply it would let a point's provenance disagree with its own drawing.
+    coordinates: list[float] | None = Field(None, description="[x, y] pin centre; provenance is stamped server-side")
     target_entity_ids: list[str] = Field(default_factory=list)
     violation_id: str | None = None
     pen_type: AnnotationPenType = "checker_blue"
@@ -234,7 +244,7 @@ class UpdateAnnotationRequest(BaseModel):
     content: str | None = None
     status: str | None = None
     severity: AnnotationSeverity | None = None
-    coordinates: list[float] | None = None
+    coordinates: list[float] | None = Field(None, description="[x, y] pin centre; re-stamped server-side on move")
     pen_type: AnnotationPenType | None = None
 
 class AnnotationResponse(BaseModel):
@@ -245,13 +255,17 @@ class AnnotationResponse(BaseModel):
     annotation_type: str
     content: str
     severity: AnnotationSeverity
-    coordinates: list[float] | None = None
+    coordinates: CadPoint | None = None
     target_entity_ids: list[str]
     violation_id: str | None = None
     status: str
     pen_type: AnnotationPenType
     created_at: datetime
     updated_at: datetime
+    # True when the drawing has been re-rendered against different bounds since this
+    # pin was placed, so its stored position no longer maps to where the user put it.
+    # Previously this situation was silent and unrecoverable.
+    coordinate_drift: bool = Field(False, description="Stored coordinates predate the drawing's current render bounds")
 
 class ZoneComparisonResult(BaseModel):
     status: str

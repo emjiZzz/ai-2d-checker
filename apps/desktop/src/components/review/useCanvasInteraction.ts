@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, RefObject, useRef, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { getNormalization, screenToWorld, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
+import { getNormalization, screenToWorld, screenToWorldUnflipped, screenDeltaToWorldDelta, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
 import { hitTestMarker, getRoiDragPercentages } from './canvasInteraction';
 
 interface UseCanvasInteractionProps {
@@ -439,14 +439,14 @@ export function useCanvasInteraction({
 
     // ── Marker drag ────────────────────────────────────────────────────────────
     if (dragMarkerId && dragMarkerStartPos) {
-      const effectiveScale = currentViewport.scale * norm.normScale;
-      const deltaX = (e.clientX - dragMarkerMouseStart.x) / effectiveScale;
-      let hasBounds = false;
-      if (drawing?.metadata?.render_bounds) {
-        hasBounds = true;
-      }
-      const deltaY = (e.clientY - dragMarkerMouseStart.y) / effectiveScale;
-      const adjustedDeltaY = hasBounds ? -deltaY : deltaY;
+      // A drag is a delta, not a point: the Y-flip is affine and does not distribute
+      // over a subtraction, so screenDeltaToWorldDelta handles the sign inversion.
+      const { dx: deltaX, dy: adjustedDeltaY } = screenDeltaToWorldDelta(
+        e.clientX - dragMarkerMouseStart.x,
+        e.clientY - dragMarkerMouseStart.y,
+        norm,
+        currentViewport,
+      );
 
       const newX = dragMarkerStartPos[0] + deltaX;
       const newY = dragMarkerStartPos[1] + adjustedDeltaY;
@@ -473,10 +473,12 @@ export function useCanvasInteraction({
     // Position updates go through moveAnnotationLocal (no network call per
     // frame) — the final position is persisted once in mouseup.
     if (dragAnnotationId && dragAnnotationStartPos) {
-      const effectiveScale = currentViewport.scale * norm.normScale;
-      const deltaX = (e.clientX - dragAnnotationMouseStart.x) / effectiveScale;
-      const deltaY = (e.clientY - dragAnnotationMouseStart.y) / effectiveScale;
-      const adjustedDeltaY = norm.hasBounds ? -deltaY : deltaY;
+      const { dx: deltaX, dy: adjustedDeltaY } = screenDeltaToWorldDelta(
+        e.clientX - dragAnnotationMouseStart.x,
+        e.clientY - dragAnnotationMouseStart.y,
+        norm,
+        currentViewport,
+      );
 
       const newX = dragAnnotationStartPos[0] + deltaX;
       const newY = dragAnnotationStartPos[1] + adjustedDeltaY;
@@ -585,8 +587,14 @@ export function useCanvasInteraction({
       const w = rxMax - rxMin;
       const h = ryMax - ryMin;
 
-      const worldX = norm.xmin + ((e.clientX - rect.left) - currentViewport.x) / effectiveScale;
-      const worldY = norm.ymin + ((e.clientY - rect.top) - currentViewport.y) / effectiveScale;
+      // Unflipped on purpose — ROI regions live in percentage space against
+      // render_bounds, where Y is not inverted.
+      const { x: worldX, y: worldY } = screenToWorldUnflipped(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        norm,
+        currentViewport,
+      );
 
       const pctX = Math.max(0.0, Math.min(1.0, (worldX - rxMin) / w));
       const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));

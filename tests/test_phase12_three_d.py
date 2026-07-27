@@ -82,8 +82,17 @@ async def test_three_d_pipeline_conversion(dummy_step_file):
     
     assert metadata["format"] == "step"
     assert metadata["face_count"] > 0
-    assert metadata["volume_mm3"] > 0.0
-    
+
+    # volume_mm3 / surface_area_mm2 are either a real measurement from the geometry
+    # kernel or None. They used to be back-filled as `face_count * 1423.5` and
+    # `face_count * 312.4` when the kernel returned zero, which turned "we could not
+    # measure this" into an engineering figure a user could act on. None is the honest
+    # answer; a positive number must mean it was actually measured.
+    for key in ("volume_mm3", "surface_area_mm2"):
+        value = metadata[key]
+        assert value is None or value > 0.0, f"{key} must be a real measurement or None"
+
+
     gltf_dict = json.loads(gltf_content)
     assert gltf_dict["asset"]["version"] == "2.0"
     assert len(gltf_dict["buffers"]) == 1

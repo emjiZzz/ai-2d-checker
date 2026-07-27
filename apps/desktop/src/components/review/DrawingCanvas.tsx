@@ -10,7 +10,7 @@ import { CanvasContextMenu } from './CanvasContextMenu';
 import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
-import { AlertTriangle, Eye, EyeOff, RotateCcw, Pin, Plus, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Skeleton } from '../ui/Skeleton';
 import './DrawingCanvas.css';
 
@@ -49,11 +49,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     const markerPositionsRef = useRef<Record<string, { x: number, y: number }>>({});
 
 
-    const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
-    const toggleMarkerLabels = useReviewStore(s => s.toggleMarkerLabels);
-    const showAnnotations = useReviewStore(s => s.showAnnotations);
-    const toggleAnnotations = useReviewStore(s => s.toggleAnnotations);
-    const createAnnotationAt = useWorkspaceStore((s) => s.createAnnotationAt);
     const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
     const selectAnnotation = useWorkspaceStore((s) => s.selectAnnotation);
     const annotations = useWorkspaceStore((s) => s.annotations);

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 import re
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
+from ...domain.models.annotation_document import AnnotationDocument
 from ...domain.models.audit_session import AuditSession
 from ...domain.models.audit_violation import AuditViolation
 from ...domain.models.drawing_document import DrawingDocument
@@ -18,6 +20,8 @@ from ...domain.models.client import ClientDocument
 from ...domain.models.standard_document import StandardDocument
 from ...domain.models.standard_chunk import StandardChunk
 from ...infrastructure.audit.audit_pipeline import audit_queue
+from ...infrastructure.cad.redline_writer import RedlineWriter, build_findings
+from ...infrastructure.cad.viewport_transform import ViewportTransform
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...infrastructure.audit.report_generator import ReportGenerator
 from ...infrastructure.utils.text import (
@@ -403,6 +407,75 @@ async def review_violation(id: str, request: ViolationReviewRequest):
             checker_remarks=violation.checker_remarks,
             created_at=violation.created_at
         )
+    )
+
+
+@router.get(
+    "/reports/{session_id}/redline.dxf",
+    summary="Export audit findings as a redline layer in a copy of the source DXF",
+    dependencies=[Depends(get_auth_token)]
+)
+async def export_redline_dxf(session_id: str):
+    """Write this session's findings into a new layer on a copy of the source drawing.
+
+    The original file is never modified and never rebuilt from extracted entities: it is
+    opened, one layer is added, and the result is saved elsewhere. Everything the
+    extraction does not capture therefore survives untouched.
+
+    DXF sources only. A DWG-sourced drawing would need the ODA converter on the write
+    path, which is deliberately not a dependency here.
+    """
+    session = await get_or_404(AuditSession, session_id, f"Audit session not found: {session_id}")
+    drawing = await get_or_404(
+        DrawingDocument, session.drawing_id, f"Drawing not found for session: {session_id}"
+    )
+
+    if (drawing.format or "").lower() != "dxf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Redline export requires a DXF source; this drawing is '{drawing.format}'. "
+                "DWG export is not currently supported."
+            ),
+        )
+
+    source_path = get_storage_root() / drawing.file_path
+    if not source_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source drawing file is no longer present on disk.",
+        )
+
+    violations = await AuditViolation.find(AuditViolation.audit_session_id == session_id).to_list()
+    annotations = await AnnotationDocument.find(
+        AnnotationDocument.drawing_id == session.drawing_id
+    ).to_list()
+
+    findings = build_findings(violations, annotations)
+    if not findings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This session has no findings with coordinates to redline.",
+        )
+
+    transform = ViewportTransform.from_dict((drawing.metadata or {}).get("viewport_transform"))
+    output_path = get_storage_root() / "redlines" / f"redline_{session_id}.dxf"
+
+    try:
+        writer = RedlineWriter(source_path, transform)
+        summary = await asyncio.to_thread(writer.write, findings, session_id, output_path)
+    except Exception as err:
+        corr_id = correlation_id_var.get()
+        logger.exception(f"[{corr_id}] Redline export failed for session {session_id}: {err}")
+        raise HTTPException(
+            status_code=500, detail=f"Redline export failed. Reference: {corr_id}"
+        )
+
+    logger.info(f"Redline export for session {session_id}: {summary}")
+    return FileResponse(
+        str(output_path),
+        media_type="application/dxf",
+        filename=f"AI-2D-Checker_Redline_{session_id}.dxf",
     )
 
 

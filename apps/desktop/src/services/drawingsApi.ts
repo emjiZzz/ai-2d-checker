@@ -27,3 +27,12 @@ export async function fetchDrawing(id: string, signal?: AbortSignal): Promise<Dr
   });
   return parseOrThrow<DrawingItem>(res);
 }
+
+/** GET /api/v1/drawings/:id/scene — fetches vector scene primitives and CAD handles. */
+export async function fetchDrawingScene(id: string, signal?: AbortSignal): Promise<any> {
+  const res = await fetch(`${baseUrl()}/api/v1/drawings/${id}/scene`, {
+    headers: buildHeaders(),
+    signal,
+  });
+  return parseOrThrow<any>(res);
+}

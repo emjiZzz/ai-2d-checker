@@ -229,6 +229,53 @@ async def get_drawing_layers(id: str):
 
 
 @router.get(
+    "/drawings/{id}/scene",
+    response_model=StandardResponse[dict],
+    summary="Retrieve render-ready vector scene and entity index for interactive canvas",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_drawing_scene(id: str):
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
+    entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == id).to_list()
+    
+    if not entities:
+        return StandardResponse(
+            success=False,
+            error={
+                "code": "ENTITIES_NOT_READY",
+                "message": "Drawing entities have not been extracted yet."
+            },
+            data={"layers": {}, "transform": None, "handles": {}}
+        )
+
+    layers_data = GeometrySerializer.serialize_entities(entities)
+    transform_data = (drawing.metadata or {}).get("viewport_transform")
+    
+    handles_map = {}
+    for ent in entities:
+        handle = getattr(ent, "handle", None) or ent.properties.get("handle")
+        if handle:
+            handles_map[handle] = {
+                "id": str(ent.id),
+                "type": ent.entity_type.lower(),
+                "layer": ent.layer,
+                "text": ent.properties.get("text"),
+                "geometry": ent.geometry,
+            }
+
+    return StandardResponse(
+        success=True,
+        data={
+            "drawing_id": id,
+            "layers": layers_data.get("layers", {}),
+            "transform": transform_data,
+            "handles": handles_map,
+            "render_bounds": (drawing.metadata or {}).get("render_bounds"),
+        }
+    )
+
+
+@router.get(
     "/drawings/{id}/rendering",
     summary="Get high-fidelity PNG rendering of drawing background",
     dependencies=[Depends(get_auth_token)]

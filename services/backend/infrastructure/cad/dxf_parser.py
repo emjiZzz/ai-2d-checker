@@ -6,7 +6,90 @@ import ezdxf
 
 from ...core.security import validate_sandboxed_path
 from ...logger import logger
-from .entity_mapper import EntityMapper
+from .entity_mapper import GEOMETRY_SCHEMA, SCALED_PROPERTY_KEYS, EntityMapper
+from .viewport_transform import NO_VIEWPORT, TRANSFORM_VERSION, ViewportTransform
+
+# Property keys holding coordinate pairs that must be projected alongside geometry.
+# `bbox` is [[xmin, ymin], [xmax, ymax]].
+PROJECTED_PROPERTY_POINT_LISTS: tuple[str, ...] = ("bbox",)
+
+
+def project_mapped_entity(
+    mapped: dict[str, Any], transform: ViewportTransform
+) -> tuple[int, float]:
+    """Project every coordinate of a mapped entity from model space into paper space.
+
+    Schema-driven via `GEOMETRY_SCHEMA` so all entity types are covered uniformly.
+    The previous inline implementation hand-wrote a branch per type and silently
+    omitted hatch, tolerance, leader, multileader and block, leaving those five in
+    model space while everything else moved to paper space -- invisible behind the
+    raster PNG, but scattered geometry the moment anything renders vectors.
+
+    The whole entity is pinned to the viewport chosen by its first coordinate rather
+    than resolving each point independently. An entity belongs to one view, so
+    per-point resolution could tear geometry that straddles a viewport edge; pinning
+    also makes the inverse exact, since the index is recorded on the entity.
+
+    Returns (viewport_index, scale) so the caller can persist them for `unproject`.
+    """
+    if transform.is_identity:
+        return NO_VIEWPORT, 1.0
+
+    schema = GEOMETRY_SCHEMA.get(mapped.get("entity_type", ""))
+    if not schema:
+        return NO_VIEWPORT, 1.0
+
+    geometry = mapped.get("geometry") or {}
+    properties = mapped.get("properties") or {}
+
+    state: dict[str, Any] = {"index": None, "scale": 1.0, "resolved": False}
+
+    def project_point(point: Any) -> list[float]:
+        result = transform.project(float(point[0]), float(point[1]), state["index"])
+        if not state["resolved"]:
+            state["index"] = result.viewport_index
+            state["scale"] = result.scale
+            state["resolved"] = True
+        return [result.x, result.y]
+
+    def is_point(value: Any) -> bool:
+        return isinstance(value, (list, tuple)) and len(value) >= 2 and not isinstance(value[0], (list, tuple))
+
+    for key in schema.get("points", ()):
+        value = geometry.get(key)
+        if is_point(value):
+            geometry[key] = project_point(value)
+
+    for key in schema.get("point_lists", ()):
+        value = geometry.get(key)
+        if isinstance(value, list) and value:
+            geometry[key] = [project_point(p) if is_point(p) else p for p in value]
+
+    for key in schema.get("point_list_groups", ()):
+        value = geometry.get(key)
+        if isinstance(value, list) and value:
+            geometry[key] = [
+                [project_point(p) if is_point(p) else p for p in group] if isinstance(group, list) else group
+                for group in value
+            ]
+
+    for key in PROJECTED_PROPERTY_POINT_LISTS:
+        value = properties.get(key)
+        if isinstance(value, list) and value and all(is_point(p) for p in value):
+            properties[key] = [project_point(p) for p in value]
+
+    # Scale distances only once the viewport is known. If no coordinate resolved a
+    # viewport (an entity with no geometry), leave sizes untouched.
+    if state["resolved"]:
+        scale = state["scale"]
+        for key in schema.get("lengths", ()):
+            if isinstance(geometry.get(key), (int, float)):
+                geometry[key] = geometry[key] * scale
+        for key in SCALED_PROPERTY_KEYS:
+            if isinstance(properties.get(key), (int, float)):
+                properties[key] = properties[key] * scale
+
+    return (state["index"] if state["resolved"] else NO_VIEWPORT), state["scale"]
 
 
 class DXFParser:
@@ -59,6 +142,8 @@ class DXFParser:
                         raise
 
         # 2. Extract Layers
+        # lineweight/linetype are recorded here as well as on entities: an entity
+        # carrying BYLAYER (-1) resolves its real stroke against these values.
         layers = []
         for layer in doc.layers:
             layers.append({
@@ -68,7 +153,9 @@ class DXFParser:
                     "color": layer.dxf.color,
                     "is_locked": layer.is_locked(),
                     "is_frozen": layer.is_frozen(),
-                    "is_off": not layer.is_on()
+                    "is_off": not layer.is_on(),
+                    "lineweight": getattr(layer.dxf, "lineweight", -1),
+                    "linetype": getattr(layer.dxf, "linetype", "Continuous"),
                 },
                 "geometry": {}
             })
@@ -86,56 +173,11 @@ class DXFParser:
             "layer": len(layers)
         }
 
-        # Identify active paperspace layout to see if we need viewport coordinate projection
-        paperspace_layouts = [l for l in doc.layouts if l.name.lower() != 'model' and len(l) > 0]
-        viewports = []
-        active_layout = None
-        for pl in paperspace_layouts:
-            vp_candidates = [e for e in pl if e.dxftype() == "VIEWPORT" and e.dxf.id != 1]
-            if vp_candidates:
-                active_layout = pl
-                viewports = vp_candidates
-                break
-        def project_point(x: float, y: float) -> tuple[float, float, float]:
-            for vp in viewports:
-                cx, cy = vp.dxf.center.x, vp.dxf.center.y
-                w, h = vp.dxf.width, vp.dxf.height
-                
-                # Robustly query both view_target_point and view_center_point to find the true Model Space look-at center
-                vc = vp.dxf.get('view_target_point')
-                if not vc or (vc.x == 0.0 and vc.y == 0.0):
-                    vc = vp.dxf.get('view_center_point')
-                    
-                vc_x, vc_y = (vc.x, vc.y) if vc else (0.0, 0.0)
-                vh = vp.dxf.get('view_height')
-                scale = h / vh if vh > 0 else 1.0
-                
-                half_mw = (w / scale) * 0.5
-                half_mh = vh * 0.5
-                
-                if (vc_x - half_mw <= x <= vc_x + half_mw) and (vc_y - half_mh <= y <= vc_y + half_mh):
-                    px = cx + (x - vc_x) * scale
-                    py = cy + (y - vc_y) * scale
-                    return px, py, scale
-            if viewports:
-                # Fallback to the first valid viewport if none matched
-                vp = viewports[0]
-                cx, cy = vp.dxf.center.x, vp.dxf.center.y
-                
-                # Robustly query both view_target_point and view_center_point for fallback viewport look-at center
-                vc = vp.dxf.get('view_target_point')
-                if not vc or (vc.x == 0.0 and vc.y == 0.0):
-                    vc = vp.dxf.get('view_center_point')
-                    
-                vc_x, vc_y = (vc.x, vc.y) if vc else (0.0, 0.0)
-                vh = vp.dxf.get('view_height')
-                scale = h / vh if vh > 0 else 1.0
-                px = cx + (x - vc_x) * scale
-                py = cy + (y - vc_y) * scale
-                return px, py, scale
-            return x, y, 1.0
+        # Identify the active paperspace layout and build the invertible model<->paper
+        # projection. Identity when the drawing has no paper-space viewports.
+        transform = ViewportTransform.from_document(doc)
 
-        def process_entity(entity, layout_name, depth=0, is_dimension=False):
+        def process_entity(entity, layout_name, depth=0, is_dimension=False, parent_handle=None):
             if depth > 10:
                 logger.warning(f"Recursive block/dimension explosion depth limit reached at entity: {entity.dxftype()}")
                 return
@@ -143,96 +185,39 @@ class DXFParser:
             dxftype = entity.dxftype()
 
             if dxftype == "INSERT":
+                # Explode the block so its content is individually addressable, and
+                # tag each child with the owning INSERT's handle. The INSERT itself is
+                # still recorded below as a container: `virtual_entities()` does not
+                # yield attached ATTRIBs, so it is the only carrier of title-block
+                # attribute values.
+                insert_handle = getattr(entity.dxf, "handle", None)
                 try:
                     for sub_ent in entity.virtual_entities():
-                        process_entity(sub_ent, layout_name, depth + 1, is_dimension)
+                        process_entity(sub_ent, layout_name, depth + 1, is_dimension, insert_handle)
                 except Exception as ex:
                     logger.debug(f"Could not explode block {getattr(entity.dxf, 'name', 'unknown')}: {ex}")
 
             mapped = EntityMapper.map_any(entity)
             if mapped:
-                mapped["properties"]["layout_space"] = layout_name
-                
-                # Perform viewport projection if this entity belongs to Model space or is a dimension displayed in Paper space viewports
-                if (layout_space_is_model := (layout_name.lower() == "model") or is_dimension) and viewports:
-                    scale = 1.0
-                    if mapped["entity_type"] == "line" and "geometry" in mapped:
-                        geo = mapped["geometry"]
-                        if "start" in geo and "end" in geo:
-                            x1, y1, s = project_point(geo["start"][0], geo["start"][1])
-                            geo["start"] = [x1, y1]
-                            x2, y2, s = project_point(geo["end"][0], geo["end"][1])
-                            geo["end"] = [x2, y2]
-                            scale = s
-                    elif mapped["entity_type"] in ("circle", "arc") and "geometry" in mapped:
-                        geo = mapped["geometry"]
-                        if "center" in geo:
-                            cx, cy, s = project_point(geo["center"][0], geo["center"][1])
-                            geo["center"] = [cx, cy]
-                            geo["radius"] = geo.get("radius", 0.0) * s
-                            scale = s
-                    elif mapped["entity_type"] == "polyline" and "geometry" in mapped:
-                        geo = mapped["geometry"]
-                        if "vertices" in geo:
-                            new_v = []
-                            for pt in geo["vertices"]:
-                                px, py, s = project_point(pt[0], pt[1])
-                                new_v.append([px, py])
-                                scale = s
-                            geo["vertices"] = new_v
-                        elif "points" in geo:
-                            new_p = []
-                            for pt in geo["points"]:
-                                px, py, s = project_point(pt[0], pt[1])
-                                new_p.append([px, py])
-                                scale = s
-                            geo["points"] = new_p
-                    elif mapped["entity_type"] == "text" and "geometry" in mapped:
-                        geo = mapped["geometry"]
-                        # Project insert/location
-                        if "location" in geo:
-                            tx, ty, s = project_point(geo["location"][0], geo["location"][1])
-                            geo["location"] = [tx, ty]
-                            scale = s
-                        if "insert" in geo:
-                            tx, ty, s = project_point(geo["insert"][0], geo["insert"][1])
-                            geo["insert"] = [tx, ty]
-                            scale = s
-                        if "text_point" in geo:
-                            tx, ty, s = project_point(geo["text_point"][0], geo["text_point"][1])
-                            geo["text_point"] = [tx, ty]
-                            scale = s
-                        
-                        # Project bbox if present
-                        props = mapped.get("properties", {})
-                        if "bbox" in props and props["bbox"]:
-                            try:
-                                bbox = props["bbox"]
-                                xmin, ymin, s = project_point(bbox[0][0], bbox[0][1])
-                                xmax, ymax, s = project_point(bbox[1][0], bbox[1][1])
-                                props["bbox"] = [[xmin, ymin], [xmax, ymax]]
-                            except Exception:
-                                pass
-                    elif mapped["entity_type"] == "dimension" and "geometry" in mapped:
-                        geo = mapped["geometry"]
-                        if "def_point" in geo:
-                            tx, ty, s = project_point(geo["def_point"][0], geo["def_point"][1])
-                            geo["def_point"] = [tx, ty]
-                            scale = s
-                        if "text_point" in geo:
-                            tx, ty, s = project_point(geo["text_point"][0], geo["text_point"][1])
-                            geo["text_point"] = [tx, ty]
-                            scale = s
+                props = mapped["properties"]
+                props["layout_space"] = layout_name
+                if parent_handle:
+                    props["parent_handle"] = parent_handle
 
-                        
-                        # Scale font size/height
-                        props = mapped.get("properties", {})
-                        if "height" in props:
-                            props["height"] = props["height"] * scale
-                        style = mapped.get("style", {})
-                        if "fontSize" in style:
-                            style["fontSize"] = style["fontSize"] * scale
-                            
+                # Project model-space geometry (and dimensions rendered through a
+                # paper-space viewport) into paper coordinates. Paper-space entities
+                # are already in the target space and are left alone.
+                needs_projection = (layout_name.lower() == "model") or is_dimension
+                if needs_projection and not transform.is_identity:
+                    viewport_index, scale = project_mapped_entity(mapped, transform)
+                    props["space"] = "paper"
+                    props["viewport_index"] = viewport_index
+                    props["viewport_scale"] = scale
+                else:
+                    props["space"] = "paper" if not transform.is_identity else "model"
+                    props["viewport_index"] = NO_VIEWPORT
+                    props["viewport_scale"] = 1.0
+
                 entities.append(mapped)
                 entity_type = mapped["entity_type"]
                 if entity_type in counts:
@@ -269,6 +254,12 @@ class DXFParser:
             "measurement": doc.header.get("$MEASUREMENT", -1), # 0 = Inch, 1 = Metric
             "extmin": list(doc.header.get("$EXTMIN", [0, 0, 0])),
             "extmax": list(doc.header.get("$EXTMAX", [0, 0, 0])),
+            # The model<->paper projection applied to the geometry above. Persisted
+            # so a stored coordinate can be mapped back into the source file's model
+            # space -- the prerequisite for writing redlines into CAD.
+            "viewport_transform": transform.to_dict(),
+            "transform_version": TRANSFORM_VERSION,
+            "coordinate_space": "model" if transform.is_identity else "paper",
         }
 
         # Dynamic Layout Analysis

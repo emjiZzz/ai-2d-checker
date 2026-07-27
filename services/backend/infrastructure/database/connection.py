@@ -65,32 +65,62 @@ class DatabaseConnectionManager:
                         document_models=__all_models__
                     )
                     
-                    # Seed initial enterprise roles & accounts
+                    # Seed initial enterprise roles & accounts.
+                    #
+                    # Seeding stays unconditional: a freshly wiped database with no
+                    # accounts would otherwise lock everyone out with no recovery path.
+                    # What changed is that the passwords are overridable and the
+                    # well-known defaults now announce themselves loudly instead of
+                    # being reported as a routine success line. Set SEED_ADMIN_PASSWORD
+                    # and SEED_ENGINEER_PASSWORD to take the defaults out of play.
                     try:
+                        import os
+
                         from ...core.auth import hash_password
                         from ...domain.models.user_account import UserAccountDocument
 
+                        DEFAULT_ADMIN_PASSWORD = "admin123"
+                        DEFAULT_ENGINEER_PASSWORD = "engineer123"
+
+                        seeded_with_defaults = []
+
                         admin_exists = await UserAccountDocument.find_one(UserAccountDocument.username == "admin")
                         if not admin_exists:
+                            admin_password = os.environ.get("SEED_ADMIN_PASSWORD") or DEFAULT_ADMIN_PASSWORD
                             admin_user = UserAccountDocument(
                                 username="admin",
-                                hashed_password=hash_password("admin123"),
+                                hashed_password=hash_password(admin_password),
                                 role="admin",
                                 permissions=["all"]
                             )
                             await admin_user.save()
-                            logger.info("Seeded default administrator account ('admin' / 'admin123') successfully.")
-                        
+                            if admin_password == DEFAULT_ADMIN_PASSWORD:
+                                seeded_with_defaults.append("admin")
+                            else:
+                                logger.info("Seeded administrator account from SEED_ADMIN_PASSWORD.")
+
                         engineer_exists = await UserAccountDocument.find_one(UserAccountDocument.username == "engineer")
                         if not engineer_exists:
+                            engineer_password = os.environ.get("SEED_ENGINEER_PASSWORD") or DEFAULT_ENGINEER_PASSWORD
                             engineer_user = UserAccountDocument(
                                 username="engineer",
-                                hashed_password=hash_password("engineer123"),
+                                hashed_password=hash_password(engineer_password),
                                 role="user",
                                 permissions=["audit"]
                             )
                             await engineer_user.save()
-                            logger.info("Seeded default engineering user account ('engineer' / 'engineer123') successfully.")
+                            if engineer_password == DEFAULT_ENGINEER_PASSWORD:
+                                seeded_with_defaults.append("engineer")
+                            else:
+                                logger.info("Seeded engineering user account from SEED_ENGINEER_PASSWORD.")
+
+                        if seeded_with_defaults:
+                            logger.warning(
+                                "SECURITY: seeded %s with well-known default password(s). "
+                                "Change them immediately, or set SEED_ADMIN_PASSWORD / "
+                                "SEED_ENGINEER_PASSWORD before first start.",
+                                " and ".join(seeded_with_defaults),
+                            )
                     except Exception as seed_err:
                         logger.warning(f"Failed to verify or seed default user accounts: {str(seed_err)}")
 

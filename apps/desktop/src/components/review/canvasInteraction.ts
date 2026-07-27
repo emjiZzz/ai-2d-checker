@@ -1,4 +1,4 @@
-import { getNormalization, worldToScreen, parseBounds } from '../../utils/coordinateTransform';
+import { getNormalization, worldToScreen, screenToWorldUnflipped, parseBounds } from '../../utils/coordinateTransform';
 
 export interface HitTestParams {
   mx: number;
@@ -72,9 +72,9 @@ export const getRoiDragPercentages = ({
   if (!drawing?.metadata?.render_bounds) return null;
 
   const norm = getNormalization(parseBounds(drawing.metadata.render_bounds));
-  const effectiveScale = viewport.scale * norm.normScale;
-  const worldX = norm.xmin + (mx - viewport.x) / effectiveScale;
-  const worldY = norm.ymin + (my - viewport.y) / effectiveScale;
+  // Unflipped on purpose: ROI regions are percentages measured directly against
+  // render_bounds, where Y is not inverted. See screenToWorldUnflipped's docstring.
+  const { x: worldX, y: worldY } = screenToWorldUnflipped(mx, my, norm, viewport);
 
   const [rxMin, ryMin, rxMax, ryMax] = drawing.metadata.render_bounds;
   const w = rxMax - rxMin;

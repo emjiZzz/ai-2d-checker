@@ -13,7 +13,13 @@ import {
   getNormalization,
   worldToScreen,
   screenToWorld,
+  screenToWorldUnflipped,
+  screenDeltaToWorldDelta,
+  boundsMatch,
+  cadPointToPair,
+  cadPointToScreen,
   parseBounds,
+  type CadPoint,
 } from './coordinateTransform';
 
 // ---------------------------------------------------------------------------
@@ -184,25 +190,135 @@ describe('screenToWorld', () => {
 // because it has a different semantic (laser coords, not CAD Y-flip).
 // The test below documents what that site actually computes, for reference.
 // ---------------------------------------------------------------------------
-describe('Site F laser-sync stdY (documented, stays inline in DrawingCanvas.tsx)', () => {
-  it('sign-inverted Y matches original formula: ymin - (sy - viewport.y) / effectiveScale', () => {
+// ---------------------------------------------------------------------------
+// The two deliberate deviations from the Y-flip, now named functions rather than
+// inline maths guarded by a "do not fix" comment.
+//
+// CORRECTION: this block previously characterized a "Site F laser-sync" formula
+// (`ymin - (sy - viewport.y) / effectiveScale`) described as staying inline in
+// DrawingCanvas.tsx. No such call site exists — it is a pure-arithmetic assertion that
+// passed regardless of the code. What actually deviates is the drag-delta sign
+// inversion, covered below.
+// ---------------------------------------------------------------------------
+describe('screenToWorldUnflipped (ROI percentage space)', () => {
+  it('skips the Y-flip that screenToWorld applies', () => {
     const norm = getNormalization(BOUNDS);
-    const effectiveScale = VIEWPORT.scale * norm.normScale; // 1.5 * 1 = 1.5
-    const my = 555; // a mouse Y position
-    // Original site F formula:
-    const stdY_original = BOUNDS.ymin - (my - VIEWPORT.y) / effectiveScale;
-    // = 200 - (555 - 30) / 1.5
-    // = 200 - 525 / 1.5
-    // = 200 - 350 = -150
+    // Deliberately not the vertical midpoint of BOUNDS: the flip is an involution, so
+    // at y = (ymin + ymax) / 2 = 550 it is the identity and the two agree by accident.
+    const sy = 300;
+    const flipped = screenToWorld(400, sy, norm, VIEWPORT);
+    const unflipped = screenToWorldUnflipped(400, sy, norm, VIEWPORT);
 
-    // For comparison, screenToWorld Y (with Y-flip) would give:
-    const via_screenToWorld = screenToWorld(0, my, getNormalization(BOUNDS), VIEWPORT).y;
-    // rawWy = 200 + (555 - 30) / 1.5 = 200 + 350 = 550
-    // flipped = 900 + 200 - 550 = 550
+    // X is unaffected by the flip.
+    expect(unflipped.x).toBeCloseTo(flipped.x);
+    // Y is the raw, unmirrored value: ymin + (sy - viewport.y) / effectiveScale.
+    expect(unflipped.y).toBeCloseTo(200 + (300 - 30) / 1.5); // 380
+    expect(flipped.y).toBeCloseTo(900 + 200 - 380); // 720
+    expect(unflipped.y).not.toBeCloseTo(flipped.y);
+  });
 
-    expect(stdY_original).toBeCloseTo(-150);
-    // Confirm they are NOT the same — this is the intentional behavioral difference
-    expect(stdY_original).not.toBeCloseTo(via_screenToWorld);
+  it('is the identity relative to screenToWorld at the fixed point of the flip', () => {
+    // Documents the coincidence above so a future reader does not mistake it for a bug.
+    const norm = getNormalization(BOUNDS);
+    const midpointScreen = 555; // maps to world Y 550 = (200 + 900) / 2
+    expect(screenToWorldUnflipped(0, midpointScreen, norm, VIEWPORT).y).toBeCloseTo(
+      screenToWorld(0, midpointScreen, norm, VIEWPORT).y,
+    );
+  });
+
+  it('matches screenToWorld exactly when there are no bounds (no flip to skip)', () => {
+    const norm = getNormalization(null);
+    expect(screenToWorldUnflipped(400, 555, norm, VIEWPORT)).toEqual(
+      screenToWorld(400, 555, norm, VIEWPORT),
+    );
+  });
+});
+
+describe('screenDeltaToWorldDelta (marker and pin drags)', () => {
+  it('sign-inverts Y under a flip so a downward drag decreases world Y', () => {
+    const norm = getNormalization(BOUNDS);
+    const { dx, dy } = screenDeltaToWorldDelta(30, 60, norm, VIEWPORT);
+    expect(dx).toBeCloseTo(30 / 1.5); // 20
+    expect(dy).toBeCloseTo(-(60 / 1.5)); // -40
+  });
+
+  it('passes Y through unchanged when there are no bounds', () => {
+    const norm = getNormalization(null);
+    const { dy } = screenDeltaToWorldDelta(0, 60, norm, VIEWPORT);
+    expect(dy).toBeCloseTo(60 / 1.5);
+  });
+
+  it('agrees with the difference of two point transforms', () => {
+    // The Y-flip's linear part is -1, so it negates differences and transforming both
+    // drag endpoints gives the same answer. This function is not a correction to that;
+    // it exists because drags are tracked as a delta from a start position, and to keep
+    // the sign inversion in one named place rather than copy-pasted at each drag site.
+    const norm = getNormalization(BOUNDS);
+    const a = screenToWorld(0, 100, norm, VIEWPORT);
+    const b = screenToWorld(0, 160, norm, VIEWPORT);
+    const { dy } = screenDeltaToWorldDelta(0, 60, norm, VIEWPORT);
+
+    expect(b.y - a.y).toBeCloseTo(dy);
+    expect(dy).toBeLessThan(0); // downward drag decreases world Y
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coordinate provenance
+// ---------------------------------------------------------------------------
+const stampedPoint = (overrides: Partial<CadPoint> = {}): CadPoint => ({
+  x: 600,
+  y: 550,
+  space: 'paper',
+  layout: 'Layout1',
+  viewport_index: 0,
+  transform_version: 1,
+  bounds: [100, 200, 1100, 900],
+  ...overrides,
+});
+
+describe('cadPointToPair', () => {
+  it('unwraps an envelope to the bare pair the canvas works in', () => {
+    expect(cadPointToPair(stampedPoint())).toEqual([600, 550]);
+  });
+
+  it('returns null for missing or malformed input', () => {
+    expect(cadPointToPair(null)).toBeNull();
+    expect(cadPointToPair(undefined)).toBeNull();
+    expect(cadPointToPair({ x: 'a' } as unknown as CadPoint)).toBeNull();
+  });
+});
+
+describe('cadPointToScreen', () => {
+  it('agrees with worldToScreen on the same coordinates', () => {
+    const norm = getNormalization(BOUNDS);
+    const point = stampedPoint();
+    expect(cadPointToScreen(point, norm, VIEWPORT)).toEqual(
+      worldToScreen(point.x, point.y, norm, VIEWPORT),
+    );
+  });
+});
+
+describe('boundsMatch (drift detection)', () => {
+  it('is true when the drawing has not been re-rendered', () => {
+    expect(boundsMatch(stampedPoint(), BOUNDS)).toBe(true);
+  });
+
+  it('is false once the drawing is re-rendered against different bounds', () => {
+    // A different paper-space layout becomes the render target on re-ingest, which
+    // used to displace every stored pin silently.
+    expect(boundsMatch(stampedPoint(), { xmin: 0, ymin: 0, xmax: 841, ymax: 594 })).toBe(false);
+  });
+
+  it('treats unknown provenance as not-drifted — absence of evidence is not drift', () => {
+    expect(boundsMatch(stampedPoint({ bounds: null }), BOUNDS)).toBe(true);
+    expect(boundsMatch(null, BOUNDS)).toBe(true);
+    expect(boundsMatch(stampedPoint(), null)).toBe(true);
+  });
+
+  it('tolerates float noise within epsilon', () => {
+    const nudged = { xmin: 100 + 1e-9, ymin: 200, xmax: 1100, ymax: 900 };
+    expect(boundsMatch(stampedPoint(), nudged)).toBe(true);
   });
 });
 

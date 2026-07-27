@@ -159,27 +159,25 @@ class PDFParser:
                             })
                             counts["text"] += 1
 
-        except ImportError:
-            logger.warning("pymupdf (fitz) is not installed. Generating highly robust, structural baseline entities from page layout context.")
-            # Standard structural fallbacks so that PDF parsing is resilient and NEVER fails
-            # Synthesize lines and annotations to model the layout structure
-            for i in range(120):
-                entities.append({
-                    "entity_type": "line",
-                    "layer": "PDF_Geometry",
-                    "properties": {"handle": f"synth_line_{i}", "color": "#00e5ff", "strokeWidth": 1},
-                    "geometry": {"start": [10.0 + i * 5, 20.0 + (i % 3) * 15, 0.0], "end": [200.0, 150.0 + i * 2, 0.0]}
-                })
-                counts["line"] += 1
-            
-            for j in range(40):
-                entities.append({
-                    "entity_type": "text",
-                    "layer": "PDF_Text",
-                    "properties": {"handle": f"synth_text_{j}", "color": "#ffffff", "text": f"Annotation standard block {j}"},
-                    "geometry": {"insert": [50.0 + j * 4, 80.0 + (j % 2) * 50, 0.0]}
-                })
-                counts["text"] += 1
+        except ImportError as import_err:
+            # This previously synthesised 120 fake lines and 40 fake text entities
+            # ("Annotation standard block {j}") so that "PDF parsing NEVER fails", then
+            # logged success. The fabricated rows were persisted to MongoDB
+            # indistinguishable from real extracted geometry, and every downstream
+            # consumer -- the comparison engine, the AI context, the canvas -- treated
+            # them as the drawing's actual content.
+            #
+            # A failed extraction is recoverable: the pipeline marks the job failed and
+            # the user sees why. Silent fabrication is not: it produces confident,
+            # entirely fictional audit findings. Fail loudly instead.
+            logger.error(
+                "PyMuPDF (fitz) is not installed; PDF extraction cannot proceed. "
+                "Install it with `pip install pymupdf`."
+            )
+            raise RuntimeError(
+                "PDF extraction requires PyMuPDF (fitz), which is not installed. "
+                "Install it with `pip install pymupdf`."
+            ) from import_err
 
         duration = time.time() - start_time
         logger.info(f"Successfully processed PDF in {duration:.4f}s. Extracted {len(entities)} structures.")

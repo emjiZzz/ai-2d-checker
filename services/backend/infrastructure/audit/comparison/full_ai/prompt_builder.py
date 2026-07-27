@@ -7,6 +7,7 @@ from google.genai import types
 
 from .....domain.models.drawing_document import DrawingDocument
 from .....logger import logger
+from ....entity_index import EntityIndex
 from ...context_builder import load_drawing_png
 
 
@@ -137,6 +138,7 @@ def build_full_system_instruction() -> str:
         "  - isometric_view: orientation, scale, location\n"
         "  - other_engineering_references: tree_view_properties, excel_additional_info\n"
         "If nothing in a category's list confidently matches, set feature='other' rather than guessing — never invent a feature key not listed above.\n"
+        "CRITICAL — ENTITY HANDLE GROUNDING: Populate `entity_id` with the exact handle cited from the CAD Entity Manifest (e.g. '1B2A' for REV-1B2A or REF-1B2A) whenever marking an addressable dimension, text, title block value, or note. Set entity_id to null ONLY if marking pure visual linework with no handle in the manifest.\n"
         "IMPORTANT: Provide 'visual_bbox' [ymin, xmin, ymax, xmax] normalized 0-1000 for each canvas_marking.\n"
     )
     return "\n\n".join([
@@ -151,29 +153,41 @@ def build_full_system_instruction() -> str:
     ])
 
 
-def build_multimodal_contents(
+async def build_multimodal_contents(
     ref_drawing: DrawingDocument,
     rev_drawing: DrawingDocument,
     prompt_text: str
 ) -> list[Any]:
     """
-    Constructs the Gemini multimodal input tuple containing reference/revision PNGs and text.
+    Constructs the Gemini multimodal input tuple containing reference/revision PNGs, CAD entity manifests, and text.
     """
     ref_png = load_drawing_png(str(ref_drawing.id))
     rev_png = load_drawing_png(str(rev_drawing.id))
+
+    ref_manifest = ""
+    rev_manifest = ""
+    try:
+        ref_index = await EntityIndex.for_drawing(str(ref_drawing.id), side="REF")
+        rev_index = await EntityIndex.for_drawing(str(rev_drawing.id), side="REV")
+        ref_manifest = ref_index.to_manifest(limit=250)
+        rev_manifest = rev_index.to_manifest(limit=250)
+    except Exception as err:
+        logger.warning(f"[full_ai] Could not build EntityIndex manifests: {err}")
 
     contents: list[Any] = []
     if ref_png:
         contents.append("The following image is the REFERENCE (old) drawing:")
         contents.append(types.Part.from_bytes(data=ref_png, mime_type="image/png"))
-    else:
-        logger.warning(f"[full_ai] No PNG for reference drawing {ref_drawing.id} — text-only")
+
+    if ref_manifest:
+        contents.append(f"REFERENCE DRAWING CAD ENTITY MANIFEST (cite entity_id from these handles):\n{ref_manifest}")
 
     if rev_png:
         contents.append("The following image is the REVISION (new) drawing:")
         contents.append(types.Part.from_bytes(data=rev_png, mime_type="image/png"))
-    else:
-        logger.warning(f"[full_ai] No PNG for revision drawing {rev_drawing.id} — text-only")
+
+    if rev_manifest:
+        contents.append(f"REVISION DRAWING CAD ENTITY MANIFEST (cite entity_id from these handles):\n{rev_manifest}")
 
     contents.append(prompt_text)
     return contents

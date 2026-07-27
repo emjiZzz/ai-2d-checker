@@ -9,6 +9,7 @@ from .....domain.models.audit_session import AuditSession
 from .....domain.models.audit_violation import AuditViolation
 from .....logger import logger
 from .....api.schemas import CanvasMarking, PhysicalComparisonResponse
+from .....infrastructure.cad.coordinate_stamp import stamp_pair
 from ..cache_manager import ComparisonCacheManager
 
 
@@ -67,15 +68,23 @@ class FullAIPersistenceHandler:
             violations_to_save = []
             for marking_dict in non_matched:
                 marking = CanvasMarking(**marking_dict)
+                # CanvasMarking stays a bare [x, y] on purpose: it is part of
+                # PhysicalComparisonResponse, which gemini_client hands to Gemini as
+                # response_schema, and that schema is deliberately kept free of nested
+                # structures the model has no basis to fill. Coordinates there are
+                # backend-resolved anyway, so provenance is attached here instead --
+                # at the point the finding becomes persistent state.
                 coords = None
                 if marking.coordinates:
                     if isinstance(marking.coordinates, list):
                         if len(marking.coordinates) > 0 and not isinstance(
                             marking.coordinates[0], list
                         ):
-                            coords = [marking.coordinates]
+                            raw_points = [marking.coordinates]
                         else:
-                            coords = marking.coordinates
+                            raw_points = marking.coordinates
+                        stamped = [stamp_pair(p, rev_drawing) for p in raw_points]
+                        coords = [p for p in stamped if p is not None] or None
 
                 violations_to_save.append(
                     AuditViolation(
@@ -89,6 +98,7 @@ class FullAIPersistenceHandler:
                         source="full_ai_comparison",
                         confidence=0.80,
                         standard_reference=None,
+                        entity_handle=marking.entity_id or marking_dict.get("entity_handle"),
                         affected_entities=(
                             [{"entity_id": marking.entity_id, "marker_shape": "BOX"}]
                             if marking.entity_id

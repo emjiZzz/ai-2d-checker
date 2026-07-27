@@ -34,6 +34,8 @@ interface ReviewState {
   toggleCanvasStats: () => void;
   showGrid: boolean;
   toggleGrid: () => void;
+  renderMode: 'hybrid' | 'vector' | 'raster';
+  setRenderMode: (mode: 'hybrid' | 'vector' | 'raster') => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
 
@@ -111,6 +113,8 @@ export const useReviewStore = create<ReviewState>((set) => ({
   toggleCanvasStats: () => set((state) => ({ showCanvasStats: !state.showCanvasStats })),
   showGrid: false,
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
+  renderMode: 'hybrid',
+  setRenderMode: (mode) => set({ renderMode: mode }),
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
 

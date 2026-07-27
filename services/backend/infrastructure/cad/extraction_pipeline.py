@@ -6,7 +6,7 @@ from typing import Any
 
 from ...core.security import validate_sandboxed_path
 from ...domain.models.drawing_document import DrawingDocument
-from ...domain.models.extracted_entity import ExtractedEntity
+from ...domain.models.extracted_entity import EXTRACTION_SCHEMA_VERSION, ExtractedEntity
 from ...domain.models.extraction_job import ExtractionJob
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
@@ -155,13 +155,20 @@ class ExtractionPipeline:
                 return data
 
             for item in layers + entities:
+                item_props = item.get("properties", {}) or {}
                 bulk_entities.append(
                     ExtractedEntity(
                         drawing_id=drawing_id,
                         job_id=job_id,
                         entity_type=item["entity_type"],
                         layer=sanitize_utf8(item.get("layer", "Unknown")),
-                        properties=sanitize_utf8(item.get("properties", {})),
+                        # Promoted from properties so they are indexable; they remain
+                        # in `properties` too so existing consumers are unaffected.
+                        handle=sanitize_utf8(item_props.get("handle")) or None,
+                        parent_handle=sanitize_utf8(item_props.get("parent_handle")) or None,
+                        space=item_props.get("space", "model"),
+                        viewport_index=int(item_props.get("viewport_index", -1)),
+                        properties=sanitize_utf8(item_props),
                         geometry=sanitize_utf8(item.get("geometry", {}))
                     )
                 )
@@ -217,6 +224,8 @@ class ExtractionPipeline:
             drawing.status = "completed"
             drawing.entity_counts = counts
             drawing.metadata = sanitize_utf8(metadata)
+            drawing.extraction_schema_version = EXTRACTION_SCHEMA_VERSION
+            drawing.transform_version = int(metadata.get("transform_version", 0) or 0)
             drawing.updated_at = datetime.now(UTC)
             await drawing.save()
 

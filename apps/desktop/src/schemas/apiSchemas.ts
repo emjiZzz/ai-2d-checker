@@ -30,6 +30,26 @@ export const RoomSchema = z.object({
   participants: z.array(z.string()).optional()
 });
 
+/**
+ * Coordinate envelope as persisted by the backend
+ * (services/backend/domain/models/cad_point.py). Bare [x, y] pairs are still accepted so
+ * a producer that never went through the stamping path does not fail validation.
+ */
+export const CadPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  space: z.enum(["model", "paper", "render"]).default("render"),
+  layout: z.string().nullable().optional(),
+  viewport_index: z.number().default(-1),
+  transform_version: z.number().default(0),
+  bounds: z.array(z.number()).nullable().optional(),
+});
+
+export const CoordinateSchema = z.union([
+  CadPointSchema,
+  z.tuple([z.number(), z.number()]),
+]);
+
 export const ViolationSchema = z.object({
   id: z.string(),
   severity: z.enum(["critical", "high", "medium", "low"]),
@@ -38,8 +58,8 @@ export const ViolationSchema = z.object({
   recommendation: z.string(),
   affected_entities: z.array(z.string()),
   confidence: z.number(),
-  coordinates: z.tuple([z.number(), z.number()]).optional(),
-  ref_coordinates: z.tuple([z.number(), z.number()]).optional(),
+  coordinates: CoordinateSchema.optional(),
+  ref_coordinates: CoordinateSchema.optional(),
   standard_reference: z.string().optional(),
   pen_type: z.string().optional(),
   is_resolved: z.boolean().optional(),
