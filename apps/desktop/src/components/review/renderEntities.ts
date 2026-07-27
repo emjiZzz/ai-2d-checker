@@ -538,7 +538,7 @@ export const renderAnnotationPins = ({
   annotations,
   selectedAnnotationId,
   hoveredAnnotationId,
-  badgeMap,
+  badgeMap: _badgeMap,
 }: RenderAnnotationPinsParams) => {
   const { ctx, isExport, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
@@ -548,13 +548,7 @@ export const renderAnnotationPins = ({
     ctx.filter = 'none';
   }
 
-  // Cards are drawn on the canvas (not DOM), so they don't pick up the app's CSS
-  // theme variables automatically — same pattern renderViolationReticles uses.
-  const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
-  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
-  const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
-
-  annotations.forEach((ann, idx) => {
+  annotations.forEach((ann) => {
     const coords = ann.coordinates;
     if (!coords || !Array.isArray(coords) || coords.length < 2) return;
 
@@ -567,7 +561,6 @@ export const renderAnnotationPins = ({
     const isResolved = ann.status === 'resolved';
 
     const color = isResolved ? '#39ff14' : (PEN_COLORS[ann.pen_type] || '#00ffff');
-    const badgeText = badgeMap?.[ann.id] || `A${String(idx + 1).padStart(3, '0')}`;
 
     markerPositionsRef.current[`ann:${ann.id}`] = { x: screenPos.x, y: screenPos.y };
 

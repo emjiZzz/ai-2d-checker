@@ -52,13 +52,22 @@ function buildLightVariant(img: HTMLImageElement): Promise<HTMLImageElement> {
         if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
           const brightness = (r * 299 + g * 587 + b * 114) / 1000;
           if (brightness < 70) {
-            data[i] = 229;
-            data[i + 1] = 233;
-            data[i + 2] = 240;
+            data[i] = 235;
+            data[i + 1] = 235;
+            data[i + 2] = 235;
           } else {
-            data[i] = 255 - r;
-            data[i + 1] = 255 - g;
-            data[i + 2] = 255 - b;
+            const invR = 255 - r;
+            const invG = 255 - g;
+            const invB = 255 - b;
+            if (invR > 215 && invG > 215 && invB > 215) {
+              data[i] = 235;
+              data[i + 1] = 235;
+              data[i + 2] = 235;
+            } else {
+              data[i] = invR;
+              data[i + 1] = invG;
+              data[i + 2] = invB;
+            }
           }
         } else {
           const brightness = (r * 299 + g * 587 + b * 114) / 1000;

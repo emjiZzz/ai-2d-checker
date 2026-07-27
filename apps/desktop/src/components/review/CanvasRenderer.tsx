@@ -132,7 +132,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     if (isExport) {
       ctx.fillStyle = '#ffffff';
     } else {
-      ctx.fillStyle = theme === 'hc-light' ? '#e5e9f0' : '#262b36';
+      ctx.fillStyle = theme === 'hc-light' ? '#ebebeb' : '#262b36';
     }
     ctx.fillRect(0, 0, renderWidth, renderHeight);
 

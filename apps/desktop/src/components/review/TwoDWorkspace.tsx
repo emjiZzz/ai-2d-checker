@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, Map, MessageSquare, MoreVertical, Check, Activity, Grid } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Maximize, Download, Map, MoreVertical, Check, Activity, Grid } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -159,14 +159,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const complianceScore = useWorkspaceStore(s => s.complianceScore);
   const violations = useWorkspaceStore(s => s.violations);
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
-  const annotations = useWorkspaceStore(s => s.annotations);
-  const hasOpenAnnotations = useMemo(() => annotations.some((a) => a.status !== "resolved"), [annotations]);
-
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showMinimap = useReviewStore(s => s.showMinimap);
   const toggleMinimap = useReviewStore(s => s.toggleMinimap);
-  const showAnnotations = useReviewStore(s => s.showAnnotations);
-  const toggleAnnotations = useReviewStore(s => s.toggleAnnotations);
   const showCanvasStats = useReviewStore(s => s.showCanvasStats);
   const toggleCanvasStats = useReviewStore(s => s.toggleCanvasStats);
   const showGrid = useReviewStore(s => s.showGrid);
@@ -397,30 +392,22 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-text-primary">2D Review Workspace</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })} 
+                className="focus:outline-none focus-visible:outline-none focus-visible:ring-0 text-text-muted hover:text-text-primary" 
+                title="Reset Viewport"
+              >
+                <Maximize size={18} />
+              </Button>
               {newDrawing && (
                 <Button variant="outline" size="sm" onClick={exportToPDF} className="h-8 text-xs border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1.5" title="Export drawing pair as PDF">
                   <Download size={14} /> PDF
                 </Button>
               )}
               <div className="flex items-center gap-1.5">
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={toggleAnnotations} 
-                  title="Toggle Reviewer Annotations"
-                  className={`relative focus:outline-none focus-visible:outline-none focus-visible:ring-0 ${
-                    showAnnotations 
-                      ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10" 
-                      : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  <MessageSquare size={18} />
-                  {hasOpenAnnotations && (
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent-amber animate-pulse" />
-                  )}
-                </Button>
-
                 {/* 3-Dots View Controls Menu */}
                 <div ref={viewMenuRef} className="relative">
                   <Button 
@@ -483,16 +470,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         </div>
                         {showGrid && <Check size={14} className="text-accent-cyan" />}
                       </button>
-
-                      <div className="h-px bg-border-color my-0.5"></div>
-
-                      <button
-                        onClick={() => { setReviewViewport({ x: 0, y: 0, scale: 1 }); setIsViewMenuOpen(false); }}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-sidebar-item-hover rounded-lg transition-colors cursor-pointer"
-                      >
-                        <Maximize size={16} />
-                        <span>Reset Viewport</span>
-                      </button>
                     </div>
                   )}
                 </div>
@@ -500,7 +477,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
             </div>
           </div>
 
-          <div className="flex-grow h-full relative">
+          <div className="flex-grow h-full relative workspace-flexlayout-container">
             <Layout
               model={model}
               factory={factory}

@@ -10,7 +10,7 @@ import { CanvasContextMenu } from './CanvasContextMenu';
 import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
-import { AlertTriangle, Eye, EyeOff, RotateCcw, Pin, Plus, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Skeleton } from '../ui/Skeleton';
 import './DrawingCanvas.css';
 
@@ -48,12 +48,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const markerPositionsRef = useRef<Record<string, { x: number, y: number }>>({});
 
-
-    const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
-    const toggleMarkerLabels = useReviewStore(s => s.toggleMarkerLabels);
-    const showAnnotations = useReviewStore(s => s.showAnnotations);
-    const toggleAnnotations = useReviewStore(s => s.toggleAnnotations);
-    const createAnnotationAt = useWorkspaceStore((s) => s.createAnnotationAt);
     const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
     const selectAnnotation = useWorkspaceStore((s) => s.selectAnnotation);
     const annotations = useWorkspaceStore((s) => s.annotations);
@@ -227,13 +221,22 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                   if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
                     if (brightness < 70) {
-                      data[i] = 229;
-                      data[i + 1] = 233;
-                      data[i + 2] = 240;
+                      data[i] = 235;
+                      data[i + 1] = 235;
+                      data[i + 2] = 235;
                     } else {
-                      data[i] = 255 - r;
-                      data[i + 1] = 255 - g;
-                      data[i + 2] = 255 - b;
+                      const invR = 255 - r;
+                      const invG = 255 - g;
+                      const invB = 255 - b;
+                      if (invR > 215 && invG > 215 && invB > 215) {
+                        data[i] = 235;
+                        data[i + 1] = 235;
+                        data[i + 2] = 235;
+                      } else {
+                        data[i] = invR;
+                        data[i + 1] = invG;
+                        data[i + 2] = invB;
+                      }
                     }
                   } else {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
