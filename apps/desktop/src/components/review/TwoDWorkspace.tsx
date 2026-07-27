@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, Map, MessageSquare } from "lucide-react";
+import { Maximize, Download, Map, MessageSquare, MoreVertical, Check, Activity, Grid } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -167,6 +167,10 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const toggleMinimap = useReviewStore(s => s.toggleMinimap);
   const showAnnotations = useReviewStore(s => s.showAnnotations);
   const toggleAnnotations = useReviewStore(s => s.toggleAnnotations);
+  const showCanvasStats = useReviewStore(s => s.showCanvasStats);
+  const toggleCanvasStats = useReviewStore(s => s.toggleCanvasStats);
+  const showGrid = useReviewStore(s => s.showGrid);
+  const toggleGrid = useReviewStore(s => s.toggleGrid);
 
   const drawingCanvasRefOld = useRef<any>(null);
   const drawingCanvasRefNew = useRef<any>(null);
@@ -182,6 +186,18 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
 
   const [model, setModel] = useState<Model | null>(null);
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (viewMenuRef.current && !viewMenuRef.current.contains(event.target as Node)) {
+        setIsViewMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     // v11: Bumping layout version to set Comparison Results panel width to 15%
@@ -381,43 +397,106 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-text-primary">2D Review Workspace</span>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <Button
-                variant={showMinimap ? "primary" : "secondary"}
-                size="sm"
-                onClick={toggleMinimap}
-                className="gap-1.5"
-                title="Toggle CAD Minimap Overlay"
-              >
-                <Map size={14} />
-                <span>Minimap</span>
-              </Button>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              {newDrawing && (
+                <Button variant="outline" size="sm" onClick={exportToPDF} className="h-8 text-xs border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1.5" title="Export drawing pair as PDF">
+                  <Download size={14} /> PDF
+                </Button>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={toggleAnnotations} 
+                  title="Toggle Reviewer Annotations"
+                  className={`relative focus:outline-none focus-visible:outline-none focus-visible:ring-0 ${
+                    showAnnotations 
+                      ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10" 
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  <MessageSquare size={18} />
+                  {hasOpenAnnotations && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent-amber animate-pulse" />
+                  )}
+                </Button>
 
-              <Button
-                variant={showAnnotations ? "primary" : "secondary"}
-                size="sm"
-                onClick={toggleAnnotations}
-                className="gap-1.5 relative"
-                title="Toggle Drawing Canvas Annotations"
-              >
-                <MessageSquare size={14} />
-                <span>Annotations</span>
-                {hasOpenAnnotations && (
-                  <span className="w-2 h-2 rounded-full bg-accent-amber animate-pulse" />
-                )}
-              </Button>
+                {/* 3-Dots View Controls Menu */}
+                <div ref={viewMenuRef} className="relative">
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setIsViewMenuOpen(!isViewMenuOpen)} 
+                    title="More Options"
+                    className={`focus:outline-none focus-visible:outline-none focus-visible:ring-0 ${
+                      showMinimap || isViewMenuOpen 
+                        ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10" 
+                        : "text-text-muted hover:text-text-primary"
+                    }`}
+                  >
+                    <MoreVertical size={18} />
+                  </Button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={exportToPDF}
-                className="gap-1.5"
-                title="Export PDF Compliance Audit Report"
-              >
-                <Download size={14} />
-                <span>Export Report</span>
-              </Button>
+                  {isViewMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-60 glass-panel rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 border border-border-color bg-bg-card animate-fade-in">
+                      <button
+                        onClick={() => { toggleMinimap(); setIsViewMenuOpen(false); }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                          showMinimap 
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20" 
+                            : "text-text-primary hover:bg-sidebar-item-hover"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Map size={16} />
+                          <span>{showMinimap ? "Hide Interactive Minimap" : "Show Interactive Minimap"}</span>
+                        </div>
+                        {showMinimap && <Check size={14} className="text-accent-cyan" />}
+                      </button>
+
+                      <button
+                        onClick={() => { toggleCanvasStats(); setIsViewMenuOpen(false); }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                          showCanvasStats 
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20" 
+                            : "text-text-primary hover:bg-sidebar-item-hover"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Activity size={16} />
+                          <span>{showCanvasStats ? "Hide Canvas Stats" : "Show Canvas Stats"}</span>
+                        </div>
+                        {showCanvasStats && <Check size={14} className="text-accent-cyan" />}
+                      </button>
+
+                      <button
+                        onClick={() => { toggleGrid(); setIsViewMenuOpen(false); }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                          showGrid 
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20" 
+                            : "text-text-primary hover:bg-sidebar-item-hover"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Grid size={16} />
+                          <span>{showGrid ? "Hide Canvas Grid" : "Show Canvas Grid"}</span>
+                        </div>
+                        {showGrid && <Check size={14} className="text-accent-cyan" />}
+                      </button>
+
+                      <div className="h-px bg-border-color my-0.5"></div>
+
+                      <button
+                        onClick={() => { setReviewViewport({ x: 0, y: 0, scale: 1 }); setIsViewMenuOpen(false); }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-sidebar-item-hover rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Maximize size={16} />
+                        <span>Reset Viewport</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

@@ -67,6 +67,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const showViolations = useReviewStore(s => s.showViolations);
   const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
   const visibleMarkerTypes = useReviewStore(s => s.visibleMarkerTypes);
+  const showGrid = useReviewStore(s => s.showGrid);
 
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const violations = useWorkspaceStore((s) => s.violations);
@@ -99,7 +100,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       return canvas.toDataURL('image/png');
     },
     getCanvasElement: () => canvasRef.current
-  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes]);
+  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, showGrid]);
 
   // Subscribe to viewport changes without triggering React re-renders.
   // On every setViewport call (each mouse pixel during pan), we update the ref and schedule
@@ -131,12 +132,12 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     if (isExport) {
       ctx.fillStyle = '#ffffff';
     } else {
-      ctx.fillStyle = theme === 'hc-light' ? '#fafafa' : '#262b36';
+      ctx.fillStyle = theme === 'hc-light' ? '#e5e9f0' : '#262b36';
     }
     ctx.fillRect(0, 0, renderWidth, renderHeight);
 
-    // 2. Draw fine engineering grids
-    if (!isExport) {
+    // 2. Draw fine engineering grids (if enabled via 3-dots view controls menu)
+    if (!isExport && showGrid) {
       ctx.save();
       ctx.strokeStyle = theme === 'hc-light' ? 'rgba(9, 9, 11, 0.08)' : 'rgba(63, 63, 70, 0.25)';
       ctx.lineWidth = 1;
@@ -177,6 +178,8 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       ctx.stroke(gridPath);
       ctx.restore();
     }
+
+
 
     // 3. Setup transformations
     let scale = effectiveScale;
@@ -283,7 +286,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap]);
+  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

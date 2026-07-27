@@ -45,16 +45,16 @@
 
 /* High Contrast Light Mode Theme Variables */
 [data-theme="hc-light"] {
-  --bg-dark: #e5e8ed;
-  --bg-card: #f8f9fb;
-  --bg-sidebar: #f8f9fb;
-  --bg-topbar: #f8f9fb;
-  --border-color: #d7dbe2;
+  --bg-dark: #dbe0e8;
+  --bg-card: #e5e9f0;
+  --bg-sidebar: #e0e4ec;
+  --bg-topbar: #e0e4ec;
+  --border-color: #c9d0dc;
 
   --text-primary: #18181b;
   --text-secondary: #3f3f46;
-  --text-muted: #71717a;
-  --bg-bubble-user: #f8f9fb;
+  --text-muted: #64748b;
+  --bg-bubble-user: #e5e9f0;
 
   --app-gradient: none;
   --sidebar-item-hover: rgba(0, 0, 0, 0.05);
@@ -95,6 +95,23 @@
     padding: 0;
     font-family: 'Outfit', 'Noto Sans JP', 'Yu Gothic', 'MS Gothic', 'Meiryo', sans-serif;
     -webkit-font-smoothing: antialiased;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover, 
+  input:-webkit-autofill:focus, 
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--bg-sidebar) inset !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  input::-webkit-contacts-auto-fill-button,
+  input::-webkit-credentials-auto-fill-button {
+    visibility: hidden !important;
+    display: none !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
   }
 }
 

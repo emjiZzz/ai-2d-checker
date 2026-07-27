@@ -288,10 +288,10 @@ export const renderViolationReticles = ({
   // Marker cards are drawn on the canvas (not DOM), so they don't pick up the app's
   // CSS theme variables automatically — check the live theme attribute once per pass.
   const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
-  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
+  const cardBg = isLightTheme ? 'rgba(229, 233, 240, 0.95)' : 'rgba(38, 43, 54, 0.95)';
   const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
   const cardSecondaryText = isLightTheme ? 'rgba(24, 24, 27, 0.7)' : 'rgba(255, 255, 255, 0.7)';
-  const cardBulletRing = isLightTheme ? '#fafafa' : '#262b36';
+  const cardBulletRing = isLightTheme ? '#e5e9f0' : '#262b36';
 
   const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
   const placedCardRects: { xMin: number; xMax: number; yMin: number; yMax: number }[] = [];

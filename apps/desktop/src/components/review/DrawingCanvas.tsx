@@ -224,10 +224,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                 for (let i = offset; i < end; i += 4) {
                   if (data[i + 3] === 0) continue;
                   const r = data[i], g = data[i + 1], b = data[i + 2];
-                  if (Math.max(r, g, b) - Math.min(r, g, b) < 25) {
-                    data[i] = 255 - r;
-                    data[i + 1] = 255 - g;
-                    data[i + 2] = 255 - b;
+                  if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
+                    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                    if (brightness < 70) {
+                      data[i] = 229;
+                      data[i + 1] = 233;
+                      data[i + 2] = 240;
+                    } else {
+                      data[i] = 255 - r;
+                      data[i + 1] = 255 - g;
+                      data[i + 2] = 255 - b;
+                    }
                   } else {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
                     if (brightness > 150) {
@@ -413,18 +420,21 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
 
         {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
-        <div
-          className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${theme === 'hc-light'
-            ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
-            : 'bg-zinc-950/80 border-white/10 text-zinc-400'
+        {useReviewStore(s => s.showCanvasStats) && (
+          <div
+            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
+              theme === 'hc-light'
+                ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
+                : 'bg-zinc-950/80 border-white/10 text-zinc-400'
             }`}
-        >
-          <ZoomDisplay />
-          <div className="w-[1px] h-3 bg-white/10" />
-          <div>VIRTUALIZED: <span className="text-emerald-400 font-bold">{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
-          <div className="w-[1px] h-3 bg-white/10" />
-          <div>RENDER: <span className="text-amber-400 font-bold">{renderDiagnostics.renderTimeMs}ms</span></div>
-        </div>
+          >
+            <ZoomDisplay />
+            <div className="w-[1px] h-3 bg-white/10" />
+            <div>VIRTUALIZED: <span className="text-emerald-400 font-bold">{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
+            <div className="w-[1px] h-3 bg-white/10" />
+            <div>RENDER: <span className="text-amber-400 font-bold">{renderDiagnostics.renderTimeMs}ms</span></div>
+          </div>
+        )}
       </div>
     );
   }
