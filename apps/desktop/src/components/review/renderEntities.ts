@@ -257,13 +257,13 @@ export const renderEntities = ({
   Object.values(pathBatches).forEach(batch => {
     ctx.beginPath();
     ctx.strokeStyle = batch.stroke;
-    
+
     // Use the true absolute context scale (`scale` from frame) to ensure constant screen-space thickness.
     // Enforce a minimum of 1.5px on screen for better visibility, 1.0px for exports.
     const baseThickness = isExport ? 1.0 : 1.5;
     const effectiveWidth = Math.max(baseThickness, batch.width);
     ctx.lineWidth = (effectiveWidth / scale) * resolutionMultiplier;
-    
+
     ctx.stroke(batch.path);
   });
 
@@ -364,7 +364,7 @@ export const renderViolationReticles = ({
     const isHoveredOrSelected = hoveredMarkerId === v.id || isSelected;
     // Level-of-Detail (LOD): Hide detailed text cards when zoomed out, unless explicitly hovered/selected
     const lodSkipCard = viewport.scale < 0.3 && !isHoveredOrSelected;
-    
+
     const SHOW_MARKER_TARGETS = (showMarkerLabels && !lodSkipCard) || isHoveredOrSelected;
     if (SHOW_MARKER_TARGETS) {
       const displayVal = (isOldDrawing && v.original_value) ? v.original_value : (v.description || "");
@@ -480,7 +480,7 @@ export const renderViolationReticles = ({
     } // <-- Added missing closing brace
 
     const radius = (v.category === 'drawing_views' ? 4 : 2.5) * resolutionMultiplier * viewport.scale;
-    
+
     if (statusLabel === 'MATCHED') {
       ctx.beginPath();
       ctx.strokeStyle = bulletColor;
@@ -509,7 +509,7 @@ export const renderViolationReticles = ({
       ctx.fillStyle = isSelected
         ? (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.7)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.7)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.7)' : penType === 'ai_conflict' ? 'rgba(192, 132, 252, 0.7)' : 'rgba(57, 255, 20, 0.7)')
         : (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.4)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.4)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.4)' : penType === 'ai_conflict' ? 'rgba(192, 132, 252, 0.4)' : 'rgba(57, 255, 20, 0.4)');
-      
+
       // Draw the neon dot centered at the exact coordinate
       ctx.arc(screenX, screenY, radius, 0, 2 * Math.PI);
       ctx.fill();
@@ -570,8 +570,13 @@ export const renderAnnotationPins = ({
     ctx.filter = 'none';
   }
 
+  // Cards are drawn on the canvas (not DOM), so they don't pick up the app's CSS
+  // theme variables automatically — same pattern renderViolationReticles uses.
+  const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
+  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
+  const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
 
-  annotations.forEach((ann) => {
+  annotations.forEach((ann, idx) => {
     const coords = ann.coordinates;
     if (!coords || !Array.isArray(coords) || coords.length < 2) return;
 

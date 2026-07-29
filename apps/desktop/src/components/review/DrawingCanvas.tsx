@@ -11,6 +11,7 @@ import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
 import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Skeleton } from '../ui/Skeleton';
 import './DrawingCanvas.css';
 
@@ -223,13 +224,22 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                   if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
                     if (brightness < 70) {
-                      data[i] = 229;
-                      data[i + 1] = 233;
-                      data[i + 2] = 240;
+                      data[i] = 235;
+                      data[i + 1] = 235;
+                      data[i + 2] = 235;
                     } else {
-                      data[i] = 255 - r;
-                      data[i + 1] = 255 - g;
-                      data[i + 2] = 255 - b;
+                      const invR = 255 - r;
+                      const invG = 255 - g;
+                      const invB = 255 - b;
+                      if (invR > 215 && invG > 215 && invB > 215) {
+                        data[i] = 235;
+                        data[i + 1] = 235;
+                        data[i + 2] = 235;
+                      } else {
+                        data[i] = invR;
+                        data[i + 1] = invG;
+                        data[i + 2] = invB;
+                      }
                     }
                   } else {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
@@ -419,11 +429,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
         {useReviewStore(s => s.showCanvasStats) && (
           <div
-            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${
-              theme === 'hc-light'
+            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${theme === 'hc-light'
                 ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
                 : 'bg-zinc-950/80 border-white/10 text-zinc-400'
-            }`}
+              }`}
           >
             <ZoomDisplay />
             <div className="w-[1px] h-3 bg-white/10" />

@@ -240,7 +240,8 @@ export const CopilotPanel: React.FC = () => {
     try {
       await sendCopilotMessage(msg);
     } finally {
-      setIsSending(false);
+      `
+      setIsSending(false);`
       inputRef.current?.focus();
     }
   };
@@ -279,9 +280,8 @@ export const CopilotPanel: React.FC = () => {
         {(["chat", "violations", "insights"] as const).map((tab) => (
           <button
             key={tab}
-            className={`flex-1 bg-sidebar-item-hover border border-border-color text-text-muted text-[11px] font-semibold py-2 px-3 rounded-lg cursor-pointer transition-all duration-200 hover:bg-sidebar-item-hover hover:text-text-primary ${
-              activeTab === tab ? "bg-purple-600/15 border-purple-500/35 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.1)]" : ""
-            }`}
+            className={`flex-1 bg-sidebar-item-hover border border-border-color text-text-muted text-[11px] font-semibold py-2 px-3 rounded-lg cursor-pointer transition-all duration-200 hover:bg-sidebar-item-hover hover:text-text-primary ${activeTab === tab ? "bg-purple-600/15 border-purple-500/35 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.1)]" : ""
+              }`}
             onClick={() => setActiveTab(tab)}
             style={{ position: "relative" }}
           >
@@ -538,8 +538,8 @@ export const CopilotPanel: React.FC = () => {
                         (activeSession.compliance_score ?? 0) >= 90
                           ? "#10b981"
                           : (activeSession.compliance_score ?? 0) >= 75
-                          ? "#fbbf24"
-                          : "#ef4444",
+                            ? "#fbbf24"
+                            : "#ef4444",
                     }}
                   >
                     {activeSession.compliance_score ?? "—"}%
@@ -602,11 +602,10 @@ export const CopilotPanel: React.FC = () => {
           <button
             onClick={() => handleSend()}
             disabled={isSending || !inputText.trim()}
-            className={`border border-purple-500/40 rounded-lg text-white w-9 h-9 flex items-center justify-center shrink-0 transition-all text-base ${
-              isSending || !inputText.trim()
+            className={`border border-purple-500/40 rounded-lg text-white w-9 h-9 flex items-center justify-center shrink-0 transition-all text-base ${isSending || !inputText.trim()
                 ? "bg-purple-600/15 cursor-not-allowed opacity-50"
                 : "bg-purple-600 hover:brightness-110 cursor-pointer"
-            }`}
+              }`}
           >
             {isSending ? "⏳" : "↑"}
           </button>
