@@ -64,7 +64,18 @@ export async function parseOrThrow<T>(res: Response): Promise<T> {
 
   if (!res.ok) {
     const b = body as Record<string, unknown>;
-    const message = (b?.detail ?? b?.message ?? `HTTP ${res.status}`) as string;
+    let message = "HTTP request failed";
+    if (typeof b?.detail === "string") {
+      message = b.detail;
+    } else if (Array.isArray(b?.detail)) {
+      message = b.detail.map((err: any) => err.msg ? `${err.loc?.slice(1)?.join(".") || "field"}: ${err.msg}` : JSON.stringify(err)).join("; ");
+    } else if (typeof b?.message === "string") {
+      message = b.message;
+    } else if (b?.detail) {
+      message = JSON.stringify(b.detail);
+    } else {
+      message = `HTTP ${res.status}`;
+    }
     throw new Error(message);
   }
 

@@ -112,3 +112,44 @@ async def upsert_zone_template(signature: str, payload: ZoneTemplateUpsertReques
             updated_at=doc.updated_at,
         ),
     )
+
+
+@router.get(
+    "/zone-templates",
+    response_model=StandardResponse[list[ZoneTemplateResponse]],
+    summary="List all hand-aligned zone templates",
+    dependencies=[Depends(get_auth_token)],
+)
+async def list_zone_templates():
+    """Returns all saved zone templates ordered by last update time descending."""
+    docs = await ZoneTemplateDocument.find_all().sort("-updated_at").to_list()
+    return StandardResponse(
+        success=True,
+        data=[
+            ZoneTemplateResponse(
+                signature=doc.signature,
+                name=doc.name,
+                zones=doc.zones,
+                updated_by=doc.updated_by,
+                updated_at=doc.updated_at,
+            )
+            for doc in docs
+        ],
+    )
+
+
+@router.delete(
+    "/zone-templates/{signature}",
+    response_model=StandardResponse[bool],
+    summary="Delete a hand-aligned zone template by signature",
+    dependencies=[Depends(get_auth_token)],
+)
+async def delete_zone_template(signature: str):
+    """Deletes a saved zone template by signature."""
+    doc = await ZoneTemplateDocument.find_one(ZoneTemplateDocument.signature == signature)
+    if doc:
+        await doc.delete()
+        logger.info(f"Zone template '{signature}' deleted.")
+        return StandardResponse(success=True, data=True)
+    return StandardResponse(success=True, data=False)
+

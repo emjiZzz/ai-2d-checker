@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, Map, MessageSquare, MoreVertical, Check, Activity, Grid, Move } from "lucide-react";
+import { Maximize, Download, Map, MoreVertical, Check, Activity, Grid, Move, LayoutTemplate } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -30,6 +30,7 @@ import { Minimap } from "./Minimap";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
+import { SavedTemplatesModal } from "./SavedTemplatesModal";
 
 /**
  * Zones whose alignment transfers to other drawings of the same sheet template.
@@ -272,18 +273,39 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       return;
     }
 
-    // Furniture only, and taken from the REFERENCE pane. Template zones are printed sheet
-    // furniture and identical on both sides by definition; the per-side boxes exist for the
-    // content zones, which are never templated.
-    const regions = useReviewStore.getState().getRegionsFor(src?.id);
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, Number(v) || 0));
+    const oldReg = oldDrawingForZones ? useReviewStore.getState().getRegionsFor(oldDrawingForZones.id) : {};
+    const newReg = newDrawingForZones ? useReviewStore.getState().getRegionsFor(newDrawingForZones.id) : {};
+    const regions = { ...oldReg, ...newReg };
     const zones: Record<string, { xMin: number; xMax: number; yMin: number; yMax: number }> = {};
-    for (const key of TEMPLATABLE_ZONES) {
-      if (regions[key]) zones[key] = regions[key];
+    for (const [key, frac] of Object.entries(regions)) {
+      if (frac) {
+        zones[key] = {
+          xMin: clamp01(frac.xMin),
+          xMax: clamp01(frac.xMax),
+          yMin: clamp01(frac.yMin),
+          yMax: clamp01(frac.yMax),
+        };
+      }
     }
 
     setTemplateSaveState({ status: "saving" });
     try {
       await saveZoneTemplate(signature, { zones, name: signature });
+
+      const applyZoneTemplate = useReviewStore.getState().applyZoneTemplate;
+      for (const d of [oldDrawing, newDrawing]) {
+        if (!d) continue;
+        const detected = zoneRegions[d.id];
+        const bounds = d.metadata?.render_bounds;
+        applyZoneTemplate(
+          d.id,
+          zones as any,
+          detected as any,
+          bounds as [number, number, number, number]
+        );
+      }
+
       setTemplateSaveState({
         status: "saved",
         message: `Saved ${Object.keys(zones).length} zone(s) to ${signature}`,
@@ -461,6 +483,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
   const activeSession = useAuditStore(s => s.activeSession);
   const [isExportingRedline, setIsExportingRedline] = useState(false);
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [model, setModel] = useState<Model | null>(null);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
@@ -731,6 +754,16 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   <span>Redline DXF</span>
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsTemplatesModalOpen(true)}
+                className="h-8 text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/20 gap-1.5"
+                title="Manage Saved Sheet Templates"
+              >
+                <LayoutTemplate size={14} />
+                <span>Templates</span>
+              </Button>
               <div className="flex items-center gap-1.5">
                 {/* 3-Dots View Controls Menu */}
                 <div ref={viewMenuRef} className="relative">
@@ -939,6 +972,11 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               onAction={handleAction}
             />
           </div>
+
+          <SavedTemplatesModal
+            isOpen={isTemplatesModalOpen}
+            onClose={() => setIsTemplatesModalOpen(false)}
+          />
         </div>
       )}
     </div>

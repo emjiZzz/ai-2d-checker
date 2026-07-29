@@ -570,13 +570,7 @@ export const renderAnnotationPins = ({
     ctx.filter = 'none';
   }
 
-  // Cards are drawn on the canvas (not DOM), so they don't pick up the app's CSS
-  // theme variables automatically — same pattern renderViolationReticles uses.
-  const isLightTheme = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'hc-light';
-  const cardBg = isLightTheme ? 'rgba(250, 250, 250, 0.95)' : 'rgba(38, 43, 54, 0.95)';
-  const cardPrimaryText = isLightTheme ? '#18181b' : '#ffffff';
-
-  annotations.forEach((ann, idx) => {
+  annotations.forEach((ann) => {
     const coords = ann.coordinates;
     if (!coords || !Array.isArray(coords) || coords.length < 2) return;
 
@@ -691,6 +685,7 @@ export const renderZoneEditor = ({
   selectedRegion,
   hoveredHandleId,
   detected,
+  pinnedKeys,
 }: RenderZoneEditorParams): void => {
   const { ctx, isExport, norm, viewport, renderWidth, renderHeight, resolutionMultiplier } = frame;
   if (isExport) return;
@@ -719,7 +714,7 @@ export const renderZoneEditor = ({
 
     // A zone the detector never anchored is a guess about where this feature sits. Dashed
     // and '?'-suffixed so an unaligned guess is never mistaken for a measurement.
-    const wasMeasured = detected?.[key]?.confidence === 'content_aware';
+    const wasMeasured = (pinnedKeys && pinnedKeys.includes(key)) || detected?.[key]?.confidence === 'content_aware';
 
     ctx.strokeStyle = color;
     ctx.globalAlpha = isSelected ? 1 : 0.4;

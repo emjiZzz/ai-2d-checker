@@ -213,3 +213,27 @@ export async function saveZoneTemplate(
   });
   return parseOrThrow<ZoneTemplate>(res);
 }
+
+/** GET /api/v1/zone-templates — fetch all saved templates. */
+export async function fetchAllZoneTemplates(
+  signal?: AbortSignal,
+): Promise<ZoneTemplate[]> {
+  const res = await fetch(`${baseUrl()}/api/v1/zone-templates`, {
+    headers: buildHeaders(),
+    signal,
+  });
+  const data = await parseOrThrow<ZoneTemplate[]>(res);
+  return data || [];
+}
+
+/** DELETE /api/v1/zone-templates/:signature — delete a saved template. */
+export async function deleteZoneTemplate(
+  signature: string,
+): Promise<boolean> {
+  const res = await fetch(`${baseUrl()}/api/v1/zone-templates/${signature}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  return parseOrThrow<boolean>(res);
+}
+

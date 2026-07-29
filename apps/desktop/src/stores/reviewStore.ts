@@ -117,6 +117,13 @@ interface ReviewState {
     drawingId: string | null | undefined,
     templateZones?: Record<string, RegionFractions> | null,
   ) => void;
+  /** Explicitly apply a template's pinned zones to a drawing's custom regions, overwriting existing regions. */
+  applyZoneTemplate: (
+    drawingId: string | null | undefined,
+    templateZones: Record<string, RegionFractions> | null | undefined,
+    detectedZones?: Record<string, { xmin: number; ymin: number; xmax: number; ymax: number } | null> | null,
+    renderBounds?: readonly [number, number, number, number] | null,
+  ) => void;
   /** True once seeded or loaded from storage, so entering edit mode only seeds once. */
   hasSeededCustomRegions: boolean;
   /**
@@ -223,37 +230,62 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   seedCustomRegionsFromDetected: (zones, renderBounds, drawingId, templateZones) => set((state) => {
     if (!drawingId) return {};
 
-    // Which zones the template pins is recorded even when seeding is skipped below. The
-    // overlay needs it to stop marking them as detector guesses, and that is true whether or
-    // not this particular call also writes the geometry — e.g. on a reload, `customRegions`
-    // is already populated from localStorage but nothing yet knows those zones were pinned.
     const pinnedKeys = Object.entries(templateZones || {})
       .filter(([, frac]) => Boolean(frac))
       .map(([key]) => key);
     const nextPinned = { ...state.pinnedZoneKeys, [drawingId]: pinnedKeys };
 
-    // A saved alignment always wins: it is the user's own work, and re-seeding from the
-    // detector would silently discard it.
-    if (state.customRegions[drawingId]) {
-      return { hasSeededCustomRegions: true, pinnedZoneKeys: nextPinned };
+    const existing = state.customRegions[drawingId] || DEFAULT_CUSTOM_REGIONS;
+    const seeded: Record<string, RegionFractions> = { ...existing };
+
+    // Seed detected zones if not already present
+    if (!state.customRegions[drawingId]) {
+      for (const [key, box] of Object.entries(zones)) {
+        if (!box) continue;
+        const frac = zoneBoxToFractions(box, renderBounds);
+        if (frac) seeded[key] = normalizeFractions(frac);
+      }
     }
 
-    const seeded: Record<string, RegionFractions> = { ...DEFAULT_CUSTOM_REGIONS };
-    for (const [key, box] of Object.entries(zones)) {
-      if (!box) continue;
-      const frac = zoneBoxToFractions(box, renderBounds);
-      // null means a degenerate sheet; keep the default rather than storing NaNs.
-      if (frac) seeded[key] = normalizeFractions(frac);
+    // Always apply template zones on top if provided (hand-aligned template outranks local cache/detector)
+    if (templateZones && Object.keys(templateZones).length > 0) {
+      for (const [key, frac] of Object.entries(templateZones)) {
+        if (frac) seeded[key] = normalizeFractions(frac);
+      }
     }
-    // Template last — the human decision outranks the detector, same as in the backend.
-    // Already Y-DOWN, so no conversion.
-    for (const [key, frac] of Object.entries(templateZones || {})) {
-      if (frac) seeded[key] = normalizeFractions(frac);
-    }
+
     const next = { ...state.customRegions, [drawingId]: seeded };
     localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(seeded));
     return {
       customRegions: next,
+      pinnedZoneKeys: nextPinned,
+      hasSeededCustomRegions: true,
+    };
+  }),
+
+  applyZoneTemplate: (drawingId, templateZones, detectedZones, renderBounds) => set((state) => {
+    if (!drawingId) return {};
+
+    const pinnedKeys = Object.entries(templateZones || {})
+      .filter(([, frac]) => Boolean(frac))
+      .map(([key]) => key);
+    const nextPinned = { ...state.pinnedZoneKeys, [drawingId]: pinnedKeys };
+
+    const seeded: Record<string, RegionFractions> = { ...DEFAULT_CUSTOM_REGIONS };
+    if (detectedZones && renderBounds) {
+      for (const [key, box] of Object.entries(detectedZones)) {
+        if (!box) continue;
+        const frac = zoneBoxToFractions(box, renderBounds);
+        if (frac) seeded[key] = normalizeFractions(frac);
+      }
+    }
+    for (const [key, frac] of Object.entries(templateZones || {})) {
+      if (frac) seeded[key] = normalizeFractions(frac);
+    }
+
+    localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(seeded));
+    return {
+      customRegions: { ...state.customRegions, [drawingId]: seeded },
       pinnedZoneKeys: nextPinned,
       hasSeededCustomRegions: true,
     };

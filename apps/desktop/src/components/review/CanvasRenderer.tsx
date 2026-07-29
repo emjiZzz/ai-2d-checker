@@ -72,6 +72,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
   const visibleMarkerTypes = useReviewStore(s => s.visibleMarkerTypes);
   const showGrid = useReviewStore(s => s.showGrid);
+  const getPinnedZoneKeys = useReviewStore(s => s.getPinnedZoneKeys);
 
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const violations = useWorkspaceStore((s) => s.violations);
@@ -311,6 +312,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
         selectedRegion: selectedComparisonRegion,
         hoveredHandleId: hoveredHandleId ?? null,
         detected: drawing?.id ? zoneRegions[drawing.id] : null,
+        pinnedKeys: drawing?.id ? getPinnedZoneKeys(drawing.id) : [],
       });
     }
 

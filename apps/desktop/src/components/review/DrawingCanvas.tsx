@@ -11,7 +11,6 @@ import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
 import { AlertTriangle } from 'lucide-react';
-import { AlertTriangle } from 'lucide-react';
 import { Skeleton } from '../ui/Skeleton';
 import './DrawingCanvas.css';
 

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from beanie import Document
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pymongo import ASCENDING, IndexModel
 
 
@@ -18,10 +18,17 @@ class ZoneFractions(BaseModel):
     layout regardless of scale: the corpus this was built against has sheets 1155x817 and
     462x327 units at the same 1.4141 aspect, where absolute coordinates transfer not at all.
     """
-    xMin: float = Field(..., ge=0.0, le=1.0)
-    xMax: float = Field(..., ge=0.0, le=1.0)
-    yMin: float = Field(..., ge=0.0, le=1.0)
-    yMax: float = Field(..., ge=0.0, le=1.0)
+    xMin: float = Field(..., ge=-0.5, le=1.5)
+    xMax: float = Field(..., ge=-0.5, le=1.5)
+    yMin: float = Field(..., ge=-0.5, le=1.5)
+    yMax: float = Field(..., ge=-0.5, le=1.5)
+
+    @field_validator("xMin", "xMax", "yMin", "yMax", mode="before")
+    @classmethod
+    def clamp_bounds(cls, v: float) -> float:
+        if isinstance(v, (int, float)):
+            return max(0.0, min(1.0, float(v)))
+        return v
 
 
 class ZoneTemplateDocument(Document):
