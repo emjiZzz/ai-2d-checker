@@ -1,3 +1,5 @@
+import type { DrawingZonesResponse } from "../../services/drawingsApi";
+
 export interface DrawingItem {
   id: string;
   file_name: string;
@@ -139,6 +141,17 @@ export interface ComparisonSlice {
   setAiScanProgress: (progress: "idle" | "completed" | string) => void;
   setAiChecklistResults: (results: Record<string, any>) => void;
   setAiScanError: (error: string | null) => void;
+
+  // ─── Zone alignment ─────────────────────────────────────────────────────────
+  // Zone boxes are shown only in alignment mode (reviewStore.isRoiEditModeEnabled);
+  // there is no separate read-only overlay toggle. Deliberately excluded from
+  // saveWorkspaceState's persisted partial: caching boxes across sessions would serve
+  // stale geometry after a re-parse.
+  /** Keyed by drawing id so both canvases share one cache; a ref/rev pair costs two fetches, once. */
+  zoneRegions: Record<string, DrawingZonesResponse>;
+  /** Keyed by drawing id. Set when a zone fetch fails, so the canvas can show the cause. */
+  zoneErrors: Record<string, string>;
+  fetchZoneRegions: (drawingId: string) => Promise<void>;
 }
 
 export interface UploadSlice {

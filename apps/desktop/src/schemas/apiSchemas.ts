@@ -26,6 +26,9 @@ export const RoomSchema = z.object({
   active_new_drawing_name: z.string().nullable().optional(),
   active_audit_session_id: z.string().nullable().optional(),
   physical_comparison_results: z.any().nullable().optional(),
+  // Must be declared here or Zod's object parse silently strips it from every room fetch,
+  // making the zone gate appear to work on click and then re-close on the next sync.
+  zones_confirmed_for: z.string().nullable().optional(),
   comparison_method: z.enum(["rag", "rag_ai", "ai_vision", "hybrid"]).default("rag").optional(),
   participants: z.array(z.string()).optional()
 });

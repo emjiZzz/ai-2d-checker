@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, RefObject, useRef, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
+import { DEFAULT_CUSTOM_REGIONS } from '../../utils/zoneFractions';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { getNormalization, screenToWorld, screenToWorldUnflipped, screenDeltaToWorldDelta, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
 import { hitTestMarker, getRoiDragPercentages } from './canvasInteraction';
@@ -27,7 +28,11 @@ export function useCanvasInteraction({
   const showViolations = useReviewStore(s => s.showViolations);
   const isRoiEditModeEnabled = useReviewStore(s => s.isRoiEditModeEnabled);
   const selectedComparisonRegion = useReviewStore(s => s.selectedComparisonRegion);
-  const customRegions = useReviewStore(s => s.customRegions);
+  // This hook runs once per canvas pane, and `drawing` is that pane's own drawing — so the
+  // pane edits its own zone boxes. Reference and revision differ in content extent (notes
+  // as one sentence vs an ordered list), which a shared set could not express.
+  const allCustomRegions = useReviewStore(s => s.customRegions);
+  const customRegions = (drawing?.id && allCustomRegions[drawing.id]) || DEFAULT_CUSTOM_REGIONS;
   const updateCustomRegion = useReviewStore(s => s.updateCustomRegion);
 
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
@@ -636,10 +641,10 @@ export function useCanvasInteraction({
         currentBounds.yMax = Math.max(pctY, currentBounds.yMin + 0.02);
       }
 
-      updateCustomRegion(activeDragHandle.regionKey, currentBounds);
+      updateCustomRegion(drawing.id, activeDragHandle.regionKey, currentBounds);
       setRedrawTrigger(prev => prev + 1);
     }
-  }, [isDragging, activeDragHandle, customRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport, norm, dragAnnotationId, dragAnnotationStartPos, dragAnnotationMouseStart]);
+  }, [isDragging, activeDragHandle, allCustomRegions, updateCustomRegion, setRedrawTrigger, canvasRef, drawing, oldDrawing, dragMarkerId, dragMarkerStartPos, dragMarkerMouseStart, showViolations, violations, markerPositionsRef, isRoiEditModeEnabled, selectedComparisonRegion, centerDragStart, dragStart, setViewport, hoveredHandleInfo, clampViewport, norm, dragAnnotationId, dragAnnotationStartPos, dragAnnotationMouseStart]);
 
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
@@ -854,6 +859,10 @@ export function useCanvasInteraction({
       hoveredMarkerId,
       hoveredAnnotationId,
       cursorStyle: getCursorStyle(),
+      // Exposed so the zone editor can highlight the handle actually under the cursor.
+      // Prefer the one being dragged: once a drag starts the pointer can travel off the
+      // handle, and dropping the highlight mid-drag makes it look like the grab was lost.
+      hoveredHandleId: activeDragHandle?.handleId ?? hoveredHandleInfo?.handleId ?? null,
     }
   };
 }

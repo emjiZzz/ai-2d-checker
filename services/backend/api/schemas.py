@@ -183,6 +183,28 @@ class PhysicalComparisonRequest(BaseModel):
         "rag",
         description="Pipeline to use: rag, rag_ai (Gemini w/ CAD), ai_vision (Gemini image only), or hybrid (dual-generator cross-verification)"
     )
+    force_refresh: bool = Field(
+        default=False,
+        description="If true, bypasses cached comparison results on disk and re-evaluates fresh."
+    )
+
+class AuditFeedbackRequest(BaseModel):
+    session_id: str
+    drawing_id: str
+    client_name: Optional[str] = None
+    entity_text: str
+    entity_handle: Optional[str] = None
+    category: str
+    original_status: str
+    human_corrected_status: Literal["dismissed", "confirmed_valid", "category_override"]
+    human_comment: Optional[str] = None
+    coordinates: Optional[list[float]] = None
+
+class AuditFeedbackResponse(BaseModel):
+    id: str
+    status: str
+    auto_documented: bool = False
+    message: str
 
 # Room workflow schemas
 class RoomCreateRequest(BaseModel):
@@ -205,6 +227,7 @@ class RoomResponse(BaseModel):
     active_new_drawing_name: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
+    zones_confirmed_for: str | None = None
     comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = "rag"
     created_by: str | None = None
     created_at: datetime
@@ -221,6 +244,7 @@ class UpdateRoomRequest(BaseModel):
     active_new_drawing_name: str | None = None
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
+    zones_confirmed_for: str | None = None
 
 AnnotationSeverity = Literal["info", "low", "medium", "high", "critical"]
 AnnotationPenType = Literal["checker_blue", "amber_gold", "warning_orange", "alert_red", "resolved_green", "resolved_pink"]
@@ -359,6 +383,62 @@ class PhysicalComparisonResponse(BaseModel):
 
 class ViewSummary(BaseModel):
     summary: str = Field(..., description="A detailed summary paragraph for this specific view category.")
+
+class ZoneBBox(BaseModel):
+    """One detected template zone's CAD-world bounding box, plus how it was resolved.
+
+    NOT part of any LLM structured-output schema. Unlike PhysicalComparisonResponse and
+    everything nested under it, this model is only ever serialized outward to the desktop
+    client by GET /drawings/{id}/zones. Do not nest it into PhysicalComparisonResponse —
+    see ComparisonDiagnostics' docstring above for why open-ended shapes break Gemini's
+    response_schema validation.
+    """
+    xmin: float
+    ymin: float
+    xmax: float
+    ymax: float
+    confidence: str = Field(
+        default="unknown",
+        description=(
+            "How this box was resolved, passed through verbatim from _zone_confidence: "
+            "'content_aware' (semantic anchor found, box flood-filled around it — a "
+            "measurement), 'percentage_fallback' (no anchor; percentage grid over real "
+            "sheet bounds — a plausible guess), or 'percentage_fallback_no_sheet_bounds' "
+            "(no sheet bounds at all; the box is the literal (0,0,1000,1000) placeholder "
+            "and carries no information). Deliberately not mapped to a narrower enum here "
+            "— collapsing the last two would hide the only case the client must refuse to "
+            "draw."
+        ),
+    )
+
+
+class DrawingZonesResponse(BaseModel):
+    """Template-zone boxes for the canvas debug overlay.
+
+    Fixed-field rather than a map: the seven zone keys are a closed set, enumerated in
+    table_extractor.default_pct.
+
+    In practice every zone is always populated — extract_dynamic_regions() fills all seven
+    from the percentage grid before content-aware detection overrides any of them, so there
+    is no "zone not found" case. The fields are Optional purely so a future detector change,
+    or a malformed tuple rejected at the boundary, degrades to a missing box rather than a
+    500. Client code must not read None as a meaningful signal; the signal is `confidence`.
+    """
+    drawing_id: str
+    render_bounds: Optional[list[float]] = Field(
+        default=None,
+        description="Flat [xmin, ymin, xmax, ymax] the boxes were computed against, so the "
+                    "client can check it still matches the bounds the canvas is rendering "
+                    "with before trusting on-screen positions.",
+    )
+    views: Optional[ZoneBBox] = None
+    notes: Optional[ZoneBBox] = None
+    bom: Optional[ZoneBBox] = None
+    title: Optional[ZoneBBox] = None
+    tolerance: Optional[ZoneBBox] = None
+    iso: Optional[ZoneBBox] = None
+    title_upper_left: Optional[ZoneBBox] = None
+
 
 class DrawingSummaryResponse(BaseModel):
     drawing_views: ViewSummary = Field(..., description="Origin, alignment, lines, dimensions, holes, chamfers, welds, tolerances, text attrs.")

@@ -147,3 +147,108 @@ async def test_list_sorted_by_updated_at_descending(mock_beanie_rooms):
 
     listed = await Room.find(Room.is_deleted == False).sort(-Room.updated_at).to_list()  # noqa: E712
     assert [r.name for r in listed] == ["Newer Room", "Older Room"]
+
+
+# ── Zone-review gate: Room.zones_confirmed_for ────────────────────────────────
+#
+# The 2D workspace hides the Comparison Results panel until the user has reviewed the zone
+# boxes for the loaded drawing pair. That confirmation is persisted here. The field stores
+# the PAIR rather than a boolean, so swapping either drawing invalidates it without any
+# imperative clearing scattered across the upload handlers.
+
+
+@pytest.mark.asyncio
+async def test_new_room_defaults_to_unconfirmed(mock_beanie_rooms):
+    room = Room(name="Fresh Room")
+    await room.save()
+
+    assert (await Room.get(room.id)).zones_confirmed_for is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_room_document_without_the_field_defaults_to_none(mock_beanie_rooms):
+    """Rooms created before this field existed must load, not raise.
+
+    Backs the claim that no migration or backfill is needed: Mongo documents predating the
+    field simply have no such key, and Pydantic supplies the default on parse.
+    """
+    legacy = Room(**{"name": "Legacy Room", "client_name": "KEMCO"})
+
+    assert legacy.zones_confirmed_for is None
+
+
+@pytest.mark.asyncio
+async def test_confirmation_round_trips(mock_beanie_rooms):
+    room = Room(name="Room")
+    await room.save()
+
+    pair = "6a66cab4fef0570aff55418c:6a66cac6fef0570aff55439e"
+    fetched = await Room.get(room.id)
+    fetched.zones_confirmed_for = pair
+    await fetched.save()
+
+    assert (await Room.get(room.id)).zones_confirmed_for == pair
+
+
+@pytest.mark.asyncio
+async def test_confirmation_can_be_cleared(mock_beanie_rooms):
+    """Explicit null must clear it — that is how a caller re-closes the gate."""
+    room = Room(name="Room", zones_confirmed_for="a:b")
+    await room.save()
+
+    fetched = await Room.get(room.id)
+    fetched.zones_confirmed_for = None
+    await fetched.save()
+
+    assert (await Room.get(room.id)).zones_confirmed_for is None
+
+
+@pytest.mark.asyncio
+async def test_partial_patch_preserves_the_confirmation(mock_beanie_rooms):
+    """The important one.
+
+    AuditWorkspace reverse-syncs drawing/session identity to the room on every change, and
+    its payload never mentions zones_confirmed_for. The router applies PATCH bodies with
+    `model_dump(exclude_unset=True)`, so an absent key must leave the stored value alone. If
+    that ever regresses, every room silently un-confirms on the next drawing change and the
+    user is thrown back to the zone editor for no visible reason.
+    """
+    from services.backend.api.schemas import UpdateRoomRequest
+
+    pair = "old123:new456"
+    room = Room(name="Room", zones_confirmed_for=pair)
+    await room.save()
+
+    # Exactly the shape AuditWorkspace.tsx sends.
+    payload = UpdateRoomRequest(
+        active_old_drawing_id="old123",
+        active_new_drawing_id="new456",
+        active_old_drawing_name="ref.dxf",
+        active_new_drawing_name="rev.dxf",
+        active_audit_session_id=None,
+        physical_comparison_results=None,
+    )
+    updates = payload.model_dump(exclude_unset=True)
+
+    assert "zones_confirmed_for" not in updates, (
+        "an unset field must not appear in the PATCH body"
+    )
+
+    fetched = await Room.get(room.id)
+    for field, value in updates.items():
+        if field == "physical_comparison_results":
+            continue
+        setattr(fetched, field, value)
+    await fetched.save()
+
+    assert (await Room.get(room.id)).zones_confirmed_for == pair
+
+
+@pytest.mark.asyncio
+async def test_update_request_accepts_the_field(mock_beanie_rooms):
+    """Guards the API surface: the field must be settable through UpdateRoomRequest."""
+    from services.backend.api.schemas import UpdateRoomRequest
+
+    updates = UpdateRoomRequest(zones_confirmed_for="a:b").model_dump(exclude_unset=True)
+
+    assert updates == {"zones_confirmed_for": "a:b"}

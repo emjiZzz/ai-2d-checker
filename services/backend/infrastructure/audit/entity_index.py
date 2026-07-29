@@ -21,7 +21,14 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Iterator
 
-from ...logger import logger
+try:
+    from ...logger import logger
+except Exception:
+    try:
+        from logger import logger
+    except Exception:
+        import logging
+        logger = logging.getLogger("entity_index")
 
 # Sides of a comparison. Also the handle namespace prefix.
 SIDE_REVISION = "REV"

@@ -69,8 +69,8 @@ class Settings:
     #              deprecated, or mid-outage). "gemini-flash-latest" auto-points at
     #              whatever Google currently considers their latest stable Flash model,
     #              so it self-heals across future deprecations without a code change.
-    GEMINI_MODEL_PRO: str = os.getenv("GEMINI_MODEL_PRO", "gemini-3.1-pro-preview")
-    GEMINI_MODEL_FLASH: str = os.getenv("GEMINI_MODEL_FLASH", "gemini-3.5-flash")
+    GEMINI_MODEL_PRO: str = os.getenv("GEMINI_MODEL_PRO", "gemini-2.5-flash")
+    GEMINI_MODEL_FLASH: str = os.getenv("GEMINI_MODEL_FLASH", "gemini-flash-latest")
     GEMINI_MODEL_FALLBACK: str = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-flash-latest")
 
     @property

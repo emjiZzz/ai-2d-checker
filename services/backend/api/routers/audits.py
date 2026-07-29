@@ -44,6 +44,8 @@ from ..schemas import (
     UpdateAuditSessionRequest,
     PhysicalComparisonRequest,
     PhysicalComparisonResponse,
+    AuditFeedbackRequest,
+    AuditFeedbackResponse,
     CategoryComparison,
     CanvasMarking,
 )
@@ -579,6 +581,41 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             detail=f"Structured comparison failed. Reference: {corr_id}"
         )
 
+
+@router.post(
+    "/audits/feedback",
+    response_model=StandardResponse[AuditFeedbackResponse],
+    summary="Submit human engineer feedback and trigger active learning auto-documentation",
+    dependencies=[Depends(get_auth_token)]
+)
+async def submit_audit_feedback(request: AuditFeedbackRequest):
+    from ...domain.models.audit_feedback import AuditFeedbackDocument
+    from ...infrastructure.knowledge.auto_doc import AutoDocEngine
+
+    feedback_doc = AuditFeedbackDocument(
+        session_id=request.session_id,
+        drawing_id=request.drawing_id,
+        client_name=request.client_name,
+        entity_text=request.entity_text,
+        entity_handle=request.entity_handle,
+        category=request.category,
+        original_status=request.original_status,
+        human_corrected_status=request.human_corrected_status,
+        human_comment=request.human_comment,
+        coordinates=request.coordinates,
+    )
+    await feedback_doc.save()
+
+    # Trigger active learning auto-documentation engine (Pillar 3)
+    was_auto_documented = await AutoDocEngine.process_feedback_event(feedback_doc)
+
+    res = AuditFeedbackResponse(
+        id=str(feedback_doc.id),
+        status="recorded",
+        auto_documented=was_auto_documented,
+        message="Human feedback recorded successfully." + (" Auto-documented new learned rule to Obsidian Vault!" if was_auto_documented else "")
+    )
+    return StandardResponse(success=True, data=res)
 
 
 @router.get(

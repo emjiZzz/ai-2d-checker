@@ -23,6 +23,7 @@ def _to_response(room: Room) -> RoomResponse:
         active_new_drawing_name=room.active_new_drawing_name,
         active_audit_session_id=room.active_audit_session_id,
         physical_comparison_results=json.loads(room.physical_comparison_results) if room.physical_comparison_results else None,
+        zones_confirmed_for=room.zones_confirmed_for,
         comparison_method=room.comparison_method,
         created_by=room.created_by,
         created_at=room.created_at,

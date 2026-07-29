@@ -47,10 +47,14 @@ ZONE_ANCHORS: dict[str, list[str]] = {
         "fabrication tolerance",
         "machining tolerance",
         "unless noted",
+        "指示外公差",
+        "指示無き公差",
+        "指示なき公差",
         "表示外公差",
         "一般公差",
         "普通公差",
         "普通寸法許容差",
+        "仕上精度",
         "仕上ゲ記号",
         "表面粗さ",
         "roughness range",
@@ -107,8 +111,12 @@ ZONE_ANCHORS: dict[str, list[str]] = {
     # Title Block, not Drawing Views.
     # ------------------------------------------------------------------
     "title_upper_left": [
+        "map",
         "unit no",
         "unit no.",
+        "part no",
+        "part no.",
+        "part.no",
         "ユニットno",
         "ユニットno.",
         "ユニット no",
@@ -162,7 +170,88 @@ ZONE_ANCHORS: dict[str, list[str]] = {
 # to be swept into that zone's bounding box
 CLUSTER_RADIUS = 200.0
 
-# Safety padding added around the final computed bounding box
+# ---------------------------------------------------------------------------
+# Isometric view detection (geometric, not text-anchored)
+#
+# `iso` is the one zone that text anchors cannot find: an isometric view routinely
+# carries no label at all, so ZONE_ANCHORS["iso"] matched 0 of 6 corpus drawings and
+# every `iso` box in the system was a percentage-grid guess. Its 0.0pp positional
+# spread read as perfect stability; it was six identical guesses.
+#
+# Geometry separates it cleanly. A circle viewed at an angle projects to an ELLIPSE,
+# so an axonometric view is ellipse-dense, while orthographic views keep their circles
+# as CIRCLE/ARC. Measured across the corpus: 38 / 63 / 10 ellipses on the three
+# drawings carrying an iso view, and 0 / 0 / 0 on the three without. Complete
+# separation, so the threshold needs no tuning and only guards against a stray ellipse
+# in an orthographic view (an obliquely-cut cylinder or a slot).
+#
+# The 30/150-degree line-angle test was tried first and is materially worse: dimension
+# and leader arrowheads are drawn near 30 degrees and are scattered sheet-wide, and the
+# SX_FinishSymbol_* blocks (surface-finish marks) are too, which smeared the detected
+# span across almost the whole sheet. Do not revisit it without new evidence.
+MIN_ISO_ELLIPSES = 3
+
+# Fraction of the ellipses that must share one block instance before that block's
+# extent is trusted as the iso view outright.
+ISO_BLOCK_DOMINANCE = 0.6
+
+# Single-linkage join distance for the fallback clustering path, as a fraction of the
+# sheet diagonal.
+ISO_CLUSTER_RADIUS_FRACTION = 0.15
+
+# Physical limits on zone size, as (width, height) fractions of the sheet, to stop a
+# runaway flood-fill swallowing the drawing. Module-level rather than local to
+# `detect_zones_by_content` because `table_extractor` needs the same caps when it grows a
+# pinned zone against detection -- a cap that only applies on one of the two paths that
+# can produce a zone box is not a cap.
+ZONE_MAX_LIMITS: dict[str, tuple] = {
+    "tolerance": (0.95, 0.30),        # spans nearly the full width of the bottom strip
+    "bom": (0.45, 0.65),
+    "title": (0.60, 0.35),
+    "title_upper_left": (0.40, 0.35),
+    "notes": (0.45, 0.65),
+    "iso": (0.45, 0.45),
+}
+
+# Zones that `views` must subtract.
+#
+# `views` is defined by exclusion -- it is the drawing area, meaning everything that is not
+# sheet furniture or a floating annotation block. When `views` is *detected* that exclusion
+# is baked into `_derive_views_zone`. When it is **pinned from a template** it is a plain
+# rectangle covering the whole drawing area, so the exclusion has to be re-applied at the
+# point of use or notes/iso/title content inside that rectangle reads as drawing geometry.
+VIEWS_EXCLUDED_ZONES: tuple = (
+    "title", "title_upper_left", "bom", "tolerance", "notes", "iso",
+)
+
+
+def views_exclusions(regions: dict) -> list:
+    """Zone boxes that must be subtracted from `views` at the point of use.
+
+    Returns the sibling zone boxes present in `regions`. Callers that treat `views` as a
+    containment region should skip anything falling inside one of these.
+    """
+    return [
+        bbox for key, bbox in (regions or {}).items()
+        if key in VIEWS_EXCLUDED_ZONES and bbox
+    ]
+
+
+def point_in_any_bbox(x: float, y: float, bboxes) -> bool:
+    """True when (x, y) falls inside any of `bboxes`."""
+    for bbox in bboxes or ():
+        if bbox and bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]:
+            return True
+    return False
+
+# Safety padding added around the final computed bounding box.
+#
+# Absolute, deliberately. Making this a fraction of sheet height was tried and measured
+# across the 6-drawing corpus: it changed cross-sheet positional spread by under half a
+# percentage point on the two stable zones and made `views` and `notes` slightly worse, so
+# the extra constants were not carried. Absolute padding is conceptually odd on sheets at
+# different scales, but it is measurably not what drives zone instability here — see
+# docs/zone-template-alignment-implementation-plan.md, Phase D notes, before retrying it.
 BBOX_PADDING = 30.0
 
 
@@ -194,6 +283,138 @@ def _text_of(entity: Any) -> str:
 
 def _is_text_entity(entity: Any) -> bool:
     return getattr(entity, "entity_type", "") in ("text", "mtext", "attrib")
+
+
+def _ellipse_center(entity: Any) -> Optional[tuple]:
+    """Centre of an ELLIPSE.
+
+    Deliberately separate from `_get_xy`, which does not read the `center` key.
+    Teaching `_get_xy` about centres would silently pull circles and arcs into
+    `detect_subviews` (its entity filter already admits them, but they currently
+    resolve to None and are skipped), changing sub-view boxes as a side effect of an
+    unrelated fix.
+    """
+    geo = getattr(entity, "geometry", {}) or {}
+    center = geo.get("center")
+    if center and len(center) >= 2:
+        return float(center[0]), float(center[1])
+    return None
+
+
+def _entity_points(entity: Any) -> list:
+    """Every (x, y) an entity contributes, across all geometry shapes.
+
+    Needed because an isometric view is built from ellipses and splines, whose
+    coordinates live under keys (`center`, `points`, `control_points`) that the
+    text/line-oriented helpers above do not read.
+    """
+    geo = getattr(entity, "geometry", {}) or {}
+    points: list = []
+
+    def add(point: Any) -> None:
+        try:
+            if point is not None and len(point) >= 2:
+                points.append((float(point[0]), float(point[1])))
+        except (TypeError, ValueError):
+            pass
+
+    for key in ("insert", "location", "text_point", "start", "end", "center", "def_point"):
+        add(geo.get(key))
+
+    for key in ("points", "vertices", "control_points", "fit_points", "boundary_points"):
+        sequence = geo.get(key)
+        if isinstance(sequence, list):
+            for point in sequence:
+                add(point)
+
+    return points
+
+
+def _largest_ellipse_cluster(ellipses: list, bounds: Optional[tuple]) -> list:
+    """Single-linkage cluster of ellipse centres; returns the biggest group.
+
+    Fallback for when block grouping is unavailable -- nested INSERTs lose the parent
+    handle during explosion, and geometry drawn loose in model space never had one.
+    """
+    seeds = []
+    for entity in ellipses:
+        center = _ellipse_center(entity)
+        if center:
+            seeds.append((center, entity))
+    if not seeds:
+        return []
+
+    if bounds:
+        min_x, min_y, max_x, max_y = bounds
+        radius = math.hypot(max_x - min_x, max_y - min_y) * ISO_CLUSTER_RADIUS_FRACTION
+    else:
+        radius = CLUSTER_RADIUS
+
+    unvisited = set(range(len(seeds)))
+    best: list = []
+    while unvisited:
+        group = [unvisited.pop()]
+        queue = list(group)
+        while queue:
+            (xi, yi), _ = seeds[queue.pop()]
+            for j in list(unvisited):
+                (xj, yj), _ = seeds[j]
+                if math.hypot(xi - xj, yi - yj) <= radius:
+                    unvisited.discard(j)
+                    group.append(j)
+                    queue.append(j)
+        if len(group) > len(best):
+            best = group
+
+    if len(best) < MIN_ISO_ELLIPSES:
+        return []
+    return [seeds[i][1] for i in best]
+
+
+def _detect_iso_zone(entities: list, bounds: Optional[tuple]) -> Optional[tuple]:
+    """Locate the isometric view by ellipse density. Returns None when there is none.
+
+    Returning None matters as much as returning a box: roughly half the drawings in
+    the corpus genuinely have no isometric view (they are the pre-revision sheets),
+    and asserting a percentage-grid box on those is what the old behaviour did.
+    """
+    ellipses = [e for e in entities if getattr(e, "entity_type", "") == "ellipse"]
+    if len(ellipses) < MIN_ISO_ELLIPSES:
+        return None
+
+    # Preferred path: an isometric view is normally placed as a single INSERT, so the
+    # block instance owning most of the ellipses yields an exact extent with no
+    # clustering heuristic, no padding guesswork and no cap.
+    by_parent: dict = {}
+    for entity in ellipses:
+        handle = (getattr(entity, "properties", {}) or {}).get("parent_handle")
+        if handle:
+            by_parent[handle] = by_parent.get(handle, 0) + 1
+
+    members: list = []
+    if by_parent:
+        handle, count = max(by_parent.items(), key=lambda kv: kv[1])
+        if count >= ISO_BLOCK_DOMINANCE * len(ellipses):
+            members = [
+                e for e in entities
+                if (getattr(e, "properties", {}) or {}).get("parent_handle") == handle
+            ]
+
+    if not members:
+        members = _largest_ellipse_cluster(ellipses, bounds)
+
+    points = [p for entity in members for p in _entity_points(entity)]
+    if len(points) < 4:
+        return None
+
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (
+        min(xs) - BBOX_PADDING,
+        min(ys) - BBOX_PADDING,
+        max(xs) + BBOX_PADDING,
+        max(ys) + BBOX_PADDING,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,8 +505,44 @@ def _expand_bbox(entities: list, seed_positions: list, radius: Any, max_w: float
                                     changed = True
 
     padding = 5.0 if exclude_lines else BBOX_PADDING
-    return (xmin - padding, ymin - padding,
-            xmax + padding, ymax + padding)
+
+    # Pad, then clamp back inside max_w/max_h.
+    #
+    # The clamp is the point: the growth loop above refuses any expansion that would breach
+    # the caps, but padding used to be added *after* it returned, so the final box was
+    # always up to 2*padding larger than the declared limit in each axis and ZONE_MAX_LIMITS
+    # was not actually a limit. Measured on M7452A0N01_reference.dxf, `title` grew to 259
+    # units (inside its 286-unit cap) and was then padded to 319 — 39.1% of sheet height
+    # against a declared 35% ceiling. Shrinking symmetrically keeps the box centred on the
+    # cluster that was actually found rather than biasing it toward one edge.
+    return _clamp_bbox(
+        (xmin - padding, ymin - padding, xmax + padding, ymax + padding), max_w, max_h
+    )
+
+
+def _clamp_bbox(bbox: tuple, max_w: float, max_h: float) -> tuple:
+    """Shrink a box symmetrically until it fits within max_w/max_h.
+
+    Symmetric so the box stays centred on the cluster that was actually found rather
+    than being biased toward one edge. Shared by `_expand_bbox` and the geometric iso
+    detector so the cap invariant pinned by `tests/test_zone_detector_caps.py` holds
+    for every producer of a zone box, not just the flood-fill one.
+    """
+    xmin, ymin, xmax, ymax = bbox
+
+    width = xmax - xmin
+    if width > max_w:
+        excess = (width - max_w) / 2.0
+        xmin += excess
+        xmax -= excess
+
+    height = ymax - ymin
+    if height > max_h:
+        excess = (height - max_h) / 2.0
+        ymin += excess
+        ymax -= excess
+
+    return (xmin, ymin, xmax, ymax)
 
 
 # ---------------------------------------------------------------------------
@@ -382,16 +639,6 @@ def detect_zones_by_content(entities: list) -> dict:
     # and the flood-fill didn't expand properly — discard and fall back to percentage.
     MIN_ZONE_FRACTION = 0.03
 
-    # Define physical limits for maximum zone size to prevent runaways
-    ZONE_MAX_LIMITS = {
-        "tolerance": (0.95, 0.30),        # spans nearly the full width of the bottom strip
-        "bom": (0.45, 0.65),
-        "title": (0.60, 0.35),
-        "title_upper_left": (0.40, 0.35),
-        "notes": (0.45, 0.65),
-        "iso": (0.45, 0.45)
-    }
-
     zones: dict = {}
 
     for zone in ZONE_ANCHORS:
@@ -423,7 +670,8 @@ def detect_zones_by_content(entities: list) -> dict:
             
             # Select zone-specific scale-aware cluster radius
             if zone == "title_upper_left":
-                radius = max(8.0, sheet_h * 0.02)
+                # Decouple X/Y radii: span across table columns horizontally and encompass value row below headers
+                radius = (max(80.0, sheet_w * 0.20), max(35.0, sheet_h * 0.08))
             elif zone == "bom":
                 # Decouple X/Y radii: wide horizontally to span columns, tight vertically to avoid detail views
                 radius = (max(50.0, sheet_w * 0.15), max(15.0, sheet_h * 0.04))
@@ -459,6 +707,15 @@ def detect_zones_by_content(entities: list) -> dict:
                 zones[zone] = None
         else:
             zones[zone] = None
+
+    # `iso` is resolved geometrically rather than by text anchors, which have never
+    # matched it. Runs after the anchor loop so a genuine text hit is only overridden
+    # by the stronger signal, and before `views` is derived, because views is defined
+    # by exclusion and must see the iso box to exclude it.
+    iso_bbox = _detect_iso_zone(filtered_entities, bounds)
+    if iso_bbox is not None:
+        max_w_frac, max_h_frac = ZONE_MAX_LIMITS["iso"]
+        zones["iso"] = _clamp_bbox(iso_bbox, sheet_w * max_w_frac, sheet_h * max_h_frac)
 
     # The "views" zone is derived by exclusion - everything NOT in a safe zone
     zones["views"] = _derive_views_zone(entities, zones)
@@ -527,12 +784,22 @@ EXCLUDE_VIEW_LABEL_PATTERNS = [
     r'^[\d\u2460-\u2473\u2474-\u2487]+[\.\)\uff0e\uff09\u30fb:：]?\s*',  # Handles ASCII (1., 1)), Full-Width (１．, １）), & Circled/Parenthesized JIS Numerals (①, ②, ⑴)
 ]
 
-def detect_subviews(entities: list, views_bbox: Optional[tuple] = None) -> list:
+def detect_subviews(
+    entities: list,
+    views_bbox: Optional[tuple] = None,
+    exclude_bboxes: Optional[list] = None,
+) -> list:
     """
     Detects individual view label anchors (SECTION A-A, DETAIL B, TOP VIEW, S=2:1, etc.)
     and clusters surrounding CAD entities to construct tagged sub-view bounding boxes.
     Returns a list of dicts: [{"label": str, "bbox": (xmin, ymin, xmax, ymax), "anchor": (x, y)}]
     If no sub-view anchors exist, returns [] (caller falls back to single views_bbox).
+
+    `exclude_bboxes` carries the exclusion that `views` loses when it comes from a template
+    instead of the detector. A pinned `views` is a plain rectangle over the whole drawing
+    area, so without this the notes block and title text sitting inside that rectangle get
+    clustered into sub-views as though they were drawing geometry. Pass
+    `views_exclusions(regions)`.
     """
     import re
 
@@ -559,6 +826,8 @@ def detect_subviews(entities: list, views_bbox: Optional[tuple] = None) -> list:
                         bx0, by0, bx1, by1 = views_bbox
                         if not (bx0 <= xy[0] <= bx1 and by0 <= xy[1] <= by1):
                             continue
+                    if point_in_any_bbox(xy[0], xy[1], exclude_bboxes):
+                        continue
                     anchors.append({"label": txt_norm, "anchor": xy, "entities": []})
                     break
 
@@ -581,6 +850,8 @@ def detect_subviews(entities: list, views_bbox: Optional[tuple] = None) -> list:
             bx0, by0, bx1, by1 = views_bbox
             if not (bx0 <= xy[0] <= bx1 and by0 <= xy[1] <= by1):
                 continue
+        if point_in_any_bbox(xy[0], xy[1], exclude_bboxes):
+            continue
 
         # Find closest anchor by Euclidean distance
         closest_anchor = min(

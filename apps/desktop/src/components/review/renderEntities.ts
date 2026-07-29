@@ -1,5 +1,12 @@
 import { getNormalization, worldToScreen } from '../../utils/coordinateTransform';
 import { useReviewStore } from '../../stores/reviewStore';
+import {
+  ZONE_KEYS,
+  isPlaceholderOnly,
+  type DrawingZonesResponse,
+} from '../../services/drawingsApi';
+import { fractionsToScreenRect, type RegionFractions } from '../../utils/zoneFractions';
+
 
 // Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags
 export const cleanCadText = (text: string): string => {
@@ -219,7 +226,15 @@ export const renderEntities = ({
         p2d.moveTo(cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
         p2d.arc(cx, cy, r, startAngle, endAngle, false);
       }
-      else if (ent.type === 'polyline' && (geo.vertices || geo.points)) {
+      // `ellipse` and `spline` render through the same point-sequence path as a
+      // polyline: the backend mapper stores a tessellated outline in `geometry.points`
+      // precisely so consumers do not each have to re-derive the curve. The native
+      // parameters (major_axis/ratio, control_points) are kept alongside for anything
+      // that needs the exact curve, but drawing wants the samples.
+      else if (
+        (ent.type === 'polyline' || ent.type === 'ellipse' || ent.type === 'spline') &&
+        (geo.vertices || geo.points)
+      ) {
         const vertices = geo.vertices || geo.points;
         if (vertices.length < 2) return;
         let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
@@ -603,4 +618,158 @@ export const renderAnnotationPins = ({
 
     ctx.restore();
   });
+};
+
+// ─── Zone overlay / alignment editor ──────────────────────────────────────────
+//
+// One renderer, deliberately. There used to be two: a read-only overlay drawing the
+// detector's CAD-space output, and an editor drawing the hand-aligned fractions. They
+// showed near-identical box sets with different meanings, and in practice nobody could tell
+// which one a drag would affect — so they are merged. Geometry comes from `customRegions`
+// (what you edit and what gets saved); the detected payload is still passed in, purely to
+// report how each zone was originally resolved.
+//
+// Never drawn into exports: renderContent is the same path useComplianceReportExport drives
+// for PDF report images, and debug geometry must not reach a customer-facing report.
+
+/** Per-zone border/badge colors, distinguishable at low opacity on either theme. */
+const ZONE_COLORS: Record<string, string> = {
+  title: '#818cf8',            // indigo
+  title_upper_left: '#2dd4bf', // teal
+  bom: '#34d399',              // emerald
+  tolerance: '#fbbf24',        // amber
+  notes: '#fb7185',            // rose
+  iso: '#c084fc',              // violet
+  views: '#38bdf8',            // sky
+};
+
+const ZONE_LABELS: Record<string, string> = {
+  title: 'TITLE BLOCK',
+  title_upper_left: 'TITLE (UL)',
+  bom: 'BOM TABLE',
+  tolerance: 'GENERAL TOLERANCE',
+  notes: 'NOTES',
+  iso: 'ISO VIEW',
+  views: 'DRAWING VIEWS',
+};
+
+export interface RenderZoneEditorParams {
+  frame: RenderFrame;
+  /** Zone geometry being edited, as fractions of render_bounds (Y-down). */
+  customRegions: Record<string, RegionFractions>;
+  /** `render_bounds` the fractions are relative to. */
+  renderBounds: readonly [number, number, number, number];
+  /** The one zone the hit-test accepts drags for; only this zone gets handles. */
+  selectedRegion: string | null;
+  hoveredHandleId: string | null;
+  /**
+   * Detected zones for this drawing, used only for the confidence marker. A box the
+   * detector guessed from the percentage grid looks exactly as authoritative as a measured
+   * one unless it is marked, which is the distinction this whole feature exists to expose.
+   */
+  detected?: DrawingZonesResponse | null;
+  /**
+   * Zone keys taken from the hand-aligned template.
+   *
+   * These outrank `detected` confidence entirely. A pinned zone is by definition NOT
+   * something the detector anchored, so keying the guess marker off detection alone marks
+   * the user's own alignment as a guess — exactly backwards, since a human decision is the
+   * most authoritative source of a zone box there is.
+   */
+  pinnedKeys?: readonly string[];
+}
+
+export const renderZoneEditor = ({
+  frame,
+  customRegions,
+  renderBounds,
+  selectedRegion,
+  hoveredHandleId,
+  detected,
+}: RenderZoneEditorParams): void => {
+  const { ctx, isExport, norm, viewport, renderWidth, renderHeight, resolutionMultiplier } = frame;
+  if (isExport) return;
+
+  // Zone detection found no sheet bounds: every detected box is the literal
+  // (0,0,1000,1000) placeholder describing no drawing at all, so its confidence tells us
+  // nothing and the seeded geometry is meaningless. Suppress rather than present fiction.
+  if (isPlaceholderOnly(detected)) return;
+
+  const localDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  ctx.save();
+  ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
+
+  ZONE_KEYS.forEach((key) => {
+    const frac = customRegions[key];
+    if (!frac) return;
+
+    const isSelected = key === selectedRegion;
+    const color = ZONE_COLORS[key] ?? '#94a3b8';
+    const { left, top, right, bottom } = fractionsToScreenRect(frac, renderBounds, norm, viewport);
+    const w = right - left;
+    const h = bottom - top;
+    if (w <= 0 || h <= 0) return;
+    // Cull fully off-screen boxes; zone boxes can sit far outside the viewport when zoomed.
+    if (right < 0 || bottom < 0 || left > renderWidth || top > renderHeight) return;
+
+    // A zone the detector never anchored is a guess about where this feature sits. Dashed
+    // and '?'-suffixed so an unaligned guess is never mistaken for a measurement.
+    const wasMeasured = detected?.[key]?.confidence === 'content_aware';
+
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = isSelected ? 1 : 0.4;
+    ctx.lineWidth = (isSelected ? 2 : 1.5) * resolutionMultiplier;
+    ctx.setLineDash(wasMeasured ? [] : [6 * resolutionMultiplier, 4 * resolutionMultiplier]);
+    ctx.strokeRect(left, top, w, h);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = isSelected ? 0.1 : 0.06;
+    ctx.fillRect(left, top, w, h);
+    ctx.globalAlpha = 1;
+
+    const label = (ZONE_LABELS[key] ?? key.toUpperCase()) + (wasMeasured ? '' : ' ?');
+    const fontPx = Math.round((isSelected ? 11 : 10) * resolutionMultiplier);
+    ctx.font = `700 ${fontPx}px ui-sans-serif, system-ui, sans-serif`;
+    const padX = 4 * resolutionMultiplier;
+    const badgeH = fontPx + 6 * resolutionMultiplier;
+    const badgeW = ctx.measureText(label).width + padX * 2;
+    // Clamped into view so a partly off-screen zone still says which zone it is.
+    const badgeX = Math.max(0, Math.min(left, renderWidth - badgeW));
+    const badgeY = Math.max(0, Math.min(top, renderHeight - badgeH));
+    ctx.globalAlpha = isSelected ? 1 : 0.55;
+    ctx.fillStyle = color;
+    ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+    // Dark text: every zone color is a light 300/400-weight tone, so near-black reads
+    // better on all seven than white does.
+    ctx.fillStyle = '#0b0f19';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, badgeX + padX, badgeY + badgeH / 2);
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = 1;
+
+    if (!isSelected) return;
+
+    // Corner handles. Ids and positions mirror the hit-test's `handles` array in
+    // useCanvasInteraction.ts; its hit radius is 12px, so these are drawn at 9px half-width
+    // — visibly smaller than the grab area, which makes the target forgiving rather than
+    // fiddly. Four corners only: the hit-test recognizes no edge midpoints, and an
+    // affordance that does not respond is worse than an absent one.
+    const HALF = 9 * resolutionMultiplier;
+    const corners: Array<{ id: string; x: number; y: number }> = [
+      { id: 'top-left', x: left, y: top },
+      { id: 'top-right', x: right, y: top },
+      { id: 'bottom-left', x: left, y: bottom },
+      { id: 'bottom-right', x: right, y: bottom },
+    ];
+    corners.forEach((c) => {
+      ctx.fillStyle = hoveredHandleId === c.id ? '#ffffff' : color;
+      ctx.strokeStyle = '#0b0f19';
+      ctx.lineWidth = 1.5 * resolutionMultiplier;
+      ctx.fillRect(c.x - HALF, c.y - HALF, HALF * 2, HALF * 2);
+      ctx.strokeRect(c.x - HALF, c.y - HALF, HALF * 2, HALF * 2);
+    });
+  });
+
+  ctx.restore();
 };

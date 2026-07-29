@@ -23,6 +23,86 @@ def safe_decode(text: Any) -> str:
             return text_str
 
 
+# ---------------------------------------------------------------------------
+# Shift-JIS trail bytes that collide with MTEXT markup
+#
+# A DXF is read byte-preserving (`ezdxf.readfile(..., encoding="latin-1")`) so that
+# `dxf_parser.transcode_value` can later recover real Shift-JIS text. Everything that runs
+# before that pass -- including this module, via `entity_mapper` -- therefore sees raw CP932
+# bytes, one per character.
+#
+# CP932 allows a trail byte in 0x40-0x7E or 0x80-0xFC. That range contains 0x5C, 0x7B, 0x7D
+# and 0x7E: backslash and braces, exactly the characters MTEXT uses for markup. Stripping
+# markup on the byte string therefore mutilates any character whose second byte happens to be
+# one of them -- the classic Shift-JIS "dame-moji" / 5C problem.
+#
+# Measured on real customer drawings, in the entities as *stored*:
+#     素材調質施工    ->  素材調質詩H       (施 = 0x8E 0x7B; the 0x7B was stripped as `{`)
+#     イソナイト施工  ->  イャiイト詩H      (ソ = 0x83 0x5C; the backslash-escape rule then
+#                                            also consumed the following byte)
+#
+# This is not cosmetic. `ZONE_ANCHORS["tolerance"]` contains 表示外公差, and 表 is 0x95 0x5C,
+# so that anchor could never match the text actually stored -- a contributor to the tolerance
+# zone's measured instability.
+#
+# Only these four trail bytes need protecting; 0x25 ('%', for the %%c codes) is not a legal
+# CP932 trail byte, so the symbol replacements are already safe.
+_SJIS_DANGEROUS_TRAIL = frozenset({0x5C, 0x7B, 0x7D, 0x7E})  # \ { } ~
+_PUA_BASE = 0xE000
+_PUA_CAPACITY = 0xF8FF - 0xE000
+
+
+def _mask_sjis_markup_collisions(t: str) -> tuple[str, list[str]]:
+    """Replace CP932 characters whose trail byte looks like MTEXT markup with placeholders.
+
+    Returns `(masked_text, originals)`. Each masked character gets its OWN placeholder from
+    the Unicode private-use area, so that a placeholder removed by the cleaning (e.g. one
+    sitting inside a stripped font-change group) cannot shift the restoration of the others.
+
+    Whether we are looking at raw bytes or at real Unicode is detected rather than passed in:
+    a byte-preserving string is latin-1 encodable by construction, and post-transcode text
+    containing real Japanese is not. So callers that run after `transcode_value`
+    (`zone_detector`, `table_extractor`, `context_builder`) transparently skip all of this --
+    they have no raw trail bytes to protect.
+    """
+    try:
+        raw = t.encode('latin-1')
+    except (UnicodeEncodeError, AttributeError):
+        return t, []
+
+    out: list[str] = []
+    saved: list[str] = []
+    i, n = 0, len(raw)
+    while i < n:
+        b = raw[i]
+        is_lead = 0x81 <= b <= 0x9F or 0xE0 <= b <= 0xFC
+        if is_lead and i + 1 < n:
+            trail = raw[i + 1]
+            if 0x40 <= trail <= 0x7E or 0x80 <= trail <= 0xFC:
+                pair = raw[i:i + 2].decode('latin-1')
+                if trail in _SJIS_DANGEROUS_TRAIL:
+                    if len(saved) >= _PUA_CAPACITY:
+                        return t, []          # absurd for a CAD text field; bail unmasked
+                    out.append(chr(_PUA_BASE + len(saved)))
+                    saved.append(pair)
+                else:
+                    out.append(pair)
+                i += 2
+                continue
+        out.append(chr(b))
+        i += 1
+
+    return ''.join(out), saved
+
+
+def _unmask_sjis(t: str, saved: list[str]) -> str:
+    if not saved:
+        return t
+    for index, pair in enumerate(saved):
+        t = t.replace(chr(_PUA_BASE + index), pair)
+    return t
+
+
 def strip_mtext(t: Any, convert_symbols: bool = True) -> str:
     """
     Canonical CAD text cleanup, used everywhere a text/dimension/tolerance/
@@ -70,6 +150,11 @@ def strip_mtext(t: Any, convert_symbols: bool = True) -> str:
         else:
             t = t.decode('utf-8', errors='replace')
 
+    # Protect CP932 characters whose trail byte is `\`, `{`, `}` or `~` before ANY markup
+    # handling runs -- including the \P replacement immediately below, since `\P` is
+    # 0x5C 0x50 and that 0x5C can be the second half of a kanji.
+    t, _sjis_masked = _mask_sjis_markup_collisions(t)
+
     # Replace AutoCAD paragraph breaks with spaces before stripping formatting
     t = t.replace('\\P', ' ')
     # Non-breaking space
@@ -89,7 +174,7 @@ def strip_mtext(t: Any, convert_symbols: bool = True) -> str:
     t = t.replace('{', '').replace('}', '')
     # Strip any remaining single backslash escapes, keeping the escaped character
     t = re.sub(r'\\(.)', r'\1', t)
-    return t.strip()
+    return _unmask_sjis(t.strip(), _sjis_masked)
 
 
 def compare_values(orig_val: str, kmti_val: str) -> str:

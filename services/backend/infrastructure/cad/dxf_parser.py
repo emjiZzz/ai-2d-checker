@@ -85,6 +85,14 @@ def project_mapped_entity(
         for key in schema.get("lengths", ()):
             if isinstance(geometry.get(key), (int, float)):
                 geometry[key] = geometry[key] * scale
+
+        # Vectors are offsets from the entity's own origin, so they take the scale but
+        # not the translation. Running an ellipse's major axis through project_point
+        # would re-anchor it to the viewport and reshape the ellipse.
+        for key in schema.get("vectors", ()):
+            value = geometry.get(key)
+            if is_point(value):
+                geometry[key] = [float(v) * scale for v in value]
         for key in SCALED_PROPERTY_KEYS:
             if isinstance(properties.get(key), (int, float)):
                 properties[key] = properties[key] * scale
@@ -166,6 +174,11 @@ class DXFParser:
             "line": 0,
             "circle": 0,
             "arc": 0,
+            # Always reported, including as 0, so "this drawing has no ellipses" is
+            # distinguishable from "ellipses were never counted" -- the ambiguity that
+            # hid them being dropped at ingestion in the first place.
+            "ellipse": 0,
+            "spline": 0,
             "polyline": 0,
             "dimension": 0,
             "text": 0,

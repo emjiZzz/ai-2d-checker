@@ -107,8 +107,25 @@ def resolve_marking_coordinates(
                             bboxes.append((c[0] - 30.0, c[1] - 15.0, c[0] + 30.0, c[1] + 15.0))
                 return bboxes
 
-            rev_ex = get_individual_bboxes(rev_bom_rows, rev_title_fields) if cat == "drawing_views" else None
-            ref_ex = get_individual_bboxes(ref_bom_rows, ref_title_fields) if cat == "drawing_views" else None
+            # Sibling zone boxes are excluded from a `drawing_views` search alongside the
+            # per-cell boxes above. `views` is defined by exclusion, but a *pinned* views
+            # zone from a sheet template is a plain rectangle over the whole drawing area
+            # with that exclusion no longer baked in -- so without this, a fuzzy text search
+            # for a drawing_views finding can match the notes block or the title block and
+            # anchor the finding to the wrong part of the sheet.
+            def zone_exclusions(*bboxes):
+                return [b for b in bboxes if b]
+
+            rev_ex = (
+                get_individual_bboxes(rev_bom_rows, rev_title_fields)
+                + zone_exclusions(rev_notes_bbox, rev_iso_bbox, rev_title_bbox,
+                                  rev_title_ul_bbox, rev_bom_bbox)
+            ) if cat == "drawing_views" else None
+            ref_ex = (
+                get_individual_bboxes(ref_bom_rows, ref_title_fields)
+                + zone_exclusions(ref_notes_bbox, ref_iso_bbox, ref_title_bbox,
+                                  ref_title_ul_bbox, ref_bom_bbox)
+            ) if cat == "drawing_views" else None
             
             def set_region_bbox(kwargs: dict, category: str, is_rev: bool):
                 bbox = None

@@ -1,4 +1,14 @@
 import { create } from 'zustand';
+import {
+  DEFAULT_CUSTOM_REGIONS,
+  normalizeFractions,
+  zoneBoxToFractions,
+  type RegionFractions,
+} from '../utils/zoneFractions';
+
+// Re-exported so existing importers keep working; the definitions live in
+// utils/zoneFractions.ts alongside the maths that operates on them.
+export { DEFAULT_CUSTOM_REGIONS, type RegionFractions };
 
 interface ViewportState {
   x: number;
@@ -64,10 +74,61 @@ interface ReviewState {
   // ROI Calibration Editor States
   isRoiEditModeEnabled: boolean;
   toggleRoiEditMode: () => void;
-  customRegions: Record<string, { xMin: number; xMax: number; yMin: number; yMax: number }>;
-  updateCustomRegion: (key: string, bounds: { xMin: number; xMax: number; yMin: number; yMax: number }) => void;
-  resetCustomRegions: () => void;
+  /** Explicit setter. The auto-open flow needs idempotence, which a toggle cannot give. */
+  setRoiEditMode: (enabled: boolean) => void;
+  /**
+   * Zone boxes keyed by DRAWING id, then by zone.
+   *
+   * Per drawing, not shared between the two panes. The reference and revision genuinely
+   * differ in content extent -- notes that are one long sentence on one sheet and an ordered
+   * list on the other need different boxes, and `views` was measured 23pp apart in height
+   * between two sheets of the same template. A single shared box would clip one side or
+   * swallow neighbouring content on the other, producing false mismatches.
+   *
+   * This also matches what the backend already does: orchestrator.py computes `ref_regions`
+   * and `rev_regions` independently. A shared editor set contradicted the model the audit
+   * actually runs on.
+   */
+  customRegions: Record<string, Record<string, RegionFractions>>;
+  /** Regions for one drawing, falling back to defaults so callers never handle undefined. */
+  getRegionsFor: (drawingId: string | null | undefined) => Record<string, RegionFractions>;
+  updateCustomRegion: (drawingId: string, key: string, bounds: RegionFractions) => void;
+  resetCustomRegions: (drawingId?: string | null) => void;
   loadCustomRegions: (drawingId: string | null) => void;
+  /**
+   * Replaces `customRegions` with the detector's own boxes, converted to fractions, so
+   * alignment starts from what the pipeline actually produced instead of from the coarse
+   * DEFAULT_CUSTOM_REGIONS guess. No-op when a saved alignment exists for this drawing —
+   * seeding over the user's own work would be data loss.
+   *
+   * `templateZones` are the hand-aligned zones stored for this sheet signature, and they
+   * are applied LAST, on top of detection. That mirrors the backend exactly:
+   * `table_extractor.extract_dynamic_regions_async` overwrites detected boxes with the
+   * template's. If the editor did not do the same it would show the user a different set of
+   * zones than the comparison actually runs on.
+   *
+   * No Y flip: `ZoneFractions` is stored Y-DOWN precisely to match `customRegions`, so these
+   * transfer directly. (Detected boxes are CAD Y-up and DO need the flip — that is what
+   * `zoneBoxToFractions` is for.)
+   */
+  seedCustomRegionsFromDetected: (
+    zones: Record<string, { xmin: number; ymin: number; xmax: number; ymax: number } | null>,
+    renderBounds: readonly [number, number, number, number],
+    drawingId: string | null | undefined,
+    templateZones?: Record<string, RegionFractions> | null,
+  ) => void;
+  /** True once seeded or loaded from storage, so entering edit mode only seeds once. */
+  hasSeededCustomRegions: boolean;
+  /**
+   * Zone keys that came from the hand-aligned template, per drawing.
+   *
+   * The overlay marks a zone dashed-and-'?' when the *detector* did not anchor it. A pinned
+   * zone is never anchored by the detector — it did not come from there — so without this it
+   * renders as a guess, which is precisely backwards: a human decision is the most
+   * authoritative source of a zone box there is, outranking `content_aware`.
+   */
+  pinnedZoneKeys: Record<string, string[]>;
+  getPinnedZoneKeys: (drawingId: string | null | undefined) => string[];
 
   // Context Menu Marker Filters
   visibleMarkerTypes: Record<string, boolean>;
@@ -78,7 +139,7 @@ interface ReviewState {
   setActiveLayoutPreset: (preset: "grid" | "left" | "right") => void;
 }
 
-export const useReviewStore = create<ReviewState>((set) => ({
+export const useReviewStore = create<ReviewState>((set, get) => ({
   sessionId: null,
   drawingId: null,
 
@@ -143,80 +204,101 @@ export const useReviewStore = create<ReviewState>((set) => ({
 
   isRoiEditModeEnabled: false,
   toggleRoiEditMode: () => set((state) => ({ isRoiEditModeEnabled: !state.isRoiEditModeEnabled })),
-  customRegions: {
-    views: { xMin: 0.05, xMax: 0.65, yMin: 0.15, yMax: 0.85 },
-    notes: { xMin: 0.05, xMax: 0.35, yMin: 0.20, yMax: 0.60 },
-    bom: { xMin: 0.65, xMax: 0.98, yMin: 0.05, yMax: 0.42 },
-    title: { xMin: 0.40, xMax: 0.98, yMin: 0.75, yMax: 0.98 },
-    iso: { xMin: 0.65, xMax: 0.98, yMin: 0.45, yMax: 0.72 }
+  setRoiEditMode: (enabled) => set({ isRoiEditModeEnabled: enabled }),
+  customRegions: {},
+  pinnedZoneKeys: {},
+  hasSeededCustomRegions: false,
+
+  // Uses zustand's `get`, not useReviewStore.getState(): referencing the store from inside
+  // its own initializer is a circular reference that collapses ReviewState inference to
+  // `any` across every consumer of the store.
+  getRegionsFor: (drawingId) => {
+    return (drawingId && get().customRegions[drawingId]) || DEFAULT_CUSTOM_REGIONS;
   },
-  updateCustomRegion: (key, bounds) => set((state) => {
-    const updated = {
-      ...state.customRegions,
-      [key]: bounds
-    };
-    if (state.drawingId) {
-      localStorage.setItem(`custom_regions_${state.drawingId}`, JSON.stringify(updated));
+
+  getPinnedZoneKeys: (drawingId) => {
+    return (drawingId && get().pinnedZoneKeys[drawingId]) || [];
+  },
+
+  seedCustomRegionsFromDetected: (zones, renderBounds, drawingId, templateZones) => set((state) => {
+    if (!drawingId) return {};
+
+    // Which zones the template pins is recorded even when seeding is skipped below. The
+    // overlay needs it to stop marking them as detector guesses, and that is true whether or
+    // not this particular call also writes the geometry — e.g. on a reload, `customRegions`
+    // is already populated from localStorage but nothing yet knows those zones were pinned.
+    const pinnedKeys = Object.entries(templateZones || {})
+      .filter(([, frac]) => Boolean(frac))
+      .map(([key]) => key);
+    const nextPinned = { ...state.pinnedZoneKeys, [drawingId]: pinnedKeys };
+
+    // A saved alignment always wins: it is the user's own work, and re-seeding from the
+    // detector would silently discard it.
+    if (state.customRegions[drawingId]) {
+      return { hasSeededCustomRegions: true, pinnedZoneKeys: nextPinned };
     }
-    return { customRegions: updated };
-  }),
-  resetCustomRegions: () => set((state) => {
-    if (state.drawingId) {
-      localStorage.removeItem(`custom_regions_${state.drawingId}`);
+
+    const seeded: Record<string, RegionFractions> = { ...DEFAULT_CUSTOM_REGIONS };
+    for (const [key, box] of Object.entries(zones)) {
+      if (!box) continue;
+      const frac = zoneBoxToFractions(box, renderBounds);
+      // null means a degenerate sheet; keep the default rather than storing NaNs.
+      if (frac) seeded[key] = normalizeFractions(frac);
     }
+    // Template last — the human decision outranks the detector, same as in the backend.
+    // Already Y-DOWN, so no conversion.
+    for (const [key, frac] of Object.entries(templateZones || {})) {
+      if (frac) seeded[key] = normalizeFractions(frac);
+    }
+    const next = { ...state.customRegions, [drawingId]: seeded };
+    localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(seeded));
     return {
-      customRegions: {
-        views: { xMin: 0.05, xMax: 0.65, yMin: 0.15, yMax: 0.85 },
-        notes: { xMin: 0.05, xMax: 0.35, yMin: 0.20, yMax: 0.60 },
-        bom: { xMin: 0.65, xMax: 0.98, yMin: 0.05, yMax: 0.42 },
-        title: { xMin: 0.40, xMax: 0.98, yMin: 0.75, yMax: 0.98 },
-        iso: { xMin: 0.65, xMax: 0.98, yMin: 0.45, yMax: 0.72 }
-      }
+      customRegions: next,
+      pinnedZoneKeys: nextPinned,
+      hasSeededCustomRegions: true,
     };
   }),
-  loadCustomRegions: (drawingId) => {
-    if (!drawingId) {
-      set({
-        drawingId: null,
-        customRegions: {
-          views: { xMin: 0.05, xMax: 0.65, yMin: 0.15, yMax: 0.85 },
-          notes: { xMin: 0.05, xMax: 0.35, yMin: 0.20, yMax: 0.60 },
-          bom: { xMin: 0.65, xMax: 0.98, yMin: 0.05, yMax: 0.42 },
-          title: { xMin: 0.40, xMax: 0.98, yMin: 0.75, yMax: 0.98 },
-          iso: { xMin: 0.65, xMax: 0.98, yMin: 0.45, yMax: 0.72 }
-        }
-      });
-      return;
-    }
+
+  updateCustomRegion: (drawingId, key, bounds) => set((state) => {
+    if (!drawingId) return {};
+    const forDrawing = state.customRegions[drawingId] || { ...DEFAULT_CUSTOM_REGIONS };
+    const updated = {
+      ...forDrawing,
+      // Clamped and de-inverted on write, so dragging a handle past the opposite edge
+      // can't persist a backwards box.
+      [key]: normalizeFractions(bounds),
+    };
+    localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(updated));
+    return { customRegions: { ...state.customRegions, [drawingId]: updated } };
+  }),
+
+  resetCustomRegions: (drawingId) => set((state) => {
+    if (!drawingId) return {};
+    localStorage.removeItem(`custom_regions_${drawingId}`);
+    const next = { ...state.customRegions };
+    delete next[drawingId];
+    // Reset means "go back to what the detector found", so the pinned marks go too --
+    // leaving them would label detector boxes as human-aligned.
+    const nextPinned = { ...state.pinnedZoneKeys };
+    delete nextPinned[drawingId];
+    return { customRegions: next, pinnedZoneKeys: nextPinned, hasSeededCustomRegions: false };
+  }),
+
+  loadCustomRegions: (drawingId) => set((state) => {
+    if (!drawingId) return { drawingId: null };
     const saved = localStorage.getItem(`custom_regions_${drawingId}`);
-    if (saved) {
-      try {
-        set({ drawingId, customRegions: JSON.parse(saved) });
-      } catch (e) {
-        set({
-          drawingId,
-          customRegions: {
-            views: { xMin: 0.05, xMax: 0.65, yMin: 0.15, yMax: 0.85 },
-            notes: { xMin: 0.05, xMax: 0.35, yMin: 0.20, yMax: 0.60 },
-            bom: { xMin: 0.65, xMax: 0.98, yMin: 0.05, yMax: 0.42 },
-            title: { xMin: 0.40, xMax: 0.98, yMin: 0.75, yMax: 0.98 },
-            iso: { xMin: 0.65, xMax: 0.98, yMin: 0.45, yMax: 0.72 }
-          }
-        });
-      }
-    } else {
-      set({
+    if (!saved) return { drawingId };
+    try {
+      return {
         drawingId,
-        customRegions: {
-          views: { xMin: 0.05, xMax: 0.65, yMin: 0.15, yMax: 0.85 },
-          notes: { xMin: 0.05, xMax: 0.35, yMin: 0.20, yMax: 0.60 },
-          bom: { xMin: 0.65, xMax: 0.98, yMin: 0.05, yMax: 0.42 },
-          title: { xMin: 0.40, xMax: 0.98, yMin: 0.75, yMax: 0.98 },
-          iso: { xMin: 0.65, xMax: 0.98, yMin: 0.45, yMax: 0.72 }
-        }
-      });
+        customRegions: { ...state.customRegions, [drawingId]: JSON.parse(saved) },
+      };
+    } catch {
+      // Corrupt entry: drop it rather than leaving a poisoned key that fails every load.
+      localStorage.removeItem(`custom_regions_${drawingId}`);
+      return { drawingId };
     }
-  },
+  }),
 
   visibleMarkerTypes: {
     MISMATCHED: true,

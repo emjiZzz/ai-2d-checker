@@ -15,7 +15,14 @@ from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger, correlation_id_var
 from ...config import settings
 from ..dependencies import get_auth_token, get_or_404
-from ..schemas import StandardResponse, UploadResponse, DrawingResponse, JobResponse
+from ..schemas import (
+    StandardResponse,
+    UploadResponse,
+    DrawingResponse,
+    JobResponse,
+    DrawingZonesResponse,
+    ZoneBBox,
+)
 
 router = APIRouter()
 
@@ -272,6 +279,91 @@ async def get_drawing_scene(id: str):
             "handles": handles_map,
             "render_bounds": (drawing.metadata or {}).get("render_bounds"),
         }
+    )
+
+
+# The seven template zones extract_dynamic_regions() resolves, mirrored from
+# table_extractor.default_pct. Whitelisted explicitly rather than derived by iterating the
+# returned dict: that dict also carries "safe_zones" (a list) and "_zone_confidence" (a
+# dict) under reserved keys, and feeding either into a bbox model raises.
+ZONE_KEYS = ("views", "notes", "bom", "title", "tolerance", "iso", "title_upper_left")
+
+
+def _to_zone_bbox(raw, confidence: str) -> ZoneBBox | None:
+    """Coerces one (xmin, ymin, xmax, ymax) tuple into a ZoneBBox, or None if malformed.
+
+    Returning None rather than raising keeps one bad zone from taking down the whole
+    overlay — the other six are still useful, and a missing box is visible as such.
+    """
+    if not isinstance(raw, (tuple, list)) or len(raw) != 4:
+        return None
+    try:
+        xmin, ymin, xmax, ymax = (float(v) for v in raw)
+    except (TypeError, ValueError):
+        return None
+    return ZoneBBox(xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax, confidence=confidence)
+
+
+def build_zones_response(
+    drawing_id: str,
+    regions: dict,
+    render_bounds: list[float] | None,
+) -> DrawingZonesResponse:
+    """Maps extract_dynamic_regions() output onto the wire model.
+
+    Kept a module-level pure function rather than inlined into the handler so the
+    reserved-key regression test can call it with a hand-built dict — no FastAPI client,
+    no Mongo fixture, no real DXF.
+    """
+    confidence_by_zone = regions.get("_zone_confidence") or {}
+    zones = {
+        key: _to_zone_bbox(regions.get(key), confidence_by_zone.get(key, "unknown"))
+        for key in ZONE_KEYS
+    }
+    return DrawingZonesResponse(
+        drawing_id=drawing_id,
+        render_bounds=render_bounds,
+        **zones,
+    )
+
+
+@router.get(
+    "/drawings/{id}/zones",
+    response_model=StandardResponse[DrawingZonesResponse],
+    summary="Detected template-zone bounding boxes for the canvas debug overlay",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_drawing_zones(id: str):
+    """Serves the zone boxes the audit pipeline computes internally, for visual inspection.
+
+    Deliberately independent of any comparison run: zone detection needs one drawing's
+    entities and no AI call, so gating it behind /physical-comparison would mean burning an
+    LLM call to see why a zone box is wrong. See
+    docs/zone-bbox-overlay-implementation-plan.md, architecture decision 1.
+    """
+    from ...infrastructure.audit.bom.table_extractor import extract_dynamic_regions
+
+    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
+    entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == id).to_list()
+
+    if not entities:
+        return StandardResponse(
+            success=False,
+            error={
+                "code": "ENTITIES_NOT_READY",
+                "message": "Drawing entities have not been extracted yet."
+            },
+            data=None
+        )
+
+    regions = extract_dynamic_regions(entities)
+    return StandardResponse(
+        success=True,
+        data=build_zones_response(
+            drawing_id=id,
+            regions=regions,
+            render_bounds=(drawing.metadata or {}).get("render_bounds"),
+        )
     )
 
 

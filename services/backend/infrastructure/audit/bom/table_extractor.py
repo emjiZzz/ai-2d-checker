@@ -83,6 +83,122 @@ def extract_dynamic_regions(entities: list) -> dict:
     return result
 
 
+async def extract_dynamic_regions_async(
+    entities: list,
+    render_bounds: Optional[list] = None,
+    signature: Optional[str] = None,
+) -> dict:
+    """Zone boxes with any hand-aligned template applied on top of detection.
+
+    `render_bounds` is required for the template to apply: template zones are stored as
+    fractions of it, and the sheet signature is derived from it. Without it this degrades to
+    plain detection, with a warning — callers that have the drawing document should always
+    pass `(drawing.metadata or {}).get("render_bounds")`.
+
+    Pinned zones are marked `"user_pinned_template"` in `_zone_confidence`, so the overlay
+    and the diagnostics can distinguish a human decision from a detector guess.
+    """
+    result = extract_dynamic_regions(entities)
+
+    if not render_bounds:
+        return result
+
+    try:
+        from .zone_template_resolver import resolve_zone_overrides
+        overrides = await resolve_zone_overrides(render_bounds, signature=signature)
+    except Exception as err:
+        # Deliberately non-fatal: a template lookup problem should degrade to detection
+        # rather than fail the audit. Logged at error level, not warning -- this path
+        # previously swallowed an ImportError for the entire feature and nobody noticed,
+        # because a warning among normal comparison chatter reads as routine.
+        import logging
+        logging.getLogger(__name__).error(
+            f"Zone template could not be applied, falling back to detection: {err}",
+            exc_info=True,
+        )
+        return result
+
+    confidence = result.get("_zone_confidence")
+    for zone_key, bbox in overrides.items():
+        grown = False
+        if zone_key in GROWABLE_PINNED_ZONES:
+            # Only ever grow against a real detection. `result[zone_key]` is always
+            # populated -- it falls back to the percentage grid -- so unioning
+            # unconditionally would inflate the pinned box to the guess's extent, which
+            # for `bom` is 36% x 40% of the sheet. That would make pinning actively worse
+            # than not pinning, and it would look like the template had been ignored.
+            detected_conf = (confidence or {}).get(zone_key)
+            if detected_conf == "content_aware":
+                bbox, grown = _grow_pinned_zone(zone_key, bbox, result.get(zone_key), render_bounds)
+
+        result[zone_key] = bbox
+        if isinstance(confidence, dict):
+            confidence[zone_key] = (
+                "user_pinned_template_grown" if grown else "user_pinned_template"
+            )
+
+    return result
+
+
+# Pinned zones whose content legitimately grows, so the template box is a floor rather
+# than an exact outline.
+#
+# BOM is the case that forced this. A template is pinned against whatever drawing the user
+# happened to align, and a BOM aligned on a one-row sheet is a shallow band; a later
+# drawing with three rows extends further down. A straight overwrite clipped those rows out
+# of the zone entirely and they were silently dropped from BOM extraction -- the pinned box
+# made the zone *worse* than detection on exactly the drawings that needed it most.
+#
+# Deliberately not applied to `title`, `tolerance` or `title_upper_left`: those are fixed
+# printed furniture, so growing them against a mis-detection would only ever corrupt a box
+# the user had already got right. Nor to `views`, where the pinned area is the whole point.
+GROWABLE_PINNED_ZONES: frozenset = frozenset({"bom"})
+
+
+def _grow_pinned_zone(
+    zone_key: str,
+    pinned: tuple,
+    detected: Optional[tuple],
+    render_bounds: list,
+) -> Tuple[tuple, bool]:
+    """Union a pinned zone with a content-aware detection. Returns (bbox, was_grown).
+
+    The union is one-directional in spirit: the pinned box is what the user decided, so it
+    is never shrunk -- detection can only *extend* it to cover content the aligned sheet did
+    not have. When the union would breach ZONE_MAX_LIMITS the detection is not believable,
+    so the pinned box is returned untouched rather than clamped: trimming a runaway union
+    back to the cap would silently move the edges the user aligned by hand, which is worse
+    than declining to grow at all.
+    """
+    if not detected or len(detected) != 4:
+        return pinned, False
+
+    from .zone_detector import ZONE_MAX_LIMITS
+
+    union = (
+        min(pinned[0], detected[0]),
+        min(pinned[1], detected[1]),
+        max(pinned[2], detected[2]),
+        max(pinned[3], detected[3]),
+    )
+    if union == tuple(pinned):
+        return pinned, False
+
+    try:
+        bx0, by0, bx1, by1 = (float(v) for v in render_bounds)
+        sheet_w, sheet_h = bx1 - bx0, by1 - by0
+    except (TypeError, ValueError):
+        return pinned, False
+    if sheet_w <= 0 or sheet_h <= 0:
+        return pinned, False
+
+    max_w_frac, max_h_frac = ZONE_MAX_LIMITS.get(zone_key, (1.0, 1.0))
+    if (union[2] - union[0]) > sheet_w * max_w_frac or (union[3] - union[1]) > sheet_h * max_h_frac:
+        return pinned, False
+
+    return union, True
+
+
 def summarize_zone_detection_confidence(ref_regions: dict, rev_regions: dict) -> list[str]:
     """
     Compares which detection path each zone resolved via for reference vs revision and

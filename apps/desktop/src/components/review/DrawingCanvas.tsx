@@ -114,7 +114,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       isHoveringMarkerState,
       hoveredMarkerId,
       hoveredAnnotationId,
-      cursorStyle
+      cursorStyle,
+      hoveredHandleId
     } = state;
 
     useEffect(() => {
@@ -315,6 +316,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             height={height}
             layers={validatedLayers}
             drawing={drawing}
+            hoveredHandleId={hoveredHandleId}
             isHoveringMarkerState={isHoveringMarkerState}
             hoveredMarkerId={hoveredMarkerId}
             hoveredAnnotationId={hoveredAnnotationId}

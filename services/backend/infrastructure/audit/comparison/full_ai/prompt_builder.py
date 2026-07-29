@@ -5,9 +5,17 @@ prompt_builder.py — Category and system prompt generation for Gemini Full-AI c
 from typing import Any
 from google.genai import types
 
-from .....domain.models.drawing_document import DrawingDocument
-from .....logger import logger
-from ....entity_index import EntityIndex
+try:
+    from .....domain.models.drawing_document import DrawingDocument
+    from .....logger import logger
+except Exception:
+    from domain.models.drawing_document import DrawingDocument
+    try:
+        from logger import logger
+    except Exception:
+        import logging
+        logger = logging.getLogger("prompt_builder")
+from ...entity_index import EntityIndex
 from ...context_builder import load_drawing_png
 
 
@@ -117,13 +125,23 @@ def format_subview_breakdown(subviews: list, prefix: str) -> str:
     return "\n".join(lines)
 
 
-def build_full_system_instruction() -> str:
+async def build_full_system_instruction(client_name: str | None = None) -> str:
     header = (
         "You are a Senior Industrial CAD Engineering Auditor performing a rigorous comparison between a REFERENCE drawing and a REVISION drawing.\n"
         "For each category (except bill_of_materials which uses its own format), you MUST provide a markdown table in `reference_content` with exactly 4 columns: `Feature | Original Value | Revision Value | Status`.\n"
         "CRITICAL: If a feature is not present in either drawing, mark it N/A / MATCHED in the table rather than omitting the row or inventing content.\n"
         "For each category, determine the overall status (MATCHED, CHANGED, ADDED, REMOVED, or MISSING), write a detailed summary report in `difference_summary`, output the 4-column table in `reference_content`, and write a professional suggestion in `engineering_discrepancy_details`.\n"
     )
+
+    # Dynamic Few-Shot RAG Exemplar Memory Injection (Pillar 4: Self-Learning Engine)
+    few_shot_text = ""
+    if client_name:
+        try:
+            from ..few_shot_retriever import FewShotRetriever
+            few_shot_text = await FewShotRetriever.format_exemplars_for_system_instruction(client_name)
+        except Exception as err:
+            logger.warning(f"[prompt_builder] Few-shot retriever fallback: {err}")
+
     markings_instr = (
         "For canvas_markings, produce one entry per significant annotation or data item found in the drawings — including BOTH MATCHED items AND changed/added/removed ones.\n"
         "For MATCHED items: set status='MATCHED', use EXACT text string, and populate category.\n"
@@ -141,9 +159,15 @@ def build_full_system_instruction() -> str:
         "CRITICAL — ENTITY HANDLE GROUNDING: Populate `entity_id` with the exact handle cited from the CAD Entity Manifest (e.g. '1B2A' for REV-1B2A or REF-1B2A) whenever marking an addressable dimension, text, title block value, or note. Set entity_id to null ONLY if marking pure visual linework with no handle in the manifest.\n"
         "IMPORTANT: Provide 'visual_bbox' [ymin, xmin, ymax, xmax] normalized 0-1000 for each canvas_marking.\n"
     )
-    return "\n\n".join([
+
+    parts = [
         header,
         build_categorization_discipline_instructions(),
+    ]
+    if few_shot_text:
+        parts.append(few_shot_text)
+
+    parts.extend([
         build_drawing_views_prompt_instructions(),
         build_notes_prompt_instructions(),
         build_title_block_prompt_instructions(),
@@ -151,6 +175,7 @@ def build_full_system_instruction() -> str:
         build_others_prompt_instructions(),
         markings_instr
     ])
+    return "\n\n".join(parts)
 
 
 async def build_multimodal_contents(

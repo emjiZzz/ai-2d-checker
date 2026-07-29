@@ -72,3 +72,7 @@ tools/_archive_root_scripts/
 tools/installer/*.exe
 
 Prompt-Engineering-OS/
+
+# === Obsidian Vault & Local Notes ===
+docs/vault/
+.obsidian/

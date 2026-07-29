@@ -26,6 +26,8 @@ export interface Room {
   active_new_drawing_name?: string | null;
   active_audit_session_id?: string | null;
   physical_comparison_results?: any | null;
+  /** "{old_drawing_id}:{new_drawing_id}" whose zone boxes the user confirmed. */
+  zones_confirmed_for?: string | null;
   comparison_method?: "rag" | "rag_ai" | "ai_vision" | "hybrid";
 }
 

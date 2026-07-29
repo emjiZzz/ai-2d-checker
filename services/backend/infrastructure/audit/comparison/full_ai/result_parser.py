@@ -22,6 +22,17 @@ def parse_and_normalize_gemini_json(raw_json_text: str) -> dict[str, Any]:
     """
     Parses raw JSON string from Gemini response and enforces required top-level category keys.
     """
+    # Normalize AutoCAD symbol codes (%%c -> Ø, %%d -> °, %%p -> ±) so symbols display visually
+    if raw_json_text:
+        raw_json_text = (
+            raw_json_text.replace("%%c", "Ø")
+            .replace("%%C", "Ø")
+            .replace("%%d", "°")
+            .replace("%%D", "°")
+            .replace("%%p", "±")
+            .replace("%%P", "±")
+        )
+
     try:
         parsed = json.loads(raw_json_text)
     except json.JSONDecodeError as parse_err:

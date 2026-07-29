@@ -2,6 +2,7 @@ import { StateCreator } from "zustand";
 import { WorkspaceState, ComparisonSlice } from "../types";
 import { useReviewStore } from "../../reviewStore";
 import { buildHeaders, baseUrl, parseOrThrow } from "../../../services/fetchUtils";
+import { fetchDrawingZones } from "../../../services/drawingsApi";
 
 export const createComparisonSlice: StateCreator<WorkspaceState, [], [], ComparisonSlice> = (set, get) => ({
   oldDrawing: null,
@@ -23,6 +24,35 @@ export const createComparisonSlice: StateCreator<WorkspaceState, [], [], Compari
   setAiChecklistResults: (results) => set({ aiChecklistResults: results }),
   setAiScanError: (error) => set({ aiScanError: error }),
 
+  zoneRegions: {},
+  zoneErrors: {},
+
+  fetchZoneRegions: async (drawingId) => {
+    // Cached per drawing id and never refetched within a session — zone detection is a
+    // pure function of the drawing's entities, which don't change without a re-parse
+    // (and a re-parse means a new drawing id).
+    if (get().zoneRegions[drawingId]) return;
+    try {
+      const zones = await fetchDrawingZones(drawingId);
+      set((s) => ({
+        zoneRegions: { ...s.zoneRegions, [drawingId]: zones },
+        zoneErrors: Object.fromEntries(
+          Object.entries(s.zoneErrors).filter(([id]) => id !== drawingId),
+        ),
+      }));
+    } catch (err) {
+      // Surfaced as a canvas notice rather than swallowed. The backend's message is the
+      // useful part (e.g. entities not yet extracted); a generic string would defeat the
+      // purpose of a debugging overlay.
+      set((s) => ({
+        zoneErrors: {
+          ...s.zoneErrors,
+          [drawingId]: err instanceof Error ? err.message : String(err),
+        },
+      }));
+    }
+  },
+
   setOldDrawing: (drawing) => {
     // Clear stale geometry synchronously in the same set() as the metadata swap
     // so React batches them into one render — otherwise the canvas briefly
@@ -31,9 +61,11 @@ export const createComparisonSlice: StateCreator<WorkspaceState, [], [], Compari
     set({ oldDrawing: drawing, oldLayers: {} });
     get().recalculateCompatibility();
     if (drawing) {
-      if (!get().newDrawing) {
-        useReviewStore.getState().loadCustomRegions(drawing.id);
-      }
+      // Zone boxes are per drawing, so both sides load their own saved alignment — same
+      // reasoning as annotations below. This was previously guarded by `if (!newDrawing)`,
+      // which was harmless while customRegions was a single shared set but silently dropped
+      // the reference pane's alignment once each drawing kept its own.
+      useReviewStore.getState().loadCustomRegions(drawing.id);
       // Annotations are per-drawing and each pane renders its own, so both
       // sides are fetched regardless of which is "primary".
       get().fetchAnnotations(drawing.id);

@@ -15,6 +15,14 @@ LINEWEIGHT_DEFAULT = -3
 # fine and keeps the stored document small.
 ARC_TESSELLATION_SEGMENTS = 16
 
+# Number of segments used to tessellate an ELLIPSE into a polyline approximation.
+# Higher than ARC_TESSELLATION_SEGMENTS because an ellipse here is visible model
+# geometry that gets bounded, compared and rendered, not a fill outline.
+ELLIPSE_TESSELLATION_SEGMENTS = 48
+
+# Max chord deviation (drawing units) when reducing a SPLINE to a polyline.
+SPLINE_FLATTENING_DISTANCE = 0.05
+
 # Declarative description of which geometry keys hold coordinates, so that the
 # model->paper viewport projection can be applied uniformly to every entity type
 # instead of a hand-written per-type branch that silently skipped half of them
@@ -24,6 +32,10 @@ ARC_TESSELLATION_SEGMENTS = 16
 #   point_lists       -- a flat list of coordinates
 #   point_list_groups -- a list of lists of coordinates (e.g. hatch island paths)
 #   lengths           -- scalar distances in drawing units that scale with the viewport
+#   vectors           -- a direction+magnitude offset from the entity's own origin.
+#                        Scaled but NOT translated: projecting an ellipse's major axis
+#                        as if it were a point would move it to the viewport origin and
+#                        silently reshape the ellipse.
 #
 # See `viewport_transform.py` and `dxf_parser.project_mapped_entity`.
 GEOMETRY_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
@@ -31,6 +43,12 @@ GEOMETRY_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
     "circle": {"points": ("center",), "lengths": ("radius",)},
     "arc": {"points": ("center",), "lengths": ("radius",)},
     "polyline": {"point_lists": ("points", "vertices")},
+    "ellipse": {
+        "points": ("center",),
+        "point_lists": ("points",),
+        "vectors": ("major_axis",),
+    },
+    "spline": {"point_lists": ("control_points", "fit_points", "points")},
     "dimension": {
         "points": ("def_point", "text_point", "ext1_point", "ext2_point"),
     },
@@ -201,6 +219,133 @@ class EntityMapper:
                 "center": [center[0], center[1], center[2]],
                 "radius": radius
             }
+        }
+
+    @staticmethod
+    def _tessellate_ellipse(
+        center: list[float], major_axis: list[float], ratio: float,
+        start_param: float, end_param: float,
+    ) -> list[list[float]]:
+        """Sample the DXF ellipse parametric form into a polyline.
+
+        DXF stores an ellipse as centre + major-axis *vector* + minor/major `ratio`,
+        swept between two parameters. The minor axis is the major axis rotated 90
+        degrees and scaled by `ratio`, so a point at parameter t is
+        `center + major*cos(t) + minor*sin(t)`. Computed directly rather than via
+        ezdxf's own flattening so that plain test doubles (and entities detached from
+        a document) tessellate identically to real ones.
+        """
+        try:
+            cx, cy = float(center[0]), float(center[1])
+            mx, my = float(major_axis[0]), float(major_axis[1])
+            # minor axis = major rotated +90 degrees, scaled by ratio
+            nx, ny = -my * ratio, mx * ratio
+
+            sweep = end_param - start_param
+            if abs(sweep) < 1e-12:
+                sweep = math.tau
+
+            steps = max(8, ELLIPSE_TESSELLATION_SEGMENTS)
+            points = []
+            for i in range(steps + 1):
+                t = start_param + sweep * (i / steps)
+                cos_t, sin_t = math.cos(t), math.sin(t)
+                points.append([cx + mx * cos_t + nx * sin_t, cy + my * cos_t + ny * sin_t])
+            return points
+        except Exception:
+            return []
+
+    @staticmethod
+    def map_ellipse(entity: Any) -> dict[str, Any]:
+        """ELLIPSE -> native parameters plus a tessellated outline.
+
+        Kept as its own `entity_type` rather than degraded into a polyline because the
+        *presence* of an ellipse is diagnostic, not just decorative: a circle viewed at
+        an angle projects to an ellipse, so ellipse density is what separates an
+        axonometric (isometric) view from an orthographic one, which keeps its circles
+        as CIRCLE/ARC. `zone_detector._detect_iso_zone` reads exactly that signal, and
+        flattening ellipses to polylines here would erase it.
+
+        Before this existed, `map_any` had no ELLIPSE branch and returned None, so every
+        ellipse was dropped at ingestion -- 111 of them across the 6-drawing corpus, all
+        on the three drawings that carry an isometric view (90% of one such view's
+        entities). See docs/vault/06 - .../Gotcha - Dropped ELLIPSE & SPLINE Geometry.
+        """
+        center = _as_xyz(entity.dxf.center)
+        major_axis = _as_xyz(_dxf_get(entity.dxf, "major_axis", (1.0, 0.0, 0.0)))
+        ratio = float(_dxf_get(entity.dxf, "ratio", 1.0))
+        start_param = float(_dxf_get(entity.dxf, "start_param", 0.0))
+        end_param = float(_dxf_get(entity.dxf, "end_param", math.tau))
+
+        props = common_properties(entity)
+        props.update({
+            "ratio": ratio,
+            "start_param": start_param,
+            "end_param": end_param,
+            "is_closed": abs((end_param - start_param) - math.tau) < 1e-9,
+        })
+
+        return {
+            "entity_type": "ellipse",
+            "layer": entity.dxf.layer,
+            "properties": props,
+            "geometry": {
+                "center": center,
+                # A vector from `center`, not an absolute coordinate -- see the
+                # "vectors" note on GEOMETRY_SCHEMA.
+                "major_axis": major_axis,
+                "points": EntityMapper._tessellate_ellipse(
+                    center, major_axis, ratio, start_param, end_param
+                ),
+            },
+        }
+
+    @staticmethod
+    def map_spline(entity: Any) -> dict[str, Any]:
+        """SPLINE -> control/fit points plus a flattened outline.
+
+        Like ELLIPSE, previously dropped entirely by `map_any` (46 across the corpus,
+        concentrated in isometric views, where curved silhouette edges are splines).
+        `flattening` is ezdxf's adaptive sampler and needs a live document; control
+        points are the fallback when it is unavailable, which is coarse but keeps the
+        entity locatable and boundable rather than absent.
+        """
+        control_points: list[list[float]] = []
+        fit_points: list[list[float]] = []
+        try:
+            control_points = [_as_xyz(p) for p in (entity.control_points or [])]
+        except Exception:
+            control_points = []
+        try:
+            fit_points = [_as_xyz(p) for p in (entity.fit_points or [])]
+        except Exception:
+            fit_points = []
+
+        points: list[list[float]] = []
+        try:
+            points = [
+                [float(p[0]), float(p[1])]
+                for p in entity.flattening(SPLINE_FLATTENING_DISTANCE)
+            ]
+        except Exception:
+            points = [[p[0], p[1]] for p in (fit_points or control_points)]
+
+        props = common_properties(entity)
+        props.update({
+            "degree": int(_dxf_get(entity.dxf, "degree", 3)),
+            "is_closed": bool(_dxf_get(entity.dxf, "closed", False)),
+            "control_point_count": len(control_points),
+        })
+
+        return {
+            "entity_type": "spline",
+            "layer": entity.dxf.layer,
+            "properties": props,
+            "geometry": {
+                "control_points": control_points,
+                "fit_points": fit_points,
+                "points": points,
+            },
         }
 
     @staticmethod
@@ -733,6 +878,10 @@ class EntityMapper:
                 return cls.map_circle(entity)
             elif dxftype == "ARC":
                 return cls.map_arc(entity)
+            elif dxftype == "ELLIPSE":
+                return cls.map_ellipse(entity)
+            elif dxftype == "SPLINE":
+                return cls.map_spline(entity)
             elif dxftype in ("POLYLINE", "LWPOLYLINE"):
                 return cls.map_polyline(entity)
             elif dxftype == "DIMENSION":

@@ -293,7 +293,7 @@ export const RoomsView: React.FC = () => {
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "ai_vision" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                       <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "ai_vision" ? "var(--text-primary)" : "var(--text-muted)" }}>AI Vision</span>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Gemini (PNG Only)</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Real DXF AI</span>
                     </button>
                     {/* Hybrid */}
                     <button

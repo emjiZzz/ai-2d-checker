@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, XCircle, Brain, RotateCcw } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
+import { useRoomStore } from "../../stores/roomStore";
+import { submitAuditFeedbackPayload } from "../../services/auditsApi";
 import { getTaxonomyWithOther, OTHER_FEATURE_KEY, DEFERRED_FEATURE_KEYS } from "../../utils/comparisonTaxonomy";
 
 interface ChecklistPanelProps {
@@ -53,6 +55,10 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
     setExpandedFeaturePanels((prev) => ({ ...prev, [panelKey]: !(panelKey in prev ? prev[panelKey] : defaultState) }));
   };
 
+  const activeRoom = useRoomStore((s) => s.activeRoom);
+  const newDrawing = useWorkspaceStore((s) => s.newDrawing);
+  const [dismissedRowIds, setDismissedRowIds] = useState<Record<string, boolean>>({});
+
   const violations = useWorkspaceStore((s) => s.violations);
   const hiddenViolationIds = useWorkspaceStore((s) => s.hiddenViolationIds);
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
@@ -69,7 +75,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
   // grouping wrapper around this is new). Extracted to a function so both the
   // feature-grouped list below and (if ever needed) any other caller can reuse the
   // exact same JSX instead of duplicating it.
-  const renderDiffRowCard = (row: any, matchingViolation: any, rowId: string) => {
+  const renderDiffRowCard = (row: any, matchingViolation: any, rowId: string, categoryKey: string = "drawing_views") => {
     const statusUp = (row.status || "").toUpperCase(); let cellBadgeColor = "#10b981"; // green = MATCHED default
     let cellBadgeBg = "rgba(16, 185, 129, 0.14)";
     let statusText = row.status || "MATCHED";
@@ -112,29 +118,115 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           flexDirection: "column",
           gap: "10px",
           cursor: matchingViolation ? "pointer" : "default",
-          opacity: isHidden ? 0.4 : 1,
+          opacity: isHidden || dismissedRowIds[rowId] ? 0.4 : 1,
           boxShadow: isSelected ? "0 6px 20px rgba(37,99,235,0.15)" : "0 1px 4px rgba(0,0,0,0.05)",
           transition: "all 0.2s ease"
         }}
       >
         {/* Badge Row */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div
-            onClick={(e) => {
-              if (matchingViolation) {
-                e.stopPropagation();
-                toggleViolationVisibility(matchingViolation.id);
-              }
-            }}
-            style={{
-              cursor: matchingViolation ? "pointer" : "default",
-              color: isHidden ? "var(--text-muted)" : "var(--accent-cyan)",
-              display: "flex",
-              alignItems: "center"
-            }}
-          >
-            {matchingViolation && (
-              isHidden ? <EyeOff size={14} /> : <Eye size={14} />
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div
+              onClick={(e) => {
+                if (matchingViolation) {
+                  e.stopPropagation();
+                  toggleViolationVisibility(matchingViolation.id);
+                }
+              }}
+              style={{
+                cursor: matchingViolation ? "pointer" : "default",
+                color: isHidden ? "var(--text-muted)" : "var(--accent-cyan)",
+                display: "flex",
+                alignItems: "center"
+              }}
+            >
+              {matchingViolation && (
+                isHidden ? <EyeOff size={14} /> : <Eye size={14} />
+              )}
+            </div>
+
+            {!dismissedRowIds[rowId] ? (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setDismissedRowIds((prev) => ({ ...prev, [rowId]: true }));
+                  if (matchingViolation) {
+                    toggleViolationVisibility(matchingViolation.id);
+                  }
+                  try {
+                    await submitAuditFeedbackPayload({
+                      session_id: activeRoom?.id || "session_default",
+                      drawing_id: newDrawing?.id || "drawing_default",
+                      client_name: activeRoom?.client_name,
+                      entity_text: row.field || row.kmti || row.original,
+                      entity_handle: row.entity_id,
+                      category: categoryKey,
+                      original_status: statusText,
+                      human_corrected_status: "dismissed"
+                    });
+                  } catch (err) {
+                    console.warn("[ChecklistPanel] Feedback submit error:", err);
+                  }
+                }}
+                title="Dismiss false alarm & train AI engine"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  fontSize: "0.7rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}
+              >
+                <XCircle size={13} />
+                <span>Dismiss</span>
+              </button>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#10b981", display: "flex", alignItems: "center", gap: "3px" }}>
+                  <Brain size={12} /> Learned
+                </span>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setDismissedRowIds((prev) => ({ ...prev, [rowId]: false }));
+                    if (matchingViolation) {
+                      toggleViolationVisibility(matchingViolation.id);
+                    }
+                    try {
+                      await submitAuditFeedbackPayload({
+                        session_id: activeRoom?.id || "session_default",
+                        drawing_id: newDrawing?.id || "drawing_default",
+                        client_name: activeRoom?.client_name,
+                        entity_text: row.field || row.kmti || row.original,
+                        entity_handle: row.entity_id,
+                        category: categoryKey,
+                        original_status: statusText,
+                        human_corrected_status: "confirmed_valid"
+                      });
+                    } catch (err) {
+                      console.warn("[ChecklistPanel] Undo feedback submit error:", err);
+                    }
+                  }}
+                  title="Undo dismissal & mark item as valid"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--accent-cyan)",
+                    cursor: "pointer",
+                    fontSize: "0.65rem",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "2px"
+                  }}
+                >
+                  <RotateCcw size={11} />
+                  <span>Undo</span>
+                </button>
+              </div>
             )}
           </div>
           <span style={{
@@ -558,7 +650,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                                   </div>
                                 ) : isOpen ? (
                                   <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "8px", background: "var(--bg-dark)" }}>
-                                    {group.rows.map(({ row, idx, violation }) => renderDiffRowCard(row, violation, `${key}-${idx}`))}
+                                    {group.rows.map(({ row, idx, violation }) => renderDiffRowCard(row, violation, `${key}-${idx}`, key))}
                                   </div>
                                 ) : null}
                               </div>

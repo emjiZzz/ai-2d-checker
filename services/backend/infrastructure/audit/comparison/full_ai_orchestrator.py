@@ -60,11 +60,16 @@ async def generate_ai_vision_candidates(
         ref_drawing.file_name, rev_drawing.file_name,
     )
 
-    from ..bom.table_extractor import extract_dynamic_regions
-    ref_regions = extract_dynamic_regions(ref_entities)
-    rev_regions = extract_dynamic_regions(rev_entities)
+    from ..bom.table_extractor import extract_dynamic_regions_async
+    ref_regions = await extract_dynamic_regions_async(
+        ref_entities, render_bounds=(ref_drawing.metadata or {}).get("render_bounds")
+    )
+    rev_regions = await extract_dynamic_regions_async(
+        rev_entities, render_bounds=(rev_drawing.metadata or {}).get("render_bounds")
+    )
 
-    system_instruction = build_full_system_instruction()
+    client_name = getattr(request, "client_name", None)
+    system_instruction = await build_full_system_instruction(client_name=client_name)
     prompt_text = (
         f"=== REFERENCE DRAWING METADATA ===\n"
         f"File: {ref_drawing.file_name} | Title: {ref_title} | Rev: {ref_rev}\n\n"
@@ -118,10 +123,10 @@ async def perform_full_ai_comparison(
     rev_entities: list,
     method: str = "rag_ai",
 ) -> PhysicalComparisonResponse:
-    """
-    Executes full AI drawing comparison pipeline.
-    Facilitates caching, prompt assembly, Gemini invocation, result parsing, and session persistence.
-    """
+    if method == "ai_vision":
+        from .live_dxf_orchestrator import perform_live_dxf_ai_comparison
+        return await perform_live_dxf_ai_comparison(request, ref_drawing, rev_drawing, method=method)
+
     api_key = os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", None)
     openai_key = os.environ.get("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
     if not api_key and not openai_key:
@@ -149,15 +154,28 @@ async def perform_full_ai_comparison(
     ref_ctx = build_structured_context(ref_entities, ref_drawing)
     rev_ctx = build_structured_context(rev_entities, rev_drawing)
 
-    from ..bom.table_extractor import extract_dynamic_regions, summarize_zone_detection_confidence
-    from ..bom.zone_detector import detect_subviews
+    from ..bom.table_extractor import extract_dynamic_regions_async, summarize_zone_detection_confidence
+    from ..bom.zone_detector import detect_subviews, views_exclusions
 
-    ref_regions = extract_dynamic_regions(ref_entities)
-    rev_regions = extract_dynamic_regions(rev_entities)
+    ref_regions = await extract_dynamic_regions_async(
+        ref_entities, render_bounds=(ref_drawing.metadata or {}).get("render_bounds")
+    )
+    rev_regions = await extract_dynamic_regions_async(
+        rev_entities, render_bounds=(rev_drawing.metadata or {}).get("render_bounds")
+    )
     zone_detection_warnings = summarize_zone_detection_confidence(ref_regions, rev_regions)
 
-    ref_subviews = detect_subviews(ref_entities, views_bbox=ref_regions.get("views"))
-    rev_subviews = detect_subviews(rev_entities, views_bbox=rev_regions.get("views"))
+    # `views` may be a hand-pinned rectangle covering the whole drawing area rather than a
+    # detected content extent, so the sibling zones have to be subtracted explicitly or the
+    # notes block and title text inside it get clustered as sub-views.
+    ref_subviews = detect_subviews(
+        ref_entities, views_bbox=ref_regions.get("views"),
+        exclude_bboxes=views_exclusions(ref_regions),
+    )
+    rev_subviews = detect_subviews(
+        rev_entities, views_bbox=rev_regions.get("views"),
+        exclude_bboxes=views_exclusions(rev_regions),
+    )
 
     ref_bounds_meta = ref_drawing.metadata.get("render_bounds") if ref_drawing.metadata else None
     rev_bounds_meta = rev_drawing.metadata.get("render_bounds") if rev_drawing.metadata else None
@@ -182,7 +200,8 @@ async def perform_full_ai_comparison(
     rev_groups = extract_semantic_text_groups(rev_entities, prefix="REV")
 
     # 3. Assemble Prompt & Execute Gemini Cascade
-    system_instruction = build_full_system_instruction()
+    client_name = getattr(request, "client_name", None)
+    system_instruction = await build_full_system_instruction(client_name=client_name)
 
     if method == "ai_vision":
         prompt_text = (

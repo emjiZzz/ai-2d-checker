@@ -1,9 +1,21 @@
 import re
 from pathlib import Path
 from typing import Any
-from ...domain.models.drawing_document import DrawingDocument
-from ...infrastructure.storage.path_resolver import get_storage_root
-from ...logger import logger
+try:
+    from ...domain.models.drawing_document import DrawingDocument
+    from ...logger import logger
+except Exception:
+    from domain.models.drawing_document import DrawingDocument
+    try:
+        from logger import logger
+    except Exception:
+        import logging
+        logger = logging.getLogger("context_builder")
+
+try:
+    from ...infrastructure.storage.path_resolver import get_storage_root
+except Exception:
+    from infrastructure.storage.path_resolver import get_storage_root
 
 # Matches a leading diameter/radius/plus-minus symbol on dimension text. Entity extraction
 # (entity_mapper.py, via the shared strip_mtext canonical decode) now converts the raw

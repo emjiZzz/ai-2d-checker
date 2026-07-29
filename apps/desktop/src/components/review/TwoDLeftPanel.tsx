@@ -1,7 +1,8 @@
 import React from "react";
-import { Play, Sparkles, File, ArrowRightLeft, Activity, CheckCircle2, CircleDashed } from "lucide-react";
+import { Play, Sparkles, File, ArrowRightLeft, Activity, CheckCircle2, CircleDashed, RotateCw } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useRoomStore } from "../../stores/roomStore";
+import { isZoneReviewConfirmed, isZoneReviewGrandfathered } from "../../utils/zoneGate";
 import { ChecklistPanel } from "./ChecklistPanel";
 import { usePhysicalComparison } from "../../hooks/usePhysicalComparison";
 import { getComparisonStages, getComparisonMethodLabel } from "../../utils/comparisonStages";
@@ -34,7 +35,20 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
     ? Math.round(((currentStageIndex + 1) / stages.length) * 95)
     : 5;
 
+  const isScanning = aiScanProgress !== "idle" && aiScanProgress !== "completed";
+
   if (!(currentNav === "workspace" && oldDrawing && newDrawing)) {
+    return null;
+  }
+
+  // Defence in depth. The tab should not exist at all before the zone review is confirmed
+  // (TwoDWorkspace owns that), but a layout persisted by an earlier session — or a floated
+  // tab — could resurrect it. Keeping the body empty means the gate cannot be bypassed into
+  // START COMPARISON even if the tab leaks.
+  if (
+    !isZoneReviewConfirmed(activeRoom, oldDrawing.id, newDrawing.id) &&
+    !isZoneReviewGrandfathered(activeRoom)
+  ) {
     return null;
   }
 
@@ -51,6 +65,22 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
             AI Comparison
           </span>
         </div>
+
+        {/* Re-test Action Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={isScanning}
+          className="h-8 px-3 text-xs font-semibold text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/10 hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none gap-1.5 rounded-lg transition-all"
+          onClick={() => {
+            resetComparison();
+            runPhysicalComparisonAI(true);
+          }}
+          title="Re-run physical comparison test for this room"
+        >
+          <RotateCw size={13} className={isScanning ? "animate-spin" : ""} />
+          <span>Re-test</span>
+        </Button>
       </div>
 
       {/* Idle / Empty State */}
@@ -91,7 +121,7 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
               variant="primary"
               className="text-sm font-bold shadow-lg transition-transform hover:scale-105 active:scale-95"
               style={{ padding: '16px 40px', height: 'auto' }}
-              onClick={runPhysicalComparisonAI}
+              onClick={() => runPhysicalComparisonAI()}
             >
               <Play size={18} className="mr-3" />
               START COMPARISON

@@ -35,6 +35,16 @@ class Room(Document):
     active_new_drawing_name: str | None = Field(None, description="Name of the new/revised drawing active in this room")
     active_audit_session_id: str | None = Field(None, description="ID of the active audit session in this room")
     physical_comparison_results: str | None = Field(None, description="Cached AI physical comparison checklist results as JSON string")
+    zones_confirmed_for: str | None = Field(
+        None,
+        description=(
+            "'{old_drawing_id}:{new_drawing_id}' of the pair whose zone boxes the user "
+            "reviewed and confirmed. The workspace hides the comparison panel until this "
+            "matches the currently loaded pair. Storing the pair rather than a boolean means "
+            "swapping either drawing invalidates the confirmation on its own — zones aligned "
+            "to one sheet say nothing about a different one."
+        ),
+    )
 
     # Soft deletion, matching AuditSession's established convention in this codebase.
     is_deleted: bool = Field(False, description="Soft deletion flag")

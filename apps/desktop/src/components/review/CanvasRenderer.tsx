@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
+import { DEFAULT_CUSTOM_REGIONS } from '../../utils/zoneFractions';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
-import { renderEntities, renderViolationReticles, renderAnnotationPins } from './renderEntities';
+import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor } from './renderEntities';
 import { DrawingCanvasRef } from './DrawingCanvas';
 
 interface CanvasRendererProps {
@@ -25,6 +26,8 @@ interface CanvasRendererProps {
   cursorStyle: string;
   sharedCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
   isDraggingRef?: React.MutableRefObject<boolean>;
+  /** Handle under the cursor (or being dragged) in zone-edit mode, for highlighting. */
+  hoveredHandleId?: string | null;
 }
 
 // Memoized: with a stable `canvasInteractionHandlers` object (see
@@ -47,7 +50,8 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   canvasInteractionHandlers,
   cursorStyle,
   sharedCanvasRef,
-  isDraggingRef
+  isDraggingRef,
+  hoveredHandleId
 }, ref) => {
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   // If DrawingCanvas passes its own ref (used by the interaction hook), use it;
@@ -77,6 +81,14 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
   const showAnnotations = useReviewStore((s) => s.showAnnotations);
   const annotationBadgeMap = useMemo(() => getAnnotationBadgeMap(annotations), [annotations]);
+  // Zone debug overlay. Read from the store rather than threaded as props: this
+  // component already receives its own `drawing`, so `zoneRegions[drawing.id]` is
+  // unambiguous without a side discriminator — the same way annotation pins are
+  // filtered by `drawing.id` below.
+  const zoneRegions = useWorkspaceStore((s) => s.zoneRegions);
+  const isRoiEditModeEnabled = useReviewStore((s) => s.isRoiEditModeEnabled);
+  const allCustomRegions = useReviewStore((s) => s.customRegions);
+  const selectedComparisonRegion = useReviewStore((s) => s.selectedComparisonRegion);
   const theme = useThemeStore((s) => s.theme);
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
@@ -281,12 +293,33 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       });
     }
 
+    // Zone debug boxes, drawn last so they sit above geometry and pins. Indexed by
+    // this pane's own drawing id for the same reason annotation pins are filtered by
+    // it above: zone boxes are in the owning drawing's CAD space, so showing the
+    // reference's boxes over the revision would put them at meaningless positions.
+    // Rendered during drag too — unlike reticles these are cheap (7 rects) and the
+    // whole point is that they track the geometry while panning.
+    // Zone boxes render only in alignment mode. There is no separate read-only overlay:
+    // two near-identical box sets with different meanings made it impossible to tell which
+    // one a drag affected. Geometry is the editable `customRegions`; the detected payload
+    // rides along only so each box can report whether the detector measured it or guessed.
+    if (isRoiEditModeEnabled && drawing?.metadata?.render_bounds) {
+      renderZoneEditor({
+        frame: frameData,
+        customRegions: (drawing?.id && allCustomRegions[drawing.id]) || DEFAULT_CUSTOM_REGIONS,
+        renderBounds: drawing.metadata.render_bounds,
+        selectedRegion: selectedComparisonRegion,
+        hoveredHandleId: hoveredHandleId ?? null,
+        detected: drawing?.id ? zoneRegions[drawing.id] : null,
+      });
+    }
+
     ctx.restore();
 
 
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid]);
+  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid, zoneRegions, isRoiEditModeEnabled, allCustomRegions, selectedComparisonRegion, hoveredHandleId]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

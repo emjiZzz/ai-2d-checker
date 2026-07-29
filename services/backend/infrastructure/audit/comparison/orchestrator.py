@@ -38,6 +38,7 @@ from .marking_builder import (
     generate_auto_matched_markings
 )
 from .coordinate_resolver import resolve_marking_coordinates, harden_value_only_coordinates
+from .marking_reconciler import reconcile_relocated_markings
 from .schemas import Coordinate2D, BoundingBox2D
 from .cache_manager import ComparisonCacheManager
 from .candidate import ComparisonCandidate
@@ -144,9 +145,15 @@ async def generate_deterministic_candidates(
         return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
 
     # Compute bounding boxes for visual overlap warnings and spatial constraints
-    from ..bom.table_extractor import extract_dynamic_regions, summarize_zone_detection_confidence
-    ref_regions = extract_dynamic_regions(ref_entities)
-    rev_regions = extract_dynamic_regions(rev_entities)
+    from ..bom.table_extractor import extract_dynamic_regions_async, summarize_zone_detection_confidence
+    # render_bounds is what hand-aligned zone fractions are stored relative to, and the
+    # sheet signature is derived from it. `layout_signature` was read here previously but is
+    # never written anywhere, so it was always None.
+    ref_bounds = (ref_drawing.metadata or {}).get("render_bounds")
+    rev_bounds = (rev_drawing.metadata or {}).get("render_bounds")
+
+    ref_regions = await extract_dynamic_regions_async(ref_entities, render_bounds=ref_bounds)
+    rev_regions = await extract_dynamic_regions_async(rev_entities, render_bounds=rev_bounds)
     zone_detection_warnings = summarize_zone_detection_confidence(ref_regions, rev_regions)
     if zone_detection_warnings:
         logger.info(f"Zone detection confidence warnings: {zone_detection_warnings}")
@@ -290,8 +297,105 @@ async def generate_deterministic_candidates(
                             values.add(_normalize_value_text(val))
         return values
 
-    ref_structured_values = _collect_structured_text_values(ref_title_fields, ref_bom_rows)
-    rev_structured_values = _collect_structured_text_values(rev_title_fields, rev_bom_rows)
+    def extract_title_ul_kv(entities: list, bbox) -> list:
+        """Spatially pair header/label texts with their value texts inside bbox.
+        DXF uses Y-up coordinates — larger Y is physically higher on the sheet.
+        Headers sit ABOVE values, so headers have larger Y values.
+        Returns list of {key, value, coords} dicts sorted left-to-right.
+        """
+        import unicodedata as _ud
+        def _ul_norm(t: str) -> str:
+            t = _ud.normalize("NFKC", t or "").strip().lower()
+            import re as _re
+            return _re.sub(r"\s+", " ", t)
+
+        if not bbox:
+            return []
+        inside = [
+            e for e in entities
+            if getattr(e, 'entity_type', '') in ('text', 'mtext', 'attrib')
+            and is_in_bbox(e, bbox)
+        ]
+        if not inside:
+            return []
+
+        def is_grid_label(e):
+            t = (getattr(e, 'properties', {}) or {}).get('text', '').strip()
+            if len(t) <= 1 or any(c in t for c in "①②③④⑤⑥⑦⑧⑨⑩⑪⑫"):
+                vx = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[0]
+                vy = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[1]
+                if vx < 25.0 or vy > 285.0:
+                    return True
+            return False
+
+        inside = [e for e in inside if not is_grid_label(e)]
+        if not inside:
+            return []
+
+        inside.sort(key=lambda x: getattr(x, 'geometry', {}).get('insert', [0, 0, 0])[1], reverse=True)
+        bands: list[list] = []
+        current_band = []
+        for e in inside:
+            if not current_band:
+                current_band.append(e)
+            else:
+                prev_y = getattr(current_band[-1], 'geometry', {}).get('insert', [0, 0, 0])[1]
+                ey = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[1]
+                if abs(prev_y - ey) <= 4.0:
+                    current_band.append(e)
+                else:
+                    bands.append(current_band)
+                    current_band = [e]
+        if current_band:
+            bands.append(current_band)
+
+        if len(bands) < 2:
+            return []
+
+        value_band = sorted(bands[-1], key=lambda e: getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[0])
+        header_bands = bands[:-1]
+
+        all_xs = [getattr(e, 'geometry', {}).get('insert', [0])[0] for e in inside]
+        band_width = (max(all_xs) - min(all_xs)) if len(all_xs) > 1 else 9999.0
+        max_pair_dist = max(band_width / max(len(value_band), 1) * 1.5, 30.0)
+
+        pairs = []
+        for val_e in value_band:
+            vx = getattr(val_e, 'geometry', {}).get('insert', [0, 0, 0])[0]
+            vy = getattr(val_e, 'geometry', {}).get('insert', [0, 0, 0])[1]
+            val_text = (getattr(val_e, 'properties', {}) or {}).get('text', '').strip()
+            if not val_text or len(val_text) <= 0:
+                continue
+
+            header_parts = []
+            for hband in header_bands:
+                closest_hdr = min(
+                    hband,
+                    key=lambda h: abs(getattr(h, 'geometry', {}).get('insert', [0, 0, 0])[0] - vx),
+                    default=None
+                )
+                if closest_hdr:
+                    dist = abs(getattr(closest_hdr, 'geometry', {}).get('insert', [0, 0, 0])[0] - vx)
+                    if dist <= max_pair_dist:
+                        hdr_text = (getattr(closest_hdr, 'properties', {}) or {}).get('text', '').strip()
+                        if hdr_text and hdr_text not in header_parts and not hdr_text.isdigit():
+                            header_parts.append(hdr_text)
+
+            header_parts.reverse()
+            header_parts = [
+                p for p in header_parts 
+                if not (p.startswith('①') or p.startswith('②') or p.startswith('③') or p.startswith('④') or p.strip().isdigit())
+            ]
+
+            combined_key = " / ".join(header_parts) if header_parts else "Value"
+            pairs.append({'key': combined_key, 'value': val_text, 'coords': [vx, vy]})
+        return pairs
+
+    ref_title_ul_pairs = extract_title_ul_kv(ref_entities, ref_title_ul_bbox_raw)
+    rev_title_ul_pairs = extract_title_ul_kv(rev_entities, rev_title_ul_bbox_raw)
+
+    ref_structured_values = _collect_structured_text_values(ref_title_fields, ref_bom_rows, ref_title_ul_pairs)
+    rev_structured_values = _collect_structured_text_values(rev_title_fields, rev_bom_rows, rev_title_ul_pairs)
 
     # Bounding boxes and spatial differ imports were hoisted earlier
 
@@ -393,10 +497,31 @@ async def generate_deterministic_candidates(
         def _is_title_layer(l: str) -> bool:
             return any(x in l.lower() for x in ("title", "border", "stamp", "attr", "admin", "block", "header", "logo", "dwg", "rev", "approved", "checked", "designed", "drawn", "scale"))
 
+        def _is_tolerance_layer_or_text(e) -> bool:
+            l = (getattr(e, "layer", "") or "").lower()
+            if any(x in l for x in ("tol", "tolerance", "公差", "枠")):
+                return True
+            raw_t = str(getattr(e, "properties", {}).get("text") or getattr(e, "properties", {}).get("value") or "").strip()
+            if not raw_t:
+                return False
+
+            # Live dynamic Vault rules (Pillar 1: Vault-to-Runtime Sync)
+            from ...knowledge.vault_sync import VaultSyncManager
+            vault_sync = VaultSyncManager.get_instance()
+            vault_patterns = vault_sync.get_surface_roughness_patterns()
+            vault_keywords = vault_sync.get_tolerance_keywords()
+
+            for pat in vault_patterns:
+                if re.search(pat, raw_t, re.IGNORECASE):
+                    return True
+            norm_t = raw_t.lower().replace(" ", "")
+            return any(k in norm_t for k in vault_keywords)
+
         result = [
             e for e in result
             if not _is_bom_layer(getattr(e, "layer", "") or "")
             and not _is_title_layer(getattr(e, "layer", "") or "")
+            and not _is_tolerance_layer_or_text(e)
         ]
 
         # Third safety net: exclude entities whose text exactly matches a value already
@@ -461,10 +586,26 @@ async def generate_deterministic_candidates(
         f"rev: {len(rev_entities)} → {len(filtered_rev_entities)} (notes={len(rev_notes_entities)}, iso={len(rev_iso_entities)})"
     )
 
-    # Perform comparison/diffing on notes, iso views and drawing views
-    notes_markings = SpatialDiffer.diff_views(ref_notes_entities, rev_notes_entities, category="notes_section")
-    iso_markings = SpatialDiffer.diff_views(ref_iso_entities, rev_iso_entities, category="isometric_view")
-    clean_markings = SpatialDiffer.diff_views(filtered_ref_entities, filtered_rev_entities, category="drawing_views")
+    # Perform comparison/diffing on notes, iso views and drawing views.
+    #
+    # render_bounds is passed so matching runs in each drawing's own normalized frame. The
+    # two sides are NOT necessarily in the same coordinate space: a DXF without a paper-space
+    # viewport stays in model units while one with a viewport is projected to paper units.
+    # Measured on the M7452A0N01 pair that is a 2.500x scale difference, which a
+    # translation-only pre-alignment cannot absorb -- it emitted unchanged title-block text as
+    # REMOVED on one side and ADDED on the other. See spatial_differ's module header.
+    notes_markings = SpatialDiffer.diff_views(
+        ref_notes_entities, rev_notes_entities, category="notes_section",
+        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
+    )
+    iso_markings = SpatialDiffer.diff_views(
+        ref_iso_entities, rev_iso_entities, category="isometric_view",
+        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
+    )
+    clean_markings = SpatialDiffer.diff_views(
+        filtered_ref_entities, filtered_rev_entities, category="drawing_views",
+        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
+    )
 
     # Sub-item taxonomy tagging (docs/checklist-taxonomy-grouping-implementation-plan.md,
     # Phase 2) — heuristic, text-only classification; see feature_classifier.py for what
@@ -481,120 +622,22 @@ async def generate_deterministic_candidates(
     clean_markings.extend(notes_markings)
     clean_markings.extend(iso_markings)
 
-    # -----------------------------------------------------------------------
+    # Collapse content that was diffed against two different pools and therefore reported
+    # twice -- once as REMOVED from where it used to sit, once as ADDED where it now sits.
+    # This has to run after the three lists are combined, because the two halves of such a
+    # pair are by definition in different lists. It also runs after feature classification so
+    # the surviving marking keeps the label its category earned.
+    # See marking_reconciler for why unambiguous pairs only.
+    before_count = len(clean_markings)
+    clean_markings = reconcile_relocated_markings(clean_markings)
+    if len(clean_markings) != before_count:
+        logger.info(
+            f"Marking reconciliation: {before_count} -> {len(clean_markings)} findings "
+            f"({(before_count - len(clean_markings))} relocated REMOVED/ADDED pairs merged)."
+        )
+
     # Structured key-value extraction for Title Upper Left (top-left metadata)
-    # This ensures we produce ONE marking per field (on the value row only,
-    # not on static header labels) and route them under title_block.
-    # -----------------------------------------------------------------------
-    def extract_title_ul_kv(entities: list, bbox) -> list:
-        """Spatially pair header/label texts with their value texts inside bbox.
-        DXF uses Y-up coordinates — larger Y is physically higher on the sheet.
-        Headers sit ABOVE values, so headers have larger Y values.
-        Returns list of {key, value, coords} dicts sorted left-to-right.
-        """
-        import unicodedata as _ud
-        def _ul_norm(t: str) -> str:
-            """NFKC normalize, lowercase, collapse whitespace (matches zone_detector._norm)."""
-            t = _ud.normalize("NFKC", t or "").strip().lower()
-            import re as _re
-            return _re.sub(r"\s+", " ", t)
-
-        if not bbox:
-            return []
-        inside = [
-            e for e in entities
-            if getattr(e, 'entity_type', '') in ('text', 'mtext', 'attrib')
-            and is_in_bbox(e, bbox)
-        ]
-        if not inside:
-            return []
-
-        # Filter out isolated grid markings that drifted into the UL zone
-        def is_grid_label(e):
-            t = (getattr(e, 'properties', {}) or {}).get('text', '').strip()
-            # If it's a single character or encircled number, it's a grid label
-            if len(t) <= 1 or any(c in t for c in "①②③④⑤⑥⑦⑧⑨⑩⑪⑫"):
-                # And it's far to the left (X < 15) or high up (Y > 285)
-                vx = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[0]
-                vy = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[1]
-                if vx < 25.0 or vy > 285.0:
-                    return True
-            return False
-
-        inside = [e for e in inside if not is_grid_label(e)]
-        if not inside:
-            return []
-
-        # DXF is Y-up: sort DESCENDING so bands[0] = largest Y = topmost row = headers
-        inside.sort(key=lambda x: getattr(x, 'geometry', {}).get('insert', [0, 0, 0])[1], reverse=True)
-        bands: list[list] = []
-        current_band = []
-        for e in inside:
-            if not current_band:
-                current_band.append(e)
-            else:
-                prev_y = getattr(current_band[-1], 'geometry', {}).get('insert', [0, 0, 0])[1]
-                ey = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[1]
-                # 1.5 units is a tight enough tolerance to safely separate English/Japanese stacked headers
-                if abs(prev_y - ey) <= 1.5:
-                    current_band.append(e)
-                else:
-                    bands.append(current_band)
-                    current_band = [e]
-        if current_band:
-            bands.append(current_band)
-
-        if len(bands) < 2:
-            return []
-
-        # The bottommost band (smallest Y in Y-up layout) is the values band
-        value_band = sorted(bands[-1], key=lambda e: getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[0])
-        # All bands above the bottommost are header bands
-        header_bands = bands[:-1]
-
-        # Estimate a reasonable max pairing distance as half the band width
-        all_xs = [getattr(e, 'geometry', {}).get('insert', [0])[0] for e in inside]
-        band_width = (max(all_xs) - min(all_xs)) if len(all_xs) > 1 else 9999.0
-        max_pair_dist = max(band_width / max(len(value_band), 1) * 1.5, 30.0)
-
-        # Pair each value with the spatially closest header in each upper band
-        pairs = []
-        for val_e in value_band:
-            vx = getattr(val_e, 'geometry', {}).get('insert', [0, 0, 0])[0]
-            vy = getattr(val_e, 'geometry', {}).get('insert', [0, 0, 0])[1]
-            val_text = (getattr(val_e, 'properties', {}) or {}).get('text', '').strip()
-            if not val_text or len(val_text) <= 0:
-                continue
-
-            header_parts = []
-            for hband in header_bands:
-                closest_hdr = min(
-                    hband,
-                    key=lambda h: abs(getattr(h, 'geometry', {}).get('insert', [0, 0, 0])[0] - vx),
-                    default=None
-                )
-                if closest_hdr:
-                    dist = abs(getattr(closest_hdr, 'geometry', {}).get('insert', [0, 0, 0])[0] - vx)
-                    if dist <= max_pair_dist:
-                        hdr_text = (getattr(closest_hdr, 'properties', {}) or {}).get('text', '').strip()
-                        # Avoid duplicate labels or numeric junk in header
-                        if hdr_text and hdr_text not in header_parts and not hdr_text.isdigit():
-                            header_parts.append(hdr_text)
-
-            # Put English labels first, then Japanese (reverse order of top-to-bottom bands)
-            header_parts.reverse()
-            # Remove index numbers (like circle numbers ①) from header label keys
-            header_parts = [
-                p for p in header_parts 
-                if not (p.startswith('①') or p.startswith('②') or p.startswith('③') or p.startswith('④') or p.strip().isdigit())
-            ]
-
-            combined_key = " / ".join(header_parts) if header_parts else "Value"
-            pairs.append({'key': combined_key, 'value': val_text, 'coords': [vx, vy]})
-        return pairs
-
-    ref_title_ul_pairs = extract_title_ul_kv(ref_entities, ref_title_ul_bbox_raw)
-    rev_title_ul_pairs = extract_title_ul_kv(rev_entities, rev_title_ul_bbox_raw)
+    # (ref_title_ul_pairs and rev_title_ul_pairs were extracted earlier above)
 
     import unicodedata as _ud2
     import re as _re2
@@ -825,8 +868,9 @@ async def perform_drawing_comparison(
     reuse it too. Output here is unchanged from before that extraction (Phase 2 of
     docs/hybrid-comparison-engine-implementation-plan.md).
     """
-    # Check cache first
-    cached_payload = ComparisonCacheManager.get_cached_comparison(
+    # Check cache first (unless force_refresh is requested)
+    force_refresh = getattr(request, "force_refresh", False)
+    cached_payload = None if force_refresh else ComparisonCacheManager.get_cached_comparison(
         ref_drawing_id=str(ref_drawing.id),
         rev_drawing_id=str(rev_drawing.id),
         ref_hash=ref_drawing.file_hash,

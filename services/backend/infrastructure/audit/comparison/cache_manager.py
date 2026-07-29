@@ -23,15 +23,62 @@ class ComparisonCacheManager:
     # rag/rag_ai/ai_vision are unaffected by this change but share the version lever;
     # their cached entries are also byte-identical to what today's code would produce
     # anyway, so the extra invalidation is harmless, not just unavoidable.
-    # v4: this time all four methods genuinely change output for the same inputs.
-    # orchestrator.py::generate_deterministic_candidates now excludes entities whose
-    # text matches an already-extracted title-block/BOM value (previously these could
-    # leak into drawing_views/notes_section/isometric_view as duplicate, wrongly-
-    # categorized findings) — affects `rag` directly and hybrid's Generator A.
-    # full_ai_orchestrator.py's shared system instruction (build_full_system_
-    # instruction) gained explicit categorization-discipline and value-not-label
-    # marking rules — affects `rag_ai`/`ai_vision` directly and hybrid's Generator B.
-    COMPARISON_CACHE_VERSION = "v4"
+    # v7: Added MAP, Part No. anchors to title_upper_left in zone_detector.py to exclude top-left administrative table (45 | 2A0 | 4 | 0) from drawing_views.
+    # v8: zone_detector._expand_bbox now clamps the padded box back inside max_w/max_h.
+    # Padding was previously applied *after* the growth loop returned, so every
+    # content-aware zone came out up to 2*BBOX_PADDING oversized in each axis and
+    # ZONE_MAX_LIMITS were not actually limits (measured: `title` at 39.1% of sheet height
+    # against a declared 35% ceiling). Zone geometry changed on every drawing in the corpus
+    # -- mean area fell 22.9%->17.4% for `title`, 27.8%->13.8% for `notes` -- and those boxes
+    # feed BOM row extraction, category assignment in result_parser, safe-zone exclusion and
+    # crop-verifier tiles. Every cached comparison therefore predates the corrected geometry.
+    # v9: hand-aligned zone templates now actually apply. The resolver previously failed to
+    # import (relative path one level too shallow) and the caller swallowed it, so every v8
+    # entry was computed with detection only. It also lacked the CAD Y flip, which would have
+    # mirrored every pinned zone, and converted fractions against the detected geometry frame
+    # rather than render_bounds. All three are fixed and templates are wired into all four
+    # orchestrators, so v8 results do not reflect any pinned zone.
+    # v10: ELLIPSE and SPLINE are now ingested (entity_mapper.map_any had no branch for
+    # either and returned None, so both were dropped at extraction -- 111 ellipses and 46
+    # splines across the 6-drawing corpus, every one of them on a drawing carrying an
+    # isometric view; 38 of the 42 entities in one such view). Two things change for any
+    # cached pair: the comparison engine now sees geometry it was previously blind to, so
+    # those features can be reported as ADDED/REMOVED/CHANGED for the first time, and
+    # zone_detector now resolves `iso` geometrically from ellipse density instead of
+    # falling back to a percentage-grid guess on every drawing. That moves the `iso` box
+    # and, because `views` is derived by exclusion, the `views` box with it.
+    # v11: `views` became templatable, and a pinned `bom` now grows against a content-aware
+    # detection instead of overwriting it. Both change zone geometry. The bom overwrite was
+    # actively lossy -- a template aligned on a one-row BOM clipped the extra rows off any
+    # later drawing, dropping them from BOM extraction silently -- so cached results for any
+    # pair using a pinned template can be missing BOM rows entirely. Pinned `views` also
+    # changes sub-view clustering and drawing_views coordinate resolution, both of which now
+    # subtract the sibling zones via zone_detector.views_exclusions().
+    # v12: SpatialDiffer matches in a normalized frame (each drawing's own render_bounds)
+    # instead of raw CAD units. The two sides of a comparison are not necessarily in the same
+    # coordinate space -- a DXF without a paper-space viewport stays in model units while one
+    # with a viewport is projected to paper units. Measured on the M7452A0N01 pair that is a
+    # 2.500x scale difference, and since the old pre-alignment estimated a translation only,
+    # unchanged title-block text was emitted as REMOVED on one side and ADDED on the other.
+    # Every cached result for a pair whose two drawings differ in scale contains those false
+    # findings, so all of them predate a correct diff.
+    # v13: unambiguous REMOVED/ADDED pairs of identical text are collapsed into a single
+    # MATCHED finding (marking_reconciler). The zone partition is computed independently for
+    # each drawing, so the same line of text can fall inside the notes box on one side and
+    # outside it on the other; it is then diffed against two pools that cannot contain it and
+    # reported twice. Measured on the M7452A0N01 pair, 21 of 38 findings were ADDED/REMOVED
+    # and 12 of those were six unchanged items counted twice. Cached results predate the
+    # collapse and contain those duplicates.
+    # v14: Shift-JIS characters whose CP932 trail byte is `\`, `{`, `}` or `~` are no longer
+    # mutilated by MTEXT markup stripping (utils/text.py::strip_mtext). Markup was being
+    # stripped from the byte-preserving string, before transcode_value decodes it, so e.g.
+    # 施 (0x8E 0x7B) lost its trail byte to the `{` strip. Confirmed byte-for-byte against
+    # the corruption stored in the database: 素材調質施工 -> 素材調質詩H.
+    # This changes zone detection as well as text: ZONE_ANCHORS["tolerance"] contains
+    # 表示外公差, which was stored as 侮ｦ外公差 and could never match, so the tolerance zone
+    # resolved differently. NOTE this is an INGESTION fix -- drawings already extracted still
+    # hold the corrupted text and must be re-ingested; the cache bump alone is not enough.
+    COMPARISON_CACHE_VERSION = "v14"
 
     @staticmethod
     def _get_cache_path(
