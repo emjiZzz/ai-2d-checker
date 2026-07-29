@@ -104,16 +104,18 @@ export const RoomsView: React.FC = () => {
               Initialize CAD revision comparison sessions, assign reference drawings, and trigger automated AI compliance checks.
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <Button
-              variant="primary"
-              className="rounded-xl shadow-lg shadow-accent-cyan/20 hover:shadow-accent-cyan/30 transition-all font-bold text-xs sm:text-sm px-7 h-11 inline-flex items-center justify-center text-center gap-2 min-w-[160px]"
-              onClick={() => setIsCreating(true)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-              <span className="text-center font-bold">Create Room</span>
-            </Button>
-          </div>
+          {rooms.length > 0 && (
+            <div className="flex items-center gap-3 shrink-0">
+              <Button
+                variant="primary"
+                className="rounded-xl shadow-lg shadow-accent-cyan/20 hover:shadow-accent-cyan/30 transition-all font-bold text-xs sm:text-sm px-7 h-11 inline-flex items-center justify-center text-center gap-2 min-w-[160px]"
+                onClick={() => setIsCreating(true)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                <span className="text-center font-bold">Create Room</span>
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* ── Fully custom Create Room dialog ── */}
@@ -243,21 +245,21 @@ export const RoomsView: React.FC = () => {
                     <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)" }}>COMPARISON ENGINE</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 99, padding: "2px 8px" }}>DEV</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, background: "var(--bg-dark)", borderRadius: 20, padding: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
                     {/* RAG */}
                     <button
                       type="button"
                       id="method-rag"
                       onClick={() => setComparisonMethod("rag")}
                       style={{
-                        background: comparisonMethod === "rag" ? "var(--bg-sidebar)" : "transparent",
-                        border: comparisonMethod === "rag" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
-                        borderRadius: 10, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "rag" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                        background: comparisonMethod === "rag" ? "var(--bg-sidebar)" : "var(--bg-dark)",
+                        border: comparisonMethod === "rag" ? "1.5px solid #7c3aed" : "1.5px solid var(--border-color)",
+                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
+                        boxShadow: comparisonMethod === "rag" ? "0 2px 8px rgba(124,58,237,0.15)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag" ? "#7c3aed" : "#a78bfa"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                       <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag" ? "var(--text-primary)" : "var(--text-muted)" }}>RAG</span>
                       <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>SpatialDiffer + BOM</span>
                     </button>
@@ -267,14 +269,14 @@ export const RoomsView: React.FC = () => {
                       id="method-rag-ai"
                       onClick={() => setComparisonMethod("rag_ai")}
                       style={{
-                        background: comparisonMethod === "rag_ai" ? "var(--bg-sidebar)" : "transparent",
-                        border: comparisonMethod === "rag_ai" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
-                        borderRadius: 10, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "rag_ai" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                        background: comparisonMethod === "rag_ai" ? "var(--bg-sidebar)" : "var(--bg-dark)",
+                        border: comparisonMethod === "rag_ai" ? "1.5px solid #0284c7" : "1.5px solid var(--border-color)",
+                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
+                        boxShadow: comparisonMethod === "rag_ai" ? "0 2px 8px rgba(2,132,199,0.15)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag_ai" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag_ai" ? "#0284c7" : "#7dd3fc"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
                       <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag_ai" ? "var(--text-primary)" : "var(--text-muted)" }}>RAG + AI</span>
                       <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Gemini (PNG+JSON)</span>
                     </button>
@@ -284,14 +286,14 @@ export const RoomsView: React.FC = () => {
                       id="method-ai-vision"
                       onClick={() => setComparisonMethod("ai_vision")}
                       style={{
-                        background: comparisonMethod === "ai_vision" ? "var(--bg-sidebar)" : "transparent",
-                        border: comparisonMethod === "ai_vision" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
-                        borderRadius: 10, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "ai_vision" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                        background: comparisonMethod === "ai_vision" ? "var(--bg-sidebar)" : "var(--bg-dark)",
+                        border: comparisonMethod === "ai_vision" ? "1.5px solid #059669" : "1.5px solid var(--border-color)",
+                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
+                        boxShadow: comparisonMethod === "ai_vision" ? "0 2px 8px rgba(5,150,105,0.15)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "ai_vision" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "ai_vision" ? "#059669" : "#6ee7b7"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                       <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "ai_vision" ? "var(--text-primary)" : "var(--text-muted)" }}>AI Vision</span>
                       <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Gemini (PNG Only)</span>
                     </button>
@@ -301,14 +303,14 @@ export const RoomsView: React.FC = () => {
                       id="method-hybrid"
                       onClick={() => setComparisonMethod("hybrid")}
                       style={{
-                        background: comparisonMethod === "hybrid" ? "var(--bg-sidebar)" : "transparent",
-                        border: comparisonMethod === "hybrid" ? "1.5px solid var(--border-color)" : "1.5px solid transparent",
-                        borderRadius: 10, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "hybrid" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                        background: comparisonMethod === "hybrid" ? "var(--bg-sidebar)" : "var(--bg-dark)",
+                        border: comparisonMethod === "hybrid" ? "1.5px solid #ea580c" : "1.5px solid var(--border-color)",
+                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
+                        boxShadow: comparisonMethod === "hybrid" ? "0 2px 8px rgba(234,88,12,0.15)" : "none",
                         transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                       }}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "hybrid" ? "#7c3aed" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "hybrid" ? "#ea580c" : "#fdba74"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
                       <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "hybrid" ? "var(--text-primary)" : "var(--text-muted)" }}>HYBRID</span>
                       <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>2 gens + verify</span>
                     </button>
@@ -343,7 +345,7 @@ export const RoomsView: React.FC = () => {
                 >
                   Create &amp; Open
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                    <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                   </svg>
                 </button>
               </div>

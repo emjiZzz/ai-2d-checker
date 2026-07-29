@@ -415,10 +415,10 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                     size="icon" 
                     onClick={() => setIsViewMenuOpen(!isViewMenuOpen)} 
                     title="More Options"
-                    className={`focus:outline-none focus-visible:outline-none focus-visible:ring-0 ${
-                      showMinimap || isViewMenuOpen 
+                    className={`focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors ${
+                      isViewMenuOpen 
                         ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10" 
-                        : "text-text-muted hover:text-text-primary"
+                        : "text-text-muted hover:text-text-primary border-transparent hover:bg-sidebar-item-hover"
                     }`}
                   >
                     <MoreVertical size={18} />
