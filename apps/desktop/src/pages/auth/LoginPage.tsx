@@ -1,6 +1,7 @@
 import React, { useState } from "react";
+import kmtiLogo from "../../assets/kmti_logo.png";
 import { useAuthStore } from "../../stores/authStore";
-import { KeyRound, ShieldAlert, User, Box, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { KeyRound, ShieldAlert, User, Eye, EyeOff, ArrowRight } from "lucide-react";
 
 export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -25,9 +26,7 @@ export const LoginPage: React.FC = () => {
         <div className="w-full max-w-[420px] bg-bg-card rounded-2xl p-8 sm:p-10 shadow-xl border border-border-color z-10 animate-fade-in">
           {/* Logo Header */}
           <div className="flex flex-col items-center text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center text-accent-cyan shadow-lg shadow-accent-cyan/10 mb-5">
-              <Box size={28} strokeWidth={1.75} />
-            </div>
+            <img src={kmtiLogo} alt="KMTI Logo" className="w-16 h-16 object-contain mb-5 shrink-0" />
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text-primary mb-1">
               AI-2D-Checker
             </h1>

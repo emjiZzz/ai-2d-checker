@@ -84,7 +84,13 @@ def inject_title_block_markings(
         "DESIGNED": " DESIGNED",
         "DRAWN": " DRAWN",
         "SCALE": " SCALE",
-        "NAME": " TITLE",
+        # Was keyed "NAME" while extract_title_block returns "TITLE" -- the lookup missed on
+        # every drawing, so the title read NONE vs NONE and no marking was ever emitted for it.
+        # The title block's 名称 cell holds two ruled rows; each is compared on its own so a
+        # change to one is not hidden by the other matching.
+        "TITLE": " TITLE",
+        "TITLE SUB": " TITLE (2nd line)",
+        "DATE": " Y/M/D (Date of Creation)",
         "JOB NO": " Job No.",
         "STD NO": " Std. No.",
         "STANDARD": " Standard",
@@ -104,7 +110,12 @@ def inject_title_block_markings(
         "DESIGNED": "designed",
         "DRAWN": "drawn",
         "SCALE": "scale",
-        "NAME": "machine_name",
+        # Both 名称 rows group under machine_name: they are two rows of ONE field, and the
+        # taxonomy's other title-block name key (line_name) is in DEFERRED_FEATURES, which the
+        # frontend renders as "not yet supported" -- claiming it here would misreport the row.
+        "TITLE": "machine_name",
+        "TITLE SUB": "machine_name",
+        "DATE": "creation_date",
         "JOB NO": "job_number",
         "REVISION CODE": "revision_code",
     }

@@ -6,6 +6,7 @@ from typing import Optional, Tuple, List, Any
 from ...utils.text import safe_decode, strip_mtext
 from .table_extractor import extract_bom_table
 from .title_block_extractor import extract_title_block
+from .anchors import marker_anchor, entity_is_centered
 
 def find_drawing_text_coordinates(
     entities: list,
@@ -29,27 +30,18 @@ def find_drawing_text_coordinates(
         res = {"coords": None, "bbox": None}
         if bbox:
             try:
-                xmin, ymin = bbox[0]
-                xmax, ymax = bbox[1]
-                box_height = ymax - ymin
-                res["coords"] = [xmax + (height * 0.4), ymin + (box_height / 2.0)]
+                res["coords"] = marker_anchor(bbox=bbox)
                 res["bbox"] = bbox
-                return res
+                if res["coords"]:
+                    return res
             except Exception:
                 pass
-        text_len = len(e.properties.get("text", "")) if getattr(e, "properties", None) else 0
-        estimated_width = text_len * height * 0.6
-        is_dim = getattr(e, "entity_type", "") == "dimension"
-        
-        halign = e.properties.get("halign", 0) if getattr(e, "properties", None) else 0
-        attachment_point = e.properties.get("attachment_point", 0) if getattr(e, "properties", None) else 0
-        is_center_aligned = (halign in [1, 4]) or (attachment_point in [2, 5, 8])
-        
-        is_centered = is_dim or is_center_aligned
+        text = e.properties.get("text", "") if getattr(e, "properties", None) else ""
+        is_centered = entity_is_centered(e)
+        estimated_width = len(text) * height * 0.6
         offset_x = (estimated_width / 2.0) if is_centered else estimated_width
-        padding = height * 0.4
-        
-        res["coords"] = [ins[0] + offset_x + padding, ins[1] + (height / 2.0)]
+
+        res["coords"] = marker_anchor(insert=ins, height=height, text=text, is_centered=is_centered)
         res["bbox"] = [[ins[0] - (offset_x if is_centered else 0), ins[1] - (height / 2.0)], [ins[0] + offset_x, ins[1] + (height * 1.5)]]
         return res
 

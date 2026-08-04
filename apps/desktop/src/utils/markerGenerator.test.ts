@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { generateComparisonMarkings } from './markerGenerator';
+import { generateComparisonMarkings, markerAnchor } from './markerGenerator';
+
+describe('markerAnchor', () => {
+  // Mirrors tests/test_extraction_logic.py::test_marker_anchor_is_the_centre_of_the_text.
+  // renderEntities.ts draws the glyph with textAlign='center'/textBaseline='middle' at this
+  // coordinate, so it must be the text's centre — the old formula put it a character-width
+  // past the right edge, carrying the tick clear of long values.
+  it('returns the centre of the bbox when one is present', () => {
+    expect(markerAnchor({ bbox: [[10, 20], [30, 40]] })).toEqual([20, 30]);
+  });
+
+  it('estimates the centre from the insert point when there is no bbox', () => {
+    expect(markerAnchor({ x: 10, y: 20, height: 6, text: 'ABCD' })).toEqual([17.2, 23]);
+  });
+
+  it('falls back to the insert estimate when the bbox is malformed', () => {
+    expect(markerAnchor({ bbox: [[NaN, 20], [30, 40]], x: 10, y: 20, height: 6, text: 'ABCD' }))
+      .toEqual([17.2, 23]);
+  });
+
+  it('returns undefined when there is nothing to anchor to', () => {
+    expect(markerAnchor({})).toBeUndefined();
+  });
+});
 
 describe('markerGenerator tests', () => {
   it('assigns correct pen types and statuses based on values', () => {

@@ -176,7 +176,28 @@ class ComparisonCacheManager:
     # (dx_tol=22) and reads its real value, surfacing a 2589 -> 9324 change that previously read
     # NONE vs NONE. Corroboration of a short (<=3 char) title value now requires an exact
     # whole-string hit, so "1" can no longer be corroborated by the "1" inside "M7452A1N01".
-    COMPARISON_CACHE_VERSION = "v32"
+    # v33: the geometry pass added in v15 is REMOVED (geometry_differ.py deleted, all three
+    # call sites gone). Findings like "Geometry: 10 line" name a count and a primitive type but
+    # no engineering content, so a checker cannot act on them and they crowded out the text
+    # findings. Every cached result carries them; this bump drops them. Known cost, accepted:
+    # a zone present on only one sheet and carrying no text again reports nothing, because
+    # diff_views returns [] when either pool is empty. See v15's note for what was lost.
+    # v34: three new title-block comparisons. (a) TITLE is read from the cell BESIDE its label
+    # and split per ruled row -- the old 'below' search walked into the drawing-number cell and
+    # returned 'M7452A1N01' as the title. (b) The two 名称 rows are compared separately, so a
+    # change confined to the upper row is not merged with a matching lower row. (c) DATE
+    # (作成年月日 / Y/M/D) is extracted and compared for the first time, under a new
+    # `creation_date` taxonomy feature. Also fixes field_labels_map keying the title as "NAME"
+    # while the extractor returns "TITLE" -- the lookup missed on every drawing, so the title
+    # produced no marking at all. Cached results are missing all three findings.
+    # v35: every marker anchor is now the CENTRE of the text it marks, not a character-width
+    # past its right edge. renderEntities.ts draws the glyph centred on the coordinate, so the
+    # old offset carried the tick off the end of long values and, in the title block, outside
+    # the ruled cell the value lives in -- so it appeared to annotate whatever sat to the right.
+    # The formula was hand-copied to 12 places in Python and 8 in TypeScript; it now lives in
+    # bom/anchors.py::marker_anchor and markerGenerator.ts::markerAnchor. Cached results carry
+    # the old coordinates for every finding.
+    COMPARISON_CACHE_VERSION = "v35"
 
     @staticmethod
     def _get_cache_path(

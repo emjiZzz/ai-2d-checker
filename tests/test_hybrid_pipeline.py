@@ -525,12 +525,12 @@ def _label_entity(text, x, y, w=10.0, h=4.0):
 
 
 def test_harden_value_only_coordinates_nulls_coordinate_coincident_with_label():
-    # "SCALE" label anchor (bbox-based formula): [x + bbox_w + height*0.8, y + bbox_h/2]
-    # = [0 + 10 + 2.4, 0 + 2.0] = [12.4, 2.0]
+    # "SCALE" label anchor is the CENTRE of its text (anchors.marker_anchor):
+    # bbox [[0, 0], [10, 4]] -> [(0 + 10) / 2, (0 + 4) / 2] = [5.0, 2.0]
     rev_entities = [_label_entity("SCALE", 0.0, 0.0)]
     ref_entities = [_label_entity("SCALE", 0.0, 0.0)]
     markings = [
-        {"category": "title_block", "coordinates": [12.4, 2.0], "ref_coordinates": [12.4, 2.0]},
+        {"category": "title_block", "coordinates": [5.0, 2.0], "ref_coordinates": [5.0, 2.0]},
     ]
     harden_value_only_coordinates(markings, ref_entities, rev_entities)
     assert markings[0]["coordinates"] is None
@@ -552,18 +552,18 @@ def test_harden_value_only_coordinates_ignores_non_title_block_bom_categories():
     rev_entities = [_label_entity("SCALE", 0.0, 0.0)]
     ref_entities = [_label_entity("SCALE", 0.0, 0.0)]
     markings = [
-        {"category": "drawing_views", "coordinates": [12.4, 2.0], "ref_coordinates": [12.4, 2.0]},
+        {"category": "drawing_views", "coordinates": [5.0, 2.0], "ref_coordinates": [5.0, 2.0]},
     ]
     harden_value_only_coordinates(markings, ref_entities, rev_entities)
-    assert markings[0]["coordinates"] == [12.4, 2.0]
-    assert markings[0]["ref_coordinates"] == [12.4, 2.0]
+    assert markings[0]["coordinates"] == [5.0, 2.0]
+    assert markings[0]["ref_coordinates"] == [5.0, 2.0]
 
 
 def test_harden_value_only_coordinates_applies_to_bill_of_materials_too():
     rev_entities = [_label_entity("Q'ty", 0.0, 0.0)]
     ref_entities = [_label_entity("Q'ty", 0.0, 0.0)]
     markings = [
-        {"category": "bill_of_materials", "coordinates": [12.4, 2.0], "ref_coordinates": None},
+        {"category": "bill_of_materials", "coordinates": [5.0, 2.0], "ref_coordinates": None},
     ]
     harden_value_only_coordinates(markings, ref_entities, rev_entities)
     assert markings[0]["coordinates"] is None

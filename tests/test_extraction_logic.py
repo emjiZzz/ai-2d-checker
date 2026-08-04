@@ -291,6 +291,34 @@ def test_grounded_ocr_value_is_still_trusted():
     assert fields["DWG NO"]["value"] == "M745227N01"
 
 
+def test_marker_anchor_is_the_centre_of_the_text():
+    """The marker glyph is drawn centred on this coordinate (renderEntities.ts uses
+    textAlign='center'/textBaseline='middle'), so the anchor must be the text's centre. It used
+    to sit a character-width past the right edge, which carries the tick off long values and,
+    in a title block, outside the value's own ruled cell."""
+    from services.backend.infrastructure.audit.bom.anchors import marker_anchor
+
+    assert marker_anchor(bbox=[[10, 20], [30, 40]]) == [20.0, 30.0]
+    # No bbox: estimate width from the text so the anchor still lands inside it, not at the edge.
+    assert marker_anchor(insert=[10, 20], height=6.0, text="ABCD") == [17.2, 23.0]
+    # Centred/middle-justified text already has its insert at the horizontal centre.
+    assert marker_anchor(insert=[10, 20], height=6.0, text="ABCD", is_centered=True) == [10.0, 23.0]
+    assert marker_anchor() is None
+
+
+def test_title_marker_anchors_sit_inside_the_value_they_mark():
+    """End-to-end: an anchor must land within its value's own bbox, not past its right edge."""
+    entities = [
+        MockEntity("text", "名 称", 297.3, 37.1, layer="WAKU", height=2.5),
+        MockEntity("text", "ロールカセット", 358.1, 40.5, layer="WAKU", height=4.7),
+    ]
+    value = entities[1]
+    (vx_min, vy_min), (vx_max, vy_max) = value.properties["bbox"]
+    ax, ay = extract_title_fields(entities)["TITLE"]["coordinates"]
+    assert vx_min <= ax <= vx_max, "anchor drifted outside the value horizontally"
+    assert vy_min <= ay <= vy_max, "anchor drifted outside the value vertically"
+
+
 class MockLine:
     """A ruled line of the title-block grid, as ezdxf reports it (start/end, no insert)."""
     def __init__(self, x1, y1, x2, y2, layer="WAKU"):
@@ -348,6 +376,58 @@ def test_job_no_reads_value_to_the_right_of_its_label():
     ]
     fields = extract_title_fields(entities)
     assert fields["JOB NO"]["value"] == "9324"
+
+
+def test_title_is_read_from_the_cell_beside_its_label_not_below():
+    """Regression: TITLE returned the DRAWING NUMBER on both sheets.
+
+    The 名称/TITLE value sits in the cell to the RIGHT of the label; the old 'below' search
+    walked down past the label into the drawing-number cell and picked 'M7452A1N01' as the
+    title. Geometry is the measured M7452A1N01 revision.
+    """
+    entities = [
+        MockEntity("text", "名 称", 297.3, 37.1, layer="WAKU", height=2.5),
+        MockEntity("text", "TITLE", 297.3, 31.0, layer="WAKU", height=2.5),
+        MockEntity("text", "ロールカセット 12\"ミル", 358.1, 40.5, layer="WAKU", height=4.7),
+        MockEntity("text", "基準スペーサー：3", 358.1, 32.5, layer="WAKU", height=6.5),
+        # The drawing number below the label -- what the old search wrongly returned.
+        MockEntity("text", "M7452A1N01", 311.5, 16.5, layer="WAKU", height=9.5),
+    ]
+    fields = extract_title_fields(entities)
+    assert fields["TITLE"]["value"] == "ロールカセット 12\"ミル"
+    assert fields["TITLE SUB"]["value"] == "基準スペーサー：3"
+
+
+def test_title_rows_are_reported_separately_and_in_order():
+    """The 名称 cell's two ruled rows are separate values, upper first.
+
+    Merging them (the old multiline path) means a change confined to one row cannot be told
+    apart from a rewrite of both -- on the measured pair the upper row changed while the lower
+    was byte-identical. Coordinates must differ too, or the two findings pin the same marker.
+    """
+    entities = [
+        MockEntity("text", "名 称", 297.3, 37.1, layer="WAKU", height=2.5),
+        MockEntity("text", "UPPER ROW", 358.1, 40.5, layer="WAKU", height=4.7),
+        MockEntity("text", "lower row", 358.1, 32.5, layer="WAKU", height=6.5),
+    ]
+    fields = extract_title_fields(entities)
+    assert fields["TITLE"]["value"] == "UPPER ROW"
+    assert fields["TITLE SUB"]["value"] == "lower row"
+    assert fields["TITLE"]["coordinates"] != fields["TITLE SUB"]["coordinates"]
+
+
+def test_date_anchors_on_the_title_block_ymd_not_the_amendment_table_header():
+    """'Y/M/D' appears twice: the amendment table's date column header and the title block's
+    own label. The title-block one is always the LOWER, so prefer_lowest_y is what keeps the
+    creation date from being read out of a revision-history row."""
+    entities = [
+        MockEntity("text", "Y/M/D", 350.5, 51.5, layer="WAKU", height=2.2),   # amendment header
+        MockEntity("text", "1999/01/01", 355.0, 47.0, layer="WAKU", height=2.0),  # its row value
+        MockEntity("text", "作成年月日", 276.9, 47.6, layer="WAKU", height=3.0),
+        MockEntity("text", "Y/M/D", 278.2, 44.6, layer="WAKU", height=2.0),   # title-block label
+        MockEntity("text", "2026/07/03", 282.0, 36.0, layer="WAKU", height=4.2),
+    ]
+    assert extract_title_fields(entities)["DATE"]["value"] == "2026/07/03"
 
 
 def test_extract_title_fields_native_blocks():

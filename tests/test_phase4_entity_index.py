@@ -229,7 +229,7 @@ def test_anchor_for_handle_matches_the_canonical_formula(index):
 
 
 def test_anchor_uses_bbox_when_present():
+    """The anchor is the CENTRE of the bbox — the marker glyph is drawn centred on it, so an
+    anchor past the right edge puts the tick clear of the text it marks (anchors.py)."""
     idx = EntityIndex([FakeEntity("B9", "text", "L", "v", (0, 0), bbox=[[10, 20], [30, 40]])])
-    anchor = idx.anchor_for("B9")
-    assert anchor[0] > 30, "anchor should sit past the right edge of the bbox"
-    assert 20 <= anchor[1] <= 40
+    assert idx.anchor_for("B9") == [20.0, 30.0]

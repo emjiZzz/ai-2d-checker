@@ -39,7 +39,6 @@ from .marking_builder import (
 )
 from .coordinate_resolver import resolve_marking_coordinates, harden_value_only_coordinates
 from .marking_reconciler import reconcile_relocated_markings
-from .geometry_differ import diff_geometry
 from .schemas import Coordinate2D, BoundingBox2D
 from .cache_manager import ComparisonCacheManager
 from .candidate import ComparisonCandidate
@@ -909,35 +908,17 @@ async def generate_deterministic_candidates(
     for m in iso_markings:
         m["feature"] = classify_iso_feature(m.get("text_content", ""), m.get("details", ""))
 
-    # Geometry, which the text differ cannot see at all: it pools on `entity_type == 'text'`,
-    # so a feature carrying no text was invisible to the audit. Same zone-scoped pools, so a
-    # shape is only ever compared against its own zone.
-    #
-    # `iso` is the case this exists for. The reference has no isometric view, so
-    # `ref_iso_entities` is empty -- and `diff_views` returns [] the moment either side is
-    # empty, which guaranteed zero findings for a wholly-added zone. `diff_geometry` does not
-    # bail on an empty side.
-    #
-    # Appended AFTER the classifiers above deliberately: those are text heuristics, and
-    # running them over a synthesized "Geometry: 30 ellipse, 17 line" string would overwrite
-    # the `geometry` feature these findings set for themselves.
-    notes_markings.extend(diff_geometry(
-        ref_notes_entities, rev_notes_entities, category="notes_section",
-        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
-    ))
-    iso_markings.extend(diff_geometry(
-        ref_iso_entities, rev_iso_entities, category="isometric_view",
-        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
-    ))
-    geometry_markings = diff_geometry(
-        filtered_ref_entities, filtered_rev_entities, category="drawing_views",
-        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
-    )
-
-    # Combine all visual checklist markings
+    # Bare geometry (lines, circles, arcs, ellipses, splines) is deliberately NOT compared.
+    # A `diff_geometry` pass existed here and was removed: clustering unmatched shapes produced
+    # findings like "Geometry: 10 line" that name a count and a primitive type but no engineering
+    # content, so a checker cannot act on them and they crowd out the text findings that are the
+    # checklist's actual substance. The known cost of removing it is that a zone present on only
+    # one sheet and carrying no text -- a wholly-added isometric view was the motivating case --
+    # reports nothing at all, because `diff_views` also returns [] the moment either pool is
+    # empty. That was judged the better trade: silence beats unactionable noise. If this is
+    # revisited, the finding needs to say what CHANGED, not how many primitives differ.
     clean_markings.extend(notes_markings)
     clean_markings.extend(iso_markings)
-    clean_markings.extend(geometry_markings)
 
     # Collapse content that was diffed against two different pools and therefore reported
     # twice -- once as REMOVED from where it used to sit, once as ADDED where it now sits.

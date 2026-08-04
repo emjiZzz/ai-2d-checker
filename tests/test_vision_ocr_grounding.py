@@ -152,9 +152,10 @@ def test_ocr_value_retention_on_grounding_miss():
     
     # OCR value must stand (not get replaced by heuristic value)
     assert res["DWG NO"]["value"] == "MI51100A01"
-    # Coordinates must fall back to the heuristic proximity search of "図面番号" -> Y=40
-    # With MockEntity default height 3.0 and no bbox, get_anchor falls back to [vx + 2.4, vy + 1.5]
-    assert res["DWG NO"]["coordinates"] == [102.4, 41.5]
+    # Coordinates must fall back to the heuristic proximity search of "図面番号" -> Y=40.
+    # No bbox on MockEntity, so marker_anchor() estimates the text CENTRE from the insert:
+    # x = 100 + len("MI511") * 3.0 * 0.6 / 2 = 104.5;  y = 40 + 3.0 / 2 = 41.5
+    assert res["DWG NO"]["coordinates"] == [104.5, 41.5]
 
 @patch("google.genai.Client")
 def test_partial_cache_hits_ocr_trigger(mock_client_class):

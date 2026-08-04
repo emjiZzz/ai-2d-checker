@@ -58,6 +58,7 @@ export const COMPARISON_TAXONOMY: Record<string, FeatureItem[]> = {
     { key: "machine_name", label: "Machine Name" },
     { key: "line_name", label: "Line Name" },
     { key: "scale", label: "Scale" },
+    { key: "creation_date", label: "Date of Creation" },
     { key: "designed", label: "Designed" },
     { key: "drawn", label: "Drawn" },
     { key: "quantity", label: "Quantity" },

@@ -75,6 +75,7 @@ TAXONOMY: dict[Category, list[FeatureItem]] = {
         FeatureItem("machine_name", "Machine Name"),
         FeatureItem("line_name", "Line Name"),
         FeatureItem("scale", "Scale"),
+        FeatureItem("creation_date", "Date of Creation"),
         FeatureItem("designed", "Designed"),
         FeatureItem("drawn", "Drawn"),
         FeatureItem("quantity", "Quantity"),

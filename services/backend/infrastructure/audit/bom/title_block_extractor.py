@@ -3,6 +3,7 @@ import math
 from typing import List, Optional
 from ...utils.text import safe_decode
 from .constants import map_signature_value
+from .anchors import marker_anchor, entity_is_centered
 
 # Label/boilerplate keyword list used to keep title-block field-name text from ever
 # being mistaken for a field's VALUE (see is_garbage_value below). Exported at module
@@ -61,7 +62,8 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
     native_fields = {
         "QTY": "NONE", "CROSS REF NO": "NONE", "PREVIOUS DWG NO": "NONE",
         "DESIGNED": "NONE", "DRAWN": "NONE", "SCALE": "NONE", "NAME": "NONE",
-        "TITLE": "NONE", "JOB NO": "NONE", "MACHINE CODE": "NONE",
+        "TITLE": "NONE", "TITLE SUB": "NONE", "DATE": "NONE",
+        "JOB NO": "NONE", "MACHINE CODE": "NONE",
         "DWG NO": "NONE", "UNIT NO": "NONE", "PART NO": "NONE",
         "STOCK QTY": "NONE", "STD NO": "NONE", "STANDARD": "NONE",
         "REVISION CODE": "NONE"
@@ -305,25 +307,22 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
                     if _separated_by_rule(lx, ly, vx, vy):
                         continue
                     dist = math.sqrt((4.0 * (vx - lx))**2 + (vy - ly)**2)
-                    h = e.properties.get("height", 3.0)
-                    bbox = e.properties.get("bbox")
-                    if bbox and len(bbox) >= 2:
-                        xmax, ymin, ymax = bbox[1][0], bbox[0][1], bbox[1][1]
-                        candidates.append((dist, decoded, [xmax + (h * 0.8), ymin + ((ymax - ymin) / 2.0)]))
-                    else:
-                        candidates.append((dist, decoded, [vx + (h * 0.8), vy + (h * 0.5)]))
+                    candidates.append((dist, decoded, marker_anchor(
+                        bbox=e.properties.get("bbox"), insert=(vx, vy),
+                        height=e.properties.get("height", 3.0), text=decoded,
+                        is_centered=entity_is_centered(e),
+                    )))
             elif direction == 'right':
                 effective_dy_tol = max(scaled_dy_tol, 25.0 * coord_scale)
                 if abs(vy - ly) <= effective_dy_tol and scaled_dy_min <= (vx - lx) <= scaled_dx_tol:
                     dist = math.sqrt((vx - lx)**2 + (4.0 * (vy - ly))**2)
-                    h = e.properties.get("height", 3.0)
-                    bbox = e.properties.get("bbox")
-                    if bbox and len(bbox) >= 2:
-                        xmax, ymin, ymax = bbox[1][0], bbox[0][1], bbox[1][1]
-                        candidates.append((dist, decoded, [xmax + (h * 0.8), ymin + ((ymax - ymin) / 2.0)]))
-                    else:
-                        candidates.append((dist, decoded, [vx + (h * 0.8), vy + (h * 0.5)]))
-                    
+                    candidates.append((dist, decoded, marker_anchor(
+                        bbox=e.properties.get("bbox"), insert=(vx, vy),
+                        height=e.properties.get("height", 3.0), text=decoded,
+                        is_centered=entity_is_centered(e),
+                    )))
+
+
         if not candidates:
             return "NONE", [lx, ly]
             
@@ -383,12 +382,10 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
                 if abs(vx - cx) <= max(2.0 * h, 6.0) and abs(vy - cy) <= 4.0 * h:
                     if decoded not in seen_texts:
                         seen_texts.add(decoded)
-                        bbox = e.properties.get("bbox")
-                        if bbox and len(bbox) >= 2:
-                            xmax, ymin, ymax = bbox[1][0], bbox[0][1], bbox[1][1]
-                            grouped_ents.append((vy, decoded, [xmax + (h * 0.8), ymin + ((ymax - ymin) / 2.0)]))
-                        else:
-                            grouped_ents.append((vy, decoded, [vx + (h * 0.8), vy + (h * 0.5)]))
+                        grouped_ents.append((vy, decoded, marker_anchor(
+                            bbox=e.properties.get("bbox"), insert=(vx, vy),
+                            height=h, text=decoded, is_centered=entity_is_centered(e),
+                        )))
         
         if not any(item[1] == closest_candidate[1] for item in grouped_ents):
             grouped_ents.append((cy, closest_candidate[1], closest_candidate[2]))
@@ -399,6 +396,76 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
             return merged_text, grouped_ents[0][2]
         else:
             return closest_candidate[1], closest_candidate[2]
+
+    def extract_stacked_values(label_patterns, dx_tol=85.0, dy_tol=10.0, max_lines=2):
+        """Values that sit in a cell BESIDE the label and are stacked into rows.
+
+        `extract_proximity_value` returns one value. The 名称 / TITLE cell holds a value per
+        ruled row -- an upper line naming the machine and a lower line naming the part -- and
+        merging them (the old `multiline=True` path) reports one blob, so a change confined to
+        one row cannot be told apart from a change to both. Measured on the M7452A1N01 pair the
+        upper row changed (`Roll Cassette 12" Mill` -> `ロールカセット 12"ミル`) while the lower row is
+        byte-identical (`基準スペーサー：3`); merged, that reads as a single wholesale rewrite.
+
+        Rows straddle the label vertically rather than sitting below it, so the search is a band
+        centred on the label extending to the RIGHT -- not a 'below' rectangle:
+
+            reference (coord_scale 1.80)  名称 (752.7, 93.3)  ->  dx +145.1 dy +5.9 / dx +144.5 dy -14.1
+            revision  (coord_scale 1.00)  名称 (297.3, 37.1)  ->  dx  +60.8 dy +3.4 / dx  +60.8 dy  -4.6
+
+        Returned top-to-bottom, so index 0 is always the upper row.
+        """
+        scaled_dx_tol = dx_tol * coord_scale
+        scaled_dy_tol = dy_tol * coord_scale
+
+        label_entities = []
+        for e in entities:
+            txt = e.properties.get("text", "").strip() if getattr(e, "properties", None) else ""
+            decoded = safe_decode(txt).strip()
+            norm_txt = txt.replace(" ", "").lower()
+            norm_dec = decoded.replace(" ", "").lower()
+            for pat in label_patterns:
+                norm_pat = pat.replace(" ", "").lower()
+                if norm_pat == norm_txt or norm_pat == norm_dec:
+                    label_entities.append(e)
+                    break
+        if not label_entities:
+            return []
+
+        # The label cell stacks its own text too (名称 above TITLE). Anchor on the TOPMOST, which
+        # is the one the value rows are centred on; anchoring on the lower English label would
+        # push the band down off the upper row.
+        def _y(ent):
+            return ((getattr(ent, "geometry", {}) or {}).get("insert") or [0, 0, 0])[1]
+        label_entities.sort(key=_y, reverse=True)
+        ins = (getattr(label_entities[0], "geometry", {}) or {}).get("insert") or [0, 0, 0]
+        lx, ly = ins[0], ins[1]
+
+        rows = []
+        for e in entities:
+            if e in label_entities:
+                continue
+            txt = e.properties.get("text", "").strip() if getattr(e, "properties", None) else ""
+            if not txt:
+                continue
+            decoded = safe_decode(txt).strip()
+            if is_garbage_value(decoded):
+                continue
+            e_ins = (getattr(e, "geometry", {}) or {}).get("insert") or [0, 0, 0]
+            vx, vy = e_ins[0], e_ins[1]
+            if not (0 < (vx - lx) <= scaled_dx_tol):
+                continue
+            if abs(vy - ly) > scaled_dy_tol:
+                continue
+            coords = marker_anchor(
+                bbox=e.properties.get("bbox"), insert=(vx, vy),
+                height=e.properties.get("height", 3.0) or 3.0, text=decoded,
+                is_centered=entity_is_centered(e),
+            )
+            rows.append((vy, decoded, coords))
+
+        rows.sort(key=lambda r: r[0], reverse=True)
+        return [(text, coords) for _y_, text, coords in rows[:max_lines]]
 
     import unicodedata
     def _normalize_for_match(text: str) -> str:
@@ -519,9 +586,30 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
     
     f_mach, mach_c = extract_proximity_value(["Mach. code", "Unit Code", "機器記号", "ユニット記号"], "below", prefer_lowest_y=True)
     f_dwg, dwg_c = resolve_field("DWG NO", ["DWG. No.", "図面番号", "図番"], "below", dx_tol=20.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
-    # TITLE is the one field that legitimately wraps to multiple lines (e.g. a product name
-    # over a sub-name), so it opts into line grouping. Every other field is single-value.
-    f_title, title_c = resolve_field("TITLE", ["TITLE", "名称", "品名"], "below", dx_tol=50.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True, multiline=True)
+
+    # TITLE occupies a cell BESIDE its label, split by a ruled horizontal into two rows. The old
+    # 'below' search read neither of them -- it walked down past the label into the drawing-number
+    # cell and returned 'M7452A1N01' as the title on both sheets. Reported per row so a change
+    # confined to one row stays legible; see extract_stacked_values for the measured geometry.
+    #
+    # Deliberately NOT routed through resolve_field/OCR. The OCR mapping carries a single TITLE
+    # string, and grounding it would collapse the two rows back into one value -- the exact thing
+    # this split exists to avoid. The spatial read is cell-bounded and correct on both sheets.
+    _title_rows = extract_stacked_values(["TITLE", "名称", "品名"], dx_tol=85.0, dy_tol=10.0, max_lines=2)
+    f_title, title_c = _title_rows[0] if len(_title_rows) > 0 else ("NONE", None)
+    f_title_sub, title_sub_c = _title_rows[1] if len(_title_rows) > 1 else ("NONE", None)
+
+    # DATE (作成年月日 / Y/M/D) sits directly below its label, like SCALE and DRAWN.
+    # Measured: reference Y/M/D (702.0, 112.2) -> '2010/09/13' dx=7.1 dy=26.9 at coord_scale 1.80;
+    # revision Y/M/D (278.2, 44.6) -> '2026/07/03' dx=3.8 dy=8.6 at 1.00.
+    #
+    # prefer_lowest_y is load-bearing: 'Y/M/D' appears TWICE on the sheet -- once as the amendment
+    # table's date column header (reference y=129.9, revision y=51.5) and once in the title block
+    # (y=112.2 / 44.6). The title-block one is always the lower, and anchoring on the amendment
+    # header instead would read a revision-history row as the creation date.
+    f_date, date_c = extract_proximity_value(
+        ["作成年月日", "Y/M/D"], "below", dx_tol=10.0, dy_tol=22.0, dy_min=1.0, prefer_lowest_y=True
+    )
     f_revision, revision_c = extract_proximity_value(["AMD.", "Design Chg No.", "訂正符号"], "below", prefer_highest_y=True)
 
     res = {
@@ -537,6 +625,8 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
         "MACHINE CODE": {"value": f_mach, "coordinates": mach_c},
         "DWG NO": {"value": f_dwg, "coordinates": dwg_c},
         "TITLE": {"value": f_title, "coordinates": title_c},
+        "TITLE SUB": {"value": f_title_sub, "coordinates": title_sub_c},
+        "DATE": {"value": f_date, "coordinates": date_c},
         "STOCK QTY": {"value": "NONE", "coordinates": None},
         "REVISION CODE": {"value": f_revision, "coordinates": revision_c}
     }

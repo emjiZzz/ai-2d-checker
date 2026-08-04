@@ -18,6 +18,39 @@ export interface RawViolation {
   feature?: string;
 }
 
+/**
+ * Centre of a piece of drawing text, in CAD units — where a marker glyph is drawn.
+ *
+ * `renderEntities.ts` fills the glyph with `textAlign='center'` / `textBaseline='middle'` at
+ * exactly this coordinate, so the coordinate IS the glyph's centre. The formula used to be
+ * `[bbox.xmax + height * 0.8, verticalCentre]`, putting the glyph a character-width PAST the
+ * text; on a long value that carries the tick clear of the data it refers to, and inside a
+ * title block it lands outside the value's own ruled cell.
+ *
+ * Mirror of `marker_anchor()` in
+ * services/backend/infrastructure/audit/bom/anchors.py — keep the two in step.
+ */
+export const markerAnchor = (ent: {
+  bbox?: any; x?: number; y?: number; height?: number; text?: string;
+}): [number, number] | undefined => {
+  const h = ent.height || 3.0;
+  if (Array.isArray(ent.bbox) && ent.bbox.length >= 2) {
+    try {
+      const [[xmin, ymin], [xmax, ymax]] = ent.bbox;
+      if ([xmin, ymin, xmax, ymax].every(v => typeof v === 'number' && Number.isFinite(v))) {
+        return [(xmin + xmax) / 2.0, (ymin + ymax) / 2.0];
+      }
+    } catch {
+      // fall through to the insert-based estimate
+    }
+  }
+  if (typeof ent.x !== 'number' || typeof ent.y !== 'number') return undefined;
+  // No bbox: estimate the width so the anchor still lands inside the text rather than at its
+  // left edge. The insert sits on the baseline, so the vertical centre is half a height up.
+  const width = (ent.text?.length ?? 0) * h * 0.6;
+  return [ent.x + width / 2.0, ent.y + h / 2.0];
+};
+
 export interface GeneratorParams {
   rawMarkings: RawViolation[];
   textEntities: EntityTextPayload[];
@@ -119,19 +152,8 @@ export const generateComparisonMarkings = ({
       let coordinates: [number, number] | undefined = undefined;
       let bbox: any = undefined;
       if (match) {
-        const h = match.height || 3.0;
-        if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) {
-          bbox = match.bbox;
-          try {
-            const [[, ymin], [xmax, ymax]] = match.bbox;
-            const hVal = match.height || (ymax - ymin) || 3.0;
-            coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
-          } catch {
-            coordinates = [match.x + h * 0.8, match.y + h * 0.5] as [number, number];
-          }
-        } else {
-          coordinates = [match.x + h * 0.8, match.y + h * 0.5] as [number, number];
-        }
+        if (match.bbox && Array.isArray(match.bbox) && match.bbox.length >= 2) bbox = match.bbox;
+        coordinates = markerAnchor(match);
       } else if (marking.coordinates && i === 0 && Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) {
         coordinates = [marking.coordinates[0], marking.coordinates[1]] as [number, number];
       } else if (marking.visual_bbox && i === 0 && drawing?.metadata?.render_bounds) {
@@ -141,19 +163,8 @@ export const generateComparisonMarkings = ({
       let ref_coordinates: [number, number] | undefined = undefined;
       let ref_bbox: any = undefined;
       if (refMatch) {
-        const h = refMatch.height || 3.0;
-        if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) {
-          ref_bbox = refMatch.bbox;
-          try {
-            const [[, ymin], [xmax, ymax]] = refMatch.bbox;
-            const hVal = refMatch.height || (ymax - ymin) || 3.0;
-            ref_coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
-          } catch {
-            ref_coordinates = [refMatch.x + h * 0.8, refMatch.y + h * 0.5] as [number, number];
-          }
-        } else {
-          ref_coordinates = [refMatch.x + h * 0.8, refMatch.y + h * 0.5] as [number, number];
-        }
+        if (refMatch.bbox && Array.isArray(refMatch.bbox) && refMatch.bbox.length >= 2) ref_bbox = refMatch.bbox;
+        ref_coordinates = markerAnchor(refMatch);
       } else if (marking.ref_coordinates && i === 0 && Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2) {
         ref_coordinates = [marking.ref_coordinates[0], marking.ref_coordinates[1]] as [number, number];
       } else if (marking.ref_visual_bbox && i === 0 && oldDrawing?.metadata?.render_bounds) {
@@ -171,8 +182,7 @@ export const generateComparisonMarkings = ({
           const identityMatches = findAllFuzzyMatches(marking.text_content, [closestEnt], preferModel, false, 80);
           const isLocked = refTextEntitiesWithMarkers.has(getCoordKey(closestEnt.x, closestEnt.y));
           if (identityMatches.length > 0 && !isLocked) {
-            const rh = closestEnt.height || 3.0;
-            ref_coordinates = [closestEnt.x + rh * 0.8, closestEnt.y + rh * 0.5] as [number, number];
+            ref_coordinates = markerAnchor(closestEnt);
             refTextEntitiesWithMarkers.add(getCoordKey(closestEnt.x, closestEnt.y));
           }
         }
@@ -190,21 +200,9 @@ export const generateComparisonMarkings = ({
         }
         // Recompute coordinates from loose match
         if (matches.length > 0) {
-          const m = matches[0];
-          const h = m.height || 3.0;
-          if (m.bbox && Array.isArray(m.bbox) && m.bbox.length >= 2) {
-            try {
-              const [[, ymin], [xmax, ymax]] = m.bbox;
-              const hVal = m.height || (ymax - ymin) || 3.0;
-              coordinates = [xmax + hVal * 0.8, ymin + ((ymax - ymin) / 2.0)] as [number, number];
-            } catch { coordinates = [m.x + h * 0.8, m.y + h * 0.5] as [number, number]; }
-          } else {
-            coordinates = [m.x + h * 0.8, m.y + h * 0.5] as [number, number];
-          }
+          coordinates = markerAnchor(matches[0]);
         } else if (refMatches.length > 0) {
-          const m = refMatches[0];
-          const h = m.height || 3.0;
-          ref_coordinates = [m.x + h * 0.8, m.y + h * 0.5] as [number, number];
+          ref_coordinates = markerAnchor(refMatches[0]);
           coordinates = ref_coordinates; // use ref position as proxy for rev canvas
         }
       }

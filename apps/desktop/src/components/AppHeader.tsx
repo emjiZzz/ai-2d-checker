@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Moon, Sun, LogOut, Minus, Square, X, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
+import kmtiLogo from "../assets/kmti_logo.png";
 import { useAuthStore } from "../stores/authStore";
 import { useThemeStore } from "../stores/themeStore";
 import { useNavStore } from "../stores/navStore";
@@ -89,9 +90,7 @@ export const AppHeader: React.FC = () => {
         data-tauri-drag-region
         className="flex items-center gap-3 px-3 h-full cursor-default"
       >
-        <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-accent-cyan/10 border border-accent-cyan/15">
-          <Box size={20} strokeWidth={1.75} className="text-accent-cyan" />
-        </div>
+        <img src={kmtiLogo} alt="KMTI Logo" className="h-9 w-auto object-contain shrink-0" />
         <span className="text-sm font-black tracking-wider uppercase text-text-primary">
           KMTI Checker
         </span>

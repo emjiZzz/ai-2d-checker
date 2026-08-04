@@ -3,6 +3,7 @@ import math
 from typing import List, Dict, Any, Optional
 from ..bom_analyzer import BOMAnalyzer
 from ..bom.title_block_extractor import TITLE_BLOCK_LABEL_KEYWORDS
+from ..bom.anchors import marker_anchor, entity_is_centered
 
 # BOM column header vocabulary (marking_builder.py's bom_cols display labels, English +
 # common Japanese variants) — used only by the Phase 7 value-only-coordinate safety net
@@ -28,14 +29,14 @@ def calc_anchor(e) -> list:
     height = e.properties.get("height", 3.0) if getattr(e, "properties", None) else 3.0
     bbox = e.properties.get("bbox", None) if getattr(e, "properties", None) else None
     if bbox and len(bbox) == 2:
-        try:
-            return [bbox[1][0] + 1.5, bbox[0][1] + (bbox[1][1] - bbox[0][1]) / 2.0]
-        except Exception:
-            pass
+        anchored = marker_anchor(bbox=bbox)
+        if anchored:
+            return anchored
     raw_text = e.properties.get("text", "") if getattr(e, "properties", None) else ""
     clean_text = _clean_text_for_anchor(raw_text)
-    clean_len = min(len(clean_text), 12)
-    return [ins[0] + (clean_len * height * 0.35) + 1.5, ins[1] + (height / 2.0)]
+    return marker_anchor(
+        insert=ins, height=height, text=clean_text[:12], is_centered=entity_is_centered(e)
+    ) or [ins[0], ins[1]]
 
 def resolve_marking_coordinates(
     clean_markings: List[Dict[str, Any]],
@@ -236,17 +237,20 @@ def _is_label_text(raw_text: str) -> bool:
 
 
 def _label_anchor(e) -> Optional[list]:
-    """Same anchor formula as calc_anchor() above — duplicated rather than shared so this
-    safety-net check stays self-contained and doesn't couple to calc_anchor()'s own
-    evolution (see Phase 7 completion log for the tradeoff)."""
+    """Where a title/BOM LABEL sits, for the value-only-coordinate safety net.
+
+    Shares `marker_anchor` with calc_anchor() rather than restating the formula. The comment
+    that used to justify duplicating it argued the safety net should not couple to
+    calc_anchor()'s evolution — but the two drifted anyway (`+1.5` here vs `+ height * 0.8`
+    there), which is the failure mode that argument was supposed to prevent. Both want the same
+    thing: the centre of the text.
+    """
     ins = getattr(e, "geometry", {}).get("location") or getattr(e, "geometry", {}).get("insert") or getattr(e, "geometry", {}).get("text_point") or [0, 0, 0]
-    height = e.properties.get("height", 3.0) if getattr(e, "properties", None) else 3.0
     bbox = e.properties.get("bbox", None) if getattr(e, "properties", None) else None
     if bbox and len(bbox) == 2:
-        try:
-            return [bbox[1][0] + (height * 0.8), bbox[0][1] + (bbox[1][1] - bbox[0][1]) / 2.0]
-        except Exception:
-            pass
+        anchored = marker_anchor(bbox=bbox)
+        if anchored:
+            return anchored
     return [ins[0], ins[1]]
 
 
