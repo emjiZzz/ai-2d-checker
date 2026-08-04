@@ -16,8 +16,11 @@ Both defects are silent in different ways, so both are pinned here:
     table. Because `title`/`tolerance` are safe zones excluded from comparison, that excludes
     the wrong regions and feeds the real title block into the diff as drawing geometry.
 """
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
+from services.backend.domain.models.zone_template import ZoneTemplateDocument
 from services.backend.infrastructure.audit.bom.zone_template_resolver import (
     fractions_to_absolute_bbox,
     resolve_zone_overrides,
@@ -156,3 +159,69 @@ class TestResolveGuards:
         # No bounds means the fractions cannot be placed at all. Degrading to detection is
         # correct; raising would fail the whole audit over an optional feature.
         assert await resolve_zone_overrides(bounds) == {}
+
+
+def _tpl(signature: str, is_default: bool = False) -> ZoneTemplateDocument:
+    """An unsaved template with one title zone pinned ~86% down (the Y-flip fixture value)."""
+    return ZoneTemplateDocument(
+        signature=signature,
+        name=signature,
+        zones={"title": {"xMin": 0.375, "xMax": 0.932, "yMin": 0.795, "yMax": 0.923}},
+        is_default=is_default,
+    )
+
+
+class _MockField:
+    """Makes `ZoneTemplateDocument.field == x` evaluable without init_beanie — same pattern as
+    test_rooms.py. The comparison result is only ever passed to a mocked find_one, so its exact
+    value is irrelevant; it just must not raise."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def __eq__(self, other):
+        return ("cmp", self.name, other)
+
+
+@pytest.fixture
+def mock_zone_fields(monkeypatch):
+    monkeypatch.setattr(
+        ZoneTemplateDocument, "get_pymongo_collection", classmethod(lambda cls: MagicMock())
+    )
+    monkeypatch.setattr(ZoneTemplateDocument, "signature", _MockField("signature"), raising=False)
+    monkeypatch.setattr(ZoneTemplateDocument, "is_default", _MockField("is_default"), raising=False)
+
+
+class TestDefaultFallback:
+    """A sheet with no signature-specific template inherits the designated default; a sheet
+    that has its own template is unaffected. Mirrors resolve_zone_overrides exactly."""
+
+    async def test_falls_back_to_default_when_no_signature_match(self, monkeypatch, mock_zone_fields):
+        # find_one: first call (by signature) misses, second call (by is_default) hits.
+        default_tpl = _tpl("aspect-9.999", is_default=True)
+        monkeypatch.setattr(
+            ZoneTemplateDocument, "find_one", AsyncMock(side_effect=[None, default_tpl])
+        )
+
+        overrides = await resolve_zone_overrides(BOUNDS)
+
+        assert "title" in overrides  # the default's zone was applied to THIS sheet's bounds
+        pct = _pct_down_from_top(overrides["title"][1], overrides["title"][3])
+        assert pct == pytest.approx(85.9, abs=0.5)  # scaled to BOUNDS, not the default's own sheet
+
+    async def test_signature_specific_template_wins_over_default(self, monkeypatch, mock_zone_fields):
+        specific = _tpl("aspect-1.414")
+        find_one = AsyncMock(side_effect=[specific])
+        monkeypatch.setattr(ZoneTemplateDocument, "find_one", find_one)
+
+        overrides = await resolve_zone_overrides(BOUNDS)
+
+        assert "title" in overrides
+        assert find_one.await_count == 1  # the default lookup must never happen when specific hits
+
+    async def test_no_match_and_no_default_returns_empty(self, monkeypatch, mock_zone_fields):
+        monkeypatch.setattr(
+            ZoneTemplateDocument, "find_one", AsyncMock(side_effect=[None, None])
+        )
+
+        assert await resolve_zone_overrides(BOUNDS) == {}

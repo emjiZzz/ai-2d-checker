@@ -1,6 +1,7 @@
 import { StateCreator } from "zustand";
 import { WorkspaceState, UploadSlice, UploadState, QueueEntry } from "../types";
 import { uploadFile } from "../../../services/fetchUtils";
+import { deleteDrawing } from "../../../services/drawingsApi";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10GB
 
@@ -61,7 +62,13 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
 
   uploadDrawingFile: async (file, side) => {
     const isOld = side === "old";
-    
+
+    // Capture the drawing this slot currently holds BEFORE the reset below nulls
+    // it. In the room-owned model each drawing belongs to exactly one slot, so
+    // replacing a slot must hard-delete the drawing it displaced (§ room-owned
+    // drawings). Deleted only after the new upload succeeds — see step 8.
+    const previousDrawingId = (isOld ? get().oldDrawing : get().newDrawing)?.id ?? null;
+
     // 1. Initial State update
     if (isOld) {
       set({
@@ -195,6 +202,15 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       const { drawing, job } = uploadResult;
       updateStatus("processing", 80);
 
+      // The new drawing is now persisted on the backend. Purge the one this slot
+      // displaced (room-owned: no orphans). Best-effort — a lingering drawing is
+      // far better than throwing away a good upload, so failures are logged only.
+      if (previousDrawingId && previousDrawingId !== drawing.id) {
+        deleteDrawing(previousDrawingId).catch((err) =>
+          console.warn(`Failed to delete replaced drawing ${previousDrawingId}:`, err)
+        );
+      }
+
       // 8. Poll Stage 1 background conversion and schema parsing pipeline
       // Offloaded to useUploadJobPolling hook!
       if (job.status === "completed") {
@@ -228,48 +244,6 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       updateStatus("failed", 0, err.message || "Failed to process drawing ingestion.");
       return false;
     }
-  },
-
-  selectDrawingFromLibrary: async (drawing, side) => {
-    const isOld = side === "old";
-    if (isOld) {
-      set({ 
-        oldDrawing: drawing, 
-        oldLayers: {},
-        oldUploadState: "completed", 
-        oldUploadProgress: 100,
-        oldFileName: drawing.file_name,
-        oldFileSize: drawing.file_size_bytes || null,
-        oldError: null,
-        activeSessionId: null,
-        auditStatus: "idle",
-        violations: [],
-        complianceScore: null,
-        aiScanProgress: "idle",
-        aiChecklistResults: {},
-        aiScanError: null
-      });
-      await get().fetchLayers(drawing.id, "old");
-    } else {
-      set({ 
-        newDrawing: drawing, 
-        newLayers: {},
-        newUploadState: "completed", 
-        newUploadProgress: 100,
-        newFileName: drawing.file_name,
-        newFileSize: drawing.file_size_bytes || null,
-        newError: null,
-        activeSessionId: null,
-        auditStatus: "idle",
-        violations: [],
-        complianceScore: null,
-        aiScanProgress: "idle",
-        aiChecklistResults: {},
-        aiScanError: null
-      });
-      await get().fetchLayers(drawing.id, "new");
-    }
-    get().recalculateCompatibility();
   },
 
   recalculateCompatibility: () => {

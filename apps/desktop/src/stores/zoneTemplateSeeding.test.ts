@@ -83,15 +83,66 @@ describe("seedCustomRegionsFromDetected — template layering", () => {
     expect(regions.notes).not.toEqual(DEFAULT_CUSTOM_REGIONS.notes);
   });
 
-  it("an existing per-drawing alignment still wins over the template", () => {
-    const mine = { xMin: 0.1, xMax: 0.2, yMin: 0.3, yMax: 0.4 };
-    useReviewStore.setState({ customRegions: { [DRAWING]: { title: mine } } });
+  it("a pinned zone is re-applied even when an alignment already exists", () => {
+    // The reported bug: `customRegions` is restored from localStorage on reload, so it
+    // exists before the user has touched anything. Skipping the template in that case made
+    // pinned zones appear to revert to detector boxes on every open.
+    useReviewStore.setState({
+      customRegions: { [DRAWING]: { title: { xMin: 0.1, xMax: 0.2, yMin: 0.3, yMax: 0.4 } } },
+    });
 
     useReviewStore.getState().seedCustomRegionsFromDetected(
       { title: DETECTED_TITLE }, BOUNDS, DRAWING, { title: PINNED_TITLE },
     );
 
-    expect(useReviewStore.getState().getRegionsFor(DRAWING).title).toEqual(mine);
+    const title = useReviewStore.getState().getRegionsFor(DRAWING).title;
+    expect(title.xMin).toBeCloseTo(PINNED_TITLE.xMin, 6);
+    expect(title.yMin).toBeCloseTo(PINNED_TITLE.yMin, 6);
+  });
+
+  it("an existing alignment is preserved for zones the template does NOT pin", () => {
+    const myNotes = { xMin: 0.1, xMax: 0.2, yMin: 0.3, yMax: 0.4 };
+    useReviewStore.setState({ customRegions: { [DRAWING]: { notes: myNotes } } });
+
+    useReviewStore.getState().seedCustomRegionsFromDetected(
+      { title: DETECTED_TITLE }, BOUNDS, DRAWING, { title: PINNED_TITLE },
+    );
+
+    // `notes` is not templatable, so the user's own box must survive untouched — and the
+    // detector must NOT re-seed over it either.
+    expect(useReviewStore.getState().getRegionsFor(DRAWING).notes).toEqual(myNotes);
+  });
+
+  it("records which zones are pinned so the overlay can stop marking them as guesses", () => {
+    useReviewStore.getState().seedCustomRegionsFromDetected(
+      { title: DETECTED_TITLE }, BOUNDS, DRAWING,
+      { title: PINNED_TITLE, views: PINNED_TITLE },
+    );
+
+    expect(useReviewStore.getState().getPinnedZoneKeys(DRAWING).sort())
+      .toEqual(["title", "views"]);
+  });
+
+  it("pinned keys are recorded even when seeding is skipped", () => {
+    useReviewStore.setState({ customRegions: { [DRAWING]: { title: PINNED_TITLE } } });
+
+    useReviewStore.getState().seedCustomRegionsFromDetected(
+      { title: DETECTED_TITLE }, BOUNDS, DRAWING, { title: PINNED_TITLE },
+    );
+
+    expect(useReviewStore.getState().getPinnedZoneKeys(DRAWING)).toEqual(["title"]);
+  });
+
+  it("reset clears the pinned marks too", () => {
+    useReviewStore.getState().seedCustomRegionsFromDetected(
+      { title: DETECTED_TITLE }, BOUNDS, DRAWING, { title: PINNED_TITLE },
+    );
+    expect(useReviewStore.getState().getPinnedZoneKeys(DRAWING)).toEqual(["title"]);
+
+    useReviewStore.getState().resetCustomRegions(DRAWING);
+
+    // Leaving them set would label plain detector boxes as human-aligned.
+    expect(useReviewStore.getState().getPinnedZoneKeys(DRAWING)).toEqual([]);
   });
 
   it("a null or empty template is a no-op", () => {

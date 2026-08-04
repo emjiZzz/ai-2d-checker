@@ -78,7 +78,105 @@ class ComparisonCacheManager:
     # 表示外公差, which was stored as 侮ｦ外公差 and could never match, so the tolerance zone
     # resolved differently. NOTE this is an INGESTION fix -- drawings already extracted still
     # hold the corrupted text and must be re-ingested; the cache bump alone is not enough.
-    COMPARISON_CACHE_VERSION = "v14"
+    # v15: geometry is compared for the first time (geometry_differ). SpatialDiffer pools on
+    # entity_type == 'text', so lines, circles, arcs, ellipses and splines were never diffed
+    # and a feature carrying no text was invisible to the audit -- most visibly an entire
+    # isometric view present on the revision and not the reference, which reported nothing
+    # (diff_views also returns [] the moment either pool is empty). Unmatched geometry is now
+    # clustered and reported as ADDED/REMOVED regions, so every cached result is missing that
+    # class of finding entirely.
+    # v16: marking_reconciler gained a second pass for content that both MOVED and CHANGED.
+    # The exact pass only merges identical text, so a line that was edited *and* landed in a
+    # different zone stayed a deletion plus an unrelated addition, with the actual edit never
+    # stated. Measured on the corpus pair: 素材調質施工 硬度HS35～38度 -> 硬度HS35～38 (trailing
+    # 度 dropped) now reports as one CHANGED instead of two findings. Guarded by similarity,
+    # mutual-best pairing, an ambiguity margin and a bounded-movement check, so it merged
+    # exactly one pair on that pair's 38 findings.
+    # v17: `views` is the sheet rectangle, and the exclusion that defines it moved into the
+    # `zone_detector.in_views()` predicate. It was previously the 5-95 percentile of
+    # non-excluded content plus padding, which measured 119.7% of the sheet across the corpus
+    # -- larger than the drawing it described -- while also producing false negatives in the
+    # outer 5%. Zone geometry changes on every drawing, and `views` feeds sub-view clustering,
+    # drawing_views coordinate resolution and category attribution.
+    # v18: `safe_filter` inputs changed. Pillar 1 (vault_sync) now reads only
+    # `docs/vault/08 - Client Domain & CAD Rules/` instead of the entire vault, and strips
+    # fenced code blocks before scanning — the tolerance keyword set went from 62 entries (44
+    # of them multi-hundred-character markdown blobs captured across code fences) to the 18
+    # real terms. Those blobs were inert, so this alone does not change output; what does is
+    # that learned dismissal patterns from AutoDocEngine are now READ BACK and excluded, which
+    # never happened before. A pair whose client has learned rules will produce fewer findings.
+    # v19: three category-attribution fixes, all touching which zone a finding lands in.
+    # (a) Sheet-frame grid labels are now actually excluded: `is_margin_grid_text` compared
+    #     against ASCII "A".."H"/"1".."12" without NFKC, so the full-width labels this
+    #     standard draws (Ａ, １) never matched and the filter was inert at its one call
+    #     site — the labels stayed in the zone-detection pool and bridged clusters edge to
+    #     edge (reference `tolerance` measured x 8.4->411.6, 21.4% of the sheet). Threshold
+    #     also raised 6% -> 9% (labels measure 6.27-8.52%).
+    # (b) Amendment/revision-table column headers excluded from drawing_views by exact text.
+    # (c) Amendment-table values and the A/B/C/D row-letter column reclassified from
+    #     drawing_views to title_block by proximity to the header cluster (relabel only,
+    #     never dropped).
+    # Zone boxes move on every drawing, so this changes category attribution and coordinate
+    # resolution for every zone, not just the amendment table.
+    # v20: shim table (シム表) is its own zone. Detected on its own text anchor (no
+    # percentage fallback, so it is simply absent on sheets without one), excluded from the
+    # drawing_views pool, and compared as a new `shim_table` category. Findings that used to
+    # land in drawing_views now move to shim_table, so cached drawing_views output is stale.
+    # v21: spatial_differ no longer pairs unrelated text as CHANGED. A cross-text pair within
+    # the distance threshold is now kept only if the two strings are a plausible in-place edit
+    # (>=0.40 char similarity, or both numeric/dimensional); otherwise both fall through to the
+    # REMOVED + ADDED sweep. Fixes notes like '2 ロール：4' being reported as CHANGED into an
+    # unrelated fabrication note. Affects notes/iso/drawing_views/shim (the diff_views path).
+    # v22: BOM extraction now captures a "refer to table" deferral row (item number next to a
+    # 表ニヨル / 表による pointer). It has only two cells, so the >=4-cell row filter dropped it and
+    # the BOM comparison came back empty on drawings whose materials live in a separate table.
+    # Fallback only -- an ordinary populated BOM is unaffected.
+    # v23: a title-block OCR value that grounds to NO text on the drawing is now treated as a
+    # likely misread and the spatially-extracted value is preferred instead. Gemini misread a
+    # mislocated reference title-block crop as DWG_NO 'ME17227N24' (real: 'M745227N01') and
+    # that ungrounded value used to override the correct spatial reading. Grounded OCR values
+    # are still trusted; only ungrounded ones defer to spatial.
+    # v24: title-block upper-left fields now match across drawings by shared header token
+    # instead of exact combined key. The header banding uses a fixed y-threshold, so a
+    # large-coordinate drawing splits a field's stacked English/Japanese labels into two
+    # header bands (key 'Unit No. / ユニットNo.') while a small-coordinate one merges them (key
+    # 'Unit No.'); the exact-key match then double-reported every identical value as
+    # REMOVED + ADDED. Token matching pairs them, so unchanged UL values read MATCHED.
+    # v25: the shim table (シム表) is now a SAFE zone like tolerance, not a compared category.
+    # Its rows are still excluded from drawing_views, but they are no longer diffed as their
+    # own `shim_table` category -- assembly-thickness reference data does not change
+    # meaningfully between revisions. The shim_table findings and response section are gone.
+    # v26: global default zone-template fallback. A sheet whose aspect matches no saved template
+    # now inherits the designated default template's pinned zones (zone_template_resolver.py),
+    # changing zone extraction -- and therefore comparison output -- for previously-unmatched
+    # sheets. Signature-specific templates still win. Changing WHICH template is default later is
+    # not a code change and does not re-bump this; that staleness is cleared by Re-test/force_refresh.
+    # v27: drawing_views is now scoped to the `views` zone box (scope_entities_to_views) instead of
+    # the residual of everything-minus-other-zones. Content that sat inside no zone box is no longer
+    # compared; a sheet with no views box yields an empty drawing_views category. Strict, no fallback.
+    # v28: safe zones (tolerance, shim) now keep their content-anchored detection instead of letting a
+    # template box replace it (table_extractor.SAFE_ANCHORED_ZONES). A misplaced template box could
+    # move the tolerance zone off the real 表示外公差 table and expose it to the BOM/views comparison;
+    # anchoring the safe zone by content keeps it excluded regardless of template placement.
+    # v29: drawing_views furniture filter now recognizes the romanized frame layer "WAKU" (= 枠), not
+    # just the kanji. KMTI AutoCAD sheets keep all title/tolerance/BOM furniture on layer "WAKU"; its
+    # lower rows sit below the tolerance box and were being diffed as drawing_views (e.g. "2589", "2.5").
+    # v30: title-block comparison (both the bottom block and the upper-left metadata table) now applies
+    # a bilateral corroboration guard — a field read on one side but NONE on the other is reported
+    # MATCHED, not a false REMOVED/ADDED, when the value is actually present in the other drawing's
+    # title region. Fixes false findings like "DWG. No. M7452A1N01 vs NONE" and "Unit No. 45 vs NONE".
+    # v31: title extraction no longer drops title-block entities that fall inside an over-wide
+    # tolerance box (keep_for_title_extraction). The tolerance box often spans the full bottom strip
+    # and was swallowing the bottom-right title block, so DRAWN/SCALE/DESIGNED/TITLE read NONE on the
+    # reference; now the tolerance table is excluded without blanking the title block.
+    # v32: title-field extraction is now aware of the title block's ruled cell boundaries. A
+    # 'below' proximity search rejects any candidate separated from its label by a vertical rule
+    # (title_block_extractor._separated_by_rule), so "Previous Dwg. No." no longer reads the
+    # tolerance table's Fabrication cell across the divider. JOB NO now searches 'right'
+    # (dx_tol=22) and reads its real value, surfacing a 2589 -> 9324 change that previously read
+    # NONE vs NONE. Corroboration of a short (<=3 char) title value now requires an exact
+    # whole-string hit, so "1" can no longer be corroborated by the "1" inside "M7452A1N01".
+    COMPARISON_CACHE_VERSION = "v32"
 
     @staticmethod
     def _get_cache_path(

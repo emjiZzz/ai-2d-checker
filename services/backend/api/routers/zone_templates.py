@@ -12,10 +12,14 @@ them apart is what lets the overlay show both and mark which is which.
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field, field_validator
 
-from ...domain.models.zone_template import ZoneFractions, ZoneTemplateDocument
+from ...domain.models.zone_template import (
+    VALID_ZONE_KEYS,
+    ZoneFractions,
+    ZoneTemplateDocument,
+)
 from ...logger import logger
 from ..dependencies import get_auth_token
 from ..schemas import StandardResponse
@@ -27,6 +31,7 @@ class ZoneTemplateResponse(BaseModel):
     signature: str
     name: str
     zones: dict[str, ZoneFractions]
+    is_default: bool = False
     updated_by: Optional[str] = None
     updated_at: Optional[datetime] = None
 
@@ -39,6 +44,45 @@ class ZoneTemplateUpsertRequest(BaseModel):
                     "not the same as pinning it to its detected position.",
     )
     updated_by: Optional[str] = None
+
+    @field_validator("zones")
+    @classmethod
+    def strip_non_zone_keys(
+        cls, zones: dict[str, ZoneFractions]
+    ) -> dict[str, ZoneFractions]:
+        """Drop any key that isn't a real comparison zone before persisting.
+
+        A save path that serializes the whole zones *response* object (which also carries
+        "drawing_id"/"render_bounds") would otherwise pollute the template with keys nothing
+        consumes. Stripping rather than 400-ing keeps existing clients working; the polluted
+        keys just don't get stored.
+        """
+        polluting = [k for k in zones if k not in VALID_ZONE_KEYS]
+        if polluting:
+            logger.warning(
+                f"Ignoring non-zone keys in zone-template save: {sorted(polluting)}"
+            )
+        return {k: v for k, v in zones.items() if k in VALID_ZONE_KEYS}
+
+
+class SetDefaultRequest(BaseModel):
+    is_default: bool = Field(
+        ...,
+        description="True designates this template as the global fallback (clearing any prior "
+                    "default); False clears it.",
+    )
+
+
+def _to_response(doc: ZoneTemplateDocument) -> ZoneTemplateResponse:
+    """Single mapper so every handler returns the same shape — including is_default."""
+    return ZoneTemplateResponse(
+        signature=doc.signature,
+        name=doc.name,
+        zones=doc.zones,
+        is_default=doc.is_default,
+        updated_by=doc.updated_by,
+        updated_at=doc.updated_at,
+    )
 
 
 @router.get(
@@ -58,16 +102,7 @@ async def get_zone_template(signature: str):
     if not doc:
         return StandardResponse(success=True, data=None)
 
-    return StandardResponse(
-        success=True,
-        data=ZoneTemplateResponse(
-            signature=doc.signature,
-            name=doc.name,
-            zones=doc.zones,
-            updated_by=doc.updated_by,
-            updated_at=doc.updated_at,
-        ),
-    )
+    return StandardResponse(success=True, data=_to_response(doc))
 
 
 @router.put(
@@ -102,16 +137,7 @@ async def upsert_zone_template(signature: str, payload: ZoneTemplateUpsertReques
         f"Zone template '{signature}' saved with {len(payload.zones)} pinned zone(s): "
         f"{sorted(payload.zones)}"
     )
-    return StandardResponse(
-        success=True,
-        data=ZoneTemplateResponse(
-            signature=doc.signature,
-            name=doc.name,
-            zones=doc.zones,
-            updated_by=doc.updated_by,
-            updated_at=doc.updated_at,
-        ),
-    )
+    return StandardResponse(success=True, data=_to_response(doc))
 
 
 @router.get(
@@ -123,19 +149,61 @@ async def upsert_zone_template(signature: str, payload: ZoneTemplateUpsertReques
 async def list_zone_templates():
     """Returns all saved zone templates ordered by last update time descending."""
     docs = await ZoneTemplateDocument.find_all().sort("-updated_at").to_list()
-    return StandardResponse(
-        success=True,
-        data=[
-            ZoneTemplateResponse(
-                signature=doc.signature,
-                name=doc.name,
-                zones=doc.zones,
-                updated_by=doc.updated_by,
-                updated_at=doc.updated_at,
-            )
-            for doc in docs
-        ],
+    return StandardResponse(success=True, data=[_to_response(doc) for doc in docs])
+
+
+@router.get(
+    "/zone-templates-default",
+    response_model=StandardResponse[Optional[ZoneTemplateResponse]],
+    summary="Fetch the global default (fallback) zone template, if one is designated",
+    dependencies=[Depends(get_auth_token)],
+)
+async def get_default_zone_template():
+    """Returns the template flagged is_default, or null when none is designated.
+
+    A dedicated path (not `/zone-templates/{signature}`) so 'default' can't be mistaken for a
+    signature. Used by the editor to show what the audit will fall back to on an unmatched sheet.
+    """
+    doc = await ZoneTemplateDocument.find_one(ZoneTemplateDocument.is_default == True)  # noqa: E712
+    if not doc:
+        return StandardResponse(success=True, data=None)
+    return StandardResponse(success=True, data=_to_response(doc))
+
+
+@router.put(
+    "/zone-templates/{signature}/default",
+    response_model=StandardResponse[ZoneTemplateResponse],
+    summary="Designate (or clear) a template as the global default fallback",
+    dependencies=[Depends(get_auth_token)],
+)
+async def set_default_zone_template(signature: str, payload: SetDefaultRequest):
+    """Enforces the single-default invariant: setting one default clears any prior one.
+
+    Returns 404 if the signature has no template. Clearing (is_default=False) only unsets this
+    template — sheets then fall back to plain detection, same as before any default existed.
+    """
+    doc = await ZoneTemplateDocument.find_one(ZoneTemplateDocument.signature == signature)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No zone template found for signature '{signature}'.",
+        )
+
+    if payload.is_default:
+        # Clear every other default first, so at most one document is ever the default.
+        async for other in ZoneTemplateDocument.find(
+            ZoneTemplateDocument.is_default == True,  # noqa: E712
+            ZoneTemplateDocument.signature != signature,
+        ):
+            other.is_default = False
+            await other.save()
+
+    doc.is_default = payload.is_default
+    await doc.save()
+    logger.info(
+        f"Zone template '{signature}' is_default set to {payload.is_default}."
     )
+    return StandardResponse(success=True, data=_to_response(doc))
 
 
 @router.delete(

@@ -30,6 +30,12 @@ matplotlib>=3.8.0
 # google-generativeai is fully deprecated as of 2025 and no longer receives updates)
 google-genai>=1.0.0
 
+# Human-in-the-loop learned-correction model (deterministic, no LLM). scikit-learn
+# trains a lightweight classifier on human corrections; joblib persists it. numpy is
+# already a transitive dep. See infrastructure/learning/.
+scikit-learn>=1.5.0
+joblib>=1.4.0
+
 # Windows-only: used for SolidWorks COM automation (sw_converter.py already
 # guards this import with try/except ImportError for non-Windows environments).
 pywin32>=306; sys_platform == "win32"

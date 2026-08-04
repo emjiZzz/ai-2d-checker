@@ -28,6 +28,13 @@ export interface ViolationItem {
   resolved_at?: string | null;
   original_value?: string;
   checker_remarks?: string;
+  // Carried through from the comparison marking so human corrections can reference a stable
+  // finding identity and reconstruct a feature snapshot. entity_handle fixes the long-standing
+  // bug where feedback events shipped an always-empty handle. status is the raw deterministic
+  // verdict (MATCHED/CHANGED/ADDED/REMOVED/CONFLICT); feature is the sub-item taxonomy key.
+  entity_handle?: string;
+  status?: string;
+  feature?: string;
 }
 
 export type AnnotationSeverity = "info" | "low" | "medium" | "high" | "critical";
@@ -173,7 +180,6 @@ export interface UploadSlice {
   setOldUploadState: (state: UploadState) => void;
   setNewUploadState: (state: UploadState) => void;
   uploadDrawingFile: (file: File, side: "old" | "new") => Promise<boolean>;
-  selectDrawingFromLibrary: (drawing: DrawingItem, side: "old" | "new") => Promise<void>;
   clearUpload: (side: "old" | "new") => void;
   recalculateCompatibility: () => void;
 }

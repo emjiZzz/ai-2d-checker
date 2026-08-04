@@ -73,7 +73,9 @@ def inject_title_block_markings(
     ref_title_fields: dict,
     rev_title_fields: dict,
     ref_entities: list,
-    rev_entities: list
+    rev_entities: list,
+    ref_title_bbox: tuple | None = None,
+    rev_title_bbox: tuple | None = None,
 ) -> None:
     field_labels_map = {
         "QTY": " T. Q'ty (Total Quantity)",
@@ -119,15 +121,42 @@ def inject_title_block_markings(
         # Equivalence checking
         status_val = compare_values(orig_val, kmti_val)
 
-        # Fix B1 Bilateral symmetric guard for MACHINE CODE / UNIT CODE.
-        if field_key == "MACHINE CODE" and status_val in ("ADDED", "REMOVED"):
+        # Bilateral corroboration guard (generalized from the old MACHINE-CODE-only version).
+        #
+        # A title field read on one side but NONE on the other is far more often an EXTRACTION
+        # MISS than a real edit — the title-block extractor is heuristic and scale-sensitive
+        # (see docs/title-block-false-findings-implementation-plan.md and the OCR/UL vault
+        # gotchas). If the value the extractor *did* read is actually present in the OTHER
+        # drawing's title region, the field was mis-extracted, not removed/added → report
+        # MATCHED, never a false REMOVED/ADDED. Mirrors the BOM guard in inject_bom_markings.
+        #
+        # match_level=2 (exact + clean substring, no fuzzy prefix) + region-scoping to the title
+        # bbox keep a short value like "4" from spuriously matching a random dimension: a bare
+        # presence check must PROVE the value is on the sheet, not merely coincide with it.
+        #
+        # For a SHORT value even level 2 is too loose, because its substring pass can land inside
+        # a longer identifier -- a mis-extracted Previous Dwg. No. of "1" was corroborated against
+        # the "1" in "M7452A1N01" and turned a bad read into a green tick. A handful of characters
+        # occurring somewhere in the title block is not evidence of anything, so demand an exact
+        # whole-string hit (level 1) and let genuinely one-sided short values stay reported. This
+        # errs toward showing a finding rather than hiding one, which is the safe direction here.
+        def _corroboration_match_level(value: str) -> int:
+            return 1 if len(str(value).strip()) <= 3 else 2
+
+        if status_val in ("ADDED", "REMOVED"):
             if orig_val == "NONE" and kmti_val != "NONE":
-                recovered = BOMAnalyzer.find_drawing_text_coordinates(ref_entities, kmti_val, category="title_block")
+                recovered = BOMAnalyzer.find_drawing_text_coordinates(
+                    ref_entities, kmti_val, category="title_block",
+                    region_bbox=ref_title_bbox, match_level=_corroboration_match_level(kmti_val),
+                )
                 if recovered and recovered.get("coords"):
                     status_val = "MATCHED"
                     orig_coords = recovered["coords"]
             elif kmti_val == "NONE" and orig_val != "NONE":
-                recovered = BOMAnalyzer.find_drawing_text_coordinates(rev_entities, orig_val, category="title_block")
+                recovered = BOMAnalyzer.find_drawing_text_coordinates(
+                    rev_entities, orig_val, category="title_block",
+                    region_bbox=rev_title_bbox, match_level=_corroboration_match_level(orig_val),
+                )
                 if recovered and recovered.get("coords"):
                     status_val = "MATCHED"
                     kmti_coords = recovered["coords"]

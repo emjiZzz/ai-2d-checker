@@ -187,6 +187,47 @@ class PhysicalComparisonRequest(BaseModel):
         default=False,
         description="If true, bypasses cached comparison results on disk and re-evaluates fresh."
     )
+    refresh_ocr: bool = Field(
+        default=False,
+        description="If true, ALSO bypasses the cached title-block OCR and re-reads the crop "
+                    "with Gemini (a paid call per drawing). Implies force_refresh, since a fresh "
+                    "OCR value only takes effect through a fresh comparison run."
+    )
+
+class FindingSnapshot(BaseModel):
+    """Fixed-field feature snapshot of a finding at the moment a human corrects it.
+
+    Captured so the learned-model trainer can reconstruct the exact runtime feature
+    vector from stored feedback long after the comparison that produced it is gone.
+    Fixed fields on purpose (never a bare `dict`) so training and inference features
+    stay identical — but note this rides ONLY on /audits/feedback and is stored on the
+    Mongo AuditFeedbackDocument; it is deliberately NOT part of PhysicalComparisonResponse
+    or CanvasMarking, which are handed to Gemini as response_schema (CLAUDE.md constraint 1)."""
+    ref_text: Optional[str] = None
+    rev_text: Optional[str] = None
+    det_status: Optional[str] = Field(None, description="Deterministic status before correction: MATCHED/CHANGED/ADDED/REMOVED/CONFLICT")
+    category: Optional[str] = None
+    feature: Optional[str] = None
+    text_similarity: Optional[float] = None
+    ref_coord: Optional[list[float]] = None
+    rev_coord: Optional[list[float]] = None
+    match_distance: Optional[float] = None
+    is_numericish: Optional[bool] = None
+
+
+# Human correction verbs. Extended from the original dismissed/confirmed_valid/
+# category_override trio: the model needs a positive/negative verdict signal, not just
+# suppression. See docs plan "Human-in-the-Loop Learning for the rag Comparison".
+HumanCorrectedStatus = Literal[
+    "dismissed",         # false alarm — treat as not a real discrepancy (label 0)
+    "confirmed_valid",   # undo of a dismissal — this finding IS valid to report (label 0, it's a correct MATCHED-style non-issue in the suppression sense)
+    "category_override", # finding belongs in a different category/feature
+    "verdict_matched",   # a CHANGED/ADDED/REMOVED that is actually MATCHED (label 0)
+    "verdict_changed",   # a MATCHED that is actually a real change (label 1)
+    "confirmed_change",  # affirm a flagged discrepancy is genuinely a change (label 1)
+    "value_correction",  # the extracted Original/Revision value was misread; corrected_value holds the fix
+]
+
 
 class AuditFeedbackRequest(BaseModel):
     session_id: str
@@ -196,9 +237,12 @@ class AuditFeedbackRequest(BaseModel):
     entity_handle: Optional[str] = None
     category: str
     original_status: str
-    human_corrected_status: Literal["dismissed", "confirmed_valid", "category_override"]
+    human_corrected_status: HumanCorrectedStatus
     human_comment: Optional[str] = None
     coordinates: Optional[list[float]] = None
+    corrected_category: Optional[str] = Field(None, description="Target category for a category_override correction.")
+    corrected_value: Optional[str] = Field(None, description="Corrected value for a value_correction.")
+    finding_snapshot: Optional[FindingSnapshot] = Field(None, description="Feature snapshot of the corrected finding, used as a training example.")
 
 class AuditFeedbackResponse(BaseModel):
     id: str
@@ -438,6 +482,8 @@ class DrawingZonesResponse(BaseModel):
     tolerance: Optional[ZoneBBox] = None
     iso: Optional[ZoneBBox] = None
     title_upper_left: Optional[ZoneBBox] = None
+    # Optional zone: only non-null on sheets that carry a シム表 shim table.
+    shim: Optional[ZoneBBox] = None
 
 
 class DrawingSummaryResponse(BaseModel):

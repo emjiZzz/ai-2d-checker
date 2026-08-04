@@ -6,6 +6,18 @@ from pydantic import BaseModel, Field, field_validator
 from pymongo import ASCENDING, IndexModel
 
 
+# Canonical comparison-zone keys. A template may only pin these. The zones *response* object
+# (schemas.py::DrawingZonesResponse) also carries non-zone metadata like "drawing_id" and
+# "render_bounds"; if a save path copies that object wholesale those keys leak in and pollute
+# the template. Nothing consumes them, but they corrupt the stored set — so upsert strips
+# anything outside this whitelist. Mirrors ZONE_KEYS in api/routers/drawings.py and
+# apps/desktop/src/services/drawingsApi.ts (order there is render order; membership is all
+# that matters here).
+VALID_ZONE_KEYS: frozenset[str] = frozenset(
+    {"views", "notes", "bom", "title", "tolerance", "iso", "title_upper_left", "shim"}
+)
+
+
 class ZoneFractions(BaseModel):
     """One zone's position as fractions of the drawing's render_bounds.
 
@@ -44,6 +56,14 @@ class ZoneTemplateDocument(Document):
     zones: dict[str, ZoneFractions] = Field(
         default_factory=dict,
         description="Pinned zones only, keyed by zone name. Absent = keep detecting.",
+    )
+    is_default: bool = Field(
+        default=False,
+        description=(
+            "Global fallback template for sheets with no signature-specific match. At most one "
+            "document has this True (enforced at the set-default endpoint). Pre-existing docs "
+            "without the key parse as False, so no migration is needed."
+        ),
     )
     updated_by: Optional[str] = Field(default=None)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

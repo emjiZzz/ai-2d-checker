@@ -10,6 +10,7 @@ import {
   ZONE_UI_COLORS,
   countFallbackZones,
   fetchZoneTemplate,
+  fetchDefaultZoneTemplate,
   saveZoneTemplate,
   zoneSignature,
 } from "../../services/drawingsApi";
@@ -33,17 +34,22 @@ import { TwoDRightPanel } from "./TwoDRightPanel";
 import { SavedTemplatesModal } from "./SavedTemplatesModal";
 
 /**
- * Zones whose alignment transfers to other drawings of the same sheet template.
+ * Zones whose position is fixed by the printed sheet template, so an alignment made on one
+ * drawing transfers to every other drawing of that layout.
+ *
+ * NOTE: this is no longer a filter on what gets saved. Every zone the user has aligned is
+ * written to the template; the list survives only to mark the ones where pinning carries a
+ * caveat, because that caveat is measured and worth surfacing rather than deleting.
  *
  * Measured positional spread across the 6-drawing corpus: title_upper_left 3.8pp and bom
- * 4.6pp are fixed sheet furniture; notes (37pp) moves with the drawing's contents, and iso
- * is per drawing because roughly half the sheets do not have one at all. Pinning a moving
- * zone is worse than not pinning it -- it asserts a wrong position confidently on every
- * subsequent drawing. `title` is included at 12.9pp as borderline furniture: a printed title
- * block does not wander, and its spread is believed to be residual detector error.
+ * 4.6pp are fixed sheet furniture. `title` is included at 12.9pp as borderline furniture: a
+ * printed title block does not wander, and its spread is believed to be residual detector
+ * error. `notes` (37pp) genuinely moves with the drawing's contents, and `iso` is absent
+ * altogether on roughly half the sheets -- pinning either fixes ONE position for every sheet
+ * of the template, which is right when the layout really is shared and wrong when it is not.
  *
- * `views` is templatable despite a measured 33pp spread, because that figure does not mean
- * what it looks like. It comes from `_derive_views_zone`, which takes the 5-95 percentile of
+ * `views` is here despite a measured 33pp spread, because that figure does not mean what it
+ * looks like. It comes from `_derive_views_zone`, which takes the 5-95 percentile of
  * *content* coordinates -- so it measures where the geometry happens to sit, not where the
  * sheet's drawing area is. The area is fixed by the sheet template; the content inside it is
  * not. A pinned `views` is the drawing area, and the exclusion it used to get from being
@@ -51,7 +57,7 @@ import { SavedTemplatesModal } from "./SavedTemplatesModal";
  *
  * See docs/zone-template-alignment-implementation-plan.md.
  */
-const TEMPLATABLE_ZONES = ["title_upper_left", "bom", "title", "tolerance", "views"] as const;
+const STABLE_ZONES = ["title_upper_left", "bom", "title", "tolerance", "views"] as const;
 
 /**
  * localStorage key prefix for the persisted flexlayout model, per layout preset.
@@ -258,11 +264,16 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   /**
    * Persists the aligned zones to the sheet template.
    *
-   * Only TEMPLATABLE_ZONES are sent. `notes` moves with the drawing's content and `iso` is
-   * absent entirely on roughly half the sheets, so pinning either would assert a wrong
-   * position with full confidence on every other drawing of this template. They stay
-   * detected per drawing. See docs/zone-template-alignment-implementation-plan.md,
-   * "the two classes".
+   * EVERY aligned zone is sent, including `notes` and `iso`. An earlier design filtered to
+   * the furniture only, on the measurement that those two move between drawings; that is
+   * still true (see STABLE_ZONES) but the trade was made the other way -- a zone the user
+   * has deliberately placed should stay where they put it, and `RESET` is the way back to
+   * detection. The zone picker still marks the moving ones so the caveat is visible.
+   *
+   * Regions are merged `{...reference, ...revision}`, so the REVISION's boxes win on any
+   * zone aligned differently on the two sides. That matters for `notes`, which can be laid
+   * out in two columns on one sheet and one on the other: the template will carry the
+   * revision's shape and impose it on both.
    */
   const saveZonesAsTemplate = async () => {
     const src = oldDrawingForZones ?? newDrawingForZones;
@@ -362,7 +373,14 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         const signature = zoneSignature(d.metadata?.render_bounds);
         if (!signature) return;
         try {
-          const tpl = await fetchZoneTemplate(signature);
+          let tpl = await fetchZoneTemplate(signature);
+          // No template for this sheet's own signature — fall back to the global default so the
+          // editor shows the same zones the audit resolves to on an unmatched sheet. Mirrors
+          // zone_template_resolver.resolve_zone_overrides exactly: a signature-specific template
+          // wins; the default only fills the gap when none exists.
+          if (!tpl) {
+            tpl = await fetchDefaultZoneTemplate();
+          }
           if (tpl?.zones) templates[d.id] = tpl.zones as Record<string, RegionFractions>;
         } catch {
           // A template that cannot be loaded must not block alignment — fall through to
@@ -397,6 +415,27 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     // Only one zone is draggable at a time (the hit-test keys off this), so default to a
     // selection instead of leaving edit mode inert with nothing grabbable.
     if (!useReviewStore.getState().selectedComparisonRegion) setSelectedComparisonRegion('title');
+  };
+
+  /**
+   * Select a zone for alignment, and if it has no box yet, give it one so it is immediately
+   * draggable. Optional zones like `shim` are in neither DEFAULT_CUSTOM_REGIONS nor the saved
+   * template, so on a sheet where detection did not seed a box (or the template predates the
+   * zone) the picker chip pointed at nothing — the user saw the chip but no box to place.
+   * Seed a centred default per pane so the chip always yields something to drag onto the
+   * content (e.g. the シム表 table). A zone that already has a box (detected or aligned) keeps
+   * it untouched.
+   */
+  const selectZone = (key: string) => {
+    setSelectedComparisonRegion(key);
+    const store = useReviewStore.getState();
+    for (const d of [oldDrawingForZones, newDrawingForZones]) {
+      if (!d?.id) continue;
+      const existing = store.getRegionsFor(d.id)?.[key];
+      if (!existing) {
+        store.updateCustomRegion(d.id, key, { xMin: 0.40, xMax: 0.60, yMin: 0.42, yMax: 0.68 });
+      }
+    }
   };
 
   /** The ⋮ menu handler: still a toggle, so the user can leave and re-enter at will. */
@@ -886,7 +925,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               {ZONE_KEYS.map((key) => (
                 <button
                   key={key}
-                  onClick={() => setSelectedComparisonRegion(key)}
+                  onClick={() => selectZone(key)}
                   className={`px-2 py-1 text-[10px] font-bold uppercase rounded border transition-colors cursor-pointer ${
                     selectedComparisonRegion === key
                       ? "text-zinc-950 border-transparent"
@@ -899,10 +938,10 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   }
                 >
                   {ZONE_SHORT_LABELS[key] ?? key}
-                  {!(TEMPLATABLE_ZONES as readonly string[]).includes(key) && (
+                  {!(STABLE_ZONES as readonly string[]).includes(key) && (
                     <span
                       className="ml-1 opacity-60"
-                      title="Moves between drawings — aligned per drawing only, not saved to the template"
+                      title="Content moves between drawings — saving this to the template fixes one position for every sheet of this layout"
                     >
                       *
                     </span>

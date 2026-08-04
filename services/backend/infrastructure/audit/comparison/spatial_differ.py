@@ -1,6 +1,7 @@
 import math
 import logging
 from collections import defaultdict
+from difflib import SequenceMatcher
 import re
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,33 @@ FUZZY_THRESHOLD_NORM = 0.150    # was 150.0 units
 STRICT_RADIUS_ABS = 5.0
 TWIN_THRESHOLD_ABS = 10.0
 FUZZY_THRESHOLD_ABS = 150.0
+
+
+# A CHANGED pairing means "the same element, edited" -- so the two texts have to be
+# recognisably related. Without this gate the greedy matcher pairs ANY two texts within the
+# distance threshold and, for anything but identical text, labels the pair CHANGED. On notes
+# (sentences that move around the sheet) that mislabels unrelated content as an edit: measured
+# on the KEMCO pair, '2 ロール： 4 (2x2台)' was reported as CHANGED into 'タップ、キリ穴は面取り
+# 仕上げのこと' (0.00 char similarity), and '4 ロール：12' into '１' (0.14). A genuine edit on the
+# same corpus -- 'シム表' -> 'Ｌ　シム表　ｌ' -- scores 0.75, so 0.40 sits cleanly in the gap.
+CHANGED_SIMILARITY_FLOOR = 0.40
+
+# Values made entirely of digits and dimension/measurement punctuation. Two such values
+# ('130' -> '125') share few characters yet are a real edit, so they bypass the similarity
+# floor. _normalize_text has already folded dia->ø, deg->°, rad->r and stripped spaces.
+_NUMERICISH_RE = re.compile(r"^[0-9.,\-/x×øφ°±r():~〜=]+$")
+
+
+def _plausible_edit(ref_clean: str, rev_clean: str) -> bool:
+    """True when two DIFFERENT normalized strings are similar enough to be one element edited
+    in place, rather than two unrelated strings that merely sit close together on the sheet."""
+    if not ref_clean or not rev_clean:
+        return False
+    if SequenceMatcher(None, ref_clean, rev_clean).ratio() >= CHANGED_SIMILARITY_FLOOR:
+        return True
+    if _NUMERICISH_RE.match(ref_clean) and _NUMERICISH_RE.match(rev_clean):
+        return True
+    return False
 
 
 def _usable_bounds(bounds) -> bool:
@@ -283,6 +311,11 @@ class SpatialDiffer:
                             # Widened pass: a long-range match between *different* text was
                             # never a structural edit, it's a false pair — skip it entirely
                             # rather than letting the dist+1000 fallback pick it up.
+                            continue
+                        if not is_same_text and not _plausible_edit(ref["clean_text"], rev["clean_text"]):
+                            # Different, and not similar enough to be one element edited in
+                            # place. Pairing these would report an unrelated string as CHANGED;
+                            # leave both unmatched so they surface as REMOVED + ADDED instead.
                             continue
                         score = dist if is_same_text else dist + 1000.0
                         potential_pairs.append((score, dist, rev, ref))

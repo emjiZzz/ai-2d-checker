@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useRoomStore } from "../../stores/roomStore";
 import { submitAuditFeedbackPayload } from "../../services/auditsApi";
 import { getTaxonomyWithOther, OTHER_FEATURE_KEY, DEFERRED_FEATURE_KEYS } from "../../utils/comparisonTaxonomy";
+import { CorrectionControls } from "./CorrectionControls";
 
 interface ChecklistPanelProps {
   aiChecklistResults: Record<string, any>;
@@ -97,6 +98,23 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
       else if (pt === "ai_conflict") { cellBadgeColor = "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = "rgba(168, 85, 247, 0.14)"; }
     }
 
+    // Feature snapshot attached to every correction so the backend model can rebuild this
+    // finding's training features. text_similarity/match_distance/is_numericish are recomputed
+    // server-side from the texts/coords with the runtime differ's own normalization, so null
+    // here is fine — we only need the raw texts, status, category, feature and coordinates.
+    const findingSnapshot = {
+      ref_text: matchingViolation?.original_value ?? row.original ?? null,
+      rev_text: matchingViolation?.description ?? row.kmti ?? null,
+      det_status: matchingViolation?.status ?? statusText,
+      category: matchingViolation?.category ?? categoryKey,
+      feature: matchingViolation?.feature ?? null,
+      ref_coord: matchingViolation?.ref_coordinates ?? null,
+      rev_coord: matchingViolation?.coordinates ?? null,
+      text_similarity: null,
+      match_distance: null,
+      is_numericish: null,
+    };
+
     const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id &&
       ((selectedViolation as any)._rowId === rowId || !(selectedViolation as any)._rowId));
     const isHidden = matchingViolation ? !!hiddenViolationIds[matchingViolation.id] : false;
@@ -159,10 +177,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                       drawing_id: newDrawing?.id || "drawing_default",
                       client_name: activeRoom?.client_name,
                       entity_text: row.field || row.kmti || row.original,
-                      entity_handle: row.entity_id,
+                      entity_handle: matchingViolation?.entity_handle,
                       category: categoryKey,
                       original_status: statusText,
-                      human_corrected_status: "dismissed"
+                      human_corrected_status: "dismissed",
+                      finding_snapshot: findingSnapshot
                     });
                   } catch (err) {
                     console.warn("[ChecklistPanel] Feedback submit error:", err);
@@ -201,10 +220,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                         drawing_id: newDrawing?.id || "drawing_default",
                         client_name: activeRoom?.client_name,
                         entity_text: row.field || row.kmti || row.original,
-                        entity_handle: row.entity_id,
+                        entity_handle: matchingViolation?.entity_handle,
                         category: categoryKey,
                         original_status: statusText,
-                        human_corrected_status: "confirmed_valid"
+                        human_corrected_status: "confirmed_valid",
+                        finding_snapshot: findingSnapshot
                       });
                     } catch (err) {
                       console.warn("[ChecklistPanel] Undo feedback submit error:", err);
@@ -228,6 +248,22 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                 </button>
               </div>
             )}
+
+            <CorrectionControls
+              rowId={rowId}
+              categoryKey={categoryKey}
+              statusText={statusText}
+              row={row}
+              matchingViolation={matchingViolation}
+              sessionId={activeRoom?.id || "session_default"}
+              drawingId={newDrawing?.id || "drawing_default"}
+              clientName={activeRoom?.client_name}
+              onCorrected={(status) => {
+                if (matchingViolation && (status === "verdict_matched" || status === "dismissed")) {
+                  toggleViolationVisibility(matchingViolation.id);
+                }
+              }}
+            />
           </div>
           <span style={{
             display: "inline-flex", alignItems: "center", gap: "5px",

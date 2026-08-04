@@ -66,8 +66,10 @@ describe("countFallbackZones", () => {
     expect(countFallbackZones(uniform("content_aware"))).toBe(0);
   });
 
-  it("counts all seven when every zone fell back", () => {
-    expect(countFallbackZones(uniform("percentage_fallback"))).toBe(7);
+  it("counts every zone when they all fell back", () => {
+    // `uniform` assigns a box to every ZONE_KEY, so the count tracks the key list rather
+    // than a fixed number — shim was added as an eighth (optional) zone.
+    expect(countFallbackZones(uniform("percentage_fallback"))).toBe(ZONE_KEYS.length);
   });
 
   it("counts only the fallback zones in a mixed response", () => {

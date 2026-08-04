@@ -78,7 +78,18 @@ export const generateComparisonMarkings = ({
       }
     }
 
-    if (!usedDirectIdMapping) {
+    // Title-block and BOM values are extracted by the backend from specific cells and carry
+    // authoritative coordinates. Re-grounding a short value like "4"/"1"/"0" by text match
+    // anchors it to a same-valued cell elsewhere on the sheet — e.g. a tolerance-grid cell —
+    // so for these structured categories we trust the backend coordinate and skip text
+    // grounding entirely. (drawing_views/notes still ground by text, where it is correct.)
+    const isStructuredCategory =
+      marking.category === "title_block" || marking.category === "bill_of_materials";
+    const hasBackendCoord =
+      (Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) ||
+      (Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2);
+
+    if (!usedDirectIdMapping && !(isStructuredCategory && hasBackendCoord)) {
       const isShortAnnotation = searchTerm && searchTerm.trim().length <= 6 && !searchTerm.includes('\n');
       const exactMatchFilter = (entities: typeof textEntities) =>
         entities.filter(e => e.text.trim().toLowerCase() === searchTerm.trim().toLowerCase());
@@ -230,7 +241,12 @@ export const generateComparisonMarkings = ({
         origin: marking.origin,
         // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,
         // Phase 5) — pass-through only, undefined when the backend didn't set one.
-        feature: marking.feature
+        feature: marking.feature,
+        // Carry the stable finding identity + raw verdict through to the store so a human
+        // correction can send a real entity handle and a feature snapshot for model training
+        // (previously entity_id was dropped here, so feedback events had no handle at all).
+        entity_handle: marking.entity_id,
+        status: marking.status
       });
     }
   });

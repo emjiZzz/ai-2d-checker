@@ -109,6 +109,19 @@ async def resolve_zone_overrides(
         template = await ZoneTemplateDocument.find_one(
             ZoneTemplateDocument.signature == signature
         )
+        # No template for this sheet's exact signature — fall back to the global
+        # default, if one is designated. A signature-specific template always wins
+        # (this branch is only reached when the specific lookup came back empty),
+        # so the default only fills gaps for sheets nobody has aligned directly.
+        if not template:
+            template = await ZoneTemplateDocument.find_one(
+                ZoneTemplateDocument.is_default == True  # noqa: E712
+            )
+            if template:
+                logger.info(
+                    f"[zone_template] No template for '{signature}'; applying global "
+                    f"default '{template.signature}'."
+                )
     except Exception as err:
         logger.warning(f"[zone_template] Template lookup failed for '{signature}': {err}")
         return {}

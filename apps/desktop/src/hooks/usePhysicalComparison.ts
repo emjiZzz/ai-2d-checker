@@ -31,7 +31,7 @@ export const usePhysicalComparison = () => {
     setAiScanError(null);
   }, [setAiChecklistResults, setViolations, setAiScanProgress, setAiScanError]);
 
-  const runPhysicalComparisonAI = async (forceRefresh = false) => {
+  const runPhysicalComparisonAI = async (forceRefresh = false, refreshOcr = false) => {
     if (!oldDrawing || !newDrawing) return;
 
     setAiScanError(null);
@@ -54,6 +54,7 @@ export const usePhysicalComparison = () => {
           drawing_id: newDrawing.id,
           comparison_method: comparisonMethod,
           force_refresh: forceRefresh,
+          refresh_ocr: refreshOcr,
         }),
         signal: controller.signal
       });

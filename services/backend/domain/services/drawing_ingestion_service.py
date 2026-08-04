@@ -76,79 +76,30 @@ class DrawingIngestionService:
     @classmethod
     async def process_ingestion(cls, file: UploadFile) -> tuple[DrawingDocument, ExtractionJob, bool]:
         """
-        Orchestrates full ingestion flow: temp file save, duplicate handling,
-        storage move, database model persistence, and processing queue dispatch.
-        
+        Orchestrates full ingestion flow: temp file save, storage move, database
+        model persistence, and processing queue dispatch.
+
+        No hash-based deduplication: every upload becomes its own fresh
+        DrawingDocument and is re-parsed. In the room-owned model each drawing
+        belongs to exactly one room slot, so re-uploading a corrected file always
+        re-ingests instead of silently serving a stale cached parse.
+
         Returns:
-            (drawing_doc, job_doc, is_duplicate)
+            (drawing_doc, job_doc, is_duplicate) — is_duplicate is always False now
+            that dedupe is gone; kept in the tuple/response for wire compatibility.
         """
         file_ext = cls.validate_extension(file.filename or "")
         temp_path, file_hash, total_size = await cls.save_temp_file(file)
 
-        # 1. Check for duplicate drawing hash in MongoDB database
-        existing_drawing = await DrawingDocument.find_one(DrawingDocument.file_hash == file_hash)
-        if existing_drawing:
-            # If drawing is already fully extracted and completed, return existing completed record
-            if existing_drawing.status == "completed":
-                logger.info(f"Duplicate upload detected for completed drawing {existing_drawing.id}. Preserving cache.")
-                existing_job = await ExtractionJob.find_one(
-                    ExtractionJob.drawing_id == str(existing_drawing.id),
-                    sort=[("created_at", -1)]
-                )
-                if temp_path.exists():
-                    try:
-                        temp_path.unlink()
-                    except Exception:
-                        pass
-                
-                if not existing_job:
-                    # Synthetic placeholder only — no ExtractionJob record exists for this
-                    # drawing (e.g. pruned/migrated). Let Beanie assign a real ObjectId;
-                    # `id` must be a PydanticObjectId, not an arbitrary string.
-                    existing_job = ExtractionJob(
-                        drawing_id=str(existing_drawing.id),
-                        status="completed",
-                        diagnostics={},
-                        created_at=existing_drawing.created_at
-                    )
-                return existing_drawing, existing_job, True
-
-            # If incomplete or failed, reset record and overwrite file
-            secure_filename = f"{file_hash}.{file_ext}"
-            final_upload_path = get_storage_root() / "uploads" / secure_filename
-            try:
-                if final_upload_path.exists():
-                    final_upload_path.unlink()
-                temp_path.rename(final_upload_path)
-            except Exception:
-                if temp_path.exists():
-                    try:
-                        temp_path.unlink()
-                    except Exception:
-                        pass
-
-            await ExtractedEntity.find(ExtractedEntity.drawing_id == str(existing_drawing.id)).delete()
-            cls._clear_comparison_cache(str(existing_drawing.id))
-
-            existing_drawing.status = "queued"
-            existing_drawing.entity_counts = {}
-            existing_drawing.metadata = {}
-            existing_drawing.file_path = f"uploads/{secure_filename}"
-            existing_drawing.format = file_ext
-            await existing_drawing.save()
-
-            existing_job = ExtractionJob(drawing_id=str(existing_drawing.id), status="queued")
-            await existing_job.save()
-
-            await processing_queue.enqueue(str(existing_drawing.id), str(existing_job.id))
-            return existing_drawing, existing_job, True
-
-        # 2. Ingest brand new drawing
-        secure_filename = f"{file_hash}.{file_ext}"
+        # Unique on-disk name per upload. Two uploads of the same bytes must NOT
+        # share a file — otherwise purging one drawing's file would orphan the
+        # other. file_hash is still stored on the record (metadata + OCR cache key
+        # via ComparisonCacheManager.set_cached_ocr) but never names the file.
+        secure_filename = f"{uuid.uuid4().hex}.{file_ext}"
         uploads_dir = get_storage_root() / "uploads"
         uploads_dir.mkdir(parents=True, exist_ok=True)
         final_path = uploads_dir / secure_filename
-        
+
         try:
             if final_path.exists():
                 final_path.unlink()
@@ -182,16 +133,45 @@ class DrawingIngestionService:
         logger.info(f"Successfully ingested and queued drawing {drawing.id} ('{drawing.file_name}')")
         return drawing, job, False
 
-    @staticmethod
-    def _clear_comparison_cache(drawing_id: str) -> None:
+    @classmethod
+    async def purge_drawing(cls, drawing_id: str) -> None:
         """
-        Clears stale comparison cache files on re-upload.
+        Hard-deletes a drawing and every artifact it owns: extracted entities,
+        extraction jobs, the upload file, the PNG rendering, the GLTF model, all
+        comparison/OCR cache files, and finally the DrawingDocument record itself.
+
+        Best-effort per artifact — a missing or unremovable file is logged and
+        skipped rather than aborting the purge, so a partial cleanup never leaves
+        the DB record dangling. Single source of truth for drawing deletion,
+        shared by the drawings DELETE route and room deletion.
         """
-        try:
-            cache_dir = get_storage_root() / "cache"
-            if cache_dir.exists():
-                for f in cache_dir.glob("gemini_comparison_*.json"):
-                    if drawing_id in f.name:
-                        f.unlink()
-        except Exception as cache_del_err:
-            logger.warning(f"Could not clear comparison cache files on re-upload: {cache_del_err}")
+        from ...infrastructure.audit.comparison.cache_manager import ComparisonCacheManager
+
+        drawing = await DrawingDocument.get(drawing_id)
+
+        # 1. Parsed entities + jobs
+        await ExtractedEntity.find(ExtractedEntity.drawing_id == drawing_id).delete()
+        await ExtractionJob.find(ExtractionJob.drawing_id == drawing_id).delete()
+
+        # 2. Disk artifacts
+        storage_root = get_storage_root()
+        candidate_paths = [
+            storage_root / drawing.file_path if drawing and drawing.file_path else None,
+            storage_root / "renderings" / f"{drawing_id}.png",
+            storage_root / "temp" / f"model_{drawing_id}.gltf",
+        ]
+        for path in candidate_paths:
+            if path and path.exists():
+                try:
+                    path.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete artifact {path} for drawing {drawing_id}: {e}")
+
+        # 3. Comparison + OCR cache files (canonical purge — matches on drawing_id)
+        ComparisonCacheManager.clear_cache_for_drawing(drawing_id)
+
+        # 4. The record
+        if drawing:
+            await drawing.delete()
+
+        logger.info(f"Purged drawing {drawing_id} and associated artifacts.")

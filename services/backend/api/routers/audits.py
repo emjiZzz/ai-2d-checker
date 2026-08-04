@@ -5,7 +5,7 @@ import re
 import aiofiles
 from datetime import datetime, timezone, UTC
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Header, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from google import genai
@@ -588,7 +588,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     summary="Submit human engineer feedback and trigger active learning auto-documentation",
     dependencies=[Depends(get_auth_token)]
 )
-async def submit_audit_feedback(request: AuditFeedbackRequest):
+async def submit_audit_feedback(request: AuditFeedbackRequest, background_tasks: BackgroundTasks):
     from ...domain.models.audit_feedback import AuditFeedbackDocument
     from ...infrastructure.knowledge.auto_doc import AutoDocEngine
 
@@ -603,11 +603,21 @@ async def submit_audit_feedback(request: AuditFeedbackRequest):
         human_corrected_status=request.human_corrected_status,
         human_comment=request.human_comment,
         coordinates=request.coordinates,
+        corrected_category=request.corrected_category,
+        corrected_value=request.corrected_value,
+        finding_snapshot=request.finding_snapshot.model_dump() if request.finding_snapshot else None,
     )
     await feedback_doc.save()
 
-    # Trigger active learning auto-documentation engine (Pillar 3)
+    # Trigger active learning auto-documentation engine (Pillar 3) — the legacy vault
+    # dismissal path, kept as complementary suppression.
     was_auto_documented = await AutoDocEngine.process_feedback_event(feedback_doc)
+
+    # Retrain the learned-correction model off the request path so the response stays fast.
+    # Cheap (LogisticRegression on a few hundred rows) and idempotent; the model reload is
+    # in-process so the very next comparison sees the update.
+    from ...infrastructure.learning.trainer import train_from_feedback
+    background_tasks.add_task(train_from_feedback)
 
     res = AuditFeedbackResponse(
         id=str(feedback_doc.id),
@@ -616,6 +626,34 @@ async def submit_audit_feedback(request: AuditFeedbackRequest):
         message="Human feedback recorded successfully." + (" Auto-documented new learned rule to Obsidian Vault!" if was_auto_documented else "")
     )
     return StandardResponse(success=True, data=res)
+
+
+@router.post(
+    "/audits/learning/retrain",
+    response_model=StandardResponse[dict],
+    summary="Force an immediate retrain of the learned-correction model from human feedback",
+    dependencies=[Depends(get_auth_token)],
+)
+async def retrain_learned_model():
+    from ...infrastructure.learning.trainer import train_from_feedback
+    try:
+        result = await train_from_feedback()
+        return StandardResponse(success=True, data=result)
+    except Exception as e:
+        corr_id = correlation_id_var.get()
+        logger.error(f"[{corr_id}] Learned-model retrain failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Retrain failed. Reference: {corr_id}")
+
+
+@router.get(
+    "/audits/learning/status",
+    response_model=StandardResponse[dict],
+    summary="Report learned-correction model status: corrections count, readiness, metrics",
+    dependencies=[Depends(get_auth_token)],
+)
+async def learned_model_status():
+    from ...infrastructure.learning.model_holder import LearnedModelHolder
+    return StandardResponse(success=True, data=LearnedModelHolder.get_instance().status())
 
 
 @router.get(

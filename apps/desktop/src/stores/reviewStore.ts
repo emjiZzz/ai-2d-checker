@@ -238,16 +238,29 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const existing = state.customRegions[drawingId] || DEFAULT_CUSTOM_REGIONS;
     const seeded: Record<string, RegionFractions> = { ...existing };
 
-    // Seed detected zones if not already present
+    // The DETECTOR only seeds a drawing that has no alignment yet. Re-seeding over an
+    // existing one would silently discard the user's own work, and `zoneBoxToFractions`
+    // applies the CAD Y-up -> Y-down flip that detected boxes need.
     if (!state.customRegions[drawingId]) {
       for (const [key, box] of Object.entries(zones)) {
         if (!box) continue;
         const frac = zoneBoxToFractions(box, renderBounds);
+        // null means a degenerate sheet; keep the default rather than storing NaNs.
         if (frac) seeded[key] = normalizeFractions(frac);
       }
     }
 
-    // Always apply template zones on top if provided (hand-aligned template outranks local cache/detector)
+    // The TEMPLATE is applied every time, on top of everything else.
+    //
+    // It is an explicit, named, persisted decision covering every drawing of this sheet
+    // layout, whereas `customRegions` is one drawing's scratch state — and it is restored
+    // from localStorage on reload, so it exists even when the user has never touched a
+    // handle. Applying the template only on a fresh seed is what made a pinned zone appear
+    // to revert to a detector box: the geometry was in the database and honoured by the
+    // comparison, but the editor kept redisplaying the old local seed. A pinned zone belongs
+    // in its pinned place every time the editor opens; RESET is the way back to detection.
+    //
+    // No Y flip here: ZoneFractions is stored Y-DOWN precisely to match customRegions.
     if (templateZones && Object.keys(templateZones).length > 0) {
       for (const [key, frac] of Object.entries(templateZones)) {
         if (frac) seeded[key] = normalizeFractions(frac);

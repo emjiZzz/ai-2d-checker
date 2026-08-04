@@ -43,9 +43,9 @@ export const createAuditSlice: StateCreator<WorkspaceState, [], [], AuditSlice> 
   // components — see AuditWorkspace.tsx's handleOpenSession.
   loadSessionIntoWorkspace: (sessionId, drawing, referenceDrawing, violations, complianceScore, clientName) => {
     // setNewDrawing/setOldDrawing already clear oldLayers/newLayers synchronously
-    // before swapping metadata (fixed at the source, since uploadDrawingFile and
-    // selectDrawingFromLibrary need the same guard and don't go through these
-    // setters) — no separate clear needed here.
+    // before swapping metadata (fixed at the source, since uploadDrawingFile
+    // needs the same guard and doesn't go through these setters) — no separate
+    // clear needed here.
     get().setNewDrawing(drawing);
     if (referenceDrawing) {
       get().setOldDrawing(referenceDrawing);

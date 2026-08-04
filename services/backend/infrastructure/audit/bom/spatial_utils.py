@@ -155,7 +155,13 @@ def find_drawing_text_coordinates(
                         used_entities.add(id(e))
                     return get_anchor(e)
                 else:
-                    if re.search(r'(^|\D)' + re.escape(target_norm) + r'(\D|$)', dec_norm):
+                    # A 1-2 char target must match as a WHOLE TOKEN, not as a character inside a
+                    # longer identifier. The old guard was `(^|\D)…(\D|$)`, which only kept `1`
+                    # from matching inside `11` -- it matched happily inside `M7452A1N01`, because
+                    # the neighbours there are letters, not digits. That is how a mis-extracted
+                    # Previous Dwg. No. of `1` got "corroborated" against the drawing number and
+                    # was upgraded to MATCHED. Alphanumeric boundaries are the real requirement.
+                    if re.search(r'(?<![0-9A-Za-z])' + re.escape(target_norm) + r'(?![0-9A-Za-z])', dec_norm):
                         if used_entities is not None:
                             used_entities.add(id(e))
                         return get_anchor(e)

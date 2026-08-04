@@ -25,6 +25,11 @@ from services.backend.api.routers.drawings import (
 from services.backend.api.schemas import PhysicalComparisonResponse
 from services.backend.infrastructure.audit.bom.table_extractor import extract_dynamic_regions
 
+# Zones that always resolve to a box (every one has a percentage fallback in default_pct).
+# `shim` is deliberately excluded: it is an optional content-only zone with no fallback, so
+# it is None on any sheet without a シム表 table -- which is every fixture in this file.
+MANDATORY_ZONES = tuple(k for k in ZONE_KEYS if k != "shim")
+
 
 def _regions(**overrides) -> dict:
     """A realistic extract_dynamic_regions() return value, reserved keys included."""
@@ -44,14 +49,26 @@ def _regions(**overrides) -> dict:
     return base
 
 
-def test_all_seven_zones_are_mapped():
+def test_all_mandatory_zones_are_mapped():
     resp = build_zones_response("draw1", _regions(), [0.0, 0.0, 200.0, 200.0])
 
-    for key in ZONE_KEYS:
+    for key in MANDATORY_ZONES:
         assert getattr(resp, key) is not None, f"zone {key} should be populated"
+    # shim has no fallback and no anchor in this fixture -> optional, stays None.
+    assert resp.shim is None
     assert resp.drawing_id == "draw1"
     assert resp.render_bounds == [0.0, 0.0, 200.0, 200.0]
     assert resp.bom.xmin == 100.0 and resp.bom.ymax == 200.0
+
+
+def test_shim_zone_maps_when_present():
+    """When the detector does return a shim box, it reaches the wire model like any zone."""
+    regions = _regions(shim=(160.0, 160.0, 195.0, 195.0))
+    regions["_zone_confidence"]["shim"] = "content_aware"
+    resp = build_zones_response("draw1", regions, [0.0, 0.0, 200.0, 200.0])
+    assert resp.shim is not None
+    assert (resp.shim.xmin, resp.shim.ymax) == (160.0, 195.0)
+    assert resp.shim.confidence == "content_aware"
 
 
 def test_reserved_keys_are_not_treated_as_zones():
@@ -61,7 +78,8 @@ def test_reserved_keys_are_not_treated_as_zones():
     serialized = resp.model_dump()
     assert "safe_zones" not in serialized
     assert "_zone_confidence" not in serialized
-    # The wire model should expose exactly the seven zones plus the two scalars.
+    # The wire model should expose exactly the zone keys plus the two scalars (shim included
+    # as a key, its value None when absent).
     assert set(serialized) == set(ZONE_KEYS) | {"drawing_id", "render_bounds"}
 
 
@@ -176,12 +194,12 @@ def test_real_extract_dynamic_regions_output_maps_cleanly():
     serialized = resp.model_dump()
 
     assert set(serialized) == set(ZONE_KEYS) | {"drawing_id", "render_bounds"}
-    for key in ZONE_KEYS:
+    for key in MANDATORY_ZONES:
         assert getattr(resp, key) is not None
     # A realistic sheet resolves some zones by anchor and falls back on others; if every
     # zone reports the same path, the confidence plumbing is more likely broken than the
     # drawing perfect.
-    assert {getattr(resp, k).confidence for k in ZONE_KEYS} == {
+    assert {getattr(resp, k).confidence for k in MANDATORY_ZONES} == {
         "content_aware", "percentage_fallback"
     }
 
@@ -198,12 +216,14 @@ def test_real_detector_with_no_sheet_bounds_flags_every_zone_as_placeholder():
 
     boxes = {
         (z.xmin, z.ymin, z.xmax, z.ymax)
-        for z in (getattr(resp, k) for k in ZONE_KEYS)
+        for z in (getattr(resp, k) for k in MANDATORY_ZONES)
     }
     assert boxes == {(0.0, 0.0, 1000.0, 1000.0)}
-    assert {getattr(resp, k).confidence for k in ZONE_KEYS} == {
+    assert {getattr(resp, k).confidence for k in MANDATORY_ZONES} == {
         "percentage_fallback_no_sheet_bounds"
     }
+    # shim has no fallback, so it stays absent even in the no-bounds placeholder state.
+    assert resp.shim is None
 
 
 def test_llm_response_schema_has_no_open_ended_objects():

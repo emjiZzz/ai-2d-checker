@@ -160,13 +160,17 @@ async def delete_room(room_id: str):
     room.is_deleted = True
     room.deleted_at = datetime.now(timezone.utc)
     await room.save()
-    
-    # Invalidate cache for associated drawings to prevent stale comparison results
-    from ...infrastructure.audit.comparison.cache_manager import ComparisonCacheManager
-    if room.active_old_drawing_id:
-        ComparisonCacheManager.clear_cache_for_drawing(room.active_old_drawing_id)
-    if room.active_new_drawing_id:
-        ComparisonCacheManager.clear_cache_for_drawing(room.active_new_drawing_id)
-        
-    logger.info(f"Room soft-deleted: {room_id}")
+
+    # The room owns its drawings: hard-delete both slots (entities, jobs, files,
+    # caches, records) so nothing dangles once the room is gone. The Room record
+    # itself stays soft-deleted, matching AuditSession convention.
+    from ...domain.services.drawing_ingestion_service import DrawingIngestionService
+    for drawing_id in (room.active_old_drawing_id, room.active_new_drawing_id):
+        if drawing_id:
+            try:
+                await DrawingIngestionService.purge_drawing(drawing_id)
+            except Exception as e:
+                logger.warning(f"Failed to purge drawing {drawing_id} on room {room_id} deletion: {e}")
+
+    logger.info(f"Room soft-deleted and owned drawings purged: {room_id}")
     return StandardResponse(success=True, data={"deleted": True})

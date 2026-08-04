@@ -50,3 +50,33 @@ async def test_autodoc_engine_rule_writing(tmp_path):
         assert "TEST_PATTERN_999" in content
     finally:
         sync_mgr.vault_path = old_vault_path
+
+
+def test_audit_feedback_document_new_correction_fields():
+    """The richer human-in-the-loop fields persist on the document."""
+    fb = AuditFeedbackDocument.model_construct(
+        session_id="s", drawing_id="d", entity_text="ø25", category="drawing_views",
+        original_status="CHANGED", human_corrected_status="verdict_matched",
+        corrected_category=None, corrected_value="ø30",
+        finding_snapshot={"rev_text": "ø25", "det_status": "CHANGED", "category": "drawing_views"},
+    )
+    assert fb.human_corrected_status == "verdict_matched"
+    assert fb.corrected_value == "ø30"
+    assert fb.finding_snapshot["rev_text"] == "ø25"
+
+
+def test_build_bundle_offline_from_fake_feedback():
+    """The learned-model trainer's pure builder runs offline (no live DB)."""
+    from types import SimpleNamespace
+    from infrastructure.learning.trainer import build_bundle
+
+    docs = [
+        SimpleNamespace(
+            human_corrected_status="dismissed", category="drawing_views", entity_text="LEGEND",
+            original_status="CHANGED", corrected_category=None, corrected_value=None, created_at=None,
+            finding_snapshot={"rev_text": "LEGEND", "ref_text": "LEGEND", "category": "drawing_views"},
+        )
+    ]
+    bundle = build_bundle(docs)
+    assert bundle["n_total"] == 1
+    assert bundle["exact_matched"]  # the dismissal is remembered as an exact override

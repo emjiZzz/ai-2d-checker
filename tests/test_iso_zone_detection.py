@@ -34,9 +34,9 @@ from services.backend.infrastructure.cad.viewport_transform import (
 from services.backend.infrastructure.audit.bom.zone_detector import (
     BBOX_PADDING,
     MIN_ISO_ELLIPSES,
-    _derive_views_zone,
     _detect_iso_zone,
     detect_zones_by_content,
+    in_views,
 )
 
 
@@ -253,25 +253,45 @@ def test_iso_box_is_capped_like_every_other_zone():
 
 
 def test_views_excludes_the_detected_iso_region():
-    """`views` is derived by exclusion, so it must see the iso box.
+    """`views` is defined by exclusion, and that exclusion now lives in the PREDICATE.
 
-    Asserted against `_derive_views_zone` directly rather than through the detected
-    `views` box, because `views` is still a bounding box covering most of the sheet and
-    will overlap `iso` no matter what -- that is the known "views should be a predicate"
-    limitation, not something this change fixes. What is testable is the contract that
-    matters: geometry inside the iso box must not contribute to the views extent.
+    The box is the sheet — deliberately, because the old content-percentile box measured
+    119.7% of the sheet across the corpus while simultaneously producing false negatives in
+    the outer 5%. So the contract to assert is `in_views`, not the box's extent.
     """
-    content = [_line(100 + i * 10, 200, 110 + i * 10, 210) for i in range(10)]
-    iso_lines = [_line(800 + i * 10, 800, 810 + i * 10, 810) for i in range(10)]
-    entities = content + iso_lines
+    regions = {
+        "views": (0.0, 0.0, 1000.0, 1000.0),
+        "iso": (780.0, 780.0, 920.0, 920.0),
+        "title": (700.0, 0.0, 1000.0, 150.0),
+    }
 
-    without_iso = _derive_views_zone(entities, {})
-    with_iso = _derive_views_zone(entities, {"iso": (780.0, 780.0, 920.0, 920.0)})
+    # A point in the open drawing area.
+    assert in_views(400.0, 500.0, regions) is True
+    # Inside the iso box: on the sheet, but not drawing views.
+    assert in_views(850.0, 850.0, regions) is False
+    # Inside the title block: likewise.
+    assert in_views(800.0, 50.0, regions) is False
+    # Off the sheet entirely.
+    assert in_views(5000.0, 5000.0, regions) is False
 
-    assert without_iso is not None and with_iso is not None
-    assert with_iso[2] < without_iso[2], (
-        "iso geometry still stretched views — iso must be resolved before views"
-    )
+
+def test_in_views_needs_a_views_box():
+    assert in_views(1.0, 1.0, {}) is False
+    assert in_views(1.0, 1.0, {"views": None}) is False
+
+
+def test_views_box_is_the_sheet_not_a_content_percentile():
+    """The regression this replaces: the derived box exceeded the sheet it described."""
+    entities = _sheet_frame() + [
+        _line(100 + i * 10, 200, 110 + i * 10, 210) for i in range(10)
+    ]
+
+    zones = detect_zones_by_content(entities)
+
+    assert zones["views"] is not None
+    x0, y0, x1, y1 = zones["views"]
+    assert (x1 - x0) <= 1000.0 + 1e-9, "views is wider than the sheet"
+    assert (y1 - y0) <= 1000.0 + 1e-9, "views is taller than the sheet"
 
 
 def test_iso_is_resolved_before_views_in_the_pipeline():

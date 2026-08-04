@@ -123,7 +123,10 @@ const zone = (
 function renderFromDetected(
   ctx: CanvasRenderingContext2D,
   zones: DrawingZonesResponse,
-  opts: { scale?: number; isExport?: boolean; selected?: string | null } = {},
+  opts: {
+    scale?: number; isExport?: boolean; selected?: string | null;
+    pinnedKeys?: readonly string[];
+  } = {},
 ) {
   const customRegions: Record<string, RegionFractions> = {};
   for (const key of ZONE_KEYS) {
@@ -139,6 +142,7 @@ function renderFromDetected(
     selectedRegion: opts.selected ?? null,
     hoveredHandleId: null,
     detected: zones,
+    pinnedKeys: opts.pinnedKeys,
   });
 }
 
@@ -238,6 +242,38 @@ describe("renderZoneEditor — confidence styling", () => {
     renderFromDetected(ctx, onlyTitle(zone(100, 100, 200, 200, "percentage_fallback")));
     const labels = (ctx.fillText as any).mock.calls.map((c: any[]) => c[0]);
     expect(labels[0]).toContain("?");
+  });
+
+  // A hand-pinned zone is the most authoritative source of a zone box there is, but it is
+  // by definition NOT something the detector anchored. Reading `confidence` alone therefore
+  // drew the user's own alignment as a dashed guess — the visible half of the zone template
+  // being write-only.
+  it("draws a solid border for a pinned zone the detector only guessed", () => {
+    const ctx = makeCtx();
+    renderFromDetected(
+      ctx, onlyTitle(zone(100, 100, 200, 200, "percentage_fallback")),
+      { pinnedKeys: ["title"] },
+    );
+    expect(ctx._lineDashes[0]).toEqual([]);
+  });
+
+  it("omits the '?' badge for a pinned zone", () => {
+    const ctx = makeCtx();
+    renderFromDetected(
+      ctx, onlyTitle(zone(100, 100, 200, 200, "percentage_fallback")),
+      { pinnedKeys: ["title"] },
+    );
+    const labels = (ctx.fillText as any).mock.calls.map((c: any[]) => c[0]);
+    expect(labels[0]).not.toContain("?");
+  });
+
+  it("a pin on a DIFFERENT zone does not clear this one's guess marker", () => {
+    const ctx = makeCtx();
+    renderFromDetected(
+      ctx, onlyTitle(zone(100, 100, 200, 200, "percentage_fallback")),
+      { pinnedKeys: ["bom"] },
+    );
+    expect(ctx._lineDashes[0]).toEqual([6, 4]);
   });
 });
 

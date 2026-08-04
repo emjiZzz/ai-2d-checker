@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { LayoutTemplate, Save, Trash2, Check, Move, RefreshCw, X } from "lucide-react";
+import { LayoutTemplate, Save, Trash2, Check, Move, RefreshCw, X, Star } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useReviewStore } from "../../stores/reviewStore";
 import { Button } from "../ui/Button";
@@ -7,7 +7,9 @@ import {
   fetchAllZoneTemplates,
   saveZoneTemplate,
   deleteZoneTemplate,
+  setDefaultZoneTemplate,
   zoneSignature,
+  ZONE_KEYS,
   type ZoneTemplate,
 } from "../../services/drawingsApi";
 
@@ -63,8 +65,12 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
     const newReg = newDrawing ? useReviewStore.getState().getRegionsFor(newDrawing.id) : {};
     const regions = { ...oldReg, ...newReg };
     const zones: Record<string, any> = {};
+    const allowed = new Set<string>(ZONE_KEYS);
     for (const [key, frac] of Object.entries(regions)) {
-      if (frac) {
+      // Only persist real comparison zones. `regions` can carry non-zone keys
+      // (e.g. drawing_id, render_bounds) copied from the zones response object;
+      // saving those pollutes the template. Backend strips them too — belt and braces.
+      if (frac && allowed.has(key)) {
         zones[key] = {
           xMin: clamp01(frac.xMin),
           xMax: clamp01(frac.xMax),
@@ -122,6 +128,23 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
       } catch (err) {
         setStatusMsg({ type: "error", text: err instanceof Error ? err.message : String(err) });
       }
+    }
+  };
+
+  const handleSetDefault = async (tpl: ZoneTemplate) => {
+    // Toggle: clicking the current default clears it; clicking another makes it the sole default.
+    const next = !tpl.is_default;
+    try {
+      await setDefaultZoneTemplate(tpl.signature, next);
+      setStatusMsg({
+        type: "success",
+        text: next
+          ? `${tpl.name || tpl.signature} is now the default template`
+          : `Cleared default template`,
+      });
+      loadTemplates();
+    } catch (err) {
+      setStatusMsg({ type: "error", text: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -214,17 +237,23 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
         </div>
 
         {/* List Header & Refresh */}
-        <div className="flex items-center justify-between mt-1">
-          <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
-            Stored Templates ({templates.length})
-          </span>
-          <button
-            onClick={loadTemplates}
-            title="Refresh templates list"
-            className="text-text-muted hover:text-text-primary transition-colors cursor-pointer p-1"
-          >
-            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-          </button>
+        <div className="flex flex-col gap-1 mt-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
+              Stored Templates ({templates.length})
+            </span>
+            <button
+              onClick={loadTemplates}
+              title="Refresh templates list"
+              className="text-text-muted hover:text-text-primary transition-colors cursor-pointer p-1"
+            >
+              <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
+          <p className="text-[10px] text-text-muted leading-snug">
+            <Star size={9} className="inline fill-sky-400 text-sky-400 -mt-0.5" /> The default
+            template is applied to any sheet without its own matching aspect template.
+          </p>
         </div>
 
         {/* Templates List */}
@@ -236,6 +265,7 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
           ) : (
             templates.map((tpl) => {
               const isMatch = tpl.signature === signature;
+              const isDefault = tpl.is_default;
               const pinnedCount = Object.keys(tpl.zones || {}).length;
               return (
                 <div
@@ -251,6 +281,11 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
                       <span className="font-bold font-mono text-text-primary truncate">
                         {tpl.name || tpl.signature}
                       </span>
+                      {isDefault && (
+                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                          <Star size={9} className="fill-current" /> Default
+                        </span>
+                      )}
                       {isMatch && (
                         <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                           Matches Current Sheet
@@ -263,6 +298,17 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleSetDefault(tpl)}
+                      className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                        isDefault
+                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                          : "bg-transparent text-text-muted border-border-color hover:text-sky-300 hover:border-sky-500/40"
+                      }`}
+                      title={isDefault ? "Clear as default template" : "Set as default template for all sheets"}
+                    >
+                      <Star size={13} className={isDefault ? "fill-current" : ""} />
+                    </button>
                     <button
                       onClick={() => handleApplyTemplate(tpl)}
                       className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"

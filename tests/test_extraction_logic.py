@@ -122,6 +122,36 @@ def test_extract_proximity_value_stacked_title():
     assert merged_text == f"{text_line1}\n{text_line2}", f"Failed to group stacked text. Got: {merged_text}"
     assert coords[1] == 41.5, f"Incorrect geometric anchor for merged text. Got Y={coords[1]}"
 
+def test_scale_reads_value_below_not_date_to_the_right():
+    """Regression: SCALE was mapped with direction='right' and grabbed the adjacent Y/M/D
+    date column instead of the scale value directly beneath its label.
+
+    Layout mirrors the measured KEMCO title block: a header row (DESIGNED | DRAWN | SCALE |
+    Y/M/D) at y~46 with each field's value directly below at y~36. The reference read SCALE
+    as '04/12/22\\n20' (the date column) against the revision's real '1/1'. SCALE must read
+    the value in its own column, not the neighbouring date.
+    """
+    entities = [
+        # Header row (labels).
+        MockEntity("text", "DESIGNED", 232.0, 46.0),
+        MockEntity("text", "DRAWN", 247.0, 46.0),
+        MockEntity("text", "SCALE", 262.0, 46.0),
+        MockEntity("text", "Y/M/D", 281.0, 45.0),
+        # Value row directly below each label.
+        MockEntity("text", "中川", 243.0, 36.0),   # designer, under DRAWN/DESIGNED
+        MockEntity("text", "1:1", 262.0, 36.0),     # the SCALE value, same column
+        MockEntity("text", "20", 270.0, 34.0),      # date fragment, Y/M/D column
+        MockEntity("text", "04/12/22", 275.0, 34.0),# date, Y/M/D column
+    ]
+
+    fields = extract_title_fields(entities)
+    assert fields["SCALE"]["value"] == "1:1", \
+        f"SCALE should read the value below its label, got {fields['SCALE']['value']!r}"
+    # And specifically must not have picked up the date column.
+    assert "04/12/22" not in fields["SCALE"]["value"]
+    assert "/" not in fields["SCALE"]["value"] or fields["SCALE"]["value"] == "1:1"
+
+
 def test_extract_bom_fields_shifted_matrix():
     """
     Validates Fix B2: Dynamic anchor-key BOM alignment.
@@ -211,6 +241,114 @@ def test_extract_bom_fields_ignores_hardcoded_layers():
     assert len(bom_rows) == 1
     assert bom_rows[0]["NO"] == "99"
     assert bom_rows[0]["CODE"].lower() == "aluminum"
+
+
+def test_extract_bom_captures_refer_to_table_deferral_row():
+    """Regression: a BOM whose only data row is an item number next to a 表ニヨル ('as per the
+    table') pointer has just two cells, so the >=4-cell row filter drops it and the BOM
+    comparison shows nothing though the row is on the sheet. The deferral fallback must still
+    surface it (materials live in the shim table, which is compared as its own zone)."""
+    entities = [
+        # Header row (>= 4 cells, contains 材質/寸法 so is_assembly=False).
+        MockEntity("text", "No.", 0, 100),
+        MockEntity("text", "材質", 20, 100),
+        MockEntity("text", "寸法", 50, 100),
+        MockEntity("text", "Q'ty", 80, 100),
+        MockEntity("text", "備考", 110, 100),
+        # The only data row: item number + deferral pointer (two cells).
+        MockEntity("text", "1", 2, 80),
+        MockEntity("text", "表ニヨル", 22, 80),
+    ]
+
+    rows, is_assembly = extract_bom_fields(entities, bom_bbox=(0.0, 70.0, 120.0, 110.0))
+
+    assert is_assembly is False
+    assert len(rows) == 1
+    assert rows[0]["NO"] == "1"
+    assert "表ニヨル" in str(rows[0]["CODE"])
+
+
+def test_ungrounded_ocr_value_defers_to_spatial_reading():
+    """Regression: an OCR title-block value that matches NO text on the drawing is a likely
+    misread (Gemini read a mislocated crop as 'ME17227N24' for the real 'M745227N01'). It must
+    NOT override the spatially-grounded value; the real DWG number below the label wins."""
+    entities = [
+        MockEntity("text", "図面番号", 100.0, 100.0),   # DWG label
+        MockEntity("text", "M745227N01", 100.0, 90.0),  # the real value, directly below
+    ]
+    # OCR returns a value that appears on no entity -> ungrounded -> must defer to spatial.
+    fields = extract_title_fields(entities, ocr_results={"DWG_NO": "ME17227N24"})
+    assert fields["DWG NO"]["value"] == "M745227N01"
+
+
+def test_grounded_ocr_value_is_still_trusted():
+    """The other side of the same guard: an OCR value that DOES match drawing text stays."""
+    entities = [
+        MockEntity("text", "図面番号", 100.0, 100.0),
+        MockEntity("text", "M745227N01", 100.0, 90.0),
+    ]
+    fields = extract_title_fields(entities, ocr_results={"DWG_NO": "M745227N01"})
+    assert fields["DWG NO"]["value"] == "M745227N01"
+
+
+class MockLine:
+    """A ruled line of the title-block grid, as ezdxf reports it (start/end, no insert)."""
+    def __init__(self, x1, y1, x2, y2, layer="WAKU"):
+        self.entity_type = "line"
+        self.layer = layer
+        self.geometry = {"start": [x1, y1, 0.0], "end": [x2, y2, 0.0]}
+        self.properties = {}
+
+
+def test_below_search_does_not_read_across_a_ruled_vertical():
+    """Regression: 'Previous Dwg. No.' read the tolerance table's Fabrication cell.
+
+    Geometry is the measured M7452A1N01 revision. The 旧図面番号 label sits at (153.0, 35.5); the
+    tolerance table's Fabrication cell '1' at (145.9, 29.8) falls inside the proximity rectangle
+    (dx=7.1, dy=5.7) even though the ruled vertical at x=152.0 stands between them. That bogus
+    '1' was then corroborated against the other sheet and shown as a green MATCHED marker.
+    """
+    label_and_value = [
+        MockEntity("text", "旧図面番号", 153.0, 35.5, layer="WAKU", height=2.5),
+        MockEntity("text", "1", 145.9, 29.8, layer="WAKU", height=2.0),
+    ]
+    rule = MockLine(152.0, 10.0, 152.0, 51.0)
+
+    # Without the rule the candidate is in range and IS picked -- this pins that the fixture
+    # actually exercises the guard rather than failing the tolerance test for some other reason.
+    assert extract_title_fields(label_and_value)["PREVIOUS DWG NO"]["value"] == "1"
+
+    fields = extract_title_fields(label_and_value + [rule])
+    assert fields["PREVIOUS DWG NO"]["value"] == "NONE"
+
+
+def test_below_search_still_reads_a_value_in_its_own_cell():
+    """The guard must only reject candidates across a rule, never one in the label's own cell."""
+    entities = [
+        MockEntity("text", "旧図面番号", 153.0, 35.5, layer="WAKU", height=2.5),
+        MockEntity("text", "A1234", 153.4, 30.5, layer="WAKU", height=2.0),
+        MockLine(152.0, 10.0, 152.0, 51.0),   # rule to the LEFT of both -- not between them
+        MockLine(196.0, 10.0, 196.0, 51.0),   # rule to the RIGHT of both -- not between them
+    ]
+    assert extract_title_fields(entities)["PREVIOUS DWG NO"]["value"] == "A1234"
+
+
+def test_job_no_reads_value_to_the_right_of_its_label():
+    """Regression: JOB NO read NONE on every sheet, hiding a real 2589 -> 9324 edit.
+
+    Measured M7452A1N01 revision geometry: 工事番号 is set as separate single-char vertical text
+    (never matches as a label), so the English 'Job No.' at (180.9, 11.6) is the only anchor, and
+    its value sits to the RIGHT at (196.0, 11.5) -- not below, where the search used to look.
+    """
+    entities = [
+        MockEntity("text", "Job No.", 180.9, 11.6, layer="WAKU", height=2.2),
+        MockEntity("text", "9324", 196.0, 11.5, layer="WAKU", height=2.0),
+        MockEntity("text", "7777", 215.0, 11.5, layer="WAKU", height=2.0),  # next cell over
+        MockLine(181.5, 10.0, 181.5, 28.0),  # label-cell/value-cell divider: must NOT block
+    ]
+    fields = extract_title_fields(entities)
+    assert fields["JOB NO"]["value"] == "9324"
+
 
 def test_extract_title_fields_native_blocks():
     class MockBlockEntity:

@@ -160,16 +160,29 @@ async def test_perform_physical_comparison_endpoint(mock_beanie_docs, monkeypatc
         )
     )
     
-    # Add text entity that matches the text content of the non-admin BOM marking
+    # A genuine drawing-view component (NOT on a BOM/title layer, so safe_filter keeps it).
+    # It sits at (50,50), inside the views box provided below.
     mock_beanie_docs["entities"].append(
         ExtractedEntity(
             drawing_id="rev_dwg_id",
             job_id="job2",
             entity_type="text",
-            layer="bom",
+            layer="outline",
             properties={"text": "M8 Bolt"},
             geometry={"insert": [50.0, 50.0]}
         )
+    )
+
+    # drawing_views is now scoped strictly to the `views` zone box (no residual fallback), so the
+    # comparison needs a real views box covering the drawing. Zone detection on this synthetic
+    # 3-entity sheet collapses to the (0,0,1000,1000) "no sheet bounds" placeholder — which
+    # correctly yields an empty drawing_views under strict scoping — so pin a real one here.
+    async def _fake_regions(entities, render_bounds=None, **kwargs):
+        return {"views": [0.0, 0.0, 100.0, 100.0]}
+
+    monkeypatch.setattr(
+        "services.backend.infrastructure.audit.bom.table_extractor.extract_dynamic_regions_async",
+        _fake_regions,
     )
 
     # Set up GEMINI_API_KEY environment variable for test execution

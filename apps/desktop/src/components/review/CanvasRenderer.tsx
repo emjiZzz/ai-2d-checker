@@ -72,7 +72,6 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
   const visibleMarkerTypes = useReviewStore(s => s.visibleMarkerTypes);
   const showGrid = useReviewStore(s => s.showGrid);
-  const getPinnedZoneKeys = useReviewStore(s => s.getPinnedZoneKeys);
 
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const violations = useWorkspaceStore((s) => s.violations);
@@ -89,6 +88,9 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const zoneRegions = useWorkspaceStore((s) => s.zoneRegions);
   const isRoiEditModeEnabled = useReviewStore((s) => s.isRoiEditModeEnabled);
   const allCustomRegions = useReviewStore((s) => s.customRegions);
+  // Which zones came from the hand-aligned template. Drives the guess marker: a pinned zone
+  // is not something the detector anchored, so confidence alone would draw it as a guess.
+  const allPinnedZoneKeys = useReviewStore((s) => s.pinnedZoneKeys);
   const selectedComparisonRegion = useReviewStore((s) => s.selectedComparisonRegion);
   const theme = useThemeStore((s) => s.theme);
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -312,7 +314,9 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
         selectedRegion: selectedComparisonRegion,
         hoveredHandleId: hoveredHandleId ?? null,
         detected: drawing?.id ? zoneRegions[drawing.id] : null,
-        pinnedKeys: drawing?.id ? getPinnedZoneKeys(drawing.id) : [],
+        // Read from the subscribed map, not the store getter: a getter call inside this
+        // effect would not re-run the render when the template finishes loading.
+        pinnedKeys: (drawing?.id && allPinnedZoneKeys[drawing.id]) || [],
       });
     }
 
@@ -321,7 +325,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid, zoneRegions, isRoiEditModeEnabled, allCustomRegions, selectedComparisonRegion, hoveredHandleId]);
+  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

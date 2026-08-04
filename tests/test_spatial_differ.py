@@ -81,3 +81,60 @@ def test_diff_views_widened_pass_never_pairs_different_text():
     # Neither marking may claim the other's text as its paired original/changed value.
     assert "R2" not in str(c5_marking.get("original_value", ""))
     assert c5_marking["status"] != "CHANGED"
+
+
+# --- Standard (pass 1) similarity gate: an in-place CHANGED requires the two strings to be
+#     a plausible edit of each other, not merely co-located. See CHANGED_SIMILARITY_FLOOR.
+
+def _twin_fillers():
+    """Four exact-match pairs so the strict match rate is >= 0.80 (digital-twin mode, pass-1
+    threshold 10.0), placed far from the (500, 500) test region."""
+    ref = [_text_entity(f"OK{i}", i * 10.0, i * 10.0, handle=f"ok{i}-ref") for i in range(1, 5)]
+    rev = [_text_entity(f"OK{i}", i * 10.0, i * 10.0, handle=f"ok{i}-rev") for i in range(1, 5)]
+    return ref, rev
+
+
+def test_diff_views_does_not_pair_unrelated_text_as_changed():
+    """Two DIFFERENT, co-located strings that are not a plausible edit of each other must
+    surface as REMOVED + ADDED, never a single CHANGED. This is the notes false-pairing fix:
+    '2 ロール：4' was reported as CHANGED into an unrelated fabrication note purely because the
+    two sat close together on the sheet."""
+    ref, rev = _twin_fillers()
+    ref.append(_text_entity("APPLE ORCHARD", 500.0, 500.0, handle="a-ref"))
+    rev.append(_text_entity("ZEBRA CROSSING", 501.0, 501.0, handle="z-rev"))  # dist ~1.4, in pass-1 range
+
+    markings = SpatialDiffer.diff_views(ref, rev)
+    removed = next(m for m in markings if m["text_content"] == "APPLE ORCHARD")
+    added = next(m for m in markings if m["text_content"] == "ZEBRA CROSSING")
+
+    assert removed["status"] == "REMOVED"
+    assert added["status"] == "ADDED"
+    assert not any(m["status"] == "CHANGED" for m in markings)
+
+
+def test_diff_views_keeps_a_plausible_in_place_edit_as_changed():
+    """The gate must not over-suppress genuine edits: a co-located pair with high character
+    overlap ('TORQUE 45NM' -> 'TORQUE 50NM') stays a single CHANGED."""
+    ref, rev = _twin_fillers()
+    ref.append(_text_entity("TORQUE 45NM", 500.0, 500.0, handle="t-ref"))
+    rev.append(_text_entity("TORQUE 50NM", 501.0, 501.0, handle="t-rev"))
+
+    markings = SpatialDiffer.diff_views(ref, rev)
+    changed = next(m for m in markings if m["text_content"] == "TORQUE 50NM")
+
+    assert changed["status"] == "CHANGED"
+    assert changed["original_value"] == "TORQUE 45NM"
+
+
+def test_diff_views_keeps_numeric_value_change_as_changed():
+    """Two dimension values ('130' -> '125') share few characters but are a real edit, so the
+    numeric-both bypass keeps them a CHANGED rather than splitting into REMOVED + ADDED."""
+    ref, rev = _twin_fillers()
+    ref.append(_text_entity("130", 500.0, 500.0, handle="d-ref"))
+    rev.append(_text_entity("125", 501.0, 501.0, handle="d-rev"))
+
+    markings = SpatialDiffer.diff_views(ref, rev)
+    changed = next(m for m in markings if m["text_content"] == "125")
+
+    assert changed["status"] == "CHANGED"
+    assert changed["original_value"] == "130"

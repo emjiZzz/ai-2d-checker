@@ -1,5 +1,6 @@
 import React from "react";
 import { SystemDiagnostics } from "../../components/SystemDiagnostics";
+import { LearningPanel } from "../../components/settings/LearningPanel";
 
 /**
  * SettingsView — Compliance Settings form + live System Connection panel.
@@ -35,6 +36,11 @@ export const SettingsView: React.FC = () => {
             <input type="number" className="w-full bg-bg-sidebar border border-border-color rounded-lg py-2.5 px-3.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer" defaultValue="0.1" />
           </div>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-extrabold text-text-primary m-0 tracking-tight mb-4">Active Learning</h2>
+        <LearningPanel />
       </div>
 
       <div className="mt-8">

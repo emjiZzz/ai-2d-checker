@@ -207,6 +207,136 @@ def test_degenerate_inputs(markings):
     assert reconcile_relocated_markings(markings) == markings
 
 
+# ---------------------------------------------------------------------------
+# Fuzzy pass: content that both moved AND changed
+# ---------------------------------------------------------------------------
+
+REF_BOUNDS = [-52.5, -37.125, 1102.5, 779.625]
+REV_BOUNDS = [-21.0, -14.85, 441.0, 311.85]
+
+
+def test_the_real_moved_and_changed_case_collapses():
+    """From the corpus pair: the trailing 度 was dropped AND the line changed zone, so the
+    per-zone diffs never compared the two. It stayed a deletion plus an unrelated addition,
+    with the actual edit never stated anywhere."""
+    markings = [
+        _removed("素材調質施工　硬度HS35～38度", category="notes_section"),
+        _added("素材調質施工　硬度ＨＳ３５～３８", category="drawing_views"),
+    ]
+
+    out = reconcile_relocated_markings(markings)
+
+    assert len(out) == 1
+    assert out[0]["status"] == "CHANGED"
+    assert out[0]["original_value"] == "素材調質施工　硬度HS35～38度"
+    assert "Edited and relocated" in out[0]["details"]
+
+
+def test_unrelated_text_is_not_paired():
+    markings = [_removed("完成時、バリ、キリ粉はなきこと"), _added("SECTION A-A")]
+
+    out = reconcile_relocated_markings(markings)
+
+    assert len(out) == 2
+    assert {m["status"] for m in out} == {"REMOVED", "ADDED"}
+
+
+def test_ambiguous_candidates_are_all_left_alone():
+    """Two near-equally similar candidates mean the pairing is a guess. A wrong merge
+    destroys a finding; a missed merge only leaves noise that was already there."""
+    markings = [
+        _removed("TOLERANCE CLASS A1"),
+        _added("TOLERANCE CLASS A2"),
+        _added("TOLERANCE CLASS A3"),
+    ]
+
+    out = reconcile_relocated_markings(markings)
+
+    assert len(out) == 3
+    assert sum(1 for m in out if m["status"] == "CHANGED") == 0
+
+
+def test_one_added_cannot_claim_several_removeds():
+    markings = [
+        _removed("MATERIAL SPEC S45C"),
+        _removed("MATERIAL SPEC S50C"),
+        _added("MATERIAL SPEC S55C"),
+    ]
+
+    out = reconcile_relocated_markings(markings)
+
+    assert sum(1 for m in out if m["status"] == "CHANGED") == 0
+
+
+def test_short_strings_are_never_fuzzy_paired():
+    """No threshold separates a real edit from a coincidence at this length: '8.7' vs '8.65'
+    scores 0.57 and '45' vs '46' scores 0.5."""
+    markings = [_removed("8.7", category="bill_of_materials"),
+                _added("8.65", category="title_block")]
+
+    out = reconcile_relocated_markings(markings)
+
+    assert len(out) == 2
+    assert {m["status"] for m in out} == {"REMOVED", "ADDED"}
+
+
+def test_content_that_moved_across_the_whole_sheet_is_not_paired():
+    """Content moves, but not from one corner to the other. The check runs in the normalized
+    frame because the two drawings are 2.5x apart in raw units."""
+    removed = _removed("素材調質施工　硬度HS35～38度", category="notes_section",
+                       coords=(60.0, 740.0))          # top-left of the reference
+    added = _added("素材調質施工　硬度ＨＳ３５～３８", category="drawing_views",
+                   coords=(430.0, 10.0))              # bottom-right of the revision
+
+    out = reconcile_relocated_markings(
+        [removed, added], ref_bounds=REF_BOUNDS, rev_bounds=REV_BOUNDS,
+    )
+
+    assert len(out) == 2, "a sheet-wide jump is not a relocation"
+
+
+def test_a_modest_move_is_still_paired_with_bounds_supplied():
+    removed = _removed("素材調質施工　硬度HS35～38度", category="notes_section",
+                       coords=(300.0, 600.0))
+    added = _added("素材調質施工　硬度ＨＳ３５～３８", category="drawing_views",
+                   coords=(126.0, 242.0))   # same relative spot, revision scale
+
+    out = reconcile_relocated_markings(
+        [removed, added], ref_bounds=REF_BOUNDS, rev_bounds=REV_BOUNDS,
+    )
+
+    assert len(out) == 1
+    assert out[0]["status"] == "CHANGED"
+
+
+def test_missing_coordinates_do_not_block_the_merge():
+    """The distance test is a guard, not a requirement."""
+    removed = {"text_content": "素材調質施工　硬度HS35～38度", "status": "REMOVED",
+               "category": "notes_section", "details": ""}
+    added = {"text_content": "素材調質施工　硬度ＨＳ３５～３８", "status": "ADDED",
+             "category": "drawing_views", "details": ""}
+
+    out = reconcile_relocated_markings([removed, added],
+                                       ref_bounds=REF_BOUNDS, rev_bounds=REV_BOUNDS)
+
+    assert len(out) == 1 and out[0]["status"] == "CHANGED"
+
+
+def test_exact_matches_are_consumed_before_the_fuzzy_pass():
+    """An identical pair must become MATCHED, not be stolen by a similar-but-different one."""
+    markings = [
+        _removed("完成時、バリ、キリ粉はなきこと", category="drawing_views"),
+        _added("完成時、バリ、キリ粉はなきこと", category="notes_section"),
+        _added("完成時、バリ、キリ粉はなきこ", category="notes_section"),
+    ]
+
+    out = reconcile_relocated_markings(markings)
+
+    statuses = _statuses(out)
+    assert "完成時、バリ、キリ粉はなきこと" in statuses.get("MATCHED", [])
+    assert statuses.get("ADDED") == ["完成時、バリ、キリ粉はなきこ"]
+
+
 def test_empty_text_is_never_merged():
     """Blank strings would otherwise all collapse into each other."""
     markings = [_removed(""), _added("")]

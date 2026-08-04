@@ -39,9 +39,13 @@ from .marking_builder import (
 )
 from .coordinate_resolver import resolve_marking_coordinates, harden_value_only_coordinates
 from .marking_reconciler import reconcile_relocated_markings
+from .geometry_differ import diff_geometry
 from .schemas import Coordinate2D, BoundingBox2D
 from .cache_manager import ComparisonCacheManager
 from .candidate import ComparisonCandidate
+# Learned-correction layer. Applied POST-cache (see perform_drawing_comparison) so a retrain
+# takes effect immediately without a cache-version bump; its output is never cached.
+from ...learning.inference import apply_learned_adjustments
 from . import taxonomy
 from .feature_classifier import (
     classify_drawing_view_feature,
@@ -49,6 +53,189 @@ from .feature_classifier import (
     classify_iso_feature,
     classify_title_ul_feature,
 )
+
+
+# Column headers of the amendment / revision-history table, matched EXACTLY against
+# NFKC-normalised lowercase text.
+#
+# This table is title-block furniture, but it is not reliably *inside* the detected
+# `title` box. Measured on the KEMCO pair bc17b56d / 63adc691 (2026-07-30): on the
+# revision it sits at x 338-402, inside `title`; on the reference the same table sits
+# bottom-left at x 28-129 while `title` starts at x 152. `title`'s bottom-right quadrant
+# filter excludes bottom-left anchors by design, and widening `title` to reach across
+# would breach its 0.60 width cap and swallow the sheet's bottom strip. So the headers are
+# excluded by text, which is position-independent and survives the two sheets disagreeing
+# about where the table lives.
+#
+# Headers only. The table's *values* (old drawing numbers, dates, amendment codes) are
+# real content and a genuine revision changes them -- '2491FSRS' and 'M745203N01' stay in
+# the comparison. Exact match, never substring: 'name' is short enough that substring
+# matching would suppress unrelated text.
+REVISION_TABLE_HEADERS: frozenset = frozenset({
+    "amd.", "amd",
+    "design chg no.", "design chg no",
+    "previous dwg. no,", "previous dwg. no.", "previous dwg no",
+    "y/m/d",
+    "name",
+    "旧図面番号",
+    "旧工事番号",
+    "訂正符号",
+    "設計訂正書no.", "設計訂正書no",
+    "年月日",
+    "担当",
+    "符号",
+})
+
+
+# Layer-name substrings that mark an entity as sheet furniture (frame / title block / tolerance
+# table / BOM labels) rather than drawing content, so drawing_views must not diff it. "waku" is
+# the romanization of 枠 (frame/border): KMTI AutoCAD sheets put ALL furniture on a layer named
+# "WAKU", and the kanji check alone never fired because the layer name is romaji. SolidWorks-
+# derived sheets have no such named layer (everything is NoLayerName_00x) and rely on the
+# geometric zone boxes instead — this predicate only helps the AutoCAD side, which is where a
+# clean furniture layer actually exists. Module-level and pure so it is unit-testable without
+# standing up the whole comparison pipeline.
+FURNITURE_LAYER_TOKENS: tuple = ("tol", "tolerance", "公差", "枠", "waku")
+
+
+def is_furniture_layer(layer: str) -> bool:
+    """True when the layer name marks an entity as sheet furniture, not drawing content."""
+    layer_lc = (layer or "").lower()
+    return any(tok in layer_lc for tok in FURNITURE_LAYER_TOKENS)
+
+
+def _point_in_bbox(insert, bbox) -> bool:
+    """True if an entity insert point (x, y[, z]) falls inside bbox (xmin, ymin, xmax, ymax)."""
+    if not bbox or not insert or len(insert) < 2:
+        return False
+    return bbox[0] <= insert[0] <= bbox[2] and bbox[1] <= insert[1] <= bbox[3]
+
+
+def keep_for_title_extraction(entity, tolerance_bbox, title_bbox) -> bool:
+    """Whether to feed `entity` to the title-block extractor.
+
+    Title extraction excludes the tolerance table so its numeric cells aren't misread as title
+    fields. But the detected/pinned tolerance box is frequently OVER-WIDE — spanning the full
+    bottom strip — and then it also covers the bottom-right title block, so a naive
+    `not is_in_bbox(e, tolerance_bbox)` deletes the real title fields and every one reads NONE
+    (DRAWN/SCALE/DESIGNED/TITLE). Guard: drop an entity only when it is in the tolerance box AND
+    NOT in the title box, so the tolerance *table* is removed but the title block is preserved.
+    """
+    geom = getattr(entity, "geometry", {}) or {}
+    insert = geom.get("insert")
+    in_tol = _point_in_bbox(insert, tolerance_bbox)
+    in_title = _point_in_bbox(insert, title_bbox)
+    return not (in_tol and not in_title)
+
+
+def _amendment_norm(t) -> str:
+    """NFKC + strip + lowercase, matching orchestrator's _normalize_value_text."""
+    import unicodedata
+    return unicodedata.normalize("NFKC", str(t or "")).strip().lower()
+
+
+def amendment_table_bboxes(entities: list, global_bounds: tuple | None) -> list:
+    """Bounding boxes of the amendment / revision-history table(s) on one drawing.
+
+    The table is title-block furniture but has no fixed position -- on the measured KEMCO
+    pair it sits bottom-left on the reference (x 28-129, outside the `title` box) and inside
+    `title` on the revision. So it is located by clustering its own column-header anchors
+    (REVISION_TABLE_HEADERS), not by a quadrant like the ZONE_ANCHORS zones.
+
+    The boxes are used ONLY to reclassify drawing_views findings to title_block, never to
+    exclude entities from comparison. A loose or wrong cluster therefore mislabels a finding
+    at worst and can never drop one -- which is why the padding and join constants here can
+    be approximate without risking a false negative, the one number this system does not yet
+    measure. Guards: a cluster needs >= 2 headers (a lone 'Name' in a note is not a table),
+    and any box exceeding 20% of the sheet is discarded rather than allowed to relabel a
+    fifth of the drawing.
+    """
+    def _pt(e):
+        g = getattr(e, "geometry", {}) or {}
+        loc = g.get("insert") or g.get("location") or g.get("text_point")
+        return (loc[0], loc[1]) if loc and len(loc) >= 2 else None
+
+    pts = []
+    for e in entities:
+        props = getattr(e, "properties", {}) or {}
+        if _amendment_norm(props.get("text") or props.get("value") or "") in REVISION_TABLE_HEADERS:
+            p = _pt(e)
+            if p:
+                pts.append(p)
+    if len(pts) < 2:
+        return []
+
+    if global_bounds:
+        gw = global_bounds[2] - global_bounds[0]
+        gh = global_bounds[3] - global_bounds[1]
+        diag = (gw * gw + gh * gh) ** 0.5
+    else:
+        gw = gh = 0.0
+        diag = 1000.0
+    join = diag * 0.06  # a table's headers sit within a row or two of each other
+
+    clusters: list = []
+    for p in pts:
+        for c in clusters:
+            if any(((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5 <= join for q in c):
+                c.append(p)
+                break
+        else:
+            clusters.append([p])
+
+    boxes = []
+    for c in clusters:
+        if len(c) < 2:
+            continue
+        xs = [q[0] for q in c]
+        ys = [q[1] for q in c]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        # Pad to take in the value cells and the amendment row-letter column, which run
+        # beyond the header row (the row letters sit ABOVE the headers on the reference,
+        # hence the larger vertical pad).
+        pad_x = max(20.0, (x1 - x0) * 0.25)
+        pad_y = max(30.0, (y1 - y0) * 0.50)
+        bx = (x0 - pad_x, y0 - pad_y, x1 + pad_x, y1 + pad_y)
+        if gw > 0 and gh > 0:
+            if ((bx[2] - bx[0]) * (bx[3] - bx[1])) / (gw * gh) > 0.20:
+                continue
+        boxes.append(bx)
+    return boxes
+
+
+def _title_ul_tokens(key: str) -> set:
+    """Normalized header tokens of a title-upper-left key. A field's key is one or more
+    stacked header labels joined by ' / ' (e.g. 'Unit No. / ユニットNo.'). Which labels land in
+    the key depends on coordinate scale -- the header banding uses a fixed y-threshold, so a
+    large-coordinate drawing splits the English and Japanese header rows into separate bands
+    (both in the key) while a small-coordinate one merges them (only the nearest single label
+    in the key). The same field therefore emits DIFFERENT combined keys on the two drawings."""
+    import unicodedata as _u
+    import re as _r
+    def _n(t: str) -> str:
+        return _r.sub(r"\s+", " ", _u.normalize("NFKC", t or "").strip().lower())
+    return {_n(part) for part in str(key).split(" / ") if _n(part)}
+
+
+def match_title_ul_pairs(ref_pairs: list, rev_pairs: list) -> list:
+    """Greedy-match reference↔revision title-upper-left pairs by shared header token, so the
+    same field pairs up even when the two drawings emitted different combined keys (see
+    _title_ul_tokens). Returns [(ref_pair | None, rev_pair | None), ...]; a one-sided tuple is
+    a genuinely added/removed field. Replaces an exact-combined-key lookup that double-reported
+    every identical value as REMOVED + ADDED whenever the header banding differed by scale."""
+    rev_unmatched = list(rev_pairs)
+    matched: list = []
+    for ref_p in ref_pairs:
+        rt = _title_ul_tokens(ref_p.get("key", ""))
+        hit = next((rp for rp in rev_unmatched if rt & _title_ul_tokens(rp.get("key", ""))), None)
+        if hit is not None:
+            rev_unmatched.remove(hit)
+            matched.append((ref_p, hit))
+        else:
+            matched.append((ref_p, None))
+    for rev_p in rev_unmatched:
+        matched.append((None, rev_p))
+    return matched
 
 
 def build_marking_table(markings: list, category_filter: str | None = None) -> str:
@@ -87,7 +274,8 @@ async def generate_deterministic_candidates(
     ref_drawing: DrawingDocument,
     rev_drawing: DrawingDocument,
     ref_entities: list,
-    rev_entities: list
+    rev_entities: list,
+    refresh_ocr: bool = False,
 ) -> tuple[list[ComparisonCandidate], dict, list[str]]:
     """
     Generator A (deterministic): runs SpatialDiffer + BOMAnalyzer end to end and returns
@@ -172,6 +360,10 @@ async def generate_deterministic_candidates(
     rev_title_ul_bbox_raw = rev_regions.get("title_upper_left")
     ref_tolerance_bbox_raw = ref_regions.get("tolerance")
     rev_tolerance_bbox_raw = rev_regions.get("tolerance")
+    # `shim` is optional (only present when the シム表 anchor fires) -- .get() returns None on
+    # sheets without a shim table, which flows through as "no shim zone" everywhere below.
+    ref_shim_bbox_raw = ref_regions.get("shim")
+    rev_shim_bbox_raw = rev_regions.get("shim")
 
     # Validate regions via BoundingBox2D DTOs
     ref_bom_bbox = BoundingBox2D.from_tuple(ref_bom_bbox_raw).to_tuple() if ref_bom_bbox_raw else None
@@ -218,9 +410,15 @@ async def generate_deterministic_candidates(
     ref_all_text_list = [e.properties.get("text", "") for e in ref_entities if getattr(e, "entity_type", "") == "text"]
     rev_all_text_list = [e.properties.get("text", "") for e in rev_entities if getattr(e, "entity_type", "") == "text"]
     
-    # Load cached Title Block OCR results
-    ref_ocr = ComparisonCacheManager.get_cached_ocr(str(ref_drawing.id), ref_drawing.file_hash)
-    rev_ocr = ComparisonCacheManager.get_cached_ocr(str(rev_drawing.id), rev_drawing.file_hash)
+    # Load cached Title Block OCR results. When refresh_ocr is set the cache is skipped, so the
+    # crop is re-sent to Gemini below and the fresh reading overwrites the stale one via
+    # set_cached_ocr. This is separate from the comparison cache (force_refresh) because OCR is
+    # a paid per-drawing Gemini call and must not fire on every ordinary Re-test.
+    if refresh_ocr:
+        ref_ocr = rev_ocr = None
+    else:
+        ref_ocr = ComparisonCacheManager.get_cached_ocr(str(ref_drawing.id), ref_drawing.file_hash)
+        rev_ocr = ComparisonCacheManager.get_cached_ocr(str(rev_drawing.id), rev_drawing.file_hash)
 
     missing_crops = {}
     from ...rendering.image_cropper import crop_title_block_image
@@ -255,8 +453,11 @@ async def generate_deterministic_candidates(
         except Exception as ocr_err:
             logger.warning(f"Batched visual Title Block OCR failed, falling back to spatial heuristics: {ocr_err}")
 
-    ref_title_input = [e for e in ref_entities if not is_in_bbox(e, ref_tolerance_bbox_raw)]
-    rev_title_input = [e for e in rev_entities if not is_in_bbox(e, rev_tolerance_bbox_raw)]
+    # Exclude the tolerance table from title extraction, but never an entity that also sits in
+    # the title block — an over-wide tolerance box otherwise blanks the whole title block. See
+    # keep_for_title_extraction.
+    ref_title_input = [e for e in ref_entities if keep_for_title_extraction(e, ref_tolerance_bbox_raw, ref_title_bbox)]
+    rev_title_input = [e for e in rev_entities if keep_for_title_extraction(e, rev_tolerance_bbox_raw, rev_title_bbox)]
 
     ref_title_fields = BOMAnalyzer.extract_title_block(ref_title_input, ref_all_text_list, ocr_results=ref_ocr)
     rev_title_fields = BOMAnalyzer.extract_title_block(rev_title_input, rev_all_text_list, ocr_results=rev_ocr)
@@ -319,12 +520,20 @@ async def generate_deterministic_candidates(
         if not inside:
             return []
 
+        # Frame grid references (single chars at the sheet edge) can leak into the UL zone;
+        # exclude them. The edge is measured RELATIVE to the zone bbox, not with absolute
+        # vx<25/vy>285: those constants only hold in the small coordinate space, and on a
+        # large-coordinate drawing they dropped a legitimate single-digit UL VALUE (a '0'
+        # Stock Q'ty at y~822) as if it were a top-margin grid label.
+        _bw = (bbox[2] - bbox[0]) or 1.0
+        _bh = (bbox[3] - bbox[1]) or 1.0
+
         def is_grid_label(e):
             t = (getattr(e, 'properties', {}) or {}).get('text', '').strip()
             if len(t) <= 1 or any(c in t for c in "①②③④⑤⑥⑦⑧⑨⑩⑪⑫"):
                 vx = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[0]
                 vy = getattr(e, 'geometry', {}).get('insert', [0, 0, 0])[1]
-                if vx < 25.0 or vy > 285.0:
+                if vx < bbox[0] + 0.08 * _bw or vy > bbox[3] - 0.08 * _bh:
                     return True
             return False
 
@@ -408,27 +617,24 @@ async def generate_deterministic_candidates(
         geom = getattr(entity, 'geometry', {})
         if not geom or 'insert' not in geom or len(geom['insert']) < 2: return False
         x, y = geom['insert'][0], geom['insert'][1]
-        
+
         min_x, min_y, max_x, max_y = bounds
         width, height = max_x - min_x, max_y - min_y
         if width <= 0 or height <= 0: return False
-        
-        import unicodedata
-        val = str(entity.properties.get("text") or entity.properties.get("value") or "").strip()
-        val = unicodedata.normalize("NFKC", val)
-        is_grid_char = (
-            val in {"A", "B", "C", "D", "E", "F", "G", "H"} or
-            (val.isdigit() and 1 <= int(val) <= 12) or
-            any(char in val for char in "①②③④⑤⑥⑦⑧⑨⑩⑪⑫")
-        )
-        # Use wider margin (6%) for sheet border grid references to completely exclude them
-        margin_factor_x = 0.06 if is_grid_char else 0.025
-        margin_factor_y = 0.06 if is_grid_char else 0.025
-        
-        margin_x = width * margin_factor_x
-        margin_y = height * margin_factor_y
-        
-        return (x < min_x + margin_x or x > max_x - margin_x or 
+
+        # Sheet-frame grid labels are delegated rather than re-implemented. This function
+        # and zone_detector.is_margin_grid_text were duplicates that had silently drifted:
+        # only this copy normalised NFKC, so full-width labels were dropped here and kept
+        # during zone detection, where they bridged clusters across the sheet. One
+        # definition, one threshold.
+        from ..bom.zone_detector import is_margin_grid_text
+        if is_margin_grid_text(entity, bounds):
+            return True
+
+        margin_x = width * 0.025
+        margin_y = height * 0.025
+
+        return (x < min_x + margin_x or x > max_x - margin_x or
                 y < min_y + margin_y or y > max_y - margin_y)
     
 
@@ -467,14 +673,26 @@ async def generate_deterministic_candidates(
                     result.append(e)
         return result
 
-    def safe_filter(entities: list, bom_bbox, title_bbox, tol_bbox, notes_bbox, iso_bbox, title_ul_bbox, global_bounds, exclude_values: set | None = None) -> list:
-        """Filter out template-zone entities, but never use a bbox that covers too much of the drawing."""
+    def safe_filter(entities: list, bom_bbox, title_bbox, tol_bbox, notes_bbox, iso_bbox, title_ul_bbox, global_bounds, exclude_values: set | None = None, shim_bbox=None) -> list:
+        """Apply the drawing_views noise filters to an already views-scoped entity set.
+
+        `entities` here is the views-scoped pool (scope_entities_to_views), NOT the whole sheet.
+        This strips margin/frame labels, sibling-zone furniture that overlaps the views box,
+        title/BOM/tolerance layers, revision-table headers, learned dismissals, and values
+        already captured by structured extraction. The sibling-bbox exclusions are now largely
+        defensive (scope_entities_to_views already dropped centroid-in-sibling entities), kept
+        because they also catch entities that straddle a boundary. Never uses a bbox that covers
+        too much of the drawing for exclusion."""
         use_bom      = bom_bbox      and not _bbox_covers_too_much(bom_bbox,      global_bounds)
         use_title    = title_bbox    and not _bbox_covers_too_much(title_bbox,    global_bounds)
         use_tol      = tol_bbox      and not _bbox_covers_too_much(tol_bbox,      global_bounds)
         use_notes    = notes_bbox    and not _bbox_covers_too_much(notes_bbox,    global_bounds)
         use_iso      = iso_bbox      and not _bbox_covers_too_much(iso_bbox,      global_bounds)
         use_title_ul = title_ul_bbox and not _bbox_covers_too_much(title_ul_bbox, global_bounds)
+        # The shim table (シム表) is a SAFE zone like tolerance: exclude its reference-data rows
+        # from the drawing_views pool so they are not diffed as drawing dimensions. It is not
+        # compared as its own category -- the rows never leave this filter.
+        use_shim     = shim_bbox     and not _bbox_covers_too_much(shim_bbox,     global_bounds)
 
         result = [
             e for e in entities
@@ -485,6 +703,7 @@ async def generate_deterministic_candidates(
                 (use_notes    and is_in_bbox(e, notes_bbox))    or
                 (use_iso      and is_in_bbox(e, iso_bbox))      or
                 (use_title_ul and is_in_bbox(e, title_ul_bbox)) or
+                (use_shim     and is_in_bbox(e, shim_bbox))     or
                 is_in_margin(e, global_bounds)
             )
         ]
@@ -498,8 +717,8 @@ async def generate_deterministic_candidates(
             return any(x in l.lower() for x in ("title", "border", "stamp", "attr", "admin", "block", "header", "logo", "dwg", "rev", "approved", "checked", "designed", "drawn", "scale"))
 
         def _is_tolerance_layer_or_text(e) -> bool:
-            l = (getattr(e, "layer", "") or "").lower()
-            if any(x in l for x in ("tol", "tolerance", "公差", "枠")):
+            # Frame/furniture layer name (incl. romanized "WAKU" = 枠) — see is_furniture_layer.
+            if is_furniture_layer(getattr(e, "layer", "")):
                 return True
             raw_t = str(getattr(e, "properties", {}).get("text") or getattr(e, "properties", {}).get("value") or "").strip()
             if not raw_t:
@@ -517,12 +736,52 @@ async def generate_deterministic_candidates(
             norm_t = raw_t.lower().replace(" ", "")
             return any(k in norm_t for k in vault_keywords)
 
+        def _is_revision_table_header(e) -> bool:
+            """Amendment-table column headers, wherever the table sits on the sheet."""
+            text = e.properties.get("text") or e.properties.get("value") or ""
+            return _normalize_value_text(text) in REVISION_TABLE_HEADERS
+
         result = [
             e for e in result
             if not _is_bom_layer(getattr(e, "layer", "") or "")
             and not _is_title_layer(getattr(e, "layer", "") or "")
             and not _is_tolerance_layer_or_text(e)
+            and not _is_revision_table_header(e)
         ]
+
+        # Pillar 3 -> Pillar 1: patterns a human has dismissed >= 3 times, written to the vault
+        # by AutoDocEngine. Until now nothing read those notes back, so the active-learning
+        # flywheel did not close and a repeatedly-dismissed callout kept being reported.
+        #
+        # Matched EXACTLY, never as a substring. These are precise `entity_text` values and
+        # several are short ("1", "2A0"); substring matching would silently suppress unrelated
+        # content, and nothing in this system measures its own false-negative rate.
+        try:
+            from ...knowledge.vault_sync import VaultSyncManager
+            learned_patterns = {
+                _normalize_value_text(p)
+                for p in VaultSyncManager.get_instance().get_learned_dismissals()
+            }
+            learned_patterns.discard("")
+        except Exception as err:
+            logger.warning(f"Learned dismissal rules unavailable, continuing without: {err}")
+            learned_patterns = set()
+
+        if learned_patterns:
+            before_learned = len(result)
+            result = [
+                e for e in result
+                if _normalize_value_text(
+                    e.properties.get("text") or e.properties.get("value") or ""
+                ) not in learned_patterns
+            ]
+            if len(result) != before_learned:
+                # Logged, not silent: this is the one filter driven by stored human decisions
+                # rather than by the drawing, so it must be visible when it fires.
+                logger.info(
+                    f"Learned dismissal rules excluded {before_learned - len(result)} "
+                    f"entit(ies) from {len(learned_patterns)} human-confirmed pattern(s)."
+                )
 
         # Third safety net: exclude entities whose text exactly matches a value already
         # captured by structured title-block/BOM extraction — see
@@ -534,9 +793,12 @@ async def generate_deterministic_candidates(
                 if _normalize_value_text(e.properties.get("text") or e.properties.get("value") or "") not in exclude_values
             ]
 
-        # Safety valve: if filtering wiped everything out, fall back to margin-only exclusion
+        # Safety valve: if the noise filters wiped everything out, fall back to margin-only
+        # exclusion. `entities` is the views-scoped pool, so this stays inside the views box —
+        # it can't reintroduce out-of-box content. An empty views pool (no views box) has
+        # len(entities) == 0, so the valve never fires and drawing_views stays empty as intended.
         if len(result) == 0 and len(entities) > 0:
-            logger.warning("Entity filter produced empty set — falling back to margin-only exclusion.")
+            logger.warning("Entity filter produced empty set — falling back to margin-only exclusion within views scope.")
             result = [e for e in entities if not is_in_margin(e, global_bounds)]
 
         return result
@@ -565,26 +827,55 @@ async def generate_deterministic_candidates(
         exclude_values=rev_structured_values,
     )
 
+    # drawing_views is scoped to the `views` zone box, not the residual of everything-minus-
+    # other-zones. Only entities whose centroid sits inside `views` (minus the sibling zones
+    # that may fall within a hand-pinned views rectangle) enter the pool; a sheet with no views
+    # box contributes nothing here. This makes the pinned/detected views box the definitive
+    # comparison boundary. STRICT, no fallback: content outside the box is deliberately not
+    # compared. safe_filter below then applies the same noise filters (margin, layer, learned
+    # dismissals, structured-value de-dup) to the already-scoped set.
+    #
+    # The shim table (シム表) is a SAFE zone like tolerance: its bbox is used only to keep its
+    # reference-data rows out of the pool (via safe_filter's shim_bbox below). It is deliberately
+    # NOT diffed as its own category -- assembly-thickness data does not change meaningfully
+    # between revisions, so comparing it is noise.
+    from ..bom.zone_detector import scope_entities_to_views, views_exclusions
+
+    ref_views_pool = scope_entities_to_views(
+        ref_entities, ref_views_bbox_raw, views_exclusions(ref_regions)
+    )
+    rev_views_pool = scope_entities_to_views(
+        rev_entities, rev_views_bbox_raw, views_exclusions(rev_regions)
+    )
+
     filtered_ref_entities = safe_filter(
-        ref_entities,
+        ref_views_pool,
         ref_bom_bbox_raw, ref_title_bbox_raw, ref_tolerance_bbox_raw,
         ref_notes_bbox_raw, ref_iso_bbox_raw, ref_title_ul_bbox_raw,
         ref_global_bounds,
         exclude_values=ref_structured_values,
+        shim_bbox=ref_shim_bbox_raw,
     )
     filtered_rev_entities = safe_filter(
-        rev_entities,
+        rev_views_pool,
         rev_bom_bbox_raw, rev_title_bbox_raw, rev_tolerance_bbox_raw,
         rev_notes_bbox_raw, rev_iso_bbox_raw, rev_title_ul_bbox_raw,
         rev_global_bounds,
         exclude_values=rev_structured_values,
+        shim_bbox=rev_shim_bbox_raw,
     )
 
     logger.info(
         f"Filtered entity counts for Spatial Differ — "
-        f"ref: {len(ref_entities)} → {len(filtered_ref_entities)} (notes={len(ref_notes_entities)}, iso={len(ref_iso_entities)}), "
-        f"rev: {len(rev_entities)} → {len(filtered_rev_entities)} (notes={len(rev_notes_entities)}, iso={len(rev_iso_entities)})"
+        f"ref: {len(ref_entities)} → views-scoped {len(ref_views_pool)} → {len(filtered_ref_entities)} (notes={len(ref_notes_entities)}, iso={len(ref_iso_entities)}), "
+        f"rev: {len(rev_entities)} → views-scoped {len(rev_views_pool)} → {len(filtered_rev_entities)} (notes={len(rev_notes_entities)}, iso={len(rev_iso_entities)})"
     )
+    if not ref_views_bbox_raw or not rev_views_bbox_raw:
+        logger.warning(
+            "No `views` zone box on %s — drawing_views is empty for this pair (strict scoping, "
+            "no residual fallback). Pin or detect a views box to compare drawing geometry.",
+            "reference" if not ref_views_bbox_raw else "revision",
+        )
 
     # Perform comparison/diffing on notes, iso views and drawing views.
     #
@@ -618,9 +909,35 @@ async def generate_deterministic_candidates(
     for m in iso_markings:
         m["feature"] = classify_iso_feature(m.get("text_content", ""), m.get("details", ""))
 
+    # Geometry, which the text differ cannot see at all: it pools on `entity_type == 'text'`,
+    # so a feature carrying no text was invisible to the audit. Same zone-scoped pools, so a
+    # shape is only ever compared against its own zone.
+    #
+    # `iso` is the case this exists for. The reference has no isometric view, so
+    # `ref_iso_entities` is empty -- and `diff_views` returns [] the moment either side is
+    # empty, which guaranteed zero findings for a wholly-added zone. `diff_geometry` does not
+    # bail on an empty side.
+    #
+    # Appended AFTER the classifiers above deliberately: those are text heuristics, and
+    # running them over a synthesized "Geometry: 30 ellipse, 17 line" string would overwrite
+    # the `geometry` feature these findings set for themselves.
+    notes_markings.extend(diff_geometry(
+        ref_notes_entities, rev_notes_entities, category="notes_section",
+        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
+    ))
+    iso_markings.extend(diff_geometry(
+        ref_iso_entities, rev_iso_entities, category="isometric_view",
+        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
+    ))
+    geometry_markings = diff_geometry(
+        filtered_ref_entities, filtered_rev_entities, category="drawing_views",
+        ref_bounds=ref_bounds, rev_bounds=rev_bounds,
+    )
+
     # Combine all visual checklist markings
     clean_markings.extend(notes_markings)
     clean_markings.extend(iso_markings)
+    clean_markings.extend(geometry_markings)
 
     # Collapse content that was diffed against two different pools and therefore reported
     # twice -- once as REMOVED from where it used to sit, once as ADDED where it now sits.
@@ -629,41 +946,96 @@ async def generate_deterministic_candidates(
     # the surviving marking keeps the label its category earned.
     # See marking_reconciler for why unambiguous pairs only.
     before_count = len(clean_markings)
-    clean_markings = reconcile_relocated_markings(clean_markings)
+    clean_markings = reconcile_relocated_markings(
+        clean_markings, ref_bounds=ref_bounds, rev_bounds=rev_bounds
+    )
     if len(clean_markings) != before_count:
         logger.info(
             f"Marking reconciliation: {before_count} -> {len(clean_markings)} findings "
             f"({(before_count - len(clean_markings))} relocated REMOVED/ADDED pairs merged)."
         )
 
+    # Amendment/revision-history table -> title_block, not drawing_views.
+    #
+    # The table's column headers are already filtered out of the drawing_views pool by
+    # `safe_filter` (REVISION_TABLE_HEADERS), but its *values* and its A/B/C/D row-letter
+    # column are legitimate text that survives filtering and, when the table sits outside
+    # the detected `title` box (bottom-left on the reference in the measured pair), lands in
+    # drawing_views. This is category attribution, not detection: the finding is real, it is
+    # just under the wrong heading. Detected zones don't reach it because the table has no
+    # consistent quadrant across the two sheets -- see _amendment_table_bboxes.
+    #
+    # Reclassify, never drop. `raw_x`/`raw_y` on each marking are CAD units (spatial_differ
+    # line 200), the same basis as these bboxes: rev-side position for ADDED/CHANGED/MATCHED,
+    # ref-side for REMOVED.
+    ref_amend_bboxes = amendment_table_bboxes(ref_entities, ref_global_bounds)
+    rev_amend_bboxes = amendment_table_bboxes(rev_entities, rev_global_bounds)
+
+    def _pos_in_bboxes(pos, bboxes) -> bool:
+        if not pos or len(pos) < 2 or not bboxes:
+            return False
+        return any(b[0] <= pos[0] <= b[2] and b[1] <= pos[1] <= b[3] for b in bboxes)
+
+    if ref_amend_bboxes or rev_amend_bboxes:
+        reclassified = 0
+        for m in clean_markings:
+            if m.get("category") != "drawing_views":
+                continue
+            if _pos_in_bboxes(m.get("coordinates"), rev_amend_bboxes) or \
+               _pos_in_bboxes(m.get("ref_coordinates"), ref_amend_bboxes):
+                m["category"] = "title_block"
+                reclassified += 1
+        if reclassified:
+            logger.info(
+                f"Amendment-table reclassification: {reclassified} finding(s) "
+                f"drawing_views -> title_block."
+            )
+
     # Structured key-value extraction for Title Upper Left (top-left metadata)
     # (ref_title_ul_pairs and rev_title_ul_pairs were extracted earlier above)
 
-    import unicodedata as _ud2
-    import re as _re2
-    def _ul_key(t: str) -> str:
-        """NFKC + lowercase + whitespace collapse for stable cross-drawing key matching."""
-        t = _ud2.normalize("NFKC", t or "").strip().lower()
-        return _re2.sub(r"\s+", " ", t)
-
-    # Build normalized key lookups
-    ref_ul_map = {_ul_key(p['key']): p for p in ref_title_ul_pairs}
-    rev_ul_map = {_ul_key(p['key']): p for p in rev_title_ul_pairs}
-    ul_all_keys = list(dict.fromkeys(
-        list(ref_ul_map.keys()) + list(rev_ul_map.keys())
-    ))
+    # Match ref↔rev UL fields by shared header token (module-level match_title_ul_pairs),
+    # not exact combined key, which double-reported identical values whenever the two drawings
+    # banded the stacked headers differently by coordinate scale.
+    _ul_matched = match_title_ul_pairs(ref_title_ul_pairs, rev_title_ul_pairs)
 
     title_ul_table_rows = []
-    for hdr_key in ul_all_keys:
-        ref_p = ref_ul_map.get(hdr_key, {})
-        rev_p = rev_ul_map.get(hdr_key, {})
+    for ref_p, rev_p in _ul_matched:
+        ref_p = ref_p or {}
+        rev_p = rev_p or {}
         orig_val = ref_p.get('value', 'NONE') or 'NONE'
         kmti_val = rev_p.get('value', 'NONE') or 'NONE'
         orig_coords = ref_p.get('coords')
         kmti_coords = rev_p.get('coords')
         from ...utils.text import compare_values as _cmp
         status_val = _cmp(orig_val, kmti_val)
-        display_key = ref_p.get('key') or rev_p.get('key') or hdr_key
+
+        # Bilateral corroboration guard — same principle as the bottom title block (see
+        # inject_title_block_markings). On the compact SolidWorks revision the notes block
+        # crowds the UL metadata table, so extract_title_ul_kv's "last band = values" heuristic
+        # returns NONE for values (45 / 2A1 / 4) that are plainly present. Before emitting a
+        # one-sided REMOVED/ADDED, check the other side's UL region for the value; if it is
+        # there, the field was mis-extracted, not changed → MATCHED. Region-scoped + match_level
+        # 2 so a short numeric value can't corroborate against an unrelated dimension.
+        if status_val in ("ADDED", "REMOVED"):
+            if orig_val == "NONE" and kmti_val != "NONE":
+                _rec = BOMAnalyzer.find_drawing_text_coordinates(
+                    ref_entities, kmti_val, category="title_block",
+                    region_bbox=ref_title_ul_bbox_raw, match_level=2,
+                )
+                if _rec and _rec.get("coords"):
+                    status_val = "MATCHED"
+                    orig_coords = orig_coords or _rec["coords"]
+            elif kmti_val == "NONE" and orig_val != "NONE":
+                _rec = BOMAnalyzer.find_drawing_text_coordinates(
+                    rev_entities, orig_val, category="title_block",
+                    region_bbox=rev_title_ul_bbox_raw, match_level=2,
+                )
+                if _rec and _rec.get("coords"):
+                    status_val = "MATCHED"
+                    kmti_coords = kmti_coords or _rec["coords"]
+
+        display_key = ref_p.get('key') or rev_p.get('key') or 'Value'
         # Emit ONE marking placed on the value cell coordinates (not the header)
         if kmti_val != 'NONE' or orig_val != 'NONE':
             entry = {
@@ -777,7 +1149,10 @@ async def generate_deterministic_candidates(
     used_ref_entities = set()
     used_rev_entities = set()
 
-    inject_title_block_markings(clean_markings, ref_title_fields, rev_title_fields, ref_entities, rev_entities)
+    inject_title_block_markings(
+        clean_markings, ref_title_fields, rev_title_fields, ref_entities, rev_entities,
+        ref_title_bbox=ref_title_bbox, rev_title_bbox=rev_title_bbox,
+    )
     inject_bom_markings(clean_markings, ref_bom_rows, rev_bom_rows, is_assembly_drawing, ref_bom_bbox, rev_bom_bbox, ref_entities, rev_entities, used_ref_entities, used_rev_entities)
     inject_ballooning_markings(clean_markings, ref_bom_rows, rev_bom_rows, ref_entities, rev_entities)
 
@@ -868,8 +1243,10 @@ async def perform_drawing_comparison(
     reuse it too. Output here is unchanged from before that extraction (Phase 2 of
     docs/hybrid-comparison-engine-implementation-plan.md).
     """
-    # Check cache first (unless force_refresh is requested)
-    force_refresh = getattr(request, "force_refresh", False)
+    # Check cache first (unless force_refresh is requested). refresh_ocr implies force_refresh:
+    # a re-read OCR value only reaches the output through a fresh comparison run.
+    refresh_ocr = getattr(request, "refresh_ocr", False)
+    force_refresh = getattr(request, "force_refresh", False) or refresh_ocr
     cached_payload = None if force_refresh else ComparisonCacheManager.get_cached_comparison(
         ref_drawing_id=str(ref_drawing.id),
         rev_drawing_id=str(rev_drawing.id),
@@ -879,7 +1256,7 @@ async def perform_drawing_comparison(
     )
     if cached_payload:
         try:
-            return PhysicalComparisonResponse(
+            cached_response = PhysicalComparisonResponse(
                 drawing_views=CategoryComparison(**cached_payload["drawing_views"]),
                 notes_section=CategoryComparison(**cached_payload["notes_section"]),
                 bill_of_materials=CategoryComparison(**cached_payload["bill_of_materials"]),
@@ -889,11 +1266,14 @@ async def perform_drawing_comparison(
                 canvas_markings=[CanvasMarking(**item) for item in cached_payload.get("canvas_markings", [])],
                 diagnostics=cached_payload.get("diagnostics"),
             )
+            # Apply the learned model to the cached deterministic result at serve time, so a
+            # correction takes effect on already-cached pairs without invalidating the cache.
+            return apply_learned_adjustments(cached_response, ref_entities, rev_entities)
         except Exception as cache_err:
             logger.warning(f"Failed to parse cached drawing comparison, performing full comparison: {cache_err}")
 
     candidates, parsed, zone_detection_warnings = await generate_deterministic_candidates(
-        ref_drawing, rev_drawing, ref_entities, rev_entities
+        ref_drawing, rev_drawing, ref_entities, rev_entities, refresh_ocr=refresh_ocr
     )
     clean_markings = [c.model_dump() for c in candidates]
 
@@ -986,4 +1366,6 @@ async def perform_drawing_comparison(
     except Exception as cache_write_err:
         logger.warning(f"Failed to cache physical comparison response: {cache_write_err}")
 
-    return comparison_response
+    # Learned adjustments run AFTER the cache write above, so the deterministic result is what
+    # gets cached and the model overlay is recomputed fresh on every serve.
+    return apply_learned_adjustments(comparison_response, ref_entities, rev_entities)

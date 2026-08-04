@@ -61,6 +61,41 @@ describe('markerGenerator tests', () => {
     expect(result[1].is_resolved).toBe(false);
   });
 
+  it('does NOT re-ground a title_block value to a same-valued tolerance cell (uses backend coords)', () => {
+    // Regression: a title field value like "4" must anchor at its backend coordinate, not be
+    // text-matched to a "4" elsewhere on the sheet (e.g. a tolerance-grid cell). See the
+    // tolerance-table false-marker fix.
+    const rawMarkings = [
+      {
+        text_content: '4',
+        details: 'checked',
+        status: 'MATCHED',
+        category: 'title_block',
+        coordinates: [750, 250] as [number, number],      // rev title-block cell (authoritative)
+        ref_coordinates: [186, 685] as [number, number],  // ref upper-left table cell
+      },
+    ];
+    const bounds = { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
+    // Decoy "4" entities sitting in the (bottom-left) tolerance grid on both drawings.
+    const revTolCell = [{ text: '4', x: 75, y: 30, height: 3 }] as any;
+    const refTolCell = [{ text: '4', x: 372, y: 77, height: 3 }] as any;
+
+    const result = generateComparisonMarkings({
+      rawMarkings,
+      textEntities: revTolCell,
+      refTextEntities: refTolCell,
+      drawing: { id: 'rev', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      oldDrawing: { id: 'base', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      bounds,
+      refBounds: bounds,
+    });
+
+    expect(result).toHaveLength(1);
+    // Must use the backend coordinates, NOT the tolerance-cell decoys.
+    expect(result[0].coordinates).toEqual([750, 250]);
+    expect(result[0].ref_coordinates).toEqual([186, 685]);
+  });
+
   it('passes `feature` through untouched, and leaves it undefined when the backend omits it', () => {
     const rawMarkings = [
       {

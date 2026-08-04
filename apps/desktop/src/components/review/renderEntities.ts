@@ -640,6 +640,7 @@ const ZONE_COLORS: Record<string, string> = {
   notes: '#fb7185',            // rose
   iso: '#c084fc',              // violet
   views: '#38bdf8',            // sky
+  shim: '#f472b6',             // pink
 };
 
 const ZONE_LABELS: Record<string, string> = {
@@ -650,6 +651,7 @@ const ZONE_LABELS: Record<string, string> = {
   notes: 'NOTES',
   iso: 'ISO VIEW',
   views: 'DRAWING VIEWS',
+  shim: 'SHIM TABLE',
 };
 
 export interface RenderZoneEditorParams {
@@ -714,7 +716,14 @@ export const renderZoneEditor = ({
 
     // A zone the detector never anchored is a guess about where this feature sits. Dashed
     // and '?'-suffixed so an unaligned guess is never mistaken for a measurement.
-    const wasMeasured = (pinnedKeys && pinnedKeys.includes(key)) || detected?.[key]?.confidence === 'content_aware';
+    //
+    // A PINNED zone is never a guess, and must not be drawn as one. It is also, by
+    // definition, not something the detector anchored -- so keying this off `confidence`
+    // alone labelled the user's own hand-aligned boxes as guesses, which is backwards: an
+    // explicit human decision outranks `content_aware`. That was the visible half of the
+    // template being write-only (the geometry not loading was the other half).
+    const isPinned = pinnedKeys?.includes(key) ?? false;
+    const wasMeasured = isPinned || detected?.[key]?.confidence === 'content_aware';
 
     ctx.strokeStyle = color;
     ctx.globalAlpha = isSelected ? 1 : 0.4;

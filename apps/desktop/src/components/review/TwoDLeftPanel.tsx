@@ -1,5 +1,5 @@
 import React from "react";
-import { Play, Sparkles, File, ArrowRightLeft, Activity, CheckCircle2, CircleDashed, RotateCw } from "lucide-react";
+import { Play, Sparkles, File, ArrowRightLeft, Activity, CheckCircle2, CircleDashed, RotateCw, ScanText } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useRoomStore } from "../../stores/roomStore";
 import { isZoneReviewConfirmed, isZoneReviewGrandfathered } from "../../utils/zoneGate";
@@ -66,21 +66,39 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
           </span>
         </div>
 
-        {/* Re-test Action Button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={isScanning}
-          className="h-8 px-3 text-xs font-semibold text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/10 hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none gap-1.5 rounded-lg transition-all"
-          onClick={() => {
-            resetComparison();
-            runPhysicalComparisonAI(true);
-          }}
-          title="Re-run physical comparison test for this room"
-        >
-          <RotateCw size={13} className={isScanning ? "animate-spin" : ""} />
-          <span>Re-test</span>
-        </Button>
+        {/* Re-test Action Buttons */}
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={isScanning}
+            className="h-8 px-3 text-xs font-semibold text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/10 hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none gap-1.5 rounded-lg transition-all"
+            onClick={() => {
+              resetComparison();
+              runPhysicalComparisonAI(true);
+            }}
+            title="Re-run the comparison fresh (bypasses the cached result). Reuses the cached title-block OCR."
+          >
+            <RotateCw size={13} className={isScanning ? "animate-spin" : ""} />
+            <span>Re-test</span>
+          </Button>
+          {/* Deep variant: also re-reads the title-block crop with Gemini. Separate from
+              Re-test because OCR is a paid per-drawing call and should not fire every time. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={isScanning}
+            className="h-8 w-8 p-0 justify-center text-text-muted border border-border-color hover:text-accent-cyan hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none rounded-lg transition-all"
+            onClick={() => {
+              resetComparison();
+              runPhysicalComparisonAI(true, true);
+            }}
+            title="Re-test AND re-read the title block with OCR (slower — one Gemini call per drawing). Use when the title-block reading looks stale, not just the comparison."
+            aria-label="Re-test and re-scan title-block OCR"
+          >
+            <ScanText size={13} className={isScanning ? "animate-pulse" : ""} />
+          </Button>
+        </div>
       </div>
 
       {/* Idle / Empty State */}

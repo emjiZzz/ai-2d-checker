@@ -164,6 +164,20 @@ ZONE_ANCHORS: dict[str, list[str]] = {
         "立体図",
         "等角図",
     ],
+
+    # ------------------------------------------------------------------
+    # SHIM TABLE (シム表) — a small parts table (No./thickness/material/qty)
+    # that sits inside the drawing area on some sheets and not others. It is
+    # OPTIONAL by design: anchored on its own title only, and deliberately NOT
+    # given a percentage fallback in table_extractor.default_pct, so a sheet
+    # without a shim table simply has no `shim` zone rather than a phantom box.
+    # Anchored on the table title; `_find_anchor_positions` matches on an
+    # NFKC-normalised substring, so 'シム表' also catches the revision's
+    # decorated 'Ｌ　シム表　ｌ'.
+    # ------------------------------------------------------------------
+    "shim": [
+        "シム表",
+    ],
 }
 
 # How close (in CAD units) another entity must be to an anchor seed
@@ -211,6 +225,7 @@ ZONE_MAX_LIMITS: dict[str, tuple] = {
     "title_upper_left": (0.40, 0.35),
     "notes": (0.45, 0.65),
     "iso": (0.45, 0.45),
+    "shim": (0.30, 0.35),             # a compact parts table, never large
 }
 
 # Zones that `views` must subtract.
@@ -221,7 +236,7 @@ ZONE_MAX_LIMITS: dict[str, tuple] = {
 # rectangle covering the whole drawing area, so the exclusion has to be re-applied at the
 # point of use or notes/iso/title content inside that rectangle reads as drawing geometry.
 VIEWS_EXCLUDED_ZONES: tuple = (
-    "title", "title_upper_left", "bom", "tolerance", "notes", "iso",
+    "title", "title_upper_left", "bom", "tolerance", "notes", "iso", "shim",
 )
 
 
@@ -330,6 +345,37 @@ def _entity_points(entity: Any) -> list:
     return points
 
 
+def scope_entities_to_views(entities: list, views_bbox, exclude_bboxes=None) -> list:
+    """Entities that belong to the `views` zone: centroid inside `views_bbox` and not inside
+    any sibling zone in `exclude_bboxes` (pass `views_exclusions(regions)`).
+
+    Returns [] when `views_bbox` is falsy — strict scoping with **no residual fallback**: a
+    sheet with no views box contributes nothing to the drawing_views comparison, by design.
+    This is what makes the `views` box the definitive comparison boundary instead of comparing
+    everything that falls outside the other zones.
+
+    Centroid is computed from `_entity_points`, not the text `insert` alone, so drawable
+    geometry (lines/arcs/ellipses, whose coordinates live under start/end/center/points/…) is
+    located correctly instead of being dropped for lacking an `insert` point.
+    """
+    if not views_bbox:
+        return []
+    x0, y0, x1, y1 = views_bbox[0], views_bbox[1], views_bbox[2], views_bbox[3]
+    result = []
+    for e in entities:
+        pts = _entity_points(e)
+        if not pts:
+            continue
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+        if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+            continue
+        if point_in_any_bbox(cx, cy, exclude_bboxes):
+            continue
+        result.append(e)
+    return result
+
+
 def _largest_ellipse_cluster(ellipses: list, bounds: Optional[tuple]) -> list:
     """Single-linkage cluster of ellipse centres; returns the biggest group.
 
@@ -424,7 +470,13 @@ def _detect_iso_zone(entities: list, bounds: Optional[tuple]) -> Optional[tuple]
 def _find_anchor_positions(entities: list, zone: str) -> list:
     """
     Scan all text entities for anchor signatures belonging to ``zone``.
-    Returns a list of (x, y) positions for each match found.
+    Returns a list of ``(x, y, anchor)`` for each match found.
+
+    The third element records WHICH anchor phrase matched. `tolerance` carries 23 anchors and
+    `title` 17, so "the zone was detected" says nothing about whether the same signature was
+    used on two drawings -- and two drawings resolving the same zone through different anchors
+    do not really have comparable boxes. Callers index positionally (`p[0]`, `p[1]`), which is
+    why this stayed a tuple rather than becoming a dict.
     """
     anchors_to_match = ZONE_ANCHORS.get(zone, [])
     hits = []
@@ -440,7 +492,7 @@ def _find_anchor_positions(entities: list, zone: str) -> list:
             if _norm(anchor) in normed:
                 xy = _get_xy(e)
                 if xy:
-                    hits.append(xy)
+                    hits.append((xy[0], xy[1], anchor))
                 break  # one anchor per entity is enough
 
     return hits
@@ -578,6 +630,24 @@ def _get_drawing_bounds(entities: list) -> Optional[tuple]:
     return (min_x, min_y, max_x, max_y)
 
 
+# Outer band, as a fraction of sheet width/height, within which a lone grid character is
+# treated as frame furniture rather than content.
+#
+# Measured on the KEMCO pair bc17b56d / 63adc691 (2026-07-30): grid labels occupy two
+# rings, at 6.27-6.46% and 7.43-8.52% of the sheet dimension. The previous 6.0% cutoff sat
+# below *both*, so it excluded nothing on these sheets and the labels stayed in the
+# detection pool, where they bridged clusters from one sheet edge to the other -- the
+# reference `tolerance` box came out spanning x 8.4->411.6, 21.4% of the sheet.
+#
+# 9% clears the outer ring by 0.5pp. It is safe to widen this far only because
+# `is_grid_char` is a tight predicate: the nearest non-grid text in the same band is
+# multi-character ('M745203N01' at 8.28%, 'DWG.No.' at 8.95%) or a CJK single character
+# ('行', '号', '発') that no branch below matches. A bare digit 1-12 that is genuine
+# content and sits within 9% of an edge would be wrongly dropped; that exposure existed at
+# 6% and is widened, not introduced, here.
+GRID_LABEL_MARGIN_FRACTION = 0.09
+
+
 def is_margin_grid_text(e, bounds: Optional[tuple]) -> bool:
     """Helper to detect horizontal (1-12) or vertical (A-H) margin reference labels."""
     if not bounds:
@@ -586,13 +656,21 @@ def is_margin_grid_text(e, bounds: Optional[tuple]) -> bool:
     if "insert" not in geom or len(geom["insert"]) < 2:
         return False
     x, y = geom["insert"][0], geom["insert"][1]
-    
+
     min_x, min_y, max_x, max_y = bounds
     w, h = max_x - min_x, max_y - min_y
     if w <= 0 or h <= 0:
         return False
-        
-    val = str(e.properties.get("text") or e.properties.get("value") or "").strip()
+
+    # NFKC first. This standard draws its frame labels full-width (U+FF21 'Ａ', U+FF11
+    # '１'), which compare unequal to the ASCII forms below, so without normalising this
+    # function returned False for every grid label on every drawing in the corpus and the
+    # filter at its one call site was inert. `orchestrator.is_in_margin` normalised and
+    # this did not -- the two had drifted apart, which is why the bug survived.
+    val = unicodedata.normalize(
+        "NFKC",
+        str(e.properties.get("text") or e.properties.get("value") or "").strip(),
+    )
     is_grid_char = (
         val in {"A", "B", "C", "D", "E", "F", "G", "H"} or
         (val.isdigit() and 1 <= int(val) <= 12) or
@@ -600,11 +678,10 @@ def is_margin_grid_text(e, bounds: Optional[tuple]) -> bool:
     )
     if not is_grid_char:
         return False
-        
-    # Grid markers are always located in the outer 6.0% margin of the sheet
-    margin_x = w * 0.06
-    margin_y = h * 0.06
-    return (x < min_x + margin_x or x > max_x - margin_x or 
+
+    margin_x = w * GRID_LABEL_MARGIN_FRACTION
+    margin_y = h * GRID_LABEL_MARGIN_FRACTION
+    return (x < min_x + margin_x or x > max_x - margin_x or
             y < min_y + margin_y or y > max_y - margin_y)
 
 
@@ -640,10 +717,15 @@ def detect_zones_by_content(entities: list) -> dict:
     MIN_ZONE_FRACTION = 0.03
 
     zones: dict = {}
+    # Which anchor phrase actually resolved each zone, per drawing. Two drawings can both
+    # report a zone as `content_aware` while having matched entirely different signatures --
+    # their boxes are then not really comparable, and the zone's measured "instability" is
+    # partly a measurement of anchor disagreement rather than of the drawings.
+    anchor_matches: dict = {}
 
     for zone in ZONE_ANCHORS:
         hits = _find_anchor_positions(filtered_entities, zone)
-        
+
         # Apply quadrant-filtering to anchor hits to prevent keyword/signature collisions
         if hits:
             if zone == "title_upper_left":
@@ -666,8 +748,12 @@ def detect_zones_by_content(entities: list) -> dict:
                 hits = [p for p in hits if p[1] > min_y + 0.15 * sheet_h]
 
         if hits:
+            # Recorded after quadrant filtering, so it reflects the anchors that actually
+            # seeded the box rather than every phrase that matched somewhere on the sheet.
+            anchor_matches[zone] = sorted({p[2] for p in hits if len(p) > 2})
+
             max_w_frac, max_h_frac = ZONE_MAX_LIMITS.get(zone, (0.5, 0.5))
-            
+
             # Select zone-specific scale-aware cluster radius
             if zone == "title_upper_left":
                 # Decouple X/Y radii: span across table columns horizontally and encompass value row below headers
@@ -677,6 +763,12 @@ def detect_zones_by_content(entities: list) -> dict:
                 radius = (max(50.0, sheet_w * 0.15), max(15.0, sheet_h * 0.04))
             elif zone == "notes":
                 radius = max(15.0, sheet_h * 0.03)
+            elif zone == "shim":
+                # Compact table: rows sit a few units apart, so a tight radius still bridges
+                # the whole table via single-linkage while keeping surrounding drawing
+                # geometry out. CLUSTER_RADIUS (200) would over-sweep the small-coordinate
+                # revision, where the whole table is ~57 units wide.
+                radius = max(20.0, sheet_h * 0.05)
             else:
                 radius = CLUSTER_RADIUS
                 
@@ -717,58 +809,76 @@ def detect_zones_by_content(entities: list) -> dict:
         max_w_frac, max_h_frac = ZONE_MAX_LIMITS["iso"]
         zones["iso"] = _clamp_bbox(iso_bbox, sheet_w * max_w_frac, sheet_h * max_h_frac)
 
-    # The "views" zone is derived by exclusion - everything NOT in a safe zone
-    zones["views"] = _derive_views_zone(entities, zones)
+    # `views` is the sheet; the exclusion that defines it lives in `in_views`, not in the box.
+    #
+    # `bounds`, NOT the (min_x..max_y) effective rect: those fall back to a literal
+    # 0..1000 placeholder when the drawing has no measurable frame, and returning that would
+    # mark `views` as `content_aware` — claiming a measurement of a sheet that could not be
+    # measured. Passing the real bounds lets it stay None and fall through to the percentage
+    # grid, which is what every other zone does in that situation.
+    zones["views"] = _derive_views_zone(entities, zones, bounds)
 
     # Collect all confirmed safe zones (template blocks that must not be compared)
-    # The "tolerance" zone is always safe; BOM header rows and title field labels
-    # are also static but the actual VALUES inside BOM rows must still be checked.
+    # The "tolerance" and "shim" zones are always safe; BOM header rows and title field
+    # labels are also static but the actual VALUES inside BOM rows must still be checked.
+    # `shim` (the シム表 assembly-thickness table) is reference data like tolerance, not a
+    # field that meaningfully changes between revisions -- excluded from comparison, never
+    # diffed as its own category.
     zones["safe_zones"] = [
         v for k, v in zones.items()
-        if k == "tolerance" and v is not None
+        if k in ("tolerance", "shim") and v is not None
     ]
+
+    # Diagnostics, under a reserved underscore key so it cannot be mistaken for a bbox --
+    # the same smuggle-an-extra-key pattern as `safe_zones` and `_zone_confidence`.
+    # `extract_dynamic_regions` skips underscore keys when copying zones across.
+    zones["_anchor_matches"] = anchor_matches
 
     return zones
 
 
-def _derive_views_zone(entities: list, detected: dict) -> Optional[tuple]:
-    """
-    The views zone is the main drawing area - everything that is NOT
-    covered by a tolerance table, BOM, title block, notes section, or ISO view.
-    """
-    excluded = [v for k, v in detected.items() if v is not None]
+def _derive_views_zone(entities: list, detected: dict, sheet: Optional[tuple] = None) -> Optional[tuple]:
+    """The drawing area: **the sheet**. The exclusion lives in `in_views`, not in this box.
 
-    def in_excluded(x: float, y: float) -> bool:
-        for bbox in excluded:
-            if bbox and bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]:
-                return True
+    `views` is defined by exclusion — it is whatever is not sheet furniture or a floating
+    annotation block — which makes it irregular by construction. It was previously reduced to
+    a rectangle by taking the 5–95 percentile of non-excluded content and padding it. Two
+    things were wrong with that:
+
+    * **It was not a bound.** Measured across the corpus on 2026-07-29 the resulting box
+      covered **119.7% of the sheet** — larger than the drawing — because the percentile is of
+      content that extends past the line-derived frame, and then padding is added on top.
+    * **It was not exact either.** Anything in the outer 5% of the drawing area fell outside
+      the box, so a containment test produced false negatives at exactly the sheet edges where
+      views content legitimately reaches.
+
+    Returning the sheet makes the pair `views` + `views_exclusions()` exact:
+    `inside(sheet) AND NOT inside(any other zone)`. `entities` and `detected` are retained in
+    the signature because the call site passes them and because a future caller may want to
+    fall back to a content extent for a sheet with no measurable frame.
+
+    Every consumer that treats `views` as a containment region MUST subtract the sibling zones
+    — use `in_views()`. Consumers that pass it as a search `region_bbox` must pass
+    `views_exclusions()` alongside, which `coordinate_resolver` and `detect_subviews` do.
+    """
+    if sheet and len(sheet) == 4:
+        return tuple(float(v) for v in sheet)
+    return None
+
+
+def in_views(x: float, y: float, regions: dict) -> bool:
+    """Exact drawing-area test: on the sheet, and inside no other zone.
+
+    This is the predicate `views` actually is. Prefer it over a raw bbox containment check
+    against `regions["views"]`, which is only the outer bound and admits every title block,
+    BOM row and notes line on the sheet.
+    """
+    views = (regions or {}).get("views")
+    if not views or len(views) != 4:
         return False
-
-    view_xs = []
-    view_ys = []
-
-    for e in entities:
-        etype = getattr(e, "entity_type", "")
-        if etype in ("dimension", "line", "polyline", "text", "mtext"):
-            xy = _get_xy(e)
-            if xy and not in_excluded(xy[0], xy[1]):
-                view_xs.append(xy[0])
-                view_ys.append(xy[1])
-
-    if len(view_xs) < 4:
-        return None
-
-    view_xs.sort()
-    view_ys.sort()
-    lo = max(0, int(len(view_xs) * 0.05))
-    hi = min(len(view_xs) - 1, int(len(view_xs) * 0.95))
-
-    return (
-        view_xs[lo] - BBOX_PADDING,
-        view_ys[lo] - BBOX_PADDING,
-        view_xs[hi] + BBOX_PADDING,
-        view_ys[hi] + BBOX_PADDING,
-    )
+    if not (views[0] <= x <= views[2] and views[1] <= y <= views[3]):
+        return False
+    return not point_in_any_bbox(x, y, views_exclusions(regions))
 
 
 VIEW_LABEL_PATTERNS = [

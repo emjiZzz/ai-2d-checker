@@ -1,7 +1,6 @@
 import React from "react";
-import { Loader, BookOpen, AlertTriangle } from "lucide-react";
+import { Loader, AlertTriangle } from "lucide-react";
 import { DrawingItem, UploadState } from "../../stores/workspaceStore";
-import { DrawingLibraryPicker } from "./DrawingLibraryPicker";
 
 export interface UploadZoneProps {
   side: "old" | "new";
@@ -26,7 +25,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   currentNav,
 }) => {
   const [isDragActive, setIsDragActive] = React.useState(false);
-  const [showLibraryPicker, setShowLibraryPicker] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [elapsed, setElapsed] = React.useState(0);
@@ -118,10 +116,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
       onDrop={handleDrop}
-      onClick={canInteract ? (e) => {
-        if ((e.target as HTMLElement).closest('[data-no-file-trigger]')) return;
-        triggerFileInput();
-      } : undefined}
+      onClick={canInteract ? triggerFileInput : undefined}
       onKeyDown={canInteract ? (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -180,31 +175,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
                 : "DWG · DXF · PDF"}
             </p>
           </div>
-
-          <div className="flex items-center gap-3 w-full">
-            <div className="flex-1 h-px bg-border-color" />
-            <span className="text-[11px] text-text-muted">or</span>
-            <div className="flex-1 h-px bg-border-color" />
-          </div>
-
-          <div
-            data-no-file-trigger
-            className="text-xs flex items-center justify-center gap-1.5 py-2 px-4 rounded-full border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-colors cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowLibraryPicker(true);
-            }}
-          >
-            <BookOpen size={12} /> Select from Library
-          </div>
         </div>
-      )}
-
-      {showLibraryPicker && (
-        <DrawingLibraryPicker 
-          side={side} 
-          onClose={() => setShowLibraryPicker(false)} 
-        />
       )}
 
       {uploadState === "uploading" && (

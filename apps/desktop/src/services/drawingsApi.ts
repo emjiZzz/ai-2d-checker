@@ -45,9 +45,12 @@ export interface DrawingZonesResponse {
   tolerance: ZoneBBox | null;
   iso: ZoneBBox | null;
   title_upper_left: ZoneBBox | null;
+  shim: ZoneBBox | null;
 }
 
-/** The seven zone keys, in the order they should render. Mirrors backend ZONE_KEYS. */
+/** The zone keys, in the order they should render. Mirrors backend ZONE_KEYS. `shim` is
+ *  optional (only present on sheets with a シム表 table) but always listed so the editor can
+ *  offer it; it simply renders no box when the drawing has none. */
 export const ZONE_KEYS = [
   "views",
   "notes",
@@ -56,6 +59,7 @@ export const ZONE_KEYS = [
   "tolerance",
   "iso",
   "title_upper_left",
+  "shim",
 ] as const;
 
 export type ZoneKey = (typeof ZONE_KEYS)[number];
@@ -75,6 +79,7 @@ export const ZONE_UI_COLORS: Record<string, string> = {
   tolerance: "#fbbf24",
   iso: "#c084fc",
   title_upper_left: "#2dd4bf",
+  shim: "#f472b6",
 };
 
 /** Compact labels for the zone picker chips; the canvas badges use longer names. */
@@ -86,6 +91,7 @@ export const ZONE_SHORT_LABELS: Record<string, string> = {
   tolerance: "Tolerance",
   iso: "ISO",
   title_upper_left: "Title UL",
+  shim: "Shim",
 };
 
 /**
@@ -126,6 +132,19 @@ export async function fetchDrawing(id: string, signal?: AbortSignal): Promise<Dr
     signal,
   });
   return parseOrThrow<DrawingItem>(res);
+}
+
+/**
+ * DELETE /api/v1/drawings/:id — hard-deletes a drawing and every artifact it owns
+ * (entities, jobs, files, caches). Used by the room-owned upload flow to purge the
+ * drawing a slot previously held when it is replaced by a fresh upload.
+ */
+export async function deleteDrawing(id: string): Promise<void> {
+  const res = await fetch(`${baseUrl()}/api/v1/drawings/${id}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  await parseOrThrow<{ deleted_id: string }>(res);
 }
 
 /** GET /api/v1/drawings/:id/scene — fetches vector scene primitives and CAD handles. */
@@ -169,6 +188,8 @@ export interface ZoneTemplate {
   signature: string;
   name: string;
   zones: Record<string, ZoneTemplateFractions>;
+  /** True on the single template used as the global fallback for sheets with no signature match. */
+  is_default: boolean;
   updated_by: string | null;
   updated_at: string | null;
 }
@@ -235,5 +256,32 @@ export async function deleteZoneTemplate(
     headers: buildHeaders(),
   });
   return parseOrThrow<boolean>(res);
+}
+
+/** GET /api/v1/zone-templates-default — the global fallback template, or null if none is set. */
+export async function fetchDefaultZoneTemplate(
+  signal?: AbortSignal,
+): Promise<ZoneTemplate | null> {
+  const res = await fetch(`${baseUrl()}/api/v1/zone-templates-default`, {
+    headers: buildHeaders(),
+    signal,
+  });
+  return parseOrThrow<ZoneTemplate | null>(res);
+}
+
+/**
+ * PUT /api/v1/zone-templates/:signature/default — designate (or clear) the global default.
+ * Setting one default clears any prior one (single-default invariant, enforced server-side).
+ */
+export async function setDefaultZoneTemplate(
+  signature: string,
+  isDefault: boolean,
+): Promise<ZoneTemplate> {
+  const res = await fetch(`${baseUrl()}/api/v1/zone-templates/${signature}/default`, {
+    method: "PUT",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ is_default: isDefault }),
+  });
+  return parseOrThrow<ZoneTemplate>(res);
 }
 

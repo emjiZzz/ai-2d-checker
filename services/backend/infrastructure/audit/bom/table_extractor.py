@@ -68,6 +68,11 @@ def extract_dynamic_regions(entities: list) -> dict:
                 # Propagate safe_zones list for the orchestrator to exclude
                 result["safe_zones"] = bbox
                 continue
+            if zone.startswith("_"):
+                # Reserved diagnostic keys (e.g. `_anchor_matches`) carry a dict, not a bbox.
+                # Copied straight across so callers can read them, never treated as geometry.
+                result[zone] = bbox
+                continue
             if bbox is not None:
                 # Content anchor found — use the precise bbox instead of the percentage guess
                 result[zone] = bbox
@@ -121,13 +126,27 @@ async def extract_dynamic_regions_async(
     confidence = result.get("_zone_confidence")
     for zone_key, bbox in overrides.items():
         grown = False
+        detected_conf = (confidence or {}).get(zone_key)
+
+        # Safe zones (tolerance, shim) are NEVER compared — their box exists only to EXCLUDE
+        # printed furniture from the BOM/title/views comparison. When content detection has
+        # anchored one (`content_aware`), that anchor is the ground truth for where the table
+        # actually sits. A template box is fractions of render_bounds and can land elsewhere on
+        # a differently-shaped sheet (the aspect caveat); letting it REPLACE the anchored box
+        # silently moves the safe zone off the real table, exposing it to comparison — a
+        # tolerance table (表示外公差) then gets diffed as BOM. So keep the anchored detection and
+        # skip the override for these zones. The template still applies when detection missed
+        # (not content_aware), where a user pin is a genuine fallback.
+        # See docs/vault/06 - .../Gotcha - Global Default Zone Template & the Aspect Caveat.md.
+        if zone_key in SAFE_ANCHORED_ZONES and detected_conf == "content_aware":
+            continue
+
         if zone_key in GROWABLE_PINNED_ZONES:
             # Only ever grow against a real detection. `result[zone_key]` is always
             # populated -- it falls back to the percentage grid -- so unioning
             # unconditionally would inflate the pinned box to the guess's extent, which
             # for `bom` is 36% x 40% of the sheet. That would make pinning actively worse
             # than not pinning, and it would look like the template had been ignored.
-            detected_conf = (confidence or {}).get(zone_key)
             if detected_conf == "content_aware":
                 bbox, grown = _grow_pinned_zone(zone_key, bbox, result.get(zone_key), render_bounds)
 
@@ -153,6 +172,13 @@ async def extract_dynamic_regions_async(
 # printed furniture, so growing them against a mis-detection would only ever corrupt a box
 # the user had already got right. Nor to `views`, where the pinned area is the whole point.
 GROWABLE_PINNED_ZONES: frozenset = frozenset({"bom"})
+
+# Safe zones that are never compared, only excluded. A content-anchored detection for one of
+# these outranks a template box: the template can be misplaced by the aspect caveat and, by
+# replacing detection, expose the table to comparison. So a template never overrides these
+# when detection anchored them (see the override loop in extract_dynamic_regions_async). Kept
+# separate from GROWABLE because the behaviour is "detection wins", not "union the two".
+SAFE_ANCHORED_ZONES: frozenset = frozenset({"tolerance", "shim"})
 
 
 def _grow_pinned_zone(
@@ -491,6 +517,41 @@ def extract_bom_table(entities: list, render_bounds: Optional[list] = None, bom_
             })
             
         extracted_rows.append(row_data)
+
+    # "Refer to table" deferral row. When the BOM's only data row is an item number next to a
+    # 表ニヨル / 表による ("as per the table") pointer -- the materials live in a separate table,
+    # here the shim table -- that row has just two cells and is dropped by the >=4-cell filter
+    # above, leaving the BOM comparison blank though the row is plainly on the sheet. Detected
+    # here directly from the BOM texts rather than via the row grouping, because those two
+    # cells can fall within the header row's y-threshold, merge into the header group, and be
+    # discarded as a label row. Fallback only (no real rows found), so it never interferes
+    # with an ordinary populated BOM.
+    if not extracted_rows:
+        DEFER_MARKERS = ("表ニヨル", "表による", "表ニ依ル", "別表による", "別表")
+        defer = next((t for t in bom_filtered
+                      if any(bom_norm(m) in bom_norm(t[2]) for m in DEFER_MARKERS)), None)
+        if defer:
+            dx, dy, dval = defer[0], defer[1], defer[2]
+            left_nums = [(x, val.strip()) for x, y, val, _ in bom_filtered
+                         if abs(y - dy) <= 6.0 * bom_coord_scale and x < dx
+                         and re.match(r'^[0-9]{1,3}$', val.strip())]
+            num = max(left_nums, key=lambda p: p[0])[1] if left_nums else "1"
+            defer_row = {"NO": map_signature_value(num), "QTY": "1"}
+            if is_assembly:
+                defer_row.update({
+                    "DWG_NO": map_signature_value(""),
+                    "TITLE": map_signature_value(dval.strip()),
+                    "REMARK": map_signature_value(""),
+                })
+            else:
+                defer_row.update({
+                    "CODE": map_signature_value(dval.strip()),
+                    "DIMENSION": map_signature_value(""),
+                    "MATERIAL_WEIGHT": map_signature_value(""),
+                    "FINISHED_WEIGHT": map_signature_value(""),
+                    "REMARK": map_signature_value(""),
+                })
+            extracted_rows.append(defer_row)
 
     return extracted_rows, is_assembly
 

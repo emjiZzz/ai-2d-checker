@@ -9,7 +9,15 @@ vi.mock('../../services/fetchUtils', () => ({
   parseOrThrow: vi.fn(),
 }));
 
+// Preserve the real drawingsApi exports (constants, other helpers) and stub only
+// deleteDrawing so the room-owned replace-delete can be asserted without a network call.
+vi.mock('../../services/drawingsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/drawingsApi')>();
+  return { ...actual, deleteDrawing: vi.fn(() => Promise.resolve()) };
+});
+
 import { uploadFile } from '../../services/fetchUtils';
+import { deleteDrawing } from '../../services/drawingsApi';
 
 describe('createUploadSlice', () => {
   beforeEach(() => {
@@ -19,6 +27,8 @@ describe('createUploadSlice', () => {
       newUploadState: 'idle',
       uploadQueue: [],
       oldError: null,
+      oldDrawing: null,
+      newDrawing: null,
       compatibilityStatus: 'Idle',
     });
     vi.clearAllMocks();
@@ -98,5 +108,39 @@ describe('createUploadSlice', () => {
     const entry = updatedState.uploadQueue.find(q => q.side === 'old');
     expect(entry).toBeDefined();
     expect(entry?.status).toBe('processing');
+  });
+
+  it('does not delete anything when the slot was empty', async () => {
+    const store = useWorkspaceStore.getState();
+    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dwg');
+
+    (uploadFile as any).mockResolvedValueOnce({
+      drawing: { id: 'dwg_123', file_name: 'floorplan.dwg' },
+      job: { id: 'job_abc', status: 'processing' }
+    });
+
+    await store.uploadDrawingFile(mockValid, 'old');
+
+    expect(deleteDrawing).not.toHaveBeenCalled();
+  });
+
+  it('deletes the drawing a slot previously held when replaced by a new upload', async () => {
+    // Room-owned model: uploading over an occupied slot purges the displaced drawing.
+    useWorkspaceStore.setState({ oldDrawing: { id: 'old_1', file_name: 'prev.dwg' } as any });
+
+    const store = useWorkspaceStore.getState();
+    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dwg');
+
+    (uploadFile as any).mockResolvedValueOnce({
+      drawing: { id: 'dwg_new', file_name: 'floorplan.dwg' },
+      job: { id: 'job_abc', status: 'processing' }
+    });
+
+    const result = await store.uploadDrawingFile(mockValid, 'old');
+
+    expect(result).toBe(true);
+    // The displaced drawing is hard-deleted; the fresh one is not.
+    expect(deleteDrawing).toHaveBeenCalledTimes(1);
+    expect(deleteDrawing).toHaveBeenCalledWith('old_1');
   });
 });

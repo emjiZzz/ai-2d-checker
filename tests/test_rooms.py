@@ -133,6 +133,61 @@ async def test_soft_deleted_room_excluded_from_list(mock_beanie_rooms):
 
 
 @pytest.mark.asyncio
+async def test_delete_room_purges_both_owned_drawings(mock_beanie_rooms, monkeypatch):
+    """
+    Room-owned model: deleting a room must hard-delete both drawings it owns
+    (via the shared purge_drawing helper) while the Room record itself stays
+    soft-deleted. Nothing dangles.
+    """
+    from services.backend.api.routers.rooms import delete_room
+    from services.backend.domain.services.drawing_ingestion_service import DrawingIngestionService
+
+    purged: list[str] = []
+
+    async def fake_purge(cls, drawing_id):
+        purged.append(drawing_id)
+
+    monkeypatch.setattr(DrawingIngestionService, "purge_drawing", classmethod(fake_purge))
+
+    room = Room(
+        name="Bracket Room",
+        active_old_drawing_id="old-drawing-1",
+        active_new_drawing_id="new-drawing-2",
+    )
+    await room.save()
+
+    result = await delete_room(str(room.id))
+
+    assert result.success is True
+    assert sorted(purged) == ["new-drawing-2", "old-drawing-1"]  # both slots hard-deleted
+
+    stored = await Room.get(room.id)
+    assert stored.is_deleted is True  # room record soft-deleted, not gone
+
+
+@pytest.mark.asyncio
+async def test_delete_room_without_drawings_purges_nothing(mock_beanie_rooms, monkeypatch):
+    """A room holding no drawings deletes cleanly without calling purge_drawing."""
+    from services.backend.api.routers.rooms import delete_room
+    from services.backend.domain.services.drawing_ingestion_service import DrawingIngestionService
+
+    purged: list[str] = []
+
+    async def fake_purge(cls, drawing_id):
+        purged.append(drawing_id)
+
+    monkeypatch.setattr(DrawingIngestionService, "purge_drawing", classmethod(fake_purge))
+
+    room = Room(name="Empty Room")
+    await room.save()
+
+    result = await delete_room(str(room.id))
+
+    assert result.success is True
+    assert purged == []
+
+
+@pytest.mark.asyncio
 async def test_list_sorted_by_updated_at_descending(mock_beanie_rooms):
     """
     Rooms must list most-recently-updated first.

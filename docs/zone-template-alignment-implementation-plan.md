@@ -328,6 +328,22 @@ Verified the two mappings are algebraically identical before looking for the bug
 
 Round-trip verified against the running backend: absent template returns `200` with null data (absence is normal, not an error), `PUT` upserts, `GET` returns the pinned set. Backend suite 311 passed, 2 pre-existing failures.
 
+> [!WARNING] Superseded on 2026-07-29 — **every aligned zone is now saved.**
+> Commit `fe643f4` removed the filter from `saveZonesAsTemplate`, and the decision was
+> confirmed deliberately: a zone the user has placed by hand should stay where they put it,
+> with `RESET` as the way back to detection. The constant survives as `STABLE_ZONES` and no
+> longer gates saving — it only drives the `*` caveat marker in the zone picker.
+>
+> The measurement below still holds and is still the reason for the marker: `notes` genuinely
+> moves and `iso` is absent on roughly half the sheets, so pinning either fixes ONE position
+> for every sheet of the layout. That is right when the layout really is shared and wrong when
+> it is not.
+>
+> One consequence to know: regions are merged `{...reference, ...revision}`, so the
+> **revision's** boxes win on any zone aligned differently on the two sides. For `notes` — two
+> columns on one sheet, one on the other in the corpus pair — the template carries the
+> revision's shape and imposes it on both.
+
 **Only `TEMPLATABLE_ZONES` are saved** — `title_upper_left`, `bom`, `title`, `tolerance`. `notes`, `iso`, and `views` are excluded because they move (33–64pp measured), and pinning a moving zone asserts a wrong position confidently on every later drawing of the template. Their chips carry a `*` marker explaining they align per drawing only. `tolerance` is included on the argument that it is printed furniture whose 64pp spread is detector error — **that is a judgement call, not a measured fact**, and it is the first thing to revisit if a saved template misplaces the tolerance strip on a new sheet.
 
 `PUT` replaces the zone set wholesale rather than merging, so un-pinning a zone is expressible; a merge would require a sentinel value to mean "stop pinning this."
@@ -374,3 +390,26 @@ Frontend suite 101 passed, 1 pre-existing failure. `tsc --noEmit` clean.
 ### Phase C — Audit honors the template — **not started**
 
 _(Append one entry per phase as it lands.)_
+
+### Phase D — Global default (fallback) template — **landed**
+
+A template can now be flagged the **global default** (`is_default` on `ZoneTemplateDocument`), acting
+as a fallback for any sheet whose aspect signature matches no saved template.
+
+- **Precedence:** signature-specific always wins; the default only fills gaps.
+  `resolve_zone_overrides` falls back to `find_one(is_default == True)` **only** when the
+  signature lookup returns nothing — so the audit inherits the default's zones automatically on
+  unmatched sheets, scaled to that sheet's own `render_bounds` (reusing `fractions_to_absolute_bbox`,
+  no new coordinate maths).
+- **Single-default invariant** enforced at the write: `PUT /zone-templates/{signature}/default` clears
+  every other default before setting the new one. `GET /zone-templates-default` exposes it; the
+  Saved Templates modal has a ⭐ toggle + "applied to any sheet without its own matching aspect
+  template" helper text. `openZoneEditing` falls back to `fetchDefaultZoneTemplate()` so the editor
+  shows what the audit will use.
+- **Cache:** `COMPARISON_CACHE_VERSION` v25→v26 (unmatched sheets now extract different zones).
+  Changing *which* template is default later is not a code change and does not re-bump — that
+  staleness is cleared by Re-test/force_refresh.
+- **Caveat (documented, not fixed):** fractions scale proportionally, so the default can misplace
+  boxes on a genuinely different aspect. Harmless for the A-series corpus (all ≈1.414); surfaced in
+  the UI and in `docs/vault/06 - .../Gotcha - Global Default Zone Template & the Aspect Caveat.md`.
+- Guards: `tests/test_zone_template_resolver.py::TestDefaultFallback`, `tests/test_zone_templates_router.py`.
