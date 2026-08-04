@@ -95,6 +95,32 @@ def test_classify_drawing_view_feature_chamfer_radius():
     assert fc.classify_drawing_view_feature("R3") == "chamfer_radius"
 
 
+def test_classify_drawing_view_feature_folds_fullwidth_callouts():
+    """Regression: this corpus is Japanese CAD and writes callouts FULLWIDTH. Every pattern in
+    the classifier is ASCII, so `Ｃ１` (U+FF23 U+FF11) missed the chamfer rule and a real
+    chamfer callout was filed under "Other / Unclassified" — measured on the M7452A1N01 pair,
+    where the reference writes `C1` and the revision `Ｃ１` for the same chamfer.
+
+    SpatialDiffer._normalize_text already NFKC-folds, so the differ *paired* the two correctly;
+    this classifier was the one place that did not, so the finding was matched but mislabelled.
+    """
+    for fullwidth, halfwidth in (("Ｃ１", "C1"), ("Ｒ５", "R5")):
+        assert fc.classify_drawing_view_feature(fullwidth) == "chamfer_radius", fullwidth
+        assert fc.classify_drawing_view_feature(fullwidth) == fc.classify_drawing_view_feature(halfwidth)
+
+    # The same gap hid fullwidth dimensions and tolerances.
+    assert fc.classify_drawing_view_feature("１２０") == "dimensions"
+    assert fc.classify_drawing_view_feature("２２．７±０．０２") == "geometric_tolerances"
+    assert fc.classify_drawing_view_feature("⌀１２０") == "hole_properties"
+
+
+def test_bare_section_label_stays_unclassified():
+    """`Ａ－Ａ` on its own is a section-marker label, not an engineering callout — folding must
+    not make it start claiming a feature. `断面Ａ－Ａ` (with the 'section' keyword) is different."""
+    assert fc.classify_drawing_view_feature("Ａ－Ａ") == taxonomy.OTHER_FEATURE_KEY
+    assert fc.classify_drawing_view_feature("断面Ａ－Ａ") == "additional_views"
+
+
 def test_classify_drawing_view_feature_welding_symbol():
     assert fc.classify_drawing_view_feature("△ fillet weld") == "welding_symbol"
 

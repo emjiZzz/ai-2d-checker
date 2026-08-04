@@ -2,7 +2,10 @@ import math
 import logging
 from collections import defaultdict
 from difflib import SequenceMatcher
+from typing import Optional
 import re
+
+from ...utils.text import strip_mtext
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,22 @@ FUZZY_THRESHOLD_NORM = 0.150    # was 150.0 units
 STRICT_RADIUS_ABS = 5.0
 TWIN_THRESHOLD_ABS = 10.0
 FUZZY_THRESHOLD_ABS = 150.0
+
+# Entity types carrying a value worth comparing. DIMENSION belongs here because a dimension IS
+# the engineering content of a drawing view. While the pools were text-only, every dimension on
+# every drawing this system has audited was dropped before comparison started and could never
+# receive a checkmark -- ⌀120, ⌀260, ⌀140 and 22.7±0.02 on the measured pair. This is the
+# dimension half of the vault's "Differ Compared Text Only" defect; the geometry half was tried
+# as geometry_differ and deliberately reverted.
+#
+# `leader`/`multileader` are NOT here: their text is a callout that duplicates what it points
+# at, and their geometry moves whenever that feature moves.
+COMPARABLE_ENTITY_TYPES = ("text", "dimension")
+
+# Float noise in a DXF `measurement` is ~1e-13 -- measured 140.0000000000002 against
+# 140.0000000000005 for the same unchanged dimension. Rounding to 6 decimals collapses that
+# while staying orders of magnitude finer than any drawing tolerance.
+MEASUREMENT_DECIMALS = 6
 
 
 # A CHANGED pairing means "the same element, edited" -- so the two texts have to be
@@ -101,11 +120,69 @@ class SpatialDiffer:
         return t
 
     @staticmethod
-    def _get_entity_coords(entity) -> tuple[float, float]:
-        geom = getattr(entity, 'geometry', {})
-        if geom and 'insert' in geom and len(geom['insert']) >= 2:
-            return (float(geom['insert'][0]), float(geom['insert'][1]))
-        return (0.0, 0.0)
+    def _comparison_value(entity) -> tuple[str, str]:
+        """(display text, comparison key) for one entity. Empty display means "skip".
+
+        For TEXT the key is the normalized string, as before.
+
+        For a DIMENSION the key is its numeric `measurement` plus its dimension KIND -- never
+        its display text. The two routinely disagree for a dimension that has not changed: the
+        same 120mm dimension is authored as a `%%c120` text override on one sheet and left to
+        the dimension style on the other, so both render "⌀120" while their `text` properties
+        read '%%c120' and '120'. Measured on the M7452A1N01 pair, all four dimensions have
+        identical measurements and four different text pairs -- comparing display text would
+        report four false CHANGED where the answer is four MATCHED.
+
+        `dim_type` is masked to its low 3 bits, which carry the dimension kind (0 linear,
+        3 diameter, 4 radius...). The upper bits are flags like "user-defined text location"
+        that a redraw can flip without changing any geometry. Keeping the kind in the key means
+        a linear 120 never silently matches a diameter 120; dropping the flags means a
+        cosmetic re-anchor does not read as an engineering change.
+        """
+        props = getattr(entity, 'properties', {}) or {}
+        if getattr(entity, 'entity_type', '') != 'dimension':
+            txt = SpatialDiffer._get_entity_text(entity)
+            return (txt, SpatialDiffer._normalize_text(txt)) if txt else ("", "")
+
+        # strip_mtext (not safe_decode) resolves %%c -> Ø for display. safe_decode would also
+        # run its mojibake repair, which corrupts a literal '±' into halfwidth katakana ｱ --
+        # dimension text is symbols and digits, never CJK, so it does not need that pass.
+        raw = props.get('text') or ''
+        display = strip_mtext(str(raw)).strip()
+        measurement = props.get('measurement')
+        if measurement is None:
+            # No measurement to key on (rare) — fall back to the text, same as a TEXT entity.
+            return (display, SpatialDiffer._normalize_text(display)) if display else ("", "")
+        if not display:
+            display = f"{round(float(measurement), MEASUREMENT_DECIMALS):g}"
+        kind = int(props.get('dim_type') or 0) & 0b111
+        key = f"dim:{kind}:{round(float(measurement), MEASUREMENT_DECIMALS):g}"
+        return (display, key)
+
+    @staticmethod
+    def _get_entity_coords(entity) -> Optional[tuple[float, float]]:
+        """Where an entity sits, in CAD units, or None when it has no usable position.
+
+        DIMENSION geometry has no `insert` -- its keys are `text_point` (where the measurement
+        is drawn), `def_point` and `ext1_point`/`ext2_point`. Reading only `insert` meant every
+        dimension resolved to (0.0, 0.0), so admitting them to the pools without this would
+        stack the whole set on the sheet origin instead of on the features they measure.
+        `text_point` is preferred because that is where the value the checker reads appears,
+        and therefore where its marker belongs.
+
+        Returns None rather than (0.0, 0.0) on failure: a silent origin is indistinguishable
+        from a real coordinate at the origin, and it made an unanchorable entity look like a
+        cluster of matches down there.
+        """
+        geom = getattr(entity, 'geometry', {}) or {}
+        for key in ('insert', 'location', 'text_point', 'def_point'):
+            point = geom.get(key)
+            if point is not None and len(point) >= 2:
+                try:
+                    return (float(point[0]), float(point[1]))
+                except (TypeError, ValueError):
+                    continue
+        return None
 
     @staticmethod
     def _to_match_space(x: float, y: float, bounds) -> tuple[float, float]:
@@ -150,6 +227,8 @@ class SpatialDiffer:
                 txt = SpatialDiffer._get_entity_text(e)
                 if txt and len(txt) > 2:
                     raw = SpatialDiffer._get_entity_coords(e)
+                    if raw is None:
+                        continue
                     ref_text_map[SpatialDiffer._normalize_text(txt)].append(
                         SpatialDiffer._to_match_space(raw[0], raw[1], rb)
                     )
@@ -164,6 +243,8 @@ class SpatialDiffer:
                 norm_txt = SpatialDiffer._normalize_text(txt)
                 if txt and len(txt) > 2 and norm_txt in ref_text_map:
                     raw = SpatialDiffer._get_entity_coords(e)
+                    if raw is None:
+                        continue
                     rev_coord = SpatialDiffer._to_match_space(raw[0], raw[1], vb)
                     candidates = ref_text_map[norm_txt]
                     # Pick the nearest ref coordinate when a normalized text has multiple
@@ -228,41 +309,34 @@ class SpatialDiffer:
         # Build index. `x`/`y` are match-space coordinates; `raw_x`/`raw_y` stay in CAD units
         # because every consumer downstream (coordinate resolution, canvas pins, redline
         # writeback) needs real drawing coordinates, not normalized ones.
-        ref_texts = []
-        for e in ref_entities:
-            if getattr(e, 'entity_type', '') == 'text':
-                txt = SpatialDiffer._get_entity_text(e)
-                if not txt: continue
+        def build_pool(entities, prefix, bounds, dx=0.0, dy=0.0):
+            pool = []
+            for e in entities:
+                kind = getattr(e, 'entity_type', '')
+                if kind not in COMPARABLE_ENTITY_TYPES:
+                    continue
+                display, key = SpatialDiffer._comparison_value(e)
+                if not display:
+                    continue
                 coords = SpatialDiffer._get_entity_coords(e)
-                mx, my = SpatialDiffer._to_match_space(coords[0], coords[1], rb)
-                ref_texts.append({
-                    "id": f"REF-{getattr(e, 'properties', {}).get('handle', '')}",
-                    "text": txt,
-                    "clean_text": SpatialDiffer._normalize_text(txt),
-                    "x": mx,
-                    "y": my,
+                if coords is None:
+                    continue
+                mx, my = SpatialDiffer._to_match_space(coords[0], coords[1], bounds)
+                pool.append({
+                    "id": f"{prefix}-{getattr(e, 'properties', {}).get('handle', '')}",
+                    "kind": kind,
+                    "text": display,
+                    "clean_text": key,
+                    "x": mx - dx,   # rev is pre-aligned by the global offset; ref passes 0
+                    "y": my - dy,
                     "raw_x": coords[0],
                     "raw_y": coords[1],
                     "matched": False
                 })
+            return pool
 
-        rev_texts = []
-        for e in rev_entities:
-            if getattr(e, 'entity_type', '') == 'text':
-                txt = SpatialDiffer._get_entity_text(e)
-                if not txt: continue
-                coords = SpatialDiffer._get_entity_coords(e)
-                mx, my = SpatialDiffer._to_match_space(coords[0], coords[1], vb)
-                rev_texts.append({
-                    "id": f"REV-{getattr(e, 'properties', {}).get('handle', '')}",
-                    "text": txt,
-                    "clean_text": SpatialDiffer._normalize_text(txt),
-                    "x": mx - offset_x,  # Pre-align
-                    "y": my - offset_y,  # Pre-align
-                    "raw_x": coords[0],
-                    "raw_y": coords[1],
-                    "matched": False
-                })
+        ref_texts = build_pool(ref_entities, "REF", rb)
+        rev_texts = build_pool(rev_entities, "REV", vb, offset_x, offset_y)
 
         if not rev_texts or not ref_texts:
             return []
@@ -272,6 +346,8 @@ class SpatialDiffer:
         strict_matches = 0
         for rev in rev_texts:
             for ref in ref_texts:
+                if rev["kind"] != ref["kind"]:
+                    continue
                 if rev["clean_text"] == ref["clean_text"]:
                     dist = math.sqrt((rev["x"] - ref["x"])**2 + (rev["y"] - ref["y"])**2)
                     if dist <= strict_radius:
@@ -304,6 +380,11 @@ class SpatialDiffer:
                 if rev.get("matched"): continue
                 for ref in ref_texts:
                     if ref.get("matched"): continue
+                    # A dimension pairs only with a dimension. Their comparison keys are
+                    # measurements, not strings, so a stray '120' label would otherwise match a
+                    # 120mm dimension and report an unrelated pair.
+                    if rev["kind"] != ref["kind"]:
+                        continue
                     dist = math.sqrt((rev["x"] - ref["x"])**2 + (rev["y"] - ref["y"])**2)
                     if dist <= threshold:
                         is_same_text = rev["clean_text"] == ref["clean_text"]

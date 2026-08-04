@@ -17,8 +17,26 @@ never guesses past what the pattern actually supports.
 """
 
 import re
+import unicodedata
 
 from . import taxonomy
+
+
+def _fold(text: str) -> str:
+    """NFKC-fold text before pattern matching.
+
+    Every pattern below is written in ASCII/halfwidth, but this corpus is Japanese CAD and
+    writes callouts in FULLWIDTH: the chamfer that reads `C1` on one sheet is `Ｃ１` (U+FF23
+    U+FF11) on the other. Without folding, `\\bC\\s*\\d+\\b` misses it and a real chamfer callout
+    is classified `other`, landing the finding in "Other / Unclassified" instead of
+    "Chamfer / Radius". The same gap hid fullwidth radii (`Ｒ５`), fullwidth plain dimensions
+    (`１２０`) and fullwidth tolerances (`±０．０２`).
+
+    `SpatialDiffer._normalize_text` already NFKC-folds, which is why the differ *pairs* a
+    fullwidth and a halfwidth callout correctly — this classifier was the one place that did
+    not, so the finding was matched but mislabelled.
+    """
+    return unicodedata.normalize("NFKC", text or "")
 
 # GD&T feature control frame characters (partial — the common ones actually seen in
 # CAD text extraction; a full GD&T symbol set is far larger than this needs to be).
@@ -60,7 +78,8 @@ def _contains_any_keyword(text: str, keywords: tuple) -> bool:
 
 def classify_drawing_view_feature(text_content: str, details: str = "") -> str:
     """Best-effort feature guess for a drawing_views finding from its own text — see module docstring for what this can and can't detect."""
-    combined = f"{text_content or ''} {details or ''}"
+    text_content = _fold(text_content)
+    combined = _fold(f"{text_content or ''} {details or ''}")
 
     if _contains_any_char(combined, _GDT_CHARS) or _FIT_TOLERANCE_RE.search(combined):
         return "geometric_tolerances"
@@ -90,7 +109,7 @@ def classify_notes_feature(text_content: str, details: str = "") -> str:
     would just mean every unmatched note vanishes into an unhelpful catch-all bucket
     in a category that only has two real buckets to begin with.
     """
-    combined = f"{text_content or ''} {details or ''}"
+    combined = _fold(f"{text_content or ''} {details or ''}")
     if _contains_any_keyword(combined, _NOTES_SPECIAL_KEYWORDS):
         return "special_notes"
     return "standard_notes"
@@ -116,7 +135,7 @@ def classify_title_ul_feature(display_key: str) -> str:
     dynamically rather than from a fixed field list, so this classifier works off the
     discovered label text itself rather than a known field key.
     """
-    key = display_key or ""
+    key = _fold(display_key)
     lower = key.lower()
     if "unit" in lower or "part" in lower or "コード" in key or "機" in key:
         return "machine_name"

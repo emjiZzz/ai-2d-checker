@@ -345,8 +345,47 @@ def _entity_points(entity: Any) -> list:
     return points
 
 
+def entity_anchor(entity: Any) -> Optional[tuple]:
+    """The single (x, y) that decides which zone an entity belongs to.
+
+    For most entities this is the centroid of `_entity_points`, so drawable geometry
+    (lines/arcs/ellipses, whose coordinates live under start/end/center/points/…) is located
+    correctly instead of being dropped for lacking an `insert` point.
+
+    A DIMENSION is the exception, and it has to be. Its points are the measured feature
+    (`def_point`) and the value's own position (`text_point`), which on a diameter or a long
+    linear dimension sit far apart — their midpoint is a phantom location where nothing is
+    drawn. On the M7452A1N01 reference the ⌀260 dimension runs y=228.5 → 358.5 and that
+    midpoint (y=293.5) lands inside the tolerance table's safe zone, so the dimension was
+    dropped from the drawing_views pool while the revision's ⌀260, whose midpoint cleared the
+    zone, survived: an unchanged dimension present on both sheets was reported ADDED with no
+    REMOVED counterpart. Whether a dimension gets compared at all must not depend on how far
+    its extension lines happen to reach.
+
+    So a dimension is anchored at `text_point` — where its value is drawn, where the checker
+    reads it, and where `SpatialDiffer._get_entity_coords` already pins its marker. Zone
+    scoping and marker placement now agree instead of being able to name different zones for
+    the same dimension.
+    """
+    geo = getattr(entity, "geometry", {}) or {}
+    if getattr(entity, "entity_type", "") == "dimension":
+        for key in ("text_point", "def_point", "insert", "location"):
+            point = geo.get(key)
+            try:
+                if point is not None and len(point) >= 2:
+                    return float(point[0]), float(point[1])
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    pts = _entity_points(entity)
+    if not pts:
+        return None
+    return sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+
+
 def scope_entities_to_views(entities: list, views_bbox, exclude_bboxes=None) -> list:
-    """Entities that belong to the `views` zone: centroid inside `views_bbox` and not inside
+    """Entities that belong to the `views` zone: anchor inside `views_bbox` and not inside
     any sibling zone in `exclude_bboxes` (pass `views_exclusions(regions)`).
 
     Returns [] when `views_bbox` is falsy — strict scoping with **no residual fallback**: a
@@ -354,20 +393,18 @@ def scope_entities_to_views(entities: list, views_bbox, exclude_bboxes=None) -> 
     This is what makes the `views` box the definitive comparison boundary instead of comparing
     everything that falls outside the other zones.
 
-    Centroid is computed from `_entity_points`, not the text `insert` alone, so drawable
-    geometry (lines/arcs/ellipses, whose coordinates live under start/end/center/points/…) is
-    located correctly instead of being dropped for lacking an `insert` point.
+    The anchor point comes from `entity_anchor` — a centroid for ordinary entities, the
+    `text_point` for dimensions. See there for why dimensions cannot use a centroid.
     """
     if not views_bbox:
         return []
     x0, y0, x1, y1 = views_bbox[0], views_bbox[1], views_bbox[2], views_bbox[3]
     result = []
     for e in entities:
-        pts = _entity_points(e)
-        if not pts:
+        anchor = entity_anchor(e)
+        if anchor is None:
             continue
-        cx = sum(p[0] for p in pts) / len(pts)
-        cy = sum(p[1] for p in pts) / len(pts)
+        cx, cy = anchor
         if not (x0 <= cx <= x1 and y0 <= cy <= y1):
             continue
         if point_in_any_bbox(cx, cy, exclude_bboxes):
@@ -761,6 +798,21 @@ def detect_zones_by_content(entities: list) -> dict:
             elif zone == "bom":
                 # Decouple X/Y radii: wide horizontally to span columns, tight vertically to avoid detail views
                 radius = (max(50.0, sheet_w * 0.15), max(15.0, sheet_h * 0.04))
+            elif zone == "tolerance":
+                # Decouple X/Y radii, same reasoning as `bom`: the tolerance table is a wide,
+                # short strip of ruled columns along the bottom of the sheet, so it needs to
+                # bridge horizontally across columns but must NOT reach upward into the
+                # drawing area.
+                #
+                # With CLUSTER_RADIUS (200, isotropic) and lines included, the flood-fill blew
+                # out to BOTH caps on both drawings of the M7452A1N01 pair -- 0.95w x 0.30h
+                # exactly, the signature of runaway growth rather than a detection. It walked
+                # the sheet frame and table rules across the full width and ~150 units above
+                # the table, swallowing the drawing's own content: the `22.7±0.02` dimension,
+                # the `6-6.6キリ11ザグリ深6.5` callout and the section marks. Because
+                # `tolerance` is a SAFE zone that `views` subtracts, everything it swallowed
+                # was silently dropped from the drawing_views comparison and never checked.
+                radius = (max(50.0, sheet_w * 0.15), max(12.0, sheet_h * 0.03))
             elif zone == "notes":
                 radius = max(15.0, sheet_h * 0.03)
             elif zone == "shim":
@@ -772,7 +824,14 @@ def detect_zones_by_content(entities: list) -> dict:
             else:
                 radius = CLUSTER_RADIUS
                 
-            exclude_lines_flag = (zone in ("title_upper_left", "bom", "notes"))
+            # Ruled tables: seed from their text, never from their rules. A table's own frame
+            # lines are collinear with the sheet border and with the title block's rules, so
+            # letting the flood-fill hop along them bridges the box to unrelated furniture and
+            # then to the drawing itself. These zones are all dense with text, so text-only
+            # growth still covers them (verified on the M7452A1N01 pair: `tolerance` still
+            # covers every row of its table while dropping from 30.0% to 14.7% of sheet
+            # height, and the ⌀ dimensions above it stay in `views`).
+            exclude_lines_flag = (zone in ("title_upper_left", "bom", "notes", "tolerance"))
             bbox = _expand_bbox(
                 filtered_entities, hits, radius,
                 max_w=sheet_w * max_w_frac,

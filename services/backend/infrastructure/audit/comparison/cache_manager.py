@@ -197,7 +197,37 @@ class ComparisonCacheManager:
     # The formula was hand-copied to 12 places in Python and 8 in TypeScript; it now lives in
     # bom/anchors.py::marker_anchor and markerGenerator.ts::markerAnchor. Cached results carry
     # the old coordinates for every finding.
-    COMPARISON_CACHE_VERSION = "v35"
+    # v36: DIMENSION entities are compared for the first time. The differ's pools filtered
+    # `entity_type == 'text'`, so every dimension on every drawing was dropped before comparison
+    # and could never receive a checkmark (⌀120, ⌀260, ⌀140, 22.7±0.02 on the measured pair, now
+    # 4 MATCHED). Two supporting changes ride along: _get_entity_coords reads dimension geometry
+    # (text_point/def_point — dimensions have no `insert`, so they all resolved to the origin)
+    # and returns None instead of (0,0) when unanchorable; and dimensions are compared on their
+    # numeric `measurement` + kind rather than display text, because the same unchanged
+    # dimension is authored as a `%%c120` override on one sheet and left to the dimension style
+    # on the other. Every cached result is missing all dimension findings.
+    #
+    # Also in v36: feature_classifier NFKC-folds before matching. Every rule in it is written in
+    # ASCII while this corpus writes callouts FULLWIDTH, so `Ｃ１` (a chamfer) missed the chamfer
+    # rule and was filed under "Other / Unclassified"; likewise fullwidth radii, plain dimensions
+    # and tolerances. The `feature` on cached drawing_views/notes findings is therefore stale.
+    # v37: zone scoping anchors a DIMENSION at its `text_point` instead of the centroid of its
+    # geometry points (zone_detector.entity_anchor). That centroid is the midpoint between the
+    # measured feature and the value, a place where nothing is drawn, and on a long dimension it
+    # can land in a sibling zone the dimension is nowhere near. The reference ⌀260 on
+    # M7452A1N01 was scoped into the tolerance safe zone that way and dropped from the
+    # drawing_views pool, while the revision's ⌀260 stayed in -- so an unchanged dimension came
+    # back ADDED with no REMOVED counterpart. Cached results carry the wrong status for any
+    # dimension whose span crosses a zone boundary.
+    #
+    # Also in v37: the `tolerance` zone no longer floods along line geometry, and grows on a
+    # decoupled wide-X/tight-Y radius instead of the isotropic CLUSTER_RADIUS. It was blowing
+    # out to BOTH caps (0.95w x 0.30h exactly) on both drawings of that pair and reaching ~150
+    # units up into the drawing area. `tolerance` is a SAFE zone that `views` subtracts, so
+    # everything it over-covered -- `22.7±0.02`, the `6-6.6キリ11ザグリ深6.5` callout, the
+    # section marks -- was silently dropped from drawing_views and never compared. Cached
+    # results are missing those findings entirely.
+    COMPARISON_CACHE_VERSION = "v37"
 
     @staticmethod
     def _get_cache_path(

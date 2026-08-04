@@ -138,3 +138,87 @@ def test_diff_views_keeps_numeric_value_change_as_changed():
 
     assert changed["status"] == "CHANGED"
     assert changed["original_value"] == "130"
+
+
+def _dimension_entity(text: str, x: float, y: float, measurement: float,
+                      dim_type: int = 160, handle: str = "") -> SimpleNamespace:
+    """A DXF DIMENSION: value in `properties.measurement`, position under `text_point`.
+
+    Note there is deliberately NO `insert` key — dimension geometry does not have one, which
+    is exactly why _get_entity_coords used to resolve every dimension to (0.0, 0.0).
+    """
+    return SimpleNamespace(
+        entity_type="dimension",
+        properties={"text": text, "measurement": measurement,
+                    "dim_type": dim_type, "handle": handle or text},
+        geometry={"text_point": [x, y], "def_point": [x, y - 5.0]},
+    )
+
+
+def test_dimensions_are_compared_at_all():
+    """Regression: the pools filtered `entity_type == 'text'`, so every DIMENSION on every
+    drawing was dropped before comparison and could never receive a checkmark."""
+    ref = [_dimension_entity("%%c120", 100.0, 100.0, 120.0)] + _twin_fillers()[0]
+    rev = [_dimension_entity("120", 100.0, 100.0, 120.0)] + _twin_fillers()[1]
+    dims = [m for m in SpatialDiffer.diff_views(ref, rev) if "120" in m["text_content"]]
+    assert len(dims) == 1, dims
+    assert dims[0]["status"] == "MATCHED"
+
+
+def test_unchanged_dimension_matches_despite_different_display_text():
+    """The same unchanged dimension is authored as a `%%c120` text override on one sheet and
+    left to the dimension style on the other — both render ⌀120. Comparing display text gives
+    a false CHANGED; the numeric `measurement` is what actually decides."""
+    ref = [_dimension_entity("%%c120", 100.0, 100.0, 120.0)] + _twin_fillers()[0]
+    # Float noise of the magnitude really present in the corpus (140.0000000000002 vs ...5).
+    rev = [_dimension_entity("120", 100.0, 100.0, 120.0000000000002)] + _twin_fillers()[1]
+    m = next(m for m in SpatialDiffer.diff_views(ref, rev) if "120" in m["text_content"])
+    assert m["status"] == "MATCHED", m
+
+
+def test_changed_dimension_measurement_is_reported():
+    """The other side of the same guard: a real size change must still surface."""
+    ref = [_dimension_entity("120", 100.0, 100.0, 120.0)] + _twin_fillers()[0]
+    rev = [_dimension_entity("125", 100.0, 100.0, 125.0)] + _twin_fillers()[1]
+    m = next(m for m in SpatialDiffer.diff_views(ref, rev) if "12" in m["text_content"])
+    assert m["status"] == "CHANGED", m
+    assert m["original_value"] == "120"
+
+
+def test_dimension_coordinates_come_from_text_point_not_the_origin():
+    """Dimension geometry has no `insert`. Reading only that key resolved every dimension to
+    (0, 0), which would stack the whole set on the sheet origin instead of on its feature."""
+    ref = [_dimension_entity("%%c120", 640.0, 480.0, 120.0)] + _twin_fillers()[0]
+    rev = [_dimension_entity("120", 640.0, 480.0, 120.0)] + _twin_fillers()[1]
+    m = next(m for m in SpatialDiffer.diff_views(ref, rev) if "120" in m["text_content"])
+    assert m["coordinates"] == [640.0, 480.0]
+    assert m["ref_coordinates"] == [640.0, 480.0]
+
+
+def test_a_dimension_never_pairs_with_a_text_of_the_same_number():
+    """Dimension keys are measurements, not strings, so without a kind gate a stray '120'
+    label sitting on top of a 120mm dimension would pair with it."""
+    ref = [_text_entity("120", 100.0, 100.0)] + _twin_fillers()[0]
+    rev = [_dimension_entity("120", 100.0, 100.0, 120.0)] + _twin_fillers()[1]
+    statuses = {m["status"] for m in SpatialDiffer.diff_views(ref, rev) if m["text_content"] == "120"}
+    assert statuses == {"ADDED", "REMOVED"}, statuses
+
+
+def test_diameter_and_linear_dimensions_of_equal_size_are_not_silently_matched():
+    """dim_type's low bits carry the dimension KIND: a linear 120 is not a diameter 120."""
+    ref = [_dimension_entity("120", 100.0, 100.0, 120.0, dim_type=160)] + _twin_fillers()[0]   # linear
+    rev = [_dimension_entity("%%c120", 100.0, 100.0, 120.0, dim_type=163)] + _twin_fillers()[1]  # diameter
+    m = next(m for m in SpatialDiffer.diff_views(ref, rev) if "120" in m["text_content"])
+    assert m["status"] == "CHANGED", m
+
+
+def test_dimension_display_text_resolves_the_diameter_escape():
+    """`%%c` must render as ⌀ in the checklist label, and a literal ± must survive intact —
+    safe_decode's mojibake repair turns ± into halfwidth katakana ｱ, so dimensions skip it."""
+    ref = [_dimension_entity("%%c120", 100.0, 100.0, 120.0),
+           _dimension_entity("22.7±0.02", 200.0, 200.0, 22.7)] + _twin_fillers()[0]
+    rev = [_dimension_entity("%%c125", 100.0, 100.0, 125.0),
+           _dimension_entity("22.9±0.02", 200.0, 200.0, 22.9)] + _twin_fillers()[1]
+    texts = {m["text_content"] for m in SpatialDiffer.diff_views(ref, rev)}
+    assert "Ø125" in texts, texts
+    assert "22.9±0.02" in texts, texts

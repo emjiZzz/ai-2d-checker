@@ -62,3 +62,40 @@ def test_centroid_on_the_boundary_is_inside():
     # Inclusive bounds — a centroid exactly on an edge/corner belongs to the box.
     e = _text(0, 50)
     assert scope_entities_to_views([e], VIEWS, []) == [e]
+
+
+def _dimension(text_x, text_y, def_x, def_y):
+    """A dimension — no `insert`; the value sits at `text_point`, the measured feature at
+    `def_point`, and the two can be far apart."""
+    return SimpleNamespace(
+        entity_type="dimension",
+        geometry={"text_point": [text_x, text_y], "def_point": [def_x, def_y]},
+    )
+
+
+def test_dimension_located_by_text_point_not_the_span_midpoint():
+    # A long dimension whose value is well clear of a sibling zone, but whose midpoint between
+    # def_point and text_point falls inside it. Locating it by that midpoint scoped the
+    # reference ⌀260 on M7452A1N01 into the tolerance safe zone and dropped it from the pool,
+    # while the revision's shorter ⌀260 stayed in — so an unchanged dimension present on both
+    # sheets was reported ADDED with no REMOVED counterpart.
+    sibling = (0.0, 15.0, 50.0, 25.0)
+    dim = _dimension(40, 40, 40, 0)  # value at y=40, span midpoint y=20 → inside `sibling`
+    assert scope_entities_to_views([dim], VIEWS, [sibling]) == [dim]
+
+
+def test_dimension_whose_value_sits_in_a_sibling_zone_is_still_excluded():
+    # The converse: anchoring on text_point must not smuggle in a dimension that genuinely
+    # belongs to a sibling zone (a tolerance-table row reads as a dimension entity).
+    sibling = (0.0, 15.0, 50.0, 25.0)
+    dim = _dimension(40, 20, 40, 45)
+    assert scope_entities_to_views([dim], VIEWS, [sibling]) == []
+
+
+def test_dimension_outside_views_box_is_dropped():
+    assert scope_entities_to_views([_dimension(100, 100, 100, 60)], VIEWS, []) == []
+
+
+def test_dimension_falls_back_to_def_point_without_text_point():
+    dim = SimpleNamespace(entity_type="dimension", geometry={"def_point": [25, 25]})
+    assert scope_entities_to_views([dim], VIEWS, []) == [dim]
