@@ -5,7 +5,7 @@ import { useRoomStore } from "../stores/roomStore";
 import { computeBounds } from "../utils/spatialBounds";
 import { generateComparisonMarkings } from "../utils/markerGenerator";
 import { getComparisonStages, getComparisonTimeoutMs } from "../utils/comparisonStages";
-import { buildHeaders, baseUrl, parseOrThrow } from "../services/fetchUtils";
+import { buildHeaders, baseUrl, parseOrThrow, streamApi } from "../services/fetchUtils";
 
 export const usePhysicalComparison = () => {
   const {
@@ -18,6 +18,7 @@ export const usePhysicalComparison = () => {
     aiChecklistResults,
     aiScanError,
     setAiScanProgress,
+    setAiScanProgressPct,
     setAiChecklistResults,
     setAiScanError
   } = useWorkspaceStore();
@@ -28,59 +29,87 @@ export const usePhysicalComparison = () => {
     setAiChecklistResults({});
     setViolations([]);
     setAiScanProgress("idle");
+    setAiScanProgressPct(0);
     setAiScanError(null);
-  }, [setAiChecklistResults, setViolations, setAiScanProgress, setAiScanError]);
+  }, [setAiChecklistResults, setViolations, setAiScanProgress, setAiScanProgressPct, setAiScanError]);
 
   const runPhysicalComparisonAI = async (forceRefresh = false, refreshOcr = false) => {
     if (!oldDrawing || !newDrawing) return;
 
     setAiScanError(null);
+    setAiScanProgressPct(5);
 
     try {
-      // Start the fetch request immediately
       const comparisonMethod = activeRoom?.comparison_method ?? "rag";
-
-      const controller = new AbortController();
-      // Timeout is method-aware (see utils/comparisonStages.ts) — hybrid's pipeline is
-      // structurally more work than a single Gemini call, so a flat 180s aborted real
-      // requests on drawing pairs with many disputed findings.
-      const timeoutId = setTimeout(() => controller.abort(), getComparisonTimeoutMs(comparisonMethod));
-
-      const fetchPromise = fetch(`${baseUrl()}/api/v1/audits/physical-comparison`, {
-        method: "POST",
-        headers: buildHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          reference_drawing_id: oldDrawing.id,
-          drawing_id: newDrawing.id,
-          comparison_method: comparisonMethod,
-          force_refresh: forceRefresh,
-          refresh_ocr: refreshOcr,
-        }),
-        signal: controller.signal
-      });
-
-      // Visually step through the stages that actually describe this method's backend
-      // pipeline (see utils/comparisonStages.ts) — still simulated timing, no live
-      // signal from the backend, but the labels stop lying about what's running.
-      // The last stage has no timer: it sits on "Processing..." until the real fetch
-      // resolves below, same as the original implementation's final step.
       const stages = getComparisonStages(comparisonMethod);
-      for (let i = 0; i < stages.length; i++) {
-        if (controller.signal.aborted) throw new Error("Aborted");
-        setAiScanProgress(stages[i].id);
-        if (i < stages.length - 1) {
-          await new Promise(r => setTimeout(r, stages[i].durationMs));
-        }
+      if (stages.length > 0) {
+        setAiScanProgress(stages[0].id);
       }
 
-      // Wait for the actual backend to finish
-      const res = await fetchPromise;
-      clearTimeout(timeoutId);
-      
-      const data = await parseOrThrow<any>(res);
+      const requestBody = {
+        reference_drawing_id: oldDrawing.id,
+        drawing_id: newDrawing.id,
+        comparison_method: comparisonMethod,
+        force_refresh: forceRefresh,
+        refresh_ocr: refreshOcr,
+      };
+
+      const timeoutMs = getComparisonTimeoutMs(comparisonMethod);
+      let streamSucceeded = false;
+      let data: any = null;
+
+      // Two failure modes, deliberately handled differently. A TRANSPORT failure (older
+      // backend without the /stream route, dropped socket, malformed frame) means we learned
+      // nothing about the comparison, so fall back to the plain POST. A backend-REPORTED
+      // error means the comparison itself failed — falling back there would re-run the whole
+      // pipeline, which for `hybrid` is minutes of work and a second Gemini bill, only to fail
+      // the same way. That one is rethrown to the outer handler.
+      class ComparisonStreamError extends Error {}
+
+      try {
+        const stream = streamApi("/api/v1/audits/physical-comparison/stream", requestBody, timeoutMs);
+        for await (const rawChunk of stream) {
+          let event: any;
+          try {
+            event = JSON.parse(rawChunk);
+          } catch {
+            // streamApi also yields non-`data:` lines; a frame we can't parse is not fatal.
+            continue;
+          }
+          if (event.type === "progress") {
+            if (event.stage) setAiScanProgress(event.stage);
+            if (typeof event.progress_pct === "number") setAiScanProgressPct(event.progress_pct);
+          } else if (event.type === "complete") {
+            streamSucceeded = true;
+            data = event.result;
+            setAiScanProgressPct(100);
+          } else if (event.type === "error") {
+            throw new ComparisonStreamError(event.error || "Comparison stream error");
+          }
+        }
+      } catch (streamErr: any) {
+        if (streamErr instanceof ComparisonStreamError) throw streamErr;
+        console.warn("[usePhysicalComparison] SSE transport failed, falling back to standard POST:", streamErr);
+      }
+
+      // Fallback if SSE streaming did not complete
+      if (!streamSucceeded || !data) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        const res = await fetch(`${baseUrl()}/api/v1/audits/physical-comparison`, {
+          method: "POST",
+          headers: buildHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        data = await parseOrThrow<any>(res);
+      }
 
       setAiChecklistResults(data);
       setAiScanProgress("completed");
+      setAiScanProgressPct(100);
 
       try {
         const cleanCadText = (text: string): string => {

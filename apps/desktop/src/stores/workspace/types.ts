@@ -143,9 +143,11 @@ export interface ComparisonSlice {
   // matching label — not a fixed set of literals, since that set now varies per
   // comparison_method.
   aiScanProgress: "idle" | "completed" | string;
+  aiScanProgressPct: number;
   aiChecklistResults: Record<string, any>;
   aiScanError: string | null;
   setAiScanProgress: (progress: "idle" | "completed" | string) => void;
+  setAiScanProgressPct: (pct: number) => void;
   setAiChecklistResults: (results: Record<string, any>) => void;
   setAiScanError: (error: string | null) => void;
 

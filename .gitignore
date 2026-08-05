@@ -74,5 +74,21 @@ tools/installer/*.exe
 Prompt-Engineering-OS/
 
 # === Obsidian Vault & Local Notes ===
-docs/vault/
+# The vault is the canonical record of *why* this system is built the way it is. It was fully
+# ignored, so 46 notes of hard-won knowledge existed on exactly one machine. Documentation folders
+# are now tracked; the two things that must NOT be are carved out below.
+# See docs/vault/07 - .../ADR-003 AI Maturity Ladder.md, decision 4.
+docs/vault/.obsidian/
+
+# Customer-specific Japanese CAD anchors and auto-induced dismissal patterns. This is the ONLY
+# vault folder that is a runtime input (vault_sync.py reads it), and it contains client domain
+# data — it stays local. See CLAUDE.md constraint 4.
+docs/vault/08 - Client Domain & CAD Rules/
+
+# Trained model bundles are build artifacts, not documentation. Stage 0h relocates these to
+# services/backend/storage/models/; until then they stay untracked. Model Card.md IS tracked —
+# it is the human-readable surface.
+docs/vault/09 - Learned Models/*.joblib
+docs/vault/09 - Learned Models/*.meta.json
+
 .obsidian/

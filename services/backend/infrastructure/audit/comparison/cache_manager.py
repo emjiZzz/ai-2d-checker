@@ -227,7 +227,13 @@ class ComparisonCacheManager:
     # everything it over-covered -- `22.7±0.02`, the `6-6.6キリ11ザグリ深6.5` callout, the
     # section marks -- was silently dropped from drawing_views and never compared. Cached
     # results are missing those findings entirely.
-    COMPARISON_CACHE_VERSION = "v37"
+    # v38: section designations (`Ａ－Ａ`) and their arrow labels are recognised, and then
+    # SUPPRESSED from the drawing_views checklist (orchestrator.DROP_SECTION_CALLOUT_LABELS).
+    # Two output changes ride on this, so both directions of the cache are stale: a `Ａ－Ａ`
+    # that survives classification now carries feature `additional_views` instead of `other`,
+    # and the designation plus its lone-letter cut arrows no longer appear as findings at all.
+    # A v37 entry therefore still shows the three "Other / Unclassified" rows this drops.
+    COMPARISON_CACHE_VERSION = "v38"
 
     @staticmethod
     def _get_cache_path(
@@ -300,7 +306,9 @@ class ComparisonCacheManager:
     # — Generator A's entity filtering and Generator B's system instruction both
     # changed, so cached hybrid_gen_a/hybrid_gen_b candidates from before this fix no
     # longer reflect what the current code would produce.
-    CANDIDATE_CACHE_VERSION = "v2"
+    # v3: Generator A now drops section-callout labels (see COMPARISON_CACHE_VERSION v38).
+    # Generator B is unaffected, but the two share one lever, so gen_b recomputes too.
+    CANDIDATE_CACHE_VERSION = "v3"
 
     @staticmethod
     def _get_candidate_cache_path(

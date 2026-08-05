@@ -30,8 +30,11 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
   // generic AI call that doesn't describe what hybrid, rag, etc. each actually do.
   const stages = getComparisonStages(activeRoom?.comparison_method);
   const methodLabel = getComparisonMethodLabel(activeRoom?.comparison_method);
+  const aiScanProgressPct = useWorkspaceStore(s => s.aiScanProgressPct);
   const currentStageIndex = stages.findIndex(s => s.id === aiScanProgress);
-  const progressPct = currentStageIndex >= 0
+  const progressPct = aiScanProgressPct > 0
+    ? aiScanProgressPct
+    : currentStageIndex >= 0
     ? Math.round(((currentStageIndex + 1) / stages.length) * 95)
     : 5;
 
@@ -201,8 +204,8 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
                 }}
               ></div>
             </div>
-            <p className="mt-3 text-[11px] text-text-muted leading-relaxed">
-              Progress reflects the stage this method is expected to be in, not a live signal from the backend — the actual request is still running in parallel.
+            <p className="mt-3 text-[11px] text-accent-cyan/80 font-medium leading-relaxed">
+              Real-time analysis progress streamed live from the backend.
             </p>
           </div>
         </div>

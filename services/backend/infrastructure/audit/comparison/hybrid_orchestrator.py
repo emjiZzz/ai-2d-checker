@@ -162,6 +162,7 @@ async def perform_hybrid_comparison(
     rev_drawing: DrawingDocument,
     ref_entities: list,
     rev_entities: list,
+    progress_callback=None,
 ) -> PhysicalComparisonResponse:
     """
     `hybrid` method entrypoint (docs/hybrid-comparison-engine-implementation-plan.md).
@@ -172,7 +173,14 @@ async def perform_hybrid_comparison(
     their candidate lists by location (reconciler.py), resolves disagreements with a
     narrow crop-based verifier (crop_verifier.py) instead of a one-directional override,
     and returns the same PhysicalComparisonResponse shape as the other three methods.
+
+    progress_callback is awaited at this method's own stage boundaries only. Neither
+    generator receives it: they run concurrently, so callbacks from inside them would
+    interleave and step the bar backwards.
     """
+    if progress_callback:
+        await progress_callback("dual_generators", 30, "Running deterministic diff + AI Vision scan in parallel")
+
     cached_payload = ComparisonCacheManager.get_cached_comparison(
         ref_drawing_id=str(ref_drawing.id),
         rev_drawing_id=str(rev_drawing.id),
@@ -265,10 +273,16 @@ async def perform_hybrid_comparison(
     det_candidates, category_rollups, zone_detection_warnings = det_result
     ai_candidates, model_used = ai_result
 
+    if progress_callback:
+        await progress_callback("reconciling", 65, "Reconciling findings between generators")
+
     # Both generators already resolved + DTO-normalized their own coordinates
     # internally (Phase 2) — no separate "coordinate resolution" pass needed here,
     # per the implementation plan's section 1.2.
     reconciliation = reconcile_candidates(det_candidates, ai_candidates)
+
+    if progress_callback:
+        await progress_callback("verifying", 85, "Verifying disputed findings")
 
     verification_inputs: list[CropVerificationInput] = []
     for finding in reconciliation.disputed:
@@ -295,6 +309,9 @@ async def perform_hybrid_comparison(
         ))
 
     verdicts = await run_crop_verification(api_key or openai_key, verification_inputs) if verification_inputs else {}
+
+    if progress_callback:
+        await progress_callback("finalizing", 95, "Finalizing results")
 
     final_markings: list[dict] = []
     counts = {"confirmed_both": 0, "confirmed_single": 0, "corrected_to_matched": 0, "conflicts": 0}

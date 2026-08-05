@@ -17,10 +17,12 @@ export const createComparisonSlice: StateCreator<WorkspaceState, [], [], Compari
   activeLayers: { "0": true, "Format": true, "Text": true, "Dimensions": true },
   
   aiScanProgress: "idle",
+  aiScanProgressPct: 0,
   aiChecklistResults: {},
   aiScanError: null,
 
   setAiScanProgress: (progress) => set({ aiScanProgress: progress }),
+  setAiScanProgressPct: (pct) => set({ aiScanProgressPct: pct }),
   setAiChecklistResults: (results) => set({ aiChecklistResults: results }),
   setAiScanError: (error) => set({ aiScanError: error }),
 

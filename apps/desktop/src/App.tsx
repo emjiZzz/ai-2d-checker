@@ -4,14 +4,16 @@ import { useAuthStore } from "./stores/authStore";
 import { useThemeStore } from "./stores/themeStore";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { AppHeader } from "./components/AppHeader";
+import { ConnectionBanner } from "./components/ConnectionBanner";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AuditWorkspace } from "./pages/workspace/AuditWorkspace";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useGlobalFileUpload } from "./hooks/useGlobalFileUpload";
 import { QueryErrorBoundary } from "./components/ui/QueryErrorBoundary";
+import { setupConnectionSync } from "./services/queryClient";
 
 function App() {
-  const { backendUrl, startPolling, stopPolling } = useConnectionStore();
+  const { backendUrl, status: connectionStatus, startPolling, stopPolling } = useConnectionStore();
   const { initialize: initializeTheme } = useThemeStore();
   const { isAuthenticated, isInitializing, user, initialize: initializeAuth } = useAuthStore();
   
@@ -32,6 +34,19 @@ function App() {
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  // Sync TanStack Query onlineManager with backend connection health status
+  useEffect(() => {
+    const unsubscribeSync = setupConnectionSync();
+    return () => unsubscribeSync();
+  }, []);
+
+  // Re-verify auth session when backend connection becomes online
+  useEffect(() => {
+    if (connectionStatus === "online") {
+      initializeAuth();
+    }
+  }, [connectionStatus, initializeAuth]);
 
   // Poll connection on component mount
   useEffect(() => {
@@ -72,6 +87,7 @@ function App() {
       onDrop={handleDrop}
     >
       <AppHeader />
+      <ConnectionBanner />
       <div className="flex-grow overflow-hidden relative flex min-h-0 min-w-0">
         {/*
           QueryErrorBoundary wraps ONLY the content area, not the whole app.

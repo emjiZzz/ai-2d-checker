@@ -50,6 +50,7 @@ from .feature_classifier import (
     classify_drawing_view_feature,
     classify_notes_feature,
     classify_iso_feature,
+    refine_view_labels,
     classify_title_ul_feature,
 )
 
@@ -70,6 +71,23 @@ from .feature_classifier import (
 # real content and a genuine revision changes them -- '2491FSRS' and 'M745203N01' stay in
 # the comparison. Exact match, never substring: 'name' is short enough that substring
 # matching would suppress unrelated text.
+# Drop section-callout labels (`Ａ－Ａ` and the lone `Ａ` at each cut arrow) from the
+# drawing_views checklist. Identified by `feature_classifier.refine_view_labels`, which uses
+# drawing context rather than text alone -- a lone letter only counts when that drawing also
+# carries the matching `X-X` designation.
+#
+# This suppresses a finding that is factually CORRECT. On the M7452A1N01 pair the reference has
+# no section callout at all (its only `Ａ` texts are two frame grid labels on layer WAKU, and no
+# block carries it as an ATTRIB) and the revision genuinely adds one, so it is a real
+# difference. It is excluded because the section IDENTIFIER is draughting furniture: which
+# letter names a cut says nothing about the part, and it re-letters freely between revisions.
+# The section's actual content -- the dimensions, callouts and symbols inside the view it names
+# -- is compared exactly as before, so nothing about the geometry goes unchecked.
+#
+# The cost, stated plainly: a revision that adds or removes a section view now reports the
+# change in that view's contents but not the callout itself. Set this False to get it back.
+DROP_SECTION_CALLOUT_LABELS: bool = True
+
 REVISION_TABLE_HEADERS: frozenset = frozenset({
     "amd.", "amd",
     "design chg no.", "design chg no",
@@ -275,6 +293,7 @@ async def generate_deterministic_candidates(
     ref_entities: list,
     rev_entities: list,
     refresh_ocr: bool = False,
+    progress_callback=None,
 ) -> tuple[list[ComparisonCandidate], dict, list[str]]:
     """
     Generator A (deterministic): runs SpatialDiffer + BOMAnalyzer end to end and returns
@@ -295,7 +314,14 @@ async def generate_deterministic_candidates(
             same as the original `parsed` dict did — harmless, callers only read the
             6 category keys by name.)
         zone_detection_warnings: unchanged from today's diagnostics.
+
+    progress_callback, when supplied, is awaited at each coarse stage boundary so the SSE
+    endpoint can stream real progress. hybrid_orchestrator deliberately passes None — it runs
+    this concurrently with Generator B and reports the pair as one stage.
     """
+    if progress_callback:
+        await progress_callback("extracting", 20, "Extracting drawing entities & BOM/title data")
+
     # Resolve titles and revisions
     ref_rev, rev_rev, ref_title, rev_title = resolve_revisions(
         ref_entities,
@@ -409,6 +435,9 @@ async def generate_deterministic_candidates(
     ref_all_text_list = [e.properties.get("text", "") for e in ref_entities if getattr(e, "entity_type", "") == "text"]
     rev_all_text_list = [e.properties.get("text", "") for e in rev_entities if getattr(e, "entity_type", "") == "text"]
     
+    if progress_callback:
+        await progress_callback("title_block_ocr", 45, "Reading title block")
+
     # Load cached Title Block OCR results. When refresh_ocr is set the cache is skipped, so the
     # crop is re-sent to Gemini below and the fresh reading overwrites the stale one via
     # set_cached_ocr. This is separate from the comparison cache (force_refresh) because OCR is
@@ -876,6 +905,9 @@ async def generate_deterministic_candidates(
             "reference" if not ref_views_bbox_raw else "revision",
         )
 
+    if progress_callback:
+        await progress_callback("spatial_diff", 70, "Running deterministic spatial diff")
+
     # Perform comparison/diffing on notes, iso views and drawing views.
     #
     # render_bounds is passed so matching runs in each drawing's own normalized frame. The
@@ -903,6 +935,15 @@ async def generate_deterministic_candidates(
     # each classifier only ever sees findings from its own category.
     for m in clean_markings:
         m["feature"] = classify_drawing_view_feature(m.get("text_content", ""), m.get("details", ""))
+    # Second pass — needs the whole drawing, not one finding at a time. See refine_view_labels.
+    section_callout_labels = refine_view_labels(clean_markings)
+    if DROP_SECTION_CALLOUT_LABELS and section_callout_labels:
+        dropped = {id(m) for m in section_callout_labels}
+        clean_markings = [m for m in clean_markings if id(m) not in dropped]
+        logger.info(
+            f"Suppressed {len(dropped)} section-callout label(s) from drawing_views "
+            f"(DROP_SECTION_CALLOUT_LABELS) — the section identifier itself is not compared."
+        )
     for m in notes_markings:
         m["feature"] = classify_notes_feature(m.get("text_content", ""), m.get("details", ""))
     for m in iso_markings:
@@ -1126,6 +1167,9 @@ async def generate_deterministic_candidates(
     id_to_rev_entity = {f"REV-{e.properties.get('handle')}": e for e in rev_entities if e.properties and e.properties.get('handle')}
     id_to_ref_entity = {f"REF-{e.properties.get('handle')}": e for e in ref_entities if e.properties and e.properties.get('handle')}
 
+    if progress_callback:
+        await progress_callback("finalizing", 90, "Resolving coordinates & finalizing")
+
     # Inject Title Block & BOM markings
     used_ref_entities = set()
     used_rev_entities = set()
@@ -1215,7 +1259,8 @@ async def perform_drawing_comparison(
     ref_drawing: DrawingDocument,
     rev_drawing: DrawingDocument,
     ref_entities: list,
-    rev_entities: list
+    rev_entities: list,
+    progress_callback=None,
 ) -> PhysicalComparisonResponse:
     """
     `rag` method entrypoint. Thin wrapper around generate_deterministic_candidates()
@@ -1254,8 +1299,9 @@ async def perform_drawing_comparison(
             logger.warning(f"Failed to parse cached drawing comparison, performing full comparison: {cache_err}")
 
     candidates, parsed, zone_detection_warnings = await generate_deterministic_candidates(
-        ref_drawing, rev_drawing, ref_entities, rev_entities, refresh_ocr=refresh_ocr
+        ref_drawing, rev_drawing, ref_entities, rev_entities, refresh_ocr=refresh_ocr, progress_callback=progress_callback
     )
+
     clean_markings = [c.model_dump() for c in candidates]
 
     comparison_response = PhysicalComparisonResponse(

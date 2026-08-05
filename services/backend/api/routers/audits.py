@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import time
 import re
@@ -6,7 +7,7 @@ import aiofiles
 from datetime import datetime, timezone, UTC
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Header, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
@@ -51,6 +52,9 @@ from ..schemas import (
 )
 
 router = APIRouter()
+
+# Strong references to in-flight SSE comparison tasks — see stream_physical_comparison.
+_COMPARISON_STREAM_TASKS: set[asyncio.Task] = set()
 
 
 @router.post(
@@ -536,13 +540,8 @@ async def export_xlsx_report(session_id: str):
         raise HTTPException(status_code=500, detail=f"XLSX export failed. Reference: {corr_id}")
 
 
-@router.post(
-    "/audits/physical-comparison",
-    response_model=StandardResponse[PhysicalComparisonResponse],
-    summary="Perform dynamic AI-grounded engineering physical comparison of drawing files",
-    dependencies=[Depends(get_auth_token)]
-)
-async def perform_physical_comparison(request: PhysicalComparisonRequest):
+async def _load_comparison_inputs(request: PhysicalComparisonRequest):
+    """Shared preamble for both comparison endpoints: the two drawings and their entities."""
     ref_drawing = await get_or_404(
         DrawingDocument, request.reference_drawing_id, "Reference drawing not found."
     )
@@ -553,19 +552,56 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
     ref_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.reference_drawing_id).to_list()
     rev_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.drawing_id).to_list()
 
+    return ref_drawing, rev_drawing, ref_entities, rev_entities
+
+
+async def _dispatch_comparison(
+    request: PhysicalComparisonRequest,
+    ref_drawing, rev_drawing, ref_entities, rev_entities,
+    method: str,
+    progress_callback=None,
+) -> PhysicalComparisonResponse:
+    """Routes a comparison_method to its orchestrator.
+
+    Single source of truth for the routing table, because the streaming and non-streaming
+    endpoints must agree on which method maps to which engine — two copies would let one
+    silently serve a different engine than the other for the same room.
+    """
+    if method in ("rag_ai", "ai_vision"):
+        from ...infrastructure.audit.comparison.full_ai_orchestrator import perform_full_ai_comparison
+        return await perform_full_ai_comparison(
+            request, ref_drawing, rev_drawing, ref_entities, rev_entities,
+            method=method, progress_callback=progress_callback,
+        )
+    if method == "hybrid":
+        from ...infrastructure.audit.comparison.hybrid_orchestrator import perform_hybrid_comparison
+        return await perform_hybrid_comparison(
+            request, ref_drawing, rev_drawing, ref_entities, rev_entities,
+            progress_callback=progress_callback,
+        )
+    from ...infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
+    return await perform_drawing_comparison(
+        request, ref_drawing, rev_drawing, ref_entities, rev_entities,
+        progress_callback=progress_callback,
+    )
+
+
+@router.post(
+    "/audits/physical-comparison",
+    response_model=StandardResponse[PhysicalComparisonResponse],
+    summary="Perform dynamic AI-grounded engineering physical comparison of drawing files",
+    dependencies=[Depends(get_auth_token)]
+)
+async def perform_physical_comparison(request: PhysicalComparisonRequest):
+    ref_drawing, rev_drawing, ref_entities, rev_entities = await _load_comparison_inputs(request)
+
     method = getattr(request, "comparison_method", "rag")
     logger.info(f"Physical comparison dispatched with method='{method}' for drawing {request.drawing_id}")
 
     try:
-        if method in ("rag_ai", "ai_vision"):
-            from ...infrastructure.audit.comparison.full_ai_orchestrator import perform_full_ai_comparison
-            comparison_response = await perform_full_ai_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities, method=method)
-        elif method == "hybrid":
-            from ...infrastructure.audit.comparison.hybrid_orchestrator import perform_hybrid_comparison
-            comparison_response = await perform_hybrid_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
-        else:
-            from ...infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
-            comparison_response = await perform_drawing_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
+        comparison_response = await _dispatch_comparison(
+            request, ref_drawing, rev_drawing, ref_entities, rev_entities, method
+        )
         return StandardResponse(success=True, data=comparison_response)
     except ValueError as val_err:
         logger.warning(f"Comparison configuration error: {val_err}")
@@ -580,6 +616,67 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Structured comparison failed. Reference: {corr_id}"
         )
+
+
+@router.post(
+    "/audits/physical-comparison/stream",
+    summary="Stream live real-time SSE progress events for AI physical drawing comparison",
+    dependencies=[Depends(get_auth_token)]
+)
+async def stream_physical_comparison(request: PhysicalComparisonRequest):
+    ref_drawing, rev_drawing, ref_entities, rev_entities = await _load_comparison_inputs(request)
+
+    method = getattr(request, "comparison_method", "rag")
+    logger.info(f"Physical comparison stream dispatched with method='{method}' for drawing {request.drawing_id}")
+
+    async def event_generator():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def progress_callback(stage: str, progress_pct: int, label: str = ""):
+            await queue.put({
+                "type": "progress",
+                "stage": stage,
+                "progress_pct": progress_pct,
+                "label": label
+            })
+
+        async def run_task():
+            try:
+                comparison_response = await _dispatch_comparison(
+                    request, ref_drawing, rev_drawing, ref_entities, rev_entities,
+                    method, progress_callback=progress_callback,
+                )
+                await queue.put({
+                    "type": "complete",
+                    "stage": "completed",
+                    "progress_pct": 100,
+                    "result": comparison_response.model_dump()
+                })
+            except Exception as e:
+                corr_id = correlation_id_var.get()
+                logger.error(f"[{corr_id}] Structured comparison stream failed ({method}): {str(e)}", exc_info=True)
+                await queue.put({
+                    "type": "error",
+                    "error": str(e)
+                })
+
+        # Held in a module-level set until it completes. asyncio only keeps a weak reference
+        # to a running task, so a bare create_task() here can be garbage-collected mid-run and
+        # the stream would hang on an empty queue forever. Deliberately NOT cancelled when the
+        # client disconnects: a comparison is expensive and writes its own cache entry, so
+        # letting an abandoned run finish means the user's retry is a cache hit.
+        task = asyncio.create_task(run_task())
+        _COMPARISON_STREAM_TASKS.add(task)
+        task.add_done_callback(_COMPARISON_STREAM_TASKS.discard)
+
+        while True:
+            item = await queue.get()
+            if item["type"] in ("progress", "complete", "error"):
+                yield f"data: {json.dumps(item)}\n\n"
+            if item["type"] in ("complete", "error"):
+                break
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post(

@@ -48,6 +48,10 @@ async def generate_ai_vision_candidates(
     Generator B (AI Vision): independent full-drawing scan using only the two rendered
     PNGs — no structured CAD context, no BOM/title tables in the prompt.
     Returns raw AI Vision candidates tagged origin="ai_vision".
+
+    No `progress_callback` here on purpose. Its only caller is hybrid_orchestrator, which runs
+    this concurrently with Generator A and therefore owns the stage labels itself — a callback
+    from inside either generator would race the other and step the bar backwards.
     """
     api_key = os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", None)
     openai_key = os.environ.get("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
@@ -122,8 +126,18 @@ async def perform_full_ai_comparison(
     ref_entities: list,
     rev_entities: list,
     method: str = "rag_ai",
+    progress_callback=None,
 ) -> PhysicalComparisonResponse:
+    if progress_callback:
+        if method == "ai_vision":
+            await progress_callback("rendering", 25, "Rendering drawings for AI Vision")
+        else:
+            await progress_callback("extracting", 20, "Extracting drawing entities & BOM/title data")
+
     if method == "ai_vision":
+        # Known limitation: the live-DXF path emits no further progress, so an `ai_vision`
+        # stream holds at 25% until it completes. Threading the callback through
+        # live_dxf_orchestrator is the fix; it is not done here.
         from .live_dxf_orchestrator import perform_live_dxf_ai_comparison
         return await perform_live_dxf_ai_comparison(request, ref_drawing, rev_drawing, method=method)
 
@@ -242,10 +256,18 @@ async def perform_full_ai_comparison(
 
     contents = await build_multimodal_contents(ref_drawing, rev_drawing, prompt_text)
 
+    if progress_callback:
+        stage_id = "gemini_analyzing"
+        label = "Gemini analyzing (images only)" if method == "ai_vision" else "Gemini analyzing (RAG + AI)"
+        await progress_callback(stage_id, 70, label)
+
     logger.info(f"[full_ai] Dispatching Gemini cascade for ref={ref_drawing.file_name} vs rev={rev_drawing.file_name}")
     raw_json_text, model_used = await asyncio.to_thread(
         execute_gemini_cascade, api_key, system_instruction, contents
     )
+
+    if progress_callback:
+        await progress_callback("finalizing", 90, "Resolving coordinates & finalizing")
 
     # 4. Parse JSON & Apply Overrides
     parsed = parse_and_normalize_gemini_json(raw_json_text)

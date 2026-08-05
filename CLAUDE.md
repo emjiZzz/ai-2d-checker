@@ -8,7 +8,10 @@ are expensive to rediscover.
 
 **Start here:**
 - `docs/vault/00 - Map of Content (MOC).md` — index of everything
-- `docs/vault/00 - AI Agent Navigation & System Gap Analysis.md` — current state, the four V2 gaps
+- `docs/vault/00 - AI Maturity Status.md` — **which rung the AI is actually on, what's done, what's
+  next.** Read before AI/comparison work; update after. See constraint 5.
+- `docs/vault/00 - AI Agent Navigation & System Gap Analysis.md` — current state, and the gap that
+  matters most: **false negatives have never been measured**
 - `docs/vault/07 - Architecture Decision Records (ADRs)/` — decisions already made; do not re-litigate
 - `docs/vault/06 - Gotchas & Debugging Lessons/` — bugs already paid for once
 
@@ -39,6 +42,19 @@ defect from scratch as a result.
 4. **Document new gotchas in the vault** under `06 - Gotchas & Debugging Lessons/`, and link
    them from the MOC. Record negative results too — an idea that was measured and rejected is
    worth as much as one that worked, because otherwise it gets re-implemented.
+
+5. **Keep `docs/vault/00 - AI Maturity Status.md` current.** It is the single canonical answer to
+   "which rung is this system on" (currently **0 — pre-RAG**: the default `rag` method has no
+   retrieval and no LLM, the embeddings are SHA-256 noise, and no metric exists). Read it before
+   touching the comparison engines, retrieval, the learned model or the AI pipeline. After landing
+   anything: append a work-log entry, tick the stage board, rewrite "What's Next", and if a rung
+   boundary was crossed update `current_rung` **and** `rung_evidence` together.
+   **A rung claim with no evidence link is a defect** — this file previously advertised "the four V2
+   gaps", a phrase the gap analysis had to record as having *no source in the vault*. Don't create a
+   second phantom.
+   Plan: `docs/vault/01 - Architecture/AI Maturity Ladder — Staged Plan.md`.
+   Decisions: `docs/vault/07 - .../ADR-003 AI Maturity Ladder.md`.
+   Guarded by `tests/test_maturity_ledger.py`.
 
 ## Verified commands
 

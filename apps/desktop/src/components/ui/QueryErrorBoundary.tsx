@@ -35,8 +35,9 @@
  * boundary is the last line of defence, not the first.
  */
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useQueryErrorResetBoundary } from "@tanstack/react-query";
+import { useConnectionStore } from "../../stores/connectionStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,13 @@ interface ErrorBoundaryCoreProps {
   onReset: () => void;
   /** Optional override for the fallback UI (e.g., page-level boundaries). */
   fallback?: (error: Error, reset: () => void) => React.ReactNode;
+  /**
+   * Bumped by the wrapper when the backend comes back online, to clear a displayed
+   * fallback without the caller having to remount the whole subtree. Keying the boundary
+   * on connection status would do it too, but that throws away every child's local state
+   * — canvas view, scroll, in-progress input — on any connection blip, error or not.
+   */
+  resetSignal?: number;
 }
 
 interface ErrorBoundaryCoreState {
@@ -72,6 +80,13 @@ class ErrorBoundaryCore extends React.Component<
     // In production you would send this to an error tracking service.
     // console.error is intentional here — it surfaces the full stack in devtools.
     console.error("[QueryErrorBoundary] Caught render error:", error, info);
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryCoreProps) {
+    // Only clears a fallback that is actually displayed; a healthy subtree is untouched.
+    if (prevProps.resetSignal !== this.props.resetSignal && this.state.error) {
+      this.setState({ error: null });
+    }
   }
 
   handleReset() {
@@ -224,10 +239,23 @@ export function QueryErrorBoundary({ children, fallback }: QueryErrorBoundaryPro
   // TanStack Query's internal error state for all queries in scope.
   // Without this, retrying after a query error would immediately re-throw.
   const { reset } = useQueryErrorResetBoundary();
+  const status = useConnectionStore((s) => s.status);
+  const [resetSignal, setResetSignal] = useState(0);
+
+  // When the backend comes back online, clear TanStack Query's error state and tell the
+  // boundary to drop a displayed fallback — the user should not have to click "Try Again"
+  // for an error whose cause (the backend being down) has already gone away.
+  useEffect(() => {
+    if (status === "online") {
+      reset();
+      setResetSignal((n) => n + 1);
+    }
+  }, [status, reset]);
 
   return (
-    <ErrorBoundaryCore onReset={reset} fallback={fallback}>
+    <ErrorBoundaryCore onReset={reset} fallback={fallback} resetSignal={resetSignal}>
       {children}
     </ErrorBoundaryCore>
   );
 }
+

@@ -60,6 +60,17 @@ _ADDITIONAL_VIEW_KEYWORDS = (
     "section", "detail", "arrow view", "詳細", "断面", "矢視", "view a-a", "view b-b",
 )
 
+# A bare section designation: `A-A`, `Ｂ－Ｂ`, `C — C`. The keyword list above only catches
+# the spelled-out `view a-a` form, but this corpus labels the section with the designation
+# alone, fullwidth (`Ａ－Ａ` NFKC-folds to `A-A`). Both letters must be the SAME letter, which
+# is what separates a section designation from a size range like `A-B` or a part code.
+_SECTION_DESIGNATION_RE = re.compile(r'^([A-Z])\s*[-‐‑–—ー－]\s*\1$', re.IGNORECASE)
+
+# A section-arrow label is a lone capital letter, which carries no signal on its own — it is
+# indistinguishable from a balloon, a zone reference or a part label. `refine_view_labels`
+# resolves it from drawing context instead of guessing here.
+_LONE_LETTER_RE = re.compile(r'^[A-Z]$', re.IGNORECASE)
+
 _DIMENSION_LIKE_RE = re.compile(r'^[\d.,\s±+\-/]+$')
 
 _NOTES_SPECIAL_KEYWORDS = (
@@ -93,12 +104,60 @@ def classify_drawing_view_feature(text_content: str, details: str = "") -> str:
         return "machining_symbol"
     if _contains_any_keyword(combined, _ADDITIONAL_VIEW_KEYWORDS):
         return "additional_views"
+    if _SECTION_DESIGNATION_RE.match(text_content.strip()):
+        return "additional_views"
     # A bare numeric-ish string (digits, decimal points, +/-, slashes) is the closest
     # generic signal for a plain dimension callout — deliberately narrow (fullmatch,
     # not search) so text merely containing a digit doesn't get claimed as a dimension.
     if text_content and _DIMENSION_LIKE_RE.fullmatch(text_content.strip()):
         return "dimensions"
     return taxonomy.OTHER_FEATURE_KEY
+
+
+def refine_view_labels(markings: list[dict]) -> list[dict]:
+    """Second pass over one drawing's drawing_views findings: re-file section-arrow labels.
+
+    A section callout arrives as three separate findings — the designation `Ａ－Ａ` that titles
+    the section, and one lone `Ａ` at each cut arrow. `classify_drawing_view_feature` sees each
+    finding's own text and nothing else, so it can file the designation but not the arrows: a
+    lone capital letter is equally a balloon, a zone reference or a part label, and guessing
+    would be exactly the false confidence the module docstring refuses.
+
+    Drawing context resolves it without guessing. If this drawing carries an `X-X` designation,
+    then a lone `X` on it is that section's arrow. Both letters must match, so a drawing with an
+    `Ａ－Ａ` section does not sweep up an unrelated lone `Ｂ`.
+
+    Why it matters: all three landed in "Other / Unclassified", which is where findings go when
+    the system could not tell what they were. Three unexplained entries reads as noise even
+    though an added section callout is a real revision change worth reporting — the taxonomy
+    already has "Additional Views" for exactly this. Mutates `markings` in place.
+
+    Returns the markings identified as section-callout labels — the designation and its arrows.
+    That is a narrower set than "everything classified `additional_views`", which also holds
+    real content like `詳細Ｂ 尺度2:1`, where the scale is an engineering change. The caller
+    uses the return value to drop these from the checklist (see DROP_SECTION_CALLOUT_LABELS);
+    classification alone does not suppress anything.
+    """
+    section_letters = {
+        match.group(1).upper()
+        for m in markings
+        if (match := _SECTION_DESIGNATION_RE.match(_fold(m.get("text_content", "")).strip()))
+    }
+    if not section_letters:
+        return []
+
+    labels = []
+    for m in markings:
+        text = _fold(m.get("text_content", "")).strip()
+        if _SECTION_DESIGNATION_RE.match(text):
+            labels.append(m)
+            continue
+        if m.get("feature") != taxonomy.OTHER_FEATURE_KEY:
+            continue
+        if _LONE_LETTER_RE.match(text) and text.upper() in section_letters:
+            m["feature"] = "additional_views"
+            labels.append(m)
+    return labels
 
 
 def classify_notes_feature(text_content: str, details: str = "") -> str:

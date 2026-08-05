@@ -18,7 +18,8 @@
  *   <ReactQueryDevtools initialIsOpen={false} />
  */
 
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, onlineManager } from "@tanstack/react-query";
+import { useConnectionStore } from "../stores/connectionStore";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,3 +69,30 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * Synchronizes TanStack Query's onlineManager with local backend health status.
+ * In a desktop context (Tauri/Vite), navigator.onLine stays true even when local
+ * localhost backend is unreachable. Updating onlineManager according to connectionStore
+ * ensures refetchOnReconnect fires automatically when the backend server opens/reconnects.
+ */
+export function setupConnectionSync() {
+  const initialStatus = useConnectionStore.getState().status;
+  onlineManager.setOnline(initialStatus === "online");
+
+  return useConnectionStore.subscribe((state, prevState) => {
+    const isOnline = state.status === "online";
+    onlineManager.setOnline(isOnline);
+
+    const wasOffline =
+      prevState.status === "offline" ||
+      prevState.status === "connecting" ||
+      prevState.status === "reconnecting" ||
+      prevState.status === "failed";
+
+    if (wasOffline && isOnline) {
+      console.log("[queryClient] Backend connection restored — invalidating queries & triggering refetch.");
+      queryClient.invalidateQueries();
+    }
+  });
+}

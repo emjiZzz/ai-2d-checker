@@ -114,10 +114,22 @@ def test_classify_drawing_view_feature_folds_fullwidth_callouts():
     assert fc.classify_drawing_view_feature("⌀１２０") == "hole_properties"
 
 
-def test_bare_section_label_stays_unclassified():
-    """`Ａ－Ａ` on its own is a section-marker label, not an engineering callout — folding must
-    not make it start claiming a feature. `断面Ａ－Ａ` (with the 'section' keyword) is different."""
-    assert fc.classify_drawing_view_feature("Ａ－Ａ") == taxonomy.OTHER_FEATURE_KEY
+def test_bare_section_label_is_an_additional_view():
+    """REVERSES an earlier decision in this same file, deliberately.
+
+    This previously asserted `Ａ－Ａ` must stay `other`, on the reasoning that a section-marker
+    label is not an engineering callout and NFKC folding must not make it start claiming a
+    feature. The anti-folding half of that still holds and is tested above; the conclusion did
+    not. `other` is "Other / Unclassified" — the bucket for findings the system could not
+    identify — so filing a section designation there states something false about it, and in
+    review it reads as unexplained noise next to the real findings.
+
+    `additional_views` ("Additional Views") is the taxonomy item for exactly this, and a
+    section callout added between revisions is a genuine change worth reporting under a name.
+    `断面Ａ－Ａ` (with the explicit keyword) has always classified this way; the bare
+    designation this corpus actually writes now agrees with it.
+    """
+    assert fc.classify_drawing_view_feature("Ａ－Ａ") == "additional_views"
     assert fc.classify_drawing_view_feature("断面Ａ－Ａ") == "additional_views"
 
 
@@ -253,3 +265,73 @@ def test_extract_title_block_revision_code_absent_returns_none_not_fabricated():
     res = extract_title_block(entities, all_text_list=[e.properties["text"] for e in entities])
     assert res["REVISION CODE"]["value"] == "NONE"
     assert res["REVISION CODE"]["coordinates"] is None
+
+
+# ─── feature_classifier.py — section designations & their arrow labels ────────
+#
+# A section callout arrives as three findings: the `Ａ－Ａ` designation titling the section and
+# a lone `Ａ` at each cut arrow. All three used to land in "Other / Unclassified" — the bucket
+# meaning "the system could not tell what this is" — so an added section callout read as three
+# unexplained entries even though `additional_views` already existed for exactly this.
+
+
+def test_classify_bare_section_designation():
+    # The keyword list only had the spelled-out `view a-a`; this corpus writes the designation
+    # alone and fullwidth (`Ａ－Ａ` NFKC-folds to `A-A`).
+    assert fc.classify_drawing_view_feature("A-A") == "additional_views"
+    assert fc.classify_drawing_view_feature("Ａ－Ａ") == "additional_views"
+    assert fc.classify_drawing_view_feature("B — B") == "additional_views"
+
+
+def test_section_designation_requires_the_same_letter_twice():
+    # `A-B` is a range or a part code, not a section. Guessing here would be the false
+    # confidence the module docstring refuses.
+    assert fc.classify_drawing_view_feature("A-B") == "other"
+
+
+def test_lone_letter_is_refiled_only_when_its_section_exists_on_the_drawing():
+    markings = [
+        {"text_content": "Ａ－Ａ", "feature": "additional_views"},
+        {"text_content": "Ａ", "feature": "other"},   # this section's arrow
+        {"text_content": "Ｂ", "feature": "other"},   # unrelated — no B-B on this drawing
+    ]
+    fc.refine_view_labels(markings)
+    assert [m["feature"] for m in markings] == [
+        "additional_views", "additional_views", "other",
+    ]
+
+
+def test_lone_letter_untouched_when_the_drawing_has_no_section_designation():
+    markings = [{"text_content": "Ａ", "feature": "other"}]
+    fc.refine_view_labels(markings)
+    assert markings[0]["feature"] == "other"
+
+
+def test_refine_view_labels_does_not_overwrite_a_confident_classification():
+    # A finding already filed as a real feature keeps it, even if its text is a lone letter.
+    markings = [
+        {"text_content": "A-A", "feature": "additional_views"},
+        {"text_content": "Ａ", "feature": "dimensions"},
+    ]
+    fc.refine_view_labels(markings)
+    assert markings[1]["feature"] == "dimensions"
+
+
+def test_refine_view_labels_returns_the_callout_labels_for_suppression():
+    # The return value is what orchestrator.DROP_SECTION_CALLOUT_LABELS drops. It must be the
+    # designation plus its arrows and nothing else — narrower than "everything classified
+    # additional_views", which also holds real content like `詳細Ｂ 尺度2:1`.
+    designation = {"text_content": "Ａ－Ａ", "feature": "additional_views"}
+    arrow = {"text_content": "Ａ", "feature": "other"}
+    detail = {"text_content": "詳細Ｂ 尺度2:1", "feature": "additional_views"}
+    unrelated = {"text_content": "Ｂ", "feature": "other"}
+
+    labels = fc.refine_view_labels([designation, arrow, detail, unrelated])
+
+    assert [m["text_content"] for m in labels] == ["Ａ－Ａ", "Ａ"]
+    assert detail not in labels, "a detail view carrying a scale is real content, not a label"
+    assert unrelated not in labels
+
+
+def test_refine_view_labels_returns_empty_without_a_section_designation():
+    assert fc.refine_view_labels([{"text_content": "Ａ", "feature": "other"}]) == []
