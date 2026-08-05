@@ -220,6 +220,45 @@ def amendment_table_bboxes(entities: list, global_bounds: tuple | None) -> list:
     return boxes
 
 
+# Bilingual header equivalences for the title-upper-left metadata table.
+#
+# `_title_ul_tokens`' shared-token rule assumes that when the header banding differs by scale,
+# whichever labels survive on the two drawings still overlap. That holds when one side keeps
+# BOTH stacked labels ('Unit No. / ユニットNo.') and the other keeps one of them. It fails when
+# the two sides keep DIFFERENT halves — measured live: the reference emitted `コードNO.` and the
+# revision `PART NO.` for the same column, sharing no token, so the field never paired and its
+# identical value 230 was reported twice (230 → NONE and NONE → 230).
+#
+# These four pairs are the English/Japanese labels of one JIS-style table, the same eight
+# strings `vault_sync.get_upper_left_anchors()` already lists — as a flat list, with no record
+# of which pair with which. Kept in code rather than sourced from the vault because
+# `08 - Client Domain & CAD Rules/` is gitignored: a fix verifiable on exactly one machine is
+# the failure mode this vault keeps having to record. A client using different terms should
+# extend this tuple.
+_TITLE_UL_SYNONYMS: tuple[frozenset[str], ...] = (
+    frozenset({"unitno", "ユニットno"}),
+    frozenset({"partno", "コードno"}),
+    frozenset({"tqty", "総製作個数"}),
+    frozenset({"stockqty", "在庫棚入庫"}),
+)
+
+
+def _ul_canonical(token: str) -> str:
+    """A header token reduced to its letters, digits and CJK.
+
+    `Part No.`, `PART NO` and `part　no.` all collapse to `partno`, so the synonym table does
+    not have to enumerate punctuation and spacing variants of eight strings.
+    """
+    import re as _r
+    return _r.sub(r"[^0-9a-z぀-ヿ一-鿿]", "", token or "")
+
+
+def _ul_synonym_groups(tokens: set) -> set:
+    """Indices of the synonym groups a key's tokens belong to."""
+    canonical = {_ul_canonical(t) for t in tokens}
+    return {i for i, group in enumerate(_TITLE_UL_SYNONYMS) if canonical & group}
+
+
 def _title_ul_tokens(key: str) -> set:
     """Normalized header tokens of a title-upper-left key. A field's key is one or more
     stacked header labels joined by ' / ' (e.g. 'Unit No. / ユニットNo.'). Which labels land in
@@ -244,7 +283,16 @@ def match_title_ul_pairs(ref_pairs: list, rev_pairs: list) -> list:
     matched: list = []
     for ref_p in ref_pairs:
         rt = _title_ul_tokens(ref_p.get("key", ""))
+        rg = _ul_synonym_groups(rt)
+        # Shared token first — the common case, and exact. Only when that finds nothing do we
+        # fall back to the synonym table, so an English/Japanese equivalence can never override
+        # a literal match that was already available.
         hit = next((rp for rp in rev_unmatched if rt & _title_ul_tokens(rp.get("key", ""))), None)
+        if hit is None and rg:
+            hit = next(
+                (rp for rp in rev_unmatched if rg & _ul_synonym_groups(_title_ul_tokens(rp.get("key", "")))),
+                None,
+            )
         if hit is not None:
             rev_unmatched.remove(hit)
             matched.append((ref_p, hit))

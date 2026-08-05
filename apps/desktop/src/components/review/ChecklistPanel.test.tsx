@@ -97,6 +97,53 @@ describe('ChecklistPanel row-to-violation text matching', () => {
     expect(badgeTextForRow('FinishSpec')).toBe('MATCHED'); // unlinked -> table's own status
   });
 
+  // --- one marker, one row -------------------------------------------------------------
+  //
+  // Reported live: "I click some item cards in the side panel and it shows a different
+  // pair, and vice versa." The row->violation resolution was a plain `violations.find(...)`
+  // per row with no record of what had already been taken, so several rows could resolve to
+  // the SAME marker. Clicking any of them selected that one marker, and the row that actually
+  // owned it was left pointing at nothing or at someone else's.
+
+  test('a violation is claimed by at most one row', () => {
+    mockWorkspace([
+      { id: 'v4', description: '230', category: 'title_block', pen_type: 'ai_conflict' },
+    ]);
+    render(
+      <ChecklistPanel
+        aiChecklistResults={{
+          title_block: tableResult([
+            { field: 'CodeNo', original: '230', kmti: '230' },
+            { field: 'PartNo', original: '230', kmti: '230' },
+          ]),
+        }}
+      />
+    );
+    const badges = [badgeTextForRow('CodeNo'), badgeTextForRow('PartNo')];
+    expect(badges.filter((b) => b === 'CONFLICT')).toHaveLength(1);
+    expect(badges.filter((b) => b === 'MATCHED')).toHaveLength(1);
+  });
+
+  test('an exact match wins the marker over an earlier row that only matches by substring', () => {
+    // `1230`.includes(`230`) is true, so under a single greedy pass in row order the first
+    // row stole the marker that the second row matched exactly.
+    mockWorkspace([
+      { id: 'v5', description: '230', category: 'title_block', pen_type: 'ai_conflict' },
+    ]);
+    render(
+      <ChecklistPanel
+        aiChecklistResults={{
+          title_block: tableResult([
+            { field: 'StockQty', original: '1230', kmti: '1230' },
+            { field: 'CodeNo', original: '230', kmti: '230' },
+          ]),
+        }}
+      />
+    );
+    expect(badgeTextForRow('CodeNo')).toBe('CONFLICT');
+    expect(badgeTextForRow('StockQty')).toBe('MATCHED');
+  });
+
   test('normal (non-symbolic, >2 char) kmti token still matches via substring containment', () => {
     mockWorkspace([
       {

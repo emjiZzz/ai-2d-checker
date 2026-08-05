@@ -2,7 +2,7 @@
 title: Gotcha - Title Upper-Left Double-Reported by Scale
 type: gotcha
 tags: [gotcha, title-block, upper-left, matching, coordinate-scale]
-status: resolved
+status: resolved — recurred 2026-08-05, see below
 date: 2026-07-30
 ---
 
@@ -52,3 +52,48 @@ spatial-extraction gap, not this).
 Stock case, genuine ADDED stays one-sided, no cross-match). Cache **v23→v24**. This is the
 same hardcoded-threshold-vs-coordinate-scale family as [[Gotcha - SCALE Field Read the Date
 Column]] and [[Gotcha - Mislocated OCR Crop and Ungrounded Misreads]].
+
+
+---
+
+## Recurrence — 2026-08-05, cache v39
+
+Reported live on a newly ingested pair: **two cards for one unchanged value.**
+
+    コードNO.   ORIGINAL 230   REVISION NONE   MATCHED
+    PART NO.   ORIGINAL NONE  REVISION 230    MATCHED
+
+with the canvas correctly showing a single MATCHED marker on `230`.
+
+Fix 1 above pairs fields that **share a normalized header token**. That works when one drawing
+keeps both stacked labels (`Unit No. / ユニットNo.`) and the other keeps one of them — the
+overlap is the shared half. It cannot work when the two drawings keep **different halves**: the
+reference emitted `コードNO.` and the revision `PART NO.` for the same column, sharing no token
+at all, so the field never paired and its value was reported from both sides.
+
+### Why it looked harmless
+
+Both rows read **MATCHED**, not REMOVED/ADDED — so the symptom was a duplicate, not a false
+alarm, and easy to scroll past. That is the *bilateral corroboration guard* doing its job on a
+broken input: for each one-sided row it looks for the value in the other drawing's UL region,
+finds `230` there (of course — same table), and correctly declines to call it a real change.
+
+**The guard masked the pairing failure rather than fixing it.** Worth remembering: it will mask
+the next variant of this too, and a duplicate MATCHED row is the signature to watch for.
+
+### Fix 3 — a bilingual synonym table
+
+`orchestrator._TITLE_UL_SYNONYMS` groups the four English/Japanese label pairs of this table
+(`unit no ↔ ユニットno`, `part no ↔ コードno`, `t. q'ty ↔ 総製作個数`, `stock q'ty ↔ 在庫棚入庫`),
+compared on a canonical form that strips punctuation, case and width. `match_title_ul_pairs`
+tries the shared-token rule **first** and falls back to synonyms only when it finds nothing, so
+an equivalence can never override a literal match that was already available.
+
+These are the same eight strings `vault_sync.get_upper_left_anchors()` already lists — as a flat
+list, with no record of which pair with which. Kept in code rather than the vault because
+`08 - Client Domain & CAD Rules/` is gitignored, and a fix verifiable on exactly one machine is
+the failure mode this vault keeps having to record.
+
+Verified: `tests/test_title_ul_bilingual_pairing.py` (11 tests), and the eval corpus scores
+**identically** to the v38 baseline — the change is inert on pairs that do not exhibit the
+split, which is what a surgical fix should look like.

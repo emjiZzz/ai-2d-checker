@@ -233,7 +233,12 @@ class ComparisonCacheManager:
     # that survives classification now carries feature `additional_views` instead of `other`,
     # and the designation plus its lone-letter cut arrows no longer appear as findings at all.
     # A v37 entry therefore still shows the three "Other / Unclassified" rows this drops.
-    COMPARISON_CACHE_VERSION = "v38"
+    # v39: title-upper-left fields pair across the English/Japanese halves of a bilingual
+    # header (orchestrator._TITLE_UL_SYNONYMS). Where the reference emitted `コードNO.` and the
+    # revision `PART NO.` for the same column, the field never paired and its identical value
+    # was reported twice — once as `230 → NONE`, once as `NONE → 230`, both flipped to MATCHED
+    # by the bilateral corroboration guard. A v38 entry still shows that duplicate row pair.
+    COMPARISON_CACHE_VERSION = "v39"
 
     @staticmethod
     def _get_cache_path(

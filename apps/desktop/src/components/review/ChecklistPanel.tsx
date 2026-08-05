@@ -442,58 +442,72 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           diffRows = Array.from(uniqueRowsMap.values());
         }
 
-        // 2. Pre-calculate matching violations so the category header knows exactly which markers belong to it
+        // 2. Pre-calculate matching violations so the category header knows exactly which
+        //    markers belong to it — and so clicking a card selects *that* card's marker.
+        //
+        //    Two rules here exist because their absence produced "click a card, the canvas
+        //    jumps to a different finding":
+        //
+        //    a) **A violation is claimed by at most one row.** This used to be a plain
+        //       `violations.find(...)` per row with no claim tracking, so several rows could
+        //       resolve to the same marker — first match wins, every time — and the row that
+        //       actually owned it got nothing or someone else's.
+        //    b) **Exact matches are claimed before substring ones.** The predicate accepts
+        //       `descLower.includes(target) || target.includes(descLower)`, so a row reading
+        //       `230` matches a marker reading `1230` or `230.5`. Run greedily in row order,
+        //       a loose match on an early row can steal the marker an exact match later
+        //       needed. Two passes, exact first, removes that ordering dependency.
         const rowToViolationMap = new Map<number, any>();
         const categoryViolationIdsSet = new Set<string>();
+        const claimedViolationIds = new Set<string>();
 
-        diffRows.forEach((row, idx) => {
-          const matchingViolation = violations.find(v => {
-            const desc = v.description ? v.description.trim() : "";
-            const kmtiText = (row.kmti || "").trim().toLowerCase();
-            const origText = (row.original || "").trim().toLowerCase();
-            const descLower = desc.toLowerCase();
-
-            let matchesText = false;
-            if (descLower) {
-              const isMatch = (target: string) => {
-                if (!target) return false;
-                if (target.length <= 2 || /^[-_./\\]+$/.test(target)) {
-                  return descLower === target;
-                }
-                return descLower === target || descLower.includes(target) || target.includes(descLower);
-              };
-              if (isMatch(kmtiText) || isMatch(origText)) {
-                matchesText = true;
-              }
-            }
-            if (!matchesText && row.field && descLower.includes(row.field.toLowerCase())) {
-              matchesText = true;
-            }
-
-            const vCat = v.category ? v.category.toLowerCase().replace(/_/g, "") : "";
-            let matchesCategory = false;
-
-            if (vCat) {
-              matchesCategory = vCat === pKey || vCat.includes(pKey) || pKey.includes(vCat);
-              if (!matchesCategory && row.field) {
-                const rField = row.field.toLowerCase().replace(/_/g, "");
-                if (vCat === rField || vCat.includes(rField) || rField.includes(vCat)) {
-                  matchesCategory = true;
-                }
-              }
-            } else {
-              // If AI gave no category, rely purely on text match
-              matchesCategory = true;
-            }
-
-            return matchesText && matchesCategory;
-          });
-
-          if (matchingViolation) {
-            rowToViolationMap.set(idx, matchingViolation);
-            categoryViolationIdsSet.add(matchingViolation.id);
+        const categoryAllows = (v: any, row: any) => {
+          const vCat = v.category ? v.category.toLowerCase().replace(/_/g, "") : "";
+          // No category from the generator — fall back to text alone, as before.
+          if (!vCat) return true;
+          if (vCat === pKey || vCat.includes(pKey) || pKey.includes(vCat)) return true;
+          if (row.field) {
+            const rField = row.field.toLowerCase().replace(/_/g, "");
+            if (vCat === rField || vCat.includes(rField) || rField.includes(vCat)) return true;
           }
-        });
+          return false;
+        };
+
+        const textMatches = (v: any, row: any, exactOnly: boolean) => {
+          const descLower = (v.description ? v.description.trim() : "").toLowerCase();
+          const kmtiText = (row.kmti || "").trim().toLowerCase();
+          const origText = (row.original || "").trim().toLowerCase();
+
+          if (descLower) {
+            const isMatch = (target: string) => {
+              if (!target) return false;
+              // Short or punctuation-only values are ambiguous by nature; they were already
+              // exact-only, and stay so in both passes.
+              if (target.length <= 2 || /^[-_./\\]+$/.test(target)) return descLower === target;
+              if (descLower === target) return true;
+              if (exactOnly) return false;
+              return descLower.includes(target) || target.includes(descLower);
+            };
+            if (isMatch(kmtiText) || isMatch(origText)) return true;
+          }
+          // Field-name fallback is inherently loose — substring pass only.
+          if (!exactOnly && row.field && descLower.includes(row.field.toLowerCase())) return true;
+          return false;
+        };
+
+        for (const exactOnly of [true, false]) {
+          diffRows.forEach((row, idx) => {
+            if (rowToViolationMap.has(idx)) return;
+            const hit = violations.find(
+              v => !claimedViolationIds.has(v.id) && textMatches(v, row, exactOnly) && categoryAllows(v, row)
+            );
+            if (hit) {
+              rowToViolationMap.set(idx, hit);
+              claimedViolationIds.add(hit.id);
+              categoryViolationIdsSet.add(hit.id);
+            }
+          });
+        }
 
         // 3. Also include any violations that explicitly claim this parent category, even if they didn't match a row
         violations.forEach(v => {
