@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Check, AlertTriangle, Tag, Pencil, X, Brain, Unlink } from "lucide-react";
+import { Check, AlertTriangle, Tag, Pencil, X, Brain, Unlink, RotateCcw } from "lucide-react";
 import {
   submitAuditFeedbackPayload,
+  retractAuditFeedback,
   type AuditFeedbackPayload,
   type HumanCorrectedStatus,
 } from "../../services/auditsApi";
@@ -76,6 +77,10 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
   const [mode, setMode] = useState<null | "menu" | "reclassify" | "value" | "paired">(null);
   const [busy, setBusy] = useState(false);
   const [corrected, setCorrected] = useState<string | null>(null);
+  // Kept so a mis-click can be taken back. Without it the menu was one-way: the correction
+  // was already persisted and had already kicked a retrain, and the card rendered a terminal
+  // "Taught: …" with no route back.
+  const [feedbackId, setFeedbackId] = useState<string | null>(null);
   const [valueInput, setValueInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
 
@@ -125,7 +130,8 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
   ) => {
     setBusy(true);
     try {
-      await submitAuditFeedbackPayload(buildPayload(human_corrected_status, extra));
+      const res = await submitAuditFeedbackPayload(buildPayload(human_corrected_status, extra));
+      setFeedbackId(res?.id ?? null);
       setCorrected(label);
       onCorrected?.(human_corrected_status);
     } catch (err) {
@@ -140,9 +146,46 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
     return (
       <span
         data-testid={`correction-done-${rowId}`}
-        style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "0.65rem", fontWeight: 700, color: "#10b981" }}
+        style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.65rem", fontWeight: 700, color: "#10b981" }}
       >
         <Brain size={12} /> Taught: {corrected}
+        {feedbackId && (
+          <button
+            data-testid={`correction-undo-${rowId}`}
+            disabled={busy}
+            onClick={async (e) => {
+              e.stopPropagation();
+              setBusy(true);
+              try {
+                await retractAuditFeedback(feedbackId);
+                setFeedbackId(null);
+                setCorrected(null);
+                setMode(null);
+              } catch (err) {
+                console.warn("[CorrectionControls] Retract error:", err);
+              } finally {
+                setBusy(false);
+              }
+            }}
+            title="Take this correction back — it stops training the model"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: busy ? "default" : "pointer",
+              fontSize: "0.65rem",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "3px",
+              padding: 0,
+              opacity: busy ? 0.5 : 1,
+              textDecoration: "underline",
+            }}
+          >
+            <RotateCcw size={11} /> Undo
+          </button>
+        )}
       </span>
     );
   }

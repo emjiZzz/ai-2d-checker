@@ -27,6 +27,20 @@ class AuditFeedbackDocument(Document):
     finding_snapshot: Optional[dict] = Field(None, description="Feature snapshot of the corrected finding for model training")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    # Retraction, for a correction clicked by mistake. Set rather than deleted: this collection
+    # is the training corpus AND the audit trail of who taught the model what, and a row that
+    # silently vanishes is unauditable.
+    #
+    # A compensating record was the obvious alternative — `confirmed_valid` already exists as
+    # "undo of a dismissal" — but it is wrong for training. `train_from_feedback` sorts by
+    # `created_at`, so a later record does win the exact-match override; the *classifier* rows,
+    # though, are appended per document, so an undone correction would contribute two rows with
+    # identical features and opposite labels. At 33 labels that is expensive noise. A retracted
+    # document is skipped by the trainer entirely.
+    retracted_at: Optional[datetime] = Field(
+        None, description="When a human took this correction back. Non-null rows never train."
+    )
+
     class Settings:
         name = "audit_feedback"
         indexes = [

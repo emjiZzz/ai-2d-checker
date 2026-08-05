@@ -24,8 +24,9 @@ from services.backend.infrastructure.learning.trainer import (
 )
 
 
-def _doc(status, text="260", category="drawing_views", original_status="ADDED"):
+def _doc(status, text="260", category="drawing_views", original_status="ADDED", retracted_at=None):
     return SimpleNamespace(
+        retracted_at=retracted_at,
         human_corrected_status=status,
         category=category,
         entity_text=text,
@@ -82,3 +83,48 @@ def test_confirmed_valid_is_label_one():
     the error — corrected, and pinned here so the two cannot drift again."""
     assert "confirmed_valid" in VERDICT_ONE
     assert "confirmed_valid" not in VERDICT_ZERO
+
+
+# ─── retraction ───────────────────────────────────────────────────────────────────────
+#
+# A correction clicked by mistake used to be permanent: it was persisted, it had already
+# kicked a retrain, and the UI rendered a terminal "Taught: …". Retracting sets a timestamp
+# rather than deleting, because this collection is both the training corpus and the record of
+# who taught the model what.
+
+
+def test_a_retracted_correction_trains_nothing():
+    """Not even a row in the corpus count. A retracted correction is not a data point that
+    happened to be reversed — it is a statement the human withdrew."""
+    bundle = build_bundle([_doc("dismissed", text="LEGEND", retracted_at="2026-08-05T10:00:00Z")])
+
+    assert bundle["n_total"] == 0
+    assert bundle["n_verdict"] == 0
+    assert not bundle["exact_matched"], "a retracted dismissal must not survive as a suppression"
+
+
+def test_retracting_one_correction_leaves_the_others_training():
+    docs = [
+        _doc("dismissed", text="LEGEND", retracted_at="2026-08-05T10:00:00Z"),
+        _doc("dismissed", text="KEEP-ME"),
+        _doc("confirmed_change", text="Ø25"),
+    ]
+    bundle = build_bundle(docs)
+
+    assert bundle["n_verdict"] == 2
+    assert bundle["exact_changed"]
+    # The retracted LEGEND is gone; the un-retracted dismissal remains.
+    assert len(bundle["exact_matched"]) == 1
+
+
+def test_a_compensating_record_was_not_the_chosen_design():
+    """`confirmed_valid` already exists as "undo of a dismissal", and using it here was the
+    obvious cheap option. It is wrong for training: `train_from_feedback` sorts by
+    `created_at` so the later record does win the exact-match override, but the classifier
+    rows are appended per document — an undone correction would contribute two rows with
+    identical features and opposite labels. Retraction removes the row instead."""
+    compensating = build_bundle([_doc("dismissed", text="X"), _doc("confirmed_valid", text="X")])
+    retracted = build_bundle([_doc("dismissed", text="X", retracted_at="2026-08-05T10:00:00Z")])
+
+    assert compensating["n_verdict"] == 2, "both rows would train, with opposite labels"
+    assert retracted["n_verdict"] == 0, "retraction leaves the classifier nothing to learn from"

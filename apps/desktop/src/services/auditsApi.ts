@@ -86,6 +86,23 @@ export async function submitAuditFeedbackPayload(
   return json.data;
 }
 
+/** Take back a correction submitted by mistake, so it no longer trains the model.
+ *
+ * The backend marks it retracted rather than deleting it — the collection is the audit trail
+ * of who taught the model what — and retrains without it. Idempotent, so a retry after a
+ * dropped response is safe.
+ */
+export async function retractAuditFeedback(feedbackId: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `/api/v1/audits/feedback/${encodeURIComponent(feedbackId)}/retract`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to retract audit feedback (${response.status}): ${errorText}`);
+  }
+}
+
 /** GET /api/v1/audits/learning/status — learned-correction model readiness + metrics. */
 export async function getLearnedModelStatus(): Promise<LearnedModelStatus> {
   const response = await fetchWithAuth('/api/v1/audits/learning/status');

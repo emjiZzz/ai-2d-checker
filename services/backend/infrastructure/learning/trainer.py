@@ -99,6 +99,12 @@ def build_bundle(docs: list) -> dict:
         status = getattr(doc, "human_corrected_status", None)
         if not status:
             continue
+        # A correction the human took back teaches nothing — not even that it happened. It is
+        # kept in the collection for the audit trail and skipped here, rather than deleted or
+        # cancelled by a compensating record, which would leave two rows with identical
+        # features and opposite labels in the classifier's training set.
+        if getattr(doc, "retracted_at", None):
+            continue
         n_total += 1
         snap = _snapshot_of(doc)
         category = snap.get("category") or getattr(doc, "category", None)

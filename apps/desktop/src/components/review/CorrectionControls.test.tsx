@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CorrectionControls } from "./CorrectionControls";
-import { submitAuditFeedbackPayload } from "../../services/auditsApi";
+import { submitAuditFeedbackPayload, retractAuditFeedback } from "../../services/auditsApi";
 
 vi.mock("../../services/auditsApi", () => ({
   submitAuditFeedbackPayload: vi.fn().mockResolvedValue({ id: "1", status: "recorded", auto_documented: false, message: "" }),
+  retractAuditFeedback: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockedSubmit = submitAuditFeedbackPayload as unknown as ReturnType<typeof vi.fn>;
+const mockedRetract = retractAuditFeedback as unknown as ReturnType<typeof vi.fn>;
 
 const baseProps = {
   rowId: "r1",
@@ -32,6 +34,37 @@ const baseProps = {
 describe("CorrectionControls", () => {
   beforeEach(() => {
     mockedSubmit.mockClear();
+    mockedRetract.mockClear();
+  });
+
+  // --- a mis-click has to be reversible ------------------------------------------------
+  //
+  // The menu was one-way: the correction was already persisted and had already kicked a
+  // retrain, and the card then rendered a terminal "Taught: …" with no route back.
+
+  it("a correction can be taken back, and the menu returns", async () => {
+    render(<CorrectionControls {...baseProps} />);
+    fireEvent.click(screen.getByTestId("correction-open-r1"));
+    fireEvent.click(screen.getByTestId("correction-matched-r1"));
+    await waitFor(() => expect(screen.getByTestId("correction-done-r1")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("correction-undo-r1"));
+    await waitFor(() => expect(mockedRetract).toHaveBeenCalledWith("1"));
+
+    // Back to the un-corrected state, so the row can be answered again.
+    await waitFor(() => expect(screen.getByTestId("correction-open-r1")).toBeTruthy());
+    expect(screen.queryByTestId("correction-done-r1")).toBeNull();
+  });
+
+  it("offers no undo when the backend returned no id to retract", async () => {
+    mockedSubmit.mockResolvedValueOnce({ status: "recorded", auto_documented: false, message: "" });
+    render(<CorrectionControls {...baseProps} />);
+    fireEvent.click(screen.getByTestId("correction-open-r1"));
+    fireEvent.click(screen.getByTestId("correction-matched-r1"));
+    await waitFor(() => expect(screen.getByTestId("correction-done-r1")).toBeTruthy());
+
+    // A dead Undo button would be worse than none — it would look like it worked.
+    expect(screen.queryByTestId("correction-undo-r1")).toBeNull();
   });
 
   it("sends verdict_matched with the real entity handle + a finding snapshot", async () => {

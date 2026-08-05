@@ -726,6 +726,54 @@ async def submit_audit_feedback(request: AuditFeedbackRequest, background_tasks:
 
 
 @router.post(
+    "/audits/feedback/{feedback_id}/retract",
+    response_model=StandardResponse[dict],
+    summary="Take back a correction submitted by mistake",
+    dependencies=[Depends(get_auth_token)],
+)
+async def retract_audit_feedback(feedback_id: str, background_tasks: BackgroundTasks):
+    """Mark a correction retracted and retrain without it.
+
+    Sets `retracted_at` rather than deleting: this collection is both the training corpus and
+    the record of who taught the model what, and a row that silently vanishes is unauditable.
+    The trainer skips retracted rows entirely.
+
+    Idempotent — retracting twice is not an error, because the client's retry after a dropped
+    response must not turn into a 404 the user cannot act on.
+
+    **What this does not undo:** `AutoDocEngine` may already have written a learned dismissal
+    rule into the vault, which `safe_filter` reads on the default comparison path. Those notes
+    are human-editable documentation and are deliberately not rewritten from here — a retract
+    that silently edited the vault would be a bigger surprise than one that does not.
+    """
+    from ...domain.models.audit_feedback import AuditFeedbackDocument
+
+    try:
+        doc = await AuditFeedbackDocument.get(feedback_id)
+    except Exception:
+        doc = None
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Feedback not found.")
+
+    already = doc.retracted_at is not None
+    if not already:
+        doc.retracted_at = datetime.now(UTC)
+        await doc.save()
+        from ...infrastructure.learning.trainer import train_from_feedback
+        background_tasks.add_task(train_from_feedback)
+
+    return StandardResponse(
+        success=True,
+        data={
+            "id": str(doc.id),
+            "retracted": True,
+            "already_retracted": already,
+            "message": "Correction retracted; it no longer trains the model.",
+        },
+    )
+
+
+@router.post(
     "/audits/learning/retrain",
     response_model=StandardResponse[dict],
     summary="Force an immediate retrain of the learned-correction model from human feedback",
