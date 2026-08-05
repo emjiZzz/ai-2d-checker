@@ -238,7 +238,22 @@ class ComparisonCacheManager:
     # revision `PART NO.` for the same column, the field never paired and its identical value
     # was reported twice — once as `230 → NONE`, once as `NONE → 230`, both flipped to MATCHED
     # by the bilateral corroboration guard. A v38 entry still shows that duplicate row pair.
-    COMPARISON_CACHE_VERSION = "v39"
+    # v40: title-block field extraction no longer reads the upper-left table
+    # (keep_for_title_extraction now excludes `title_upper_left` the way it already excluded
+    # `tolerance`). The bottom title block's QTY field searches for `T. Q'ty` / `総製作個数`,
+    # which is the upper-left table's own column header, so the proximity search walked up the
+    # sheet and read that table's cell — surfacing one physical cell twice in the title_block
+    # checklist, as `QTY (QUANTITY)` and again as `T. Q'TY / 総製作個数`, both grounded to the
+    # same marker. A v39 entry still carries the duplicate QTY row.
+    # v41: Machine Type/Code, Unit No./Unit Code and Part No. no longer get checklist items of
+    # their own. They are SEGMENTS of the drawing number split across its ruled sub-cells
+    # (`M745203N01` = `M745` + `203` + `N01`), so the side panel showed four items for one
+    # identifier and three could not change without the DWG No. changing too. Dropped only when
+    # the DWG No. is shown to contain them (utils/text.is_component_of_dwg_no) — an uncorroborated
+    # component keeps its row rather than vanishing on a sheet where DWG No. failed to extract.
+    # The DWG No. card's label loses its sub-header list for the same reason. A v40 entry still
+    # shows the three component rows and the long label.
+    COMPARISON_CACHE_VERSION = "v41"
 
     @staticmethod
     def _get_cache_path(

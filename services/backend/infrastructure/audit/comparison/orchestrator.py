@@ -128,21 +128,34 @@ def _point_in_bbox(insert, bbox) -> bool:
     return bbox[0] <= insert[0] <= bbox[2] and bbox[1] <= insert[1] <= bbox[3]
 
 
-def keep_for_title_extraction(entity, tolerance_bbox, title_bbox) -> bool:
+def keep_for_title_extraction(entity, tolerance_bbox, title_bbox, title_ul_bbox=None) -> bool:
     """Whether to feed `entity` to the title-block extractor.
 
-    Title extraction excludes the tolerance table so its numeric cells aren't misread as title
-    fields. But the detected/pinned tolerance box is frequently OVER-WIDE — spanning the full
-    bottom strip — and then it also covers the bottom-right title block, so a naive
+    Two zones are excluded, for the same reason: both are read by their OWN extractor, and
+    anything the title-block field search finds inside them is a second reading of a cell that
+    is already reported.
+
+    * **Tolerance table** — its numeric cells were being misread as title fields.
+    * **Upper-left table** — `extract_title_ul_kv` owns it. The bottom title block's `QTY`
+      field searches for the labels ``T. Q'ty`` / ``総製作個数``, which is precisely the
+      upper-left table's own column header, so the proximity search walked hundreds of units
+      up the sheet and read that table's cell. The value then surfaced twice in one checklist:
+      as `QTY (QUANTITY)` from the title-block extractor and as `T. Q'TY / 総製作個数` from the
+      upper-left extractor, both grounded to the same marker.
+
+    Guard, for both: drop an entity only when it is in the excluded box AND NOT in the title
+    box. The detected/pinned tolerance box is frequently OVER-WIDE — spanning the full bottom
+    strip — and then it also covers the bottom-right title block, so a naive
     `not is_in_bbox(e, tolerance_bbox)` deletes the real title fields and every one reads NONE
-    (DRAWN/SCALE/DESIGNED/TITLE). Guard: drop an entity only when it is in the tolerance box AND
-    NOT in the title box, so the tolerance *table* is removed but the title block is preserved.
+    (DRAWN/SCALE/DESIGNED/TITLE). The same protection is extended to the upper-left box so a
+    mis-detected one cannot blank the title block either, and so a sheet whose bottom title
+    block carries its *own* quantity cell keeps it.
     """
     geom = getattr(entity, "geometry", {}) or {}
     insert = geom.get("insert")
-    in_tol = _point_in_bbox(insert, tolerance_bbox)
+    in_excluded = _point_in_bbox(insert, tolerance_bbox) or _point_in_bbox(insert, title_ul_bbox)
     in_title = _point_in_bbox(insert, title_bbox)
-    return not (in_tol and not in_title)
+    return not (in_excluded and not in_title)
 
 
 def _amendment_norm(t) -> str:
@@ -529,11 +542,11 @@ async def generate_deterministic_candidates(
         except Exception as ocr_err:
             logger.warning(f"Batched visual Title Block OCR failed, falling back to spatial heuristics: {ocr_err}")
 
-    # Exclude the tolerance table from title extraction, but never an entity that also sits in
-    # the title block — an over-wide tolerance box otherwise blanks the whole title block. See
-    # keep_for_title_extraction.
-    ref_title_input = [e for e in ref_entities if keep_for_title_extraction(e, ref_tolerance_bbox_raw, ref_title_bbox)]
-    rev_title_input = [e for e in rev_entities if keep_for_title_extraction(e, rev_tolerance_bbox_raw, rev_title_bbox)]
+    # Exclude the tolerance table and the upper-left table from title extraction — each has its
+    # own extractor — but never an entity that also sits in the title block, since an over-wide
+    # box would otherwise blank the whole title block. See keep_for_title_extraction.
+    ref_title_input = [e for e in ref_entities if keep_for_title_extraction(e, ref_tolerance_bbox_raw, ref_title_bbox, ref_title_ul_bbox_raw)]
+    rev_title_input = [e for e in rev_entities if keep_for_title_extraction(e, rev_tolerance_bbox_raw, rev_title_bbox, rev_title_ul_bbox_raw)]
 
     ref_title_fields = BOMAnalyzer.extract_title_block(ref_title_input, ref_all_text_list, ocr_results=ref_ocr)
     rev_title_fields = BOMAnalyzer.extract_title_block(rev_title_input, rev_all_text_list, ocr_results=rev_ocr)

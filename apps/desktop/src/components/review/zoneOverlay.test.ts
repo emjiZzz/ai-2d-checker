@@ -35,12 +35,25 @@ interface RectCall {
 }
 
 /** Minimal 2D-context stand-in that records the calls these tests assert on. */
+/** Records the rects a Path2D is built from, so a clip's geometry can be asserted.
+ *  jsdom ships no canvas implementation, so there is no real Path2D to use here. */
+class FakePath2D {
+  rects: RectCall[] = [];
+  rect(left: number, top: number, w: number, h: number) {
+    this.rects.push({ left, top, w, h });
+  }
+}
+(globalThis as any).Path2D = FakePath2D;
+
 function makeCtx() {
   const strokeRects: RectCall[] = [];
   const fillRects: RectCall[] = [];
   const lineWidths: number[] = [];
   const fonts: string[] = [];
   const lineDashes: number[][] = [];
+  /** One entry per clip(): the rects of the path, or null for the current-path form. */
+  const clips: (RectCall[] | null)[] = [];
+  const pathRects: RectCall[] = [];
 
   const ctx = {
     _strokeRects: strokeRects,
@@ -48,6 +61,14 @@ function makeCtx() {
     _lineWidths: lineWidths,
     _fonts: fonts,
     _lineDashes: lineDashes,
+    _clips: clips,
+    _pathRects: pathRects,
+    beginPath: () => {
+      pathRects.length = 0;
+    },
+    rect: (left: number, top: number, w: number, h: number) =>
+      pathRects.push({ left, top, w, h }),
+    clip: (path?: FakePath2D) => clips.push(path ? [...path.rects] : null),
     set lineWidth(v: number) {
       lineWidths.push(v);
     },
@@ -328,5 +349,109 @@ describe("renderZoneEditor — cases that must draw nothing", () => {
     renderFromDetected(ctx, onlyTitle(zone(100, 100, 200, 200)));
     // Six of seven keys are null in onlyTitle().
     expect(ctx._strokeRects).toHaveLength(1);
+  });
+});
+
+/**
+ * The `views` tint must show what is COMPARED, not the rectangle.
+ *
+ * A pinned `views` is a plain rectangle over the whole drawing area, so on screen it swallows
+ * notes / BOM / title / iso — while the backend has already excluded every one of them
+ * (`scope_entities_to_views` + `VIEWS_EXCLUDED_ZONES`; measured on the M7452A0N01 pair, 423 of
+ * 508 anchors inside the reference's views rectangle sit in a sibling zone). Filling the raw
+ * rectangle asserts those regions are being diffed as drawing geometry. They are not, and the
+ * discrepancy was reported as a scoping bug.
+ *
+ * Silent failure mode: this is a tint. Getting it wrong produces a plausible canvas, never an
+ * error, and the thing it misrepresents is invisible unless you already know the answer.
+ */
+function viewsWith(
+  viewsBox: ZoneBBox,
+  siblings: Partial<Record<string, ZoneBBox>> = {},
+): DrawingZonesResponse {
+  const empty = Object.fromEntries(ZONE_KEYS.map((k) => [k, null]));
+  return {
+    drawing_id: "d1",
+    render_bounds: [SHEET.xmin, SHEET.ymin, SHEET.xmax, SHEET.ymax],
+    ...empty,
+    views: viewsBox,
+    ...siblings,
+  } as DrawingZonesResponse;
+}
+
+describe("renderZoneEditor — the views tint excludes sibling zones", () => {
+  it("cuts a hole for each sibling that has a box", () => {
+    const ctx = makeCtx();
+    renderFromDetected(
+      ctx,
+      viewsWith(zone(0, 0, 840, 594), {
+        notes: zone(50, 400, 250, 550),
+        bom: zone(500, 400, 800, 550),
+      }),
+    );
+
+    // One clip per sibling, each an even-odd (outer canvas + hole) path.
+    const holeClips = ctx._clips.filter((c): c is RectCall[] => c !== null);
+    expect(holeClips).toHaveLength(2);
+    for (const rects of holeClips) {
+      expect(rects).toHaveLength(2);
+      // First rect is the full canvas, second is the hole.
+      expect(rects[0]).toEqual({ left: 0, top: 0, w: 800, h: 600 });
+      expect(rects[1].w).toBeGreaterThan(0);
+      expect(rects[1].h).toBeGreaterThan(0);
+    }
+    // The tint is still painted — the zone is subtracted, not suppressed.
+    expect(ctx._fillRects.length).toBeGreaterThan(0);
+  });
+
+  it("cuts no holes when views is the only zone", () => {
+    const ctx = makeCtx();
+    renderFromDetected(ctx, viewsWith(zone(0, 0, 840, 594)));
+
+    expect(ctx._clips.filter((c) => c !== null)).toHaveLength(0);
+    // Still clipped to its own rect, so the fill cannot bleed outside the zone.
+    expect(ctx._clips.some((c) => c === null)).toBe(true);
+  });
+
+  it("leaves the full outline so the box stays draggable and resizable", () => {
+    const ctx = makeCtx();
+    renderFromDetected(
+      ctx,
+      viewsWith(zone(0, 0, 840, 594), { notes: zone(50, 400, 250, 550) }),
+    );
+
+    // The stroke is the whole rectangle regardless of what the tint subtracts — the editor
+    // manipulates the real box, and a clipped outline would make it un-grabbable.
+    const viewsStroke = ctx._strokeRects.find((r) => r.w > 700 && r.h > 500);
+    expect(viewsStroke).toBeDefined();
+  });
+
+  it("does not clip any zone other than views", () => {
+    const ctx = makeCtx();
+    // A notes box overlapping a title box: neither may punch a hole in the other.
+    renderFromDetected(
+      ctx,
+      viewsWith(zone(0, 0, 1, 1), {
+        notes: zone(50, 400, 250, 550),
+        title: zone(100, 420, 300, 500),
+      }),
+    );
+
+    // views is degenerate-but-present; only its own clip pair may appear, never one per
+    // sibling for notes or title.
+    const holeClips = ctx._clips.filter((c) => c !== null);
+    expect(holeClips.length).toBeLessThanOrEqual(2);
+    expect(ctx._fillRects.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("ignores a sibling whose box collapses to zero area", () => {
+    const ctx = makeCtx();
+    renderFromDetected(
+      ctx,
+      viewsWith(zone(0, 0, 840, 594), { notes: zone(100, 100, 100, 100) }),
+    );
+
+    // A zero-area hole would clip everything away on some engines; it is skipped instead.
+    expect(ctx._clips.filter((c) => c !== null)).toHaveLength(0);
   });
 });

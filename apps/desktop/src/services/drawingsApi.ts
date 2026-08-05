@@ -64,6 +64,25 @@ export const ZONE_KEYS = [
 
 export type ZoneKey = (typeof ZONE_KEYS)[number];
 
+/** Zones that `views` subtracts. Mirrors backend `zone_detector.VIEWS_EXCLUDED_ZONES`.
+ *
+ *  `views` is the drawing area — everything that is not sheet furniture or a floating
+ *  annotation block. A PINNED `views` is a plain rectangle covering the whole drawing area, so
+ *  the backend re-applies this exclusion at the point of use (`scope_entities_to_views`) and an
+ *  entity anchored inside a sibling box never reaches the drawing_views comparison. Measured on
+ *  the M7452A0N01 pair: 423 of 508 anchors inside the reference's `views` rectangle sit in a
+ *  sibling zone, and 492 of 562 on the revision — so the rectangle drawn on screen is nothing
+ *  like the region actually compared. The overlay subtracts the same set for that reason. */
+export const VIEWS_EXCLUDED_ZONES: readonly ZoneKey[] = [
+  "notes",
+  "bom",
+  "title",
+  "tolerance",
+  "iso",
+  "title_upper_left",
+  "shim",
+];
+
 export const NO_SHEET_BOUNDS = "percentage_fallback_no_sheet_bounds";
 
 /**

@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Any
 
 def safe_decode(text: Any) -> str:
@@ -459,6 +460,74 @@ def extract_semantic_text_groups(entities: list, prefix: str = "") -> dict:
     }
 
 
+# Title-block fields that are SEGMENTS of the drawing number rather than fields in their own
+# right, mapped to WHERE in the number each one sits. The DWG No. cell is ruled into sub-cells
+# and each carries its own header, so the extractor reported the parts alongside the whole: on
+# `M745203N01` the sheet labels `M745` as Machine Type / Mach. code, `203` as Unit No. / Unit
+# Code and `N01` as Part No. Four checklist items for one identifier, three of which cannot
+# change without the fourth changing too.
+#
+# The position is what makes the corroboration safe. A plain "is it a substring" test matches
+# across segment boundaries — `45` is inside `M745`203N01 without being a segment of anything —
+# and this codebase has already shipped one green tick that way (a `Previous Dwg. No.` of `1`
+# corroborated against the `1` in `M7452A1N01`; see the ruled-cell-boundary gotcha).
+#
+# !! These keys are the BOTTOM title block's fields only. The UPPER-LEFT metadata table has its
+# own `Unit No.` and `Part No.` columns which are STANDALONE FIELDS, not segments of anything,
+# and they keep their own checklist items. Do not point this rule at them: on the live KEMCO
+# sheet the UL `Part No.` reads `203`, which really is the middle segment of `M745203N01`, so
+# the containment test would call it corroborated and delete a real field. The two are kept
+# apart structurally — the UL rows are built by extract_title_ul_kv into the separate
+# `title_ul_table` (tagged `zone: 'title_upper_left'`) and never reach this function.
+# Pinned by tests/test_dwg_no_component_rows.py.
+COMPONENT_OF_DWG_NO_FIELDS = {
+    "MACHINE CODE": "prefix",
+    "UNIT NO": "infix",
+    "PART NO": "suffix",
+}
+
+
+def _norm_component(value: str) -> str:
+    """Fold a component or drawing number for segment testing."""
+    if not value:
+        return ""
+    t = unicodedata.normalize("NFKC", str(value)).upper()
+    return re.sub(r"[\s\-/.]", "", t)
+
+
+def is_component_of_dwg_no(value: str, dwg_no: str, position: str = "infix") -> bool:
+    """True when `value` is accounted for by `dwg_no` and needs no checklist item of its own.
+
+    A blank/NONE component is trivially accounted for — there is nothing to report. A populated
+    one has to actually sit at its expected position in the drawing number: this is the
+    difference between *asserting* that these fields are segments of the DWG No. and checking it.
+
+    The check is load-bearing rather than decorative. Suppressing a component unconditionally
+    would mean that on any sheet where the DWG No. fails to extract — which it does; the live
+    KEMCO revision reads NONE — a changed segment would be reported by nothing at all. This
+    project's largest known measurement gap is that false negatives have never been measured
+    (see the vault's gap analysis), so the default is to keep a row that cannot be *shown*
+    redundant.
+
+    `infix` is the weakest of the three and deliberately so: it demands only that the value sit
+    strictly inside the number, since the middle segment has no anchor of its own. In this
+    corpus only MACHINE CODE (`prefix`) is ever populated by the spatial extractor, so the tight
+    cases are the ones that fire.
+    """
+    v = _norm_component(value)
+    if not v or v == "NONE":
+        return True
+    d = _norm_component(dwg_no)
+    if not d or d == "NONE":
+        return False
+    if position == "prefix":
+        return d.startswith(v)
+    if position == "suffix":
+        return d.endswith(v)
+    start = d.find(v)
+    return start > 0 and (start + len(v)) < len(d)
+
+
 def build_title_block_table(ref_fields: dict, rev_fields: dict) -> str:
     def status(orig: str, kmti: str) -> str:
         s = compare_values(orig, kmti)
@@ -516,19 +585,35 @@ def build_title_block_table(ref_fields: dict, rev_fields: dict) -> str:
     f_stock_ref = get_val(ref_fields, 'STOCK QTY')
     f_stock_rev = get_val(rev_fields, 'STOCK QTY')
 
-    tbl = (
-        "| FIELD NAME                      | ORIGINAL (Reference) | KMTI (Revision) | STATUS |\n"
-        "|---------------------------------|----------------------|-----------------|--------|\n"
-        f"| QTY (Quantity)                  | {f_qty_ref} | {f_qty_rev} | {status(f_qty_ref, f_qty_rev)} |\n"
-        f"| STOCK QTY (Stock Qty)           | {f_stock_ref} | {f_stock_rev} | {status(f_stock_ref, f_stock_rev)} |\n"
-        f"| DRAWN (Drawn By)                | {f_drawn_ref} | {f_drawn_rev} | {status(f_drawn_ref, f_drawn_rev)} |\n"
-        f"| DESIGNED (Designed By)          | {f_designed_ref} | {f_designed_rev} | {status(f_designed_ref, f_designed_rev)} |\n"
-        f"| SCALE (Sheet Scale)             | {f_scale_ref} | {f_scale_rev} | {status(f_scale_ref, f_scale_rev)} |\n"
-        f"| TITLE (Drawing Title)           | {f_title_ref} | {f_title_rev} | {status(f_title_ref, f_title_rev)} |\n"
-        f"| JOB NO (Job Number)             | {f_job_ref} | {f_job_rev} | {status(f_job_ref, f_job_rev)} |\n"
-        f"| MACHINE CODE / UNIT CODE        | {f_mach_ref} | {f_mach_rev} | {status(f_mach_ref, f_mach_rev)} |\n"
-        f"| DWG NO (Drawing Number)         | {f_dwg_ref} | {f_dwg_rev} | {status(f_dwg_ref, f_dwg_rev)} |\n"
-        f"| UNIT NO (Unit Number)           | {f_unit_ref} | {f_unit_rev} | {status(f_unit_ref, f_unit_rev)} |\n"
-        f"| PART NO (Part Number)           | {f_part_ref} | {f_part_rev} | {status(f_part_ref, f_part_rev)} |\n"
+    rows = [
+        "| FIELD NAME                      | ORIGINAL (Reference) | KMTI (Revision) | STATUS |",
+        "|---------------------------------|----------------------|-----------------|--------|",
+        f"| QTY (Quantity)                  | {f_qty_ref} | {f_qty_rev} | {status(f_qty_ref, f_qty_rev)} |",
+        f"| STOCK QTY (Stock Qty)           | {f_stock_ref} | {f_stock_rev} | {status(f_stock_ref, f_stock_rev)} |",
+        f"| DRAWN (Drawn By)                | {f_drawn_ref} | {f_drawn_rev} | {status(f_drawn_ref, f_drawn_rev)} |",
+        f"| DESIGNED (Designed By)          | {f_designed_ref} | {f_designed_rev} | {status(f_designed_ref, f_designed_rev)} |",
+        f"| SCALE (Sheet Scale)             | {f_scale_ref} | {f_scale_rev} | {status(f_scale_ref, f_scale_rev)} |",
+        f"| TITLE (Drawing Title)           | {f_title_ref} | {f_title_rev} | {status(f_title_ref, f_title_rev)} |",
+        f"| JOB NO (Job Number)             | {f_job_ref} | {f_job_rev} | {status(f_job_ref, f_job_rev)} |",
+        f"| DWG NO (Drawing Number)         | {f_dwg_ref} | {f_dwg_rev} | {status(f_dwg_ref, f_dwg_rev)} |",
+    ]
+
+    # Machine Type/Code, Unit No./Unit Code and Part No. are SEGMENTS of the drawing number, not
+    # independent fields — `M745203N01` is `M745` + `203` + `N01`, each in its own ruled sub-cell
+    # under the DWG No. header. Reporting them beside the DWG No. put four checklist items on the
+    # side panel for one identifier, and three of them cannot change without the DWG No. changing
+    # too. They are dropped once the DWG No. is shown to account for them; a component the DWG No.
+    # does NOT account for keeps its row, because then it is carrying information the DWG No. is
+    # not. See is_component_of_dwg_no.
+    component_rows = (
+        ("MACHINE CODE", "| MACHINE CODE / UNIT CODE        |", f_mach_ref, f_mach_rev),
+        ("UNIT NO",      "| UNIT NO (Unit Number)           |", f_unit_ref, f_unit_rev),
+        ("PART NO",      "| PART NO (Part Number)           |", f_part_ref, f_part_rev),
     )
-    return tbl
+    for field_key, label, ref_val, rev_val in component_rows:
+        at = COMPONENT_OF_DWG_NO_FIELDS[field_key]
+        if is_component_of_dwg_no(ref_val, f_dwg_ref, at) and is_component_of_dwg_no(rev_val, f_dwg_rev, at):
+            continue
+        rows.append(f"{label} {ref_val} | {rev_val} | {status(ref_val, rev_val)} |")
+
+    return "\n".join(rows) + "\n"

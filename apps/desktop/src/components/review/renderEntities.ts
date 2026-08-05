@@ -1,6 +1,7 @@
 import { getNormalization, worldToScreen } from '../../utils/coordinateTransform';
 import { useReviewStore } from '../../stores/reviewStore';
 import {
+  VIEWS_EXCLUDED_ZONES,
   ZONE_KEYS,
   isPlaceholderOnly,
   type DrawingZonesResponse,
@@ -734,7 +735,39 @@ export const renderZoneEditor = ({
 
     ctx.fillStyle = color;
     ctx.globalAlpha = isSelected ? 0.1 : 0.06;
-    ctx.fillRect(left, top, w, h);
+    if (key === 'views') {
+      // The tint shows what is actually COMPARED as drawing_views, which is the rectangle
+      // minus every sibling zone — not the rectangle. A pinned `views` covers the whole
+      // drawing area and therefore swallows notes/BOM/title/iso on screen, while the backend
+      // has already excluded all of it (scope_entities_to_views + VIEWS_EXCLUDED_ZONES).
+      // Filling the raw rectangle claimed those regions were being diffed as geometry, which
+      // reads as a scoping bug and was reported as one.
+      //
+      // Subtracted by chaining an even-odd clip per sibling rather than one even-odd fill over
+      // all of them: chained clips INTERSECT, so two overlapping siblings still cut a single
+      // hole. A single even-odd path would re-fill their intersection — and sibling overlap is
+      // real here; the orchestrator logs "Spatial region overlap detected!" for BOM vs title.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(left, top, w, h);
+      ctx.clip();
+      VIEWS_EXCLUDED_ZONES.forEach((siblingKey) => {
+        const siblingFrac = customRegions[siblingKey];
+        if (!siblingFrac) return;
+        const s = fractionsToScreenRect(siblingFrac, renderBounds, norm, viewport);
+        const sw = s.right - s.left;
+        const sh = s.bottom - s.top;
+        if (sw <= 0 || sh <= 0) return;
+        const hole = new Path2D();
+        hole.rect(0, 0, renderWidth, renderHeight);
+        hole.rect(s.left, s.top, sw, sh);
+        ctx.clip(hole, 'evenodd');
+      });
+      ctx.fillRect(left, top, w, h);
+      ctx.restore();
+    } else {
+      ctx.fillRect(left, top, w, h);
+    }
     ctx.globalAlpha = 1;
 
     const label = (ZONE_LABELS[key] ?? key.toUpperCase()) + (wasMeasured ? '' : ' ?');

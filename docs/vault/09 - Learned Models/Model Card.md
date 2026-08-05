@@ -10,12 +10,12 @@ tags: [learned-model, hitl]
 > folder; this note is the human-readable summary. Trained purely on human corrections —
 > no LLM involved.
 
-- **Last trained**: 2026-08-05T08:29:42.328247+00:00
-- **Total corrections**: 44
-- **Verdict labels**: 33  (threshold to activate model: 40)
-- **Category labels**: 1
-- **Verdict model**: ⏳ warming up (33/40)
-- **Exact-match overrides**: 17 matched, 2 changed, 1 reclassified
+- **Last trained**: 2026-08-05T09:08:52.039570+00:00
+- **Total corrections**: 66
+- **Verdict labels**: 36  (threshold to activate model: 40)
+- **Category labels**: 6
+- **Verdict model**: ⏳ warming up (36/40)
+- **Exact-match overrides**: 18 matched, 3 changed, 6 reclassified
 
 ## Metrics
 ```json
@@ -23,18 +23,42 @@ tags: [learned-model, hitl]
 ```
 
 ## Sample of learned "not a real change" patterns
-- `title_block|machinecode/unitcode`
-- `drawing_views|geometry:4line,1polyline`
-- `drawing_views|none`
-- `title_block|stockqty(stockqty)`
-- `title_block|qty(quantity)`
-- `title_block|partno(partnumber)`
-- `title_block|jobno(jobnumber)`
 - `title_block|field`
-- `drawing_views|8`
+- `title_block|stockqty(stockqty)`
+- `drawing_views|none`
+- `title_block|jobno(jobnumber)`
 - `notes_section|4ロール:12(2x6台)`
+- `drawing_views|geometry:4line,1polyline`
+- `drawing_views|8`
+- `title_block|partno(partnumber)`
+- `drawing_views|20`
+- `drawing_views|l油溝詳細l`
 
 ## Changelog
+- 2026-08-05T09:08:52.039570+00:00 — trained on 66 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:08:43.862953+00:00 — trained on 65 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:08:28.310037+00:00 — trained on 64 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:08:21.462774+00:00 — trained on 63 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:08:14.618721+00:00 — trained on 62 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:08:13.381651+00:00 — trained on 63 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:07:50.233637+00:00 — trained on 62 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:07:45.074976+00:00 — trained on 61 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:07:40.290424+00:00 — trained on 60 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:07:28.712730+00:00 — trained on 59 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:07:24.822429+00:00 — trained on 58 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:07:05.812192+00:00 — trained on 57 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:06:35.559337+00:00 — trained on 56 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:06:27.538916+00:00 — trained on 55 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:06:11.922976+00:00 — trained on 54 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T09:06:09.562110+00:00 — trained on 53 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T08:47:17.172822+00:00 — trained on 52 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-05T08:47:11.704692+00:00 — trained on 51 corrections (verdict labels: 36, category labels: 5); verdict model warming up.
+- 2026-08-05T08:47:07.452185+00:00 — trained on 50 corrections (verdict labels: 36, category labels: 4); verdict model warming up.
+- 2026-08-05T08:47:00.273475+00:00 — trained on 49 corrections (verdict labels: 36, category labels: 3); verdict model warming up.
+- 2026-08-05T08:46:53.026594+00:00 — trained on 48 corrections (verdict labels: 36, category labels: 2); verdict model warming up.
+- 2026-08-05T08:45:53.676159+00:00 — trained on 47 corrections (verdict labels: 36, category labels: 1); verdict model warming up.
+- 2026-08-05T08:45:51.179470+00:00 — trained on 46 corrections (verdict labels: 35, category labels: 1); verdict model warming up.
+- 2026-08-05T08:45:50.285359+00:00 — trained on 45 corrections (verdict labels: 34, category labels: 1); verdict model warming up.
 - 2026-08-05T08:29:42.328247+00:00 — trained on 44 corrections (verdict labels: 33, category labels: 1); verdict model warming up.
 - 2026-08-05T08:14:24.920527+00:00 — trained on 43 corrections (verdict labels: 32, category labels: 1); verdict model warming up.
 - 2026-08-05T08:10:27.479038+00:00 — trained on 42 corrections (verdict labels: 32, category labels: 1); verdict model warming up.
@@ -52,9 +76,3 @@ tags: [learned-model, hitl]
 - 2026-08-05T08:07:00.946885+00:00 — trained on 30 corrections (verdict labels: 24, category labels: 1); verdict model warming up.
 - 2026-08-05T08:06:53.018974+00:00 — trained on 29 corrections (verdict labels: 23, category labels: 1); verdict model warming up.
 - 2026-08-05T08:06:00.648956+00:00 — trained on 28 corrections (verdict labels: 23, category labels: 1); verdict model warming up.
-- 2026-08-05T08:05:40.123123+00:00 — trained on 27 corrections (verdict labels: 23, category labels: 1); verdict model warming up.
-- 2026-08-05T08:05:25.799456+00:00 — trained on 26 corrections (verdict labels: 22, category labels: 1); verdict model warming up.
-- 2026-08-05T08:04:04.043140+00:00 — trained on 25 corrections (verdict labels: 22, category labels: 1); verdict model warming up.
-- 2026-08-05T08:03:49.507527+00:00 — trained on 24 corrections (verdict labels: 21, category labels: 1); verdict model warming up.
-- 2026-08-05T08:03:36.582093+00:00 — trained on 23 corrections (verdict labels: 21, category labels: 1); verdict model warming up.
-- 2026-08-03T00:09:22.729833+00:00 — trained on 22 corrections (verdict labels: 21, category labels: 1); verdict model warming up.

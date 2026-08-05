@@ -1,6 +1,6 @@
 import re
 from typing import List, Dict, Any, Optional
-from ...utils.text import compare_values
+from ...utils.text import COMPONENT_OF_DWG_NO_FIELDS, compare_values, is_component_of_dwg_no
 from ..bom_analyzer import BOMAnalyzer
 from ..bom.row_extractor import detect_balloons
 from . import taxonomy
@@ -95,7 +95,12 @@ def inject_title_block_markings(
         "STD NO": " Std. No.",
         "STANDARD": " Standard",
         "MACHINE CODE": " Mach. code /  Unit Code",
-        "DWG NO": " DWG. No. /  Machine Type /  Unit No. /  Part No. /   Branch",
+        # Just "DWG. No." — the label used to enumerate the cell's sub-headers
+        # (" DWG. No. /  Machine Type /  Unit No. /  Part No. /   Branch"), which read as five
+        # fields when it is one identifier split across ruled sub-cells. Those segments no longer
+        # get checklist items of their own (COMPONENT_OF_DWG_NO_FIELDS), so advertising them here
+        # would name rows the reviewer cannot find.
+        "DWG NO": " DWG. No.",
         "REVISION CODE": " AMD. / Design Chg No."
     }
 
@@ -120,12 +125,28 @@ def inject_title_block_markings(
         "REVISION CODE": "revision_code",
     }
 
+    def _dwg_no_of(fields: dict) -> str:
+        obj = fields.get("DWG NO", {})
+        return sanitize_title_value(obj.get("value", "NONE") if isinstance(obj, dict) else obj)
+
+    ref_dwg_no, rev_dwg_no = _dwg_no_of(ref_title_fields), _dwg_no_of(rev_title_fields)
+
     for field_key, display_label in field_labels_map.items():
         orig_obj = ref_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
         rev_obj = rev_title_fields.get(field_key, {"value": "NONE", "coordinates": None})
-        
+
         orig_val = sanitize_title_value(orig_obj.get("value", "NONE") if isinstance(orig_obj, dict) else orig_obj)
         kmti_val = sanitize_title_value(rev_obj.get("value", "NONE") if isinstance(rev_obj, dict) else rev_obj)
+
+        # A segment of the drawing number gets no card of its own — the DWG No. card already
+        # carries it, and its own marker would land on the same ruled cell. Mirrors the row-level
+        # suppression in build_title_block_table and shares its corroboration rule, so the card
+        # list and the checklist table can never disagree about what was dropped.
+        at = COMPONENT_OF_DWG_NO_FIELDS.get(field_key)
+        if at and is_component_of_dwg_no(orig_val, ref_dwg_no, at) \
+                and is_component_of_dwg_no(kmti_val, rev_dwg_no, at):
+            continue
+
         kmti_coords = rev_obj.get("coordinates", None) if isinstance(rev_obj, dict) else None
         orig_coords = orig_obj.get("coordinates", None) if isinstance(orig_obj, dict) else None
         

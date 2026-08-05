@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "trained_at": "2026-08-05T08:29:42.328247+00:00",
-  "n_total": 44,
-  "n_verdict": 33,
-  "n_category": 1,
+  "trained_at": "2026-08-05T09:08:52.039570+00:00",
+  "n_total": 66,
+  "n_verdict": 36,
+  "n_category": 6,
   "min_train": 40,
   "metrics": {}
 }
