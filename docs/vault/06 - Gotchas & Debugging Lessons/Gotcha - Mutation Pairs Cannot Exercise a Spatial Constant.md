@@ -69,6 +69,30 @@ delete them.
 The corpus can exercise roughly **1 of 14**. `changed_similarity_floor` moves because it gates
 text similarity, and text is what mutations edit.
 
+### Even the one live constant is only half-measured
+
+The per-value curve, reproduced identically across two runs:
+
+| `changed_similarity_floor` | 0.0 | 0.2 | **0.4** | 0.6 | 0.8 | 1.0 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| F1 | .713 | .713 | **.713** | .713 | .713 | .713 |
+| exactness | .722 | .722 | **.722** | .722 | .667 | .583 |
+
+Detection is flat everywhere. Verdict accuracy is flat from 0.0 to 0.6 and then degrades —
+tightening the gate turns genuine edits into REMOVED+ADDED pairs, which is a status downgrade.
+
+**The upper half of that curve is trustworthy; the lower half is not.** The constant exists to
+stop *unrelated* notes at nearby positions being paired as CHANGED — the code records unrelated
+notes scoring 0.00–0.14 against a genuine edit at 0.75. That is a proximity phenomenon, and
+this corpus cannot produce it: coordinates are identical and the mutator edits text in place, so
+there are no near-miss neighbours to mispair. Reading "0.0 costs nothing" off this table would
+be the same error as reading "the radii are dead" — the corpus simply never presents the case
+the constant guards against.
+
+So the default at 0.4 sits on a plateau whose right edge is measured and whose left edge is
+unexamined. That is still worth knowing: it is *not* on a cliff, and raising it is measurably
+harmful.
+
 ## The near-miss that produced the metric
 
 The first sweep run reported `changed_similarity_floor` at spread **0.000** as well — i.e.
