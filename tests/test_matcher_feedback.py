@@ -1,0 +1,84 @@
+"""Pairing feedback — the human says the engine matched the wrong entities.
+
+Every pre-existing correction verb judges a finding's *verdict*, *category* or *value*, and all
+of them assume the engine compared the right two entities and only got its conclusion wrong.
+A finding like "NONE → 260" is usually neither: it is one half of a pair the matcher failed to
+make. Nothing could express that until now.
+
+The tests below mostly pin a **restraint**: these verbs are captured and deliberately left
+unlabelled. Both available mappings would teach the verdict head something false, and the
+temptation to map them anyway — "it's feedback, feed it to the model" — is exactly what needs a
+test standing in front of it.
+"""
+
+from types import SimpleNamespace
+
+import pytest
+
+from services.backend.api.schemas import HumanCorrectedStatus
+from services.backend.infrastructure.learning.trainer import (
+    MATCHER_FEEDBACK,
+    VERDICT_ONE,
+    VERDICT_ZERO,
+    build_bundle,
+)
+
+
+def _doc(status, text="260", category="drawing_views", original_status="ADDED"):
+    return SimpleNamespace(
+        human_corrected_status=status,
+        category=category,
+        entity_text=text,
+        original_status=original_status,
+        corrected_category=None,
+        corrected_value=None,
+        created_at=None,
+        finding_snapshot={"rev_text": text, "ref_text": "", "category": category},
+    )
+
+
+def test_the_new_verbs_are_accepted_by_the_api_schema():
+    from typing import get_args
+
+    for verb in MATCHER_FEEDBACK:
+        assert verb in get_args(HumanCorrectedStatus), (
+            f"{verb} is sent by CorrectionControls.tsx but the request schema rejects it"
+        )
+
+
+def test_pairing_feedback_is_not_a_verdict_label():
+    """The restraint. Mapping to 0 would suppress a finding that may be genuine — "260 was
+    reported ADDED but it has a counterpart" usually means there IS a change, described
+    wrongly. Mapping to 1 would affirm a pairing the human just rejected."""
+    assert not (MATCHER_FEEDBACK & VERDICT_ZERO)
+    assert not (MATCHER_FEEDBACK & VERDICT_ONE)
+
+
+@pytest.mark.parametrize("verb", sorted(MATCHER_FEEDBACK))
+def test_pairing_feedback_trains_nothing_yet_but_is_counted(verb):
+    bundle = build_bundle([_doc(verb)])
+
+    assert bundle["n_total"] == 1, "the correction must still be recorded in the corpus"
+    assert bundle["n_verdict"] == 0, (
+        f"{verb} became a verdict label. It is a statement about the matcher, and there is no "
+        f"matcher head to train until Stage 3."
+    )
+    assert not bundle["exact_matched"], "a mispairing must not become a suppression override"
+    assert not bundle["exact_changed"]
+
+
+def test_ordinary_verdict_feedback_still_trains():
+    """Guards the obvious regression in the other direction: adding the new verbs must not
+    stop the existing ones producing labels. At 21 of 40, none can be spared."""
+    bundle = build_bundle([_doc("dismissed", text="LEGEND"), _doc("confirmed_change", text="Ø25")])
+
+    assert bundle["n_verdict"] == 2
+    assert bundle["exact_matched"] and bundle["exact_changed"]
+
+
+def test_confirmed_valid_is_label_one():
+    """`schemas.py` described this as label 0 while `trainer.py` put it in VERDICT_ONE. The
+    prose ("this finding IS valid to report") agreed with the trainer, so the parenthetical was
+    the error — corrected, and pinned here so the two cannot drift again."""
+    assert "confirmed_valid" in VERDICT_ONE
+    assert "confirmed_valid" not in VERDICT_ZERO

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, AlertTriangle, Tag, Pencil, X, Brain } from "lucide-react";
+import { Check, AlertTriangle, Tag, Pencil, X, Brain, Unlink } from "lucide-react";
 import {
   submitAuditFeedbackPayload,
   type AuditFeedbackPayload,
@@ -9,11 +9,29 @@ import {
 /**
  * Per-finding human correction controls for the checklist diff-row card.
  *
- * Extends the pre-existing Dismiss/Undo flow with the richer corrections the learned model
- * trains on: flip a verdict (CHANGED↔MATCHED), confirm a real change, reclassify a finding's
- * category, or correct a mis-read value. Every action sends the matching human_corrected_status
- * plus a fixed-shape finding_snapshot (features the backend trainer needs), built from the
- * matched canvas marking when available so it carries a stable entity handle and real coords.
+ * Every action sends a `human_corrected_status` plus a fixed-shape `finding_snapshot` (the
+ * features the backend trainer needs), built from the matched canvas marking when available so
+ * it carries a stable entity handle and real coordinates.
+ *
+ * ## The wording is the checker's, not the model's
+ *
+ * The menu used to read "Actually a change" / "Confirm real change" — the same question, worded
+ * two ways depending on what the engine had concluded (`isMatched ? … : …`). That made the
+ * reviewer decode the engine's verdict before they could describe what they saw.
+ *
+ * Each button now states an observation about the *drawings*. The engine-facing verb is chosen
+ * underneath: "Real change" sends `verdict_changed` on a MATCHED row and `confirmed_change`
+ * otherwise, and both mean label 1 to the trainer. Seven verbs still exist on the wire; the
+ * reviewer sees four questions.
+ *
+ * ## "Badly paired" is a new kind of statement
+ *
+ * The other options all assume the engine compared the right two entities and only got its
+ * conclusion wrong. A finding like "NONE → 260" is usually neither a real change nor a false
+ * alarm — it is one half of a pair the matcher failed to make. That is a statement about the
+ * *matcher*, which nothing here could express before, and which is training data for the
+ * Stage 3 learned matcher. It is captured, never mapped to a verdict — see
+ * `trainer.MATCHER_FEEDBACK` for why either mapping would teach the model something false.
  */
 
 interface DiffRow {
@@ -55,10 +73,11 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
   clientName,
   onCorrected,
 }) => {
-  const [mode, setMode] = useState<null | "menu" | "reclassify" | "value">(null);
+  const [mode, setMode] = useState<null | "menu" | "reclassify" | "value" | "paired">(null);
   const [busy, setBusy] = useState(false);
   const [corrected, setCorrected] = useState<string | null>(null);
   const [valueInput, setValueInput] = useState("");
+  const [noteInput, setNoteInput] = useState("");
 
   const isMatched = statusText.toUpperCase() === "MATCHED";
 
@@ -202,29 +221,68 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
 
       {mode === "menu" && (
         <>
-          {!isMatched && (
-            <button
-              data-testid={`correction-matched-${rowId}`}
-              style={menuItemStyle}
-              onClick={() => submit("verdict_matched", "Actually matched")}
-            >
-              <Check size={13} color="#10b981" /> Actually MATCHED
-            </button>
-          )}
+          {/* Same question in both directions — "is this a real change?" — so it reads the
+              same way regardless of what the engine concluded. Only the wire verb differs. */}
           <button
             data-testid={`correction-realchange-${rowId}`}
             style={menuItemStyle}
             onClick={() => submit(isMatched ? "verdict_changed" : "confirmed_change", "Real change")}
           >
-            <AlertTriangle size={13} color="#f97316" /> {isMatched ? "Actually a change" : "Confirm real change"}
+            <AlertTriangle size={13} color="#f97316" /> This is a real change
+          </button>
+          {!isMatched && (
+            <button
+              data-testid={`correction-matched-${rowId}`}
+              style={menuItemStyle}
+              onClick={() => submit("verdict_matched", "Not a change")}
+            >
+              <Check size={13} color="#10b981" /> Not a change — these match
+            </button>
+          )}
+          <button data-testid={`correction-paired-open-${rowId}`} style={menuItemStyle} onClick={() => setMode("paired")}>
+            <Unlink size={13} color="#eab308" /> Wrongly paired
           </button>
           <button style={menuItemStyle} onClick={() => setMode("reclassify")}>
-            <Tag size={13} color="#3b82f6" /> Reclassify category
+            <Tag size={13} color="#3b82f6" /> Wrong section
           </button>
           <button style={menuItemStyle} onClick={() => { setValueInput(row.kmti || ""); setMode("value"); }}>
-            <Pencil size={13} color="#a855f7" /> Fix value / note
+            <Pencil size={13} color="#a855f7" /> Wrong value
           </button>
         </>
+      )}
+
+      {mode === "paired" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "2px 4px" }}>
+          <span style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}>What did the engine get wrong?</span>
+          <button
+            data-testid={`correction-paired-missing-${rowId}`}
+            style={menuItemStyle}
+            onClick={() => submit("mispaired_missing_counterpart", "Has a match", { human_comment: noteInput.trim() || undefined })}
+          >
+            <Unlink size={13} color="#eab308" /> It does have a match on the other drawing
+          </button>
+          <button
+            data-testid={`correction-paired-wrong-${rowId}`}
+            style={menuItemStyle}
+            onClick={() => submit("mispaired_wrong_match", "Wrong pair", { human_comment: noteInput.trim() || undefined })}
+          >
+            <X size={13} color="#ef4444" /> These two are not the same thing
+          </button>
+          <input
+            data-testid={`correction-paired-note-${rowId}`}
+            value={noteInput}
+            onChange={(e) => setNoteInput(e.target.value)}
+            placeholder="Optional: which one should it pair with?"
+            style={{
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+              padding: "5px",
+              fontSize: "0.7rem",
+              color: "var(--text-primary)",
+            }}
+          />
+        </div>
       )}
 
       {mode === "reclassify" && (

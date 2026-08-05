@@ -28,6 +28,21 @@ except Exception:  # pragma: no cover
 VERDICT_ZERO = {"dismissed", "verdict_matched"}
 VERDICT_ONE = {"confirmed_valid", "verdict_changed", "confirmed_change"}
 
+# Pairing feedback: the human says the engine matched the wrong two entities, or missed a
+# match that exists. **Captured, never mapped to a verdict label**, and the restraint is the
+# point — both available mappings would teach the verdict head something false:
+#
+#   * label 0 ("not a real discrepancy") would suppress a finding that may well be genuine.
+#     "260 was reported as ADDED but it has a counterpart" usually means there IS a change,
+#     described wrongly — not that there is no change.
+#   * label 1 ("true discrepancy") would affirm a finding whose pairing the human just
+#     rejected, teaching the model that the mispairing was correct.
+#
+# The statement is about the *matcher*, and there is no matcher head to train yet — that is
+# Stage 3. Collecting the labels before the model exists is the same bet `AuditFeedbackDocument`
+# already paid off on: by the time the model is worth building, the data is there.
+MATCHER_FEEDBACK = {"mispaired_missing_counterpart", "mispaired_wrong_match"}
+
 
 def _snapshot_of(doc: Any) -> dict:
     snap = getattr(doc, "finding_snapshot", None)
@@ -108,6 +123,7 @@ def build_bundle(docs: list) -> dict:
                 cat_labels.append(str(target))
                 exact_category[key] = str(target)
         # value_correction: captured for the corpus in v1, not yet a verdict/category label.
+        # MATCHER_FEEDBACK: likewise captured, deliberately unlabelled. See below.
 
     metrics: dict = {}
     verdict_clf = None

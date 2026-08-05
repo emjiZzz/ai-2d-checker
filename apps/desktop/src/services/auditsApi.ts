@@ -17,6 +17,9 @@ export interface FindingSnapshotPayload {
   is_numericish?: boolean | null;
 }
 
+// Mirrors services/backend/api/schemas.py::HumanCorrectedStatus. The two `mispaired_*` verbs
+// say the engine matched the wrong entities (or missed a match) rather than that its verdict
+// was wrong — a statement none of the others can make. See trainer.MATCHER_FEEDBACK.
 export type HumanCorrectedStatus =
   | 'dismissed'
   | 'confirmed_valid'
@@ -24,7 +27,9 @@ export type HumanCorrectedStatus =
   | 'verdict_matched'
   | 'verdict_changed'
   | 'confirmed_change'
-  | 'value_correction';
+  | 'value_correction'
+  | 'mispaired_missing_counterpart'
+  | 'mispaired_wrong_match';
 
 export interface AuditFeedbackPayload {
   session_id: string;

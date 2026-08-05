@@ -220,12 +220,28 @@ class FindingSnapshot(BaseModel):
 # suppression. See docs plan "Human-in-the-Loop Learning for the rag Comparison".
 HumanCorrectedStatus = Literal[
     "dismissed",         # false alarm — treat as not a real discrepancy (label 0)
-    "confirmed_valid",   # undo of a dismissal — this finding IS valid to report (label 0, it's a correct MATCHED-style non-issue in the suppression sense)
+    # Label **1**, not 0. The parenthetical here previously read "(label 0…)", contradicting
+    # trainer.py's VERDICT_ONE, which is where the label is actually decided. The prose was
+    # right and the parenthetical was wrong: "this finding IS valid to report" means it is a
+    # true discrepancy.
+    "confirmed_valid",   # undo of a dismissal — this finding IS valid to report (label 1)
     "category_override", # finding belongs in a different category/feature
     "verdict_matched",   # a CHANGED/ADDED/REMOVED that is actually MATCHED (label 0)
     "verdict_changed",   # a MATCHED that is actually a real change (label 1)
     "confirmed_change",  # affirm a flagged discrepancy is genuinely a change (label 1)
     "value_correction",  # the extracted Original/Revision value was misread; corrected_value holds the fix
+    # --- pairing feedback -----------------------------------------------------------------
+    # A different *kind* of statement from everything above. The seven verbs all judge a
+    # finding's verdict, category or value — they assume the engine paired the right two
+    # entities and only got its conclusion wrong. These two say the **pairing itself** is
+    # wrong, which nothing could express before.
+    #
+    # Deliberately NOT mapped to a verdict label; see trainer.MATCHER_FEEDBACK for why. They
+    # are training data for the Stage 3 learned matcher, captured now so the labels exist when
+    # there is something to train — the same reason AuditFeedbackDocument was worth building
+    # before the model that reads it.
+    "mispaired_missing_counterpart",  # reported ADDED/REMOVED, but the other drawing does have a match
+    "mispaired_wrong_match",          # paired two entities that are not the same thing
 ]
 
 
