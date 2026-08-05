@@ -78,6 +78,13 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
     coordinates: matchingViolation?.coordinates ?? null,
     corrected_category: extra?.corrected_category ?? null,
     corrected_value: extra?.corrected_value ?? null,
+    // Same contract as ChecklistPanel.tsx — send the raw texts, status, category, feature and
+    // coordinates; leave the three derived features null. The backend recomputes them from
+    // those inputs (feature_extractor.build_feature_row) using the runtime differ's own
+    // normalization, and the INFERENCE path never supplies them either, so null is what keeps
+    // training and inference on one definition. Computing them here would be train/serve skew:
+    // there is no SequenceMatcher or SpatialDiffer._normalize_text in TypeScript.
+    // Pinned by tests/test_stage_0a_measurement_unblocking.py.
     finding_snapshot: {
       ref_text: matchingViolation?.original_value ?? row.original ?? null,
       rev_text: matchingViolation?.description ?? row.kmti ?? null,

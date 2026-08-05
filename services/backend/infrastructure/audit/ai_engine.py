@@ -159,6 +159,15 @@ class AIEngine:
 
         client = genai.Client(api_key=api_key)
 
+        # Model is env-driven (settings.GEMINI_MODEL_*, see config.py) instead of hardcoded.
+        # This was pinned to "gemini-2.0-flash", which Google shut down June 1 2026 — and
+        # because run_pass swallows its own exception and returns [], the standards pass has
+        # been silently returning "no violations" ever since rather than failing loudly.
+        # PRO first: this is the accuracy-sensitive standards/visual inspection pass, not chat.
+        primary_model = settings.GEMINI_MODEL_PRO
+        fallback_model = settings.GEMINI_MODEL_FALLBACK
+        models_to_try = [primary_model] if primary_model == fallback_model else [primary_model, fallback_model]
+
         async def run_pass(instruction: str, prompt_text: str, is_visual: bool) -> list:
             content_parts = []
             if is_visual and png_bytes:
@@ -167,19 +176,25 @@ class AIEngine:
                 )
             content_parts.append(genai_types.Part.from_text(text=f"{instruction}\n\n{prompt_text}"))
 
-            try:
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=content_parts,
-                    config=genai_types.GenerateContentConfig(
-                        response_mime_type="application/json"
+            last_err: Exception | None = None
+            for model_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=content_parts,
+                        config=genai_types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
                     )
-                )
-                res_data = json.loads(response.text.strip())
-                return res_data.get("violations", [])
-            except Exception as e:
-                logger.error(f"Pass failed: {e}")
-                return []
+                    res_data = json.loads(response.text.strip())
+                    return res_data.get("violations", [])
+                except Exception as e:
+                    last_err = e
+                    logger.warning(f"Standards pass failed on model '{model_name}': {e}")
+            # Still [] so one bad pass doesn't sink the audit, but the model is now named in
+            # the log — the old message could not distinguish a dead model from a clean drawing.
+            logger.error(f"Standards pass failed on every model in {models_to_try}: {last_err}")
+            return []
 
         # Run both passes asynchronously
         import asyncio

@@ -6,7 +6,7 @@ status: active
 current_rung: 0
 rung_evidence: none
 date: 2026-08-05
-verified-against: cache v37, no eval corpus yet
+verified-against: cache v38, no eval corpus yet
 ---
 
 # 📊 AI Maturity Status — the living ledger
@@ -99,7 +99,7 @@ The system is **not on rung 1**. This is a measured statement about the code, no
 | Embeddings | **Fake.** `infrastructure/ai/embeddings/local_embedding_model.py` returns `SHA-256(text)`-seeded Gaussian noise, plus `+100.0` bumps on dims 0/100/200 for the English keywords `tolerance/hole`, `cable/rubber`, `column/wind` — words that do not occur in this Japanese CAD domain. The docstring claims SentenceTransformers/ONNX; `_load_model` assigns the *string* `"ONNX_Quantized_MiniLM"`. |
 | Vector store | **Fake.** `lancedb_manager.py` is not LanceDB — one `index_shards.json` + a numpy loop. The store is empty. |
 | Retrieval | `few_shot_retriever.py` = `find(client_name).sort("-created_at").limit(5)`. A recency filter with no query and no similarity. It feeds only the Gemini system prompt — which the default method never invokes. |
-| Learned model | **Real and wired**, but **inert**: 21 verdict labels against `MIN_TRAIN = 40`, `metrics: {}`. Only exact-match overrides fire today. See [[Gotcha - Learned Corrections Model and Post-Cache Inference]]. |
+| Learned model | **Real and wired**, but **inert**: 21 verdict labels against `MIN_TRAIN = 40`, `metrics: {}`. Only exact-match overrides fire today. The 21 labels are **sound**, not degraded — see the 2026-08-05 Stage 0a work-log entry. See [[Gotcha - Learned Corrections Model and Post-Cache Inference]]. |
 | Evaluation | **None.** No corpus, no fixtures in-repo, no precision/recall/F1 anywhere. |
 | Observability | **None.** `storage/ai-artifacts/{prompts,responses,embeddings}/` all exist and are all empty. |
 
@@ -135,23 +135,18 @@ Not everything is a gap, and the plan is built on these:
 
 > **One action. Not a backlog.**
 
-**Stage 0a — unblock and de-corrupt.** Three bugs actively poison measurement, so they land before
-the harness that would measure them.
+**Stage 0b — the fixture corpus.** Stage 0a is done (see the work log), so nothing is left
+poisoning a measurement. The next action is the first thing that produces a number:
 
-1. `full_ai_orchestrator.py:75` — `client_name = getattr(request, ...)` inside
-   `generate_ai_vision_candidates`, whose signature at `:41` has **no `request` parameter**.
-   NameError. With zero `hybrid` cache entries to mask it, **`hybrid` is 100% broken today.**
-   Thread `client_name: str | None = None` through from `hybrid_orchestrator.py:159`.
-2. `ai_engine.py:173` — hardcoded `model="gemini-2.0-flash"`, retired 2026-06-01 per `config.py:60`.
-   Read `settings.GEMINI_MODEL_*`. Until fixed, the standards AI pass silently returns `[]`.
-3. `CorrectionControls.tsx:89-91` — hardcodes `text_similarity`, `match_distance` and
-   `is_numericish` to `null`. **Fix before collecting another label** — degraded labels cannot be
-   retroactively repaired.
+- **≥8 human-labelled drawing pairs, 3 held out permanently.** Annotate per
+  [[Eval Corpus Annotation Guideline]]. This is the binding constraint on the whole ladder —
+  every stage above measures against this corpus, and no amount of engine work substitutes for it.
+- Held-out pairs are chosen **before** anyone looks at engine output on them, and never inspected
+  while tuning. Stage 0.5's sweep is a coordinate descent over 16 constants; without a clean
+  holdout it will fit them to the corpus and report an F1 that does not exist.
 
-Prerequisite: land or revert the uncommitted working set first (`orchestrator.py`,
-`cache_manager.py`, `full_ai_orchestrator.py`, `hybrid_orchestrator.py`, `feature_classifier.py`,
-`audits.py`, plus 7 frontend files). **A baseline measured against uncommitted code is not a
-baseline.**
+Then 0c (mutation generator) → 0d (scorer with **recall**) → 0e (`tools/eval.py`), which is the
+first point at which the rung claim above can move off `none`.
 
 ---
 
@@ -161,27 +156,31 @@ Exit criteria are reproduced verbatim from [[AI Maturity Ladder — Staged Plan]
 a judgement call. Tick a box only when its criterion is *measured*, not when the code merely exists.
 
 ### Stage 0 — Measurement substrate → unlocks rung 1
-- [ ] 0a — three poisoning bugs fixed; working set clean
+- [x] 0a — poisoning bugs fixed; working set clean *(2026-08-05 — 2 of the 3 were real; the third
+      was not a defect. See the work log.)*
 - [ ] 0b — fixture corpus: ≥8 human-labelled pairs, 3 held out permanently
 - [ ] 0c — mutation generator incl. `null_mutation` (the pure precision probe)
 - [ ] 0d — scorer emitting per-category precision / **recall** / F1, handle-first matching
 - [ ] 0e — `tools/eval.py` runner + CLI
 - [ ] 0f — cassette + trace capture, wired only at `gemini_client.py`
 - [ ] 0g — the 3 never-collected `services/backend/tests/` files relocated and passing
-- [ ] 0h — `finding_classifier.joblib` moved out of the vault; vault docs git-tracked
+- [ ] 0h — `finding_classifier.joblib` moved out of the vault; ~~vault docs git-tracked~~
+      *(the docs half landed 2026-08-05; the bundle is still in `09 - Learned Models/`, now
+      explicitly gitignored so it cannot be committed by accident)*
 
 > **Exit:** `tools/eval.py --method rag` prints per-category precision/recall/F1 over ≥8 human pairs
-> and ≥30 mutation pairs, in <60 s, with **zero network calls**, green in CI. A published v37
+> and ≥30 mutation pairs, in <60 s, with **zero network calls**, green in CI. A published v38
 > baseline exists for all 6 categories. `pytest tests/ -q` green including the 3 relocated tests.
 
 ### Stage 0.5 — Calibration
 - [ ] `ComparisonParams` extracted; refactor proven **byte-identical** on the corpus
 - [ ] Matching constants swept (coordinate descent, leave-one-pair-out CV)
 - [ ] Zone constants swept separately, with "pinned templates still resolve" asserted
-- [ ] `COMPARISON_CACHE_VERSION` bumped to v38; `rag` renamed `deterministic` with a compat alias
+- [ ] `COMPARISON_CACHE_VERSION` bumped (v39 — v38 was spent on 2026-08-05); `rag` renamed
+      `deterministic` with a compat alias
 
 > **Exit:** measured-optimal values for ≥10 of 16 constants, each with a recorded held-out ΔF1 and
-> stated confidence. Aggregate F1 ≥0.05 over the v37 baseline on held-out human pairs — **or a
+> stated confidence. Aggregate F1 ≥0.05 over the v38 baseline on held-out human pairs — **or a
 > documented finding that the defaults were already near-optimal**, which is a legitimate result.
 
 ### Stage 1 — Real retrieval → **rung 1: Basic RAG**
@@ -237,6 +236,8 @@ explicitly that it is unmeasured — **never omit it.**
 | Date | What shipped | Stage | Measured effect | Cache |
 | :--- | :--- | :--- | :--- | :--- |
 | 2026-08-05 | Ladder planned; this ledger, [[AI Maturity Ladder — Staged Plan]], [[ADR-003 AI Maturity Ladder]] and [[Eval Corpus Annotation Guideline]] created. Rung recorded as 0 with no evidence, per the evidence rule. | — | n/a — documentation only | — |
+| 2026-08-05 | **Working set landed** (`ce9fd5c`), clearing the Stage 0a prerequisite. SSE progress streaming for all four comparison methods; section designations (`Ａ－Ａ`) and their cut-arrow labels classified as `additional_views` and then suppressed from the checklist behind `DROP_SECTION_CALLOUT_LABELS`; `docs/vault/` git-tracked for the first time (46 notes previously existed on one machine), with client-domain rules and the model bundle carved out. Four defects in the working set were fixed before landing: three docstrings demoted to dead string literals by callback insertions, deleted Phase-7 cache rationale restored, an SSE task with no strong reference (GC could hang the stream), and an error-boundary keyed on connection status that remounted every child on any blip. | 0a (prereq) | **Unmeasured** — no corpus exists yet, which is the point of Stage 0b. The section-callout change removes 3 findings from the M7452A1N01 pair by construction; whether that is a precision gain or a recall loss is exactly what cannot be stated today. | **v37 → v38**, candidates v2 → v3 |
+| 2026-08-05 | **Stage 0a complete.** (1) `generate_ai_vision_candidates` took `client_name` as a parameter instead of reading it off a `request` that was never in scope — that NameError made `hybrid` 100% non-functional, unmasked by any cache. (2) The standards pass in `ai_engine.py` reads `settings.GEMINI_MODEL_PRO` with a fallback instead of the retired `gemini-2.0-flash`, and now names the failing model in the log rather than swallowing the error into an empty violations list. (3) **Item 3 was not a defect** — see the correction below. Pinned by `tests/test_stage_0a_measurement_unblocking.py` (7 tests). | 0a | **Unmeasured for (1) and (2)** — both paths need a live Gemini key, and no `hybrid`/`rag_ai` fixture exists. What *is* established: `hybrid` could not previously complete a single run, so any measurement of it before today would have been a measurement of a NameError. (3) is measured in the sense that the equality it rests on is asserted by test. | — |
 
 ---
 
@@ -249,6 +250,7 @@ and valuable outcome.
 
 | Idea | Verdict | Why |
 | :--- | :--- | :--- |
+| Populate `text_similarity` / `match_distance` / `is_numericish` client-side in `CorrectionControls.tsx` — recorded above as Stage 0a item 3, "degraded labels that cannot be retroactively repaired" | **Rejected — the premise was wrong** (2026-08-05) | The nulls are not a defect and the 21 existing labels are not degraded. `feature_extractor.build_feature_row` derives all three from the raw texts and coordinates whenever they arrive as `None`, and the **inference** path (`features_from_marking`) never supplies them either — so `null` from the client is precisely what keeps training and inference on one definition. Computing them in TypeScript would introduce train/serve skew: there is no `SequenceMatcher` and no `SpatialDiffer._normalize_text` in JS, so the training-side number would systematically differ from the inference-side one. `ChecklistPanel.tsx:101-104` already said so; `CorrectionControls.tsx` was simply missing the comment, which is what made it look like an oversight. Action taken: the comment was added and the equality pinned by `test_training_and_inference_agree_on_the_derived_features`. |
 | Replay evaluation over `storage/cache/` | **Rejected before implementation** (2026-08-05) | Of 36 cache files, every `gemini_comparison_*` is method `rag`, most are test placeholders, only 2 are real v37 entries, and there are **zero** `hybrid` / `rag_ai` / `ai_vision` entries. There is no LLM output in the repo to replay. Superseded by: call the pure `generate_deterministic_candidates` directly, and build a record/replay cassette for the LLM paths. |
 | Contrastive fine-tuning of an embedding model on feedback | **Rejected for now** (2026-08-05) | Infeasible at 21 labels. The binding constraint at every rung is label count, not model class. Superseded by a reranker over the existing `FindingClassifier` machinery. Revisit above ~2000 labels. |
 | Gemini supervised tuning | **Rejected for now** (2026-08-05) | Breaks offline capability, cannot ship in the Tauri bundle, needs Vertex-side infrastructure, and tunes to noise at ~300 examples. Decisively: **the default method contains no LLM at all.** Revisit only if `hybrid` becomes default *and* labels exceed ~2000. |

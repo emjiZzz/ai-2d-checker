@@ -43,11 +43,17 @@ async def generate_ai_vision_candidates(
     rev_drawing: DrawingDocument,
     ref_entities: list,
     rev_entities: list,
+    client_name: str | None = None,
 ) -> tuple[list[ComparisonCandidate], str]:
     """
     Generator B (AI Vision): independent full-drawing scan using only the two rendered
     PNGs — no structured CAD context, no BOM/title tables in the prompt.
     Returns raw AI Vision candidates tagged origin="ai_vision".
+
+    `client_name` is passed in rather than read off a request object, because this function
+    has no request to read. It previously did `getattr(request, "client_name", None)` with no
+    `request` in scope, which raised NameError on every call and — with no `hybrid` entry in
+    any cache to mask it — made the entire `hybrid` method non-functional.
 
     No `progress_callback` here on purpose. Its only caller is hybrid_orchestrator, which runs
     this concurrently with Generator A and therefore owns the stage labels itself — a callback
@@ -72,7 +78,6 @@ async def generate_ai_vision_candidates(
         rev_entities, render_bounds=(rev_drawing.metadata or {}).get("render_bounds")
     )
 
-    client_name = getattr(request, "client_name", None)
     system_instruction = await build_full_system_instruction(client_name=client_name)
     prompt_text = (
         f"=== REFERENCE DRAWING METADATA ===\n"

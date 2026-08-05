@@ -254,7 +254,10 @@ async def perform_hybrid_comparison(
             except Exception as parse_err:
                 logger.warning(f"[hybrid] Failed to parse cached Generator B candidates, recomputing: {parse_err}")
 
-        result = await generate_ai_vision_candidates(ref_drawing, rev_drawing, ref_entities, rev_entities)
+        result = await generate_ai_vision_candidates(
+            ref_drawing, rev_drawing, ref_entities, rev_entities,
+            client_name=getattr(request, "client_name", None),
+        )
         candidates, model_used_result = result
         try:
             ComparisonCacheManager.set_cached_candidates(
