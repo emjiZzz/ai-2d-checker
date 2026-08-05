@@ -39,8 +39,27 @@ CATEGORY_CONF = _float("LEARNING_CATEGORY_CONF", 0.80)
 # still captured for training). See the vault gotcha note.
 SPATIAL_CATEGORIES = ("drawing_views", "notes_section", "isometric_view")
 
-# Vault storage (user decision: everything under the vault).
+# --- where the trained bundle lives (Stage 0h) -------------------------------------------
+#
+# It used to live only in the vault, under `09 - Learned Models/`. That directory is
+# gitignored, so the model could not be committed, diffed, or shipped in the Tauri bundle —
+# and a model that cannot be versioned is not trainable infrastructure. It blocked rung 3
+# outright. See docs/vault/01 - Architecture/AI Maturity Ladder — Staged Plan.md, Stage 0h.
+#
+# Resolution order for *reads* is env -> storage -> vault; *writes* always go to the first
+# two. The vault stays readable so an existing install keeps working until its next retrain,
+# and is deprecated rather than removed.
+MODEL_DIR_ENV = "LEARNED_MODEL_DIR"
+
+# Relative to `services/backend/`. The `.joblib` payload is gitignored (it is a build
+# artifact); the `.meta.json` beside it IS committed, so training runs are diffable in git
+# without carrying a binary.
+MODEL_STORAGE_DIRNAME = "storage/models"
+
+# Deprecated read-only fallback. Still the home of `Model Card.md`, which is documentation
+# for humans and belongs in the vault.
 MODEL_DIRNAME = "09 - Learned Models"
+
 MODEL_FILENAME = "finding_classifier.joblib"
 META_FILENAME = "finding_classifier.meta.json"
 CARD_FILENAME = "Model Card.md"

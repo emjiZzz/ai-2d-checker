@@ -1,13 +1,32 @@
-"""Process-singleton that owns the loaded model bundle and resolves its vault location.
+"""Process-singleton that owns the loaded model bundle and resolves where it lives.
 
 Mirrors VaultSyncManager's get_instance()/reload pattern: the bundle is loaded once and
 reused; a retrain calls reload() to force the in-process copy to pick up the new artifact.
-The model lives in the Obsidian vault (user decision) under `09 - Learned Models/`, resolved
-through the SAME VaultSyncManager.vault_path that AutoDocEngine uses for `08 - ...`.
+
+**Stage 0h moved the artifact out of the vault.** It used to live only under
+`docs/vault/09 - Learned Models/`, which is gitignored — so the model could not be
+committed, diffed, or shipped inside the Tauri bundle, and existed on exactly one machine.
+That blocked rung 3 outright: a model that cannot be versioned is not trainable
+infrastructure.
+
+Resolution order:
+
+| | reads | writes |
+| :--- | :--- | :--- |
+| `LEARNED_MODEL_DIR` env | yes | yes |
+| `services/backend/storage/models/` | yes | yes |
+| `docs/vault/09 - Learned Models/` | yes, **deprecated** | no |
+
+The vault stays *readable* so an install that trained before this change keeps working until
+its next retrain, at which point the artifact lands in the new location on its own. The
+`.joblib` payload is gitignored there; the `.meta.json` beside it is committed, so a training
+run is diffable in git without carrying a binary. `Model Card.md` still writes to the vault —
+it is documentation for humans, not a build artifact.
 """
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -25,17 +44,57 @@ except Exception:  # pragma: no cover - test/util import fallback
     logger = logging.getLogger("learning.model_holder")
 
 
+def _backend_root() -> Path:
+    """`services/backend/`, from this file's own location."""
+    return Path(__file__).resolve().parent.parent.parent
+
+
 def learned_model_dir() -> Path:
-    """`<vault>/09 - Learned Models/`, created on demand. Reuses the vault-path resolution
-    already centralized in VaultSyncManager rather than hardcoding a second path."""
-    vault_path = VaultSyncManager.get_instance().vault_path
-    d = vault_path / config.MODEL_DIRNAME
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """Where a retrain **writes**: the env override, else `services/backend/storage/models/`.
+
+    Never the vault. A write there would recreate the situation Stage 0h exists to end.
+    """
+    override = os.environ.get(config.MODEL_DIR_ENV)
+    directory = Path(override) if override else _backend_root() / config.MODEL_STORAGE_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def legacy_model_dir() -> Path:
+    """`<vault>/09 - Learned Models/` — deprecated, read-only, and **not** created on demand.
+
+    Creating it would resurrect an empty directory in a tree the model no longer belongs in.
+    """
+    return VaultSyncManager.get_instance().vault_path / config.MODEL_DIRNAME
+
+
+def model_card_dir() -> Path:
+    """The vault, still. `Model Card.md` is the human-readable surface, not a build artifact,
+    and documentation is what the vault is for."""
+    directory = legacy_model_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def model_path() -> Path:
-    return learned_model_dir() / config.MODEL_FILENAME
+    """Where the bundle is **read** from: the new location if it holds one, else the vault.
+
+    Falling back rather than migrating silently. A copy would double the artifact on disk
+    with no record of which is authoritative; the next retrain resolves it by writing to the
+    new location, and the log line below says which one answered.
+    """
+    current = learned_model_dir() / config.MODEL_FILENAME
+    if current.exists():
+        return current
+    legacy = legacy_model_dir() / config.MODEL_FILENAME
+    if legacy.exists():
+        logger.warning(
+            f"[learning] Loading the model bundle from its deprecated vault location "
+            f"({legacy}). The vault is gitignored, so this artifact cannot be committed or "
+            f"shipped. It will move to {current.parent} on the next retrain (Stage 0h)."
+        )
+        return legacy
+    return current
 
 
 def meta_path() -> Path:
@@ -43,8 +102,23 @@ def meta_path() -> Path:
 
 
 def save_bundle(bundle: dict) -> None:
-    joblib.dump(bundle, model_path())
-    meta = {k: bundle.get(k) for k in ("schema", "trained_at", "n_total", "n_verdict", "n_category", "min_train", "metrics")}
+    # Deliberately `learned_model_dir()`, not `model_path()`: a retrain always writes to the
+    # current location even when the bundle it replaces was read from the vault. That is
+    # what makes the migration happen by itself rather than needing a script.
+    target = learned_model_dir() / config.MODEL_FILENAME
+    joblib.dump(bundle, target)
+    meta = {
+        k: bundle.get(k)
+        for k in (
+            "schema",
+            "trained_at",
+            "n_total",
+            "n_verdict",
+            "n_category",
+            "min_train",
+            "metrics",
+        )
+    }
     with open(meta_path(), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2, default=str)
 

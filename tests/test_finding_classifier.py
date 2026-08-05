@@ -73,6 +73,12 @@ def test_build_bundle_abstains_below_min_train(monkeypatch):
 
 
 def test_bundle_save_load_roundtrip(tmp_path, monkeypatch):
+    # Stage 0h moved the artifact out of the vault, so redirecting `vault_path` no longer
+    # contains a write — `learned_model_dir()` reads LEARNED_MODEL_DIR and otherwise lands
+    # in `services/backend/storage/models/`. Without this env override the test writes a
+    # 133 KB bundle into the working tree and the next run loads *it* instead of the real
+    # one. Both are set: the vault redirect still contains the Model Card.
+    monkeypatch.setenv(config.MODEL_DIR_ENV, str(tmp_path / "models"))
     monkeypatch.setattr(VaultSyncManager.get_instance(), "vault_path", tmp_path)
     monkeypatch.setattr(config, "MIN_TRAIN", 6)
     model_holder.LearnedModelHolder._instance = None
@@ -86,6 +92,10 @@ def test_bundle_save_load_roundtrip(tmp_path, monkeypatch):
         holder.reload()
         assert holder.bundle is not None
         assert holder.verdict_ready() is True
-        assert (tmp_path / config.MODEL_DIRNAME / config.MODEL_FILENAME).exists()
+        assert (tmp_path / "models" / config.MODEL_FILENAME).exists()
+        assert not (tmp_path / config.MODEL_DIRNAME / config.MODEL_FILENAME).exists(), (
+            "The bundle must not be written into the vault — that is the situation "
+            "Stage 0h exists to end."
+        )
     finally:
         model_holder.LearnedModelHolder._instance = None

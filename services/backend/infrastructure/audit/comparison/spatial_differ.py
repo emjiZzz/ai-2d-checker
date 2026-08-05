@@ -6,6 +6,7 @@ from typing import Optional
 import re
 
 from ...utils.text import strip_mtext
+from .params import DEFAULT_PARAMS
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +30,15 @@ logger = logging.getLogger(__name__)
 # The normalized values below are direct conversions of the absolute ones, against the corpus
 # reference sheet (1155 x 816.75, diagonal 1414.6). They deliberately preserve the existing
 # tuning rather than re-tuning it: this change fixes scale-blindness, nothing else.
-STRICT_RADIUS_NORM = 0.005      # was 5.0 units
-TWIN_THRESHOLD_NORM = 0.010     # was 10.0 units
-FUZZY_THRESHOLD_NORM = 0.150    # was 150.0 units
+STRICT_RADIUS_NORM = DEFAULT_PARAMS.strict_radius_norm      # was 5.0 units
+TWIN_THRESHOLD_NORM = DEFAULT_PARAMS.twin_threshold_norm     # was 10.0 units
+FUZZY_THRESHOLD_NORM = DEFAULT_PARAMS.fuzzy_threshold_norm    # was 150.0 units
 
 # Absolute fallbacks in CAD units, used only when a drawing has no usable render_bounds.
 # Scale-blind by construction -- see above.
-STRICT_RADIUS_ABS = 5.0
-TWIN_THRESHOLD_ABS = 10.0
-FUZZY_THRESHOLD_ABS = 150.0
+STRICT_RADIUS_ABS = DEFAULT_PARAMS.strict_radius_abs
+TWIN_THRESHOLD_ABS = DEFAULT_PARAMS.twin_threshold_abs
+FUZZY_THRESHOLD_ABS = DEFAULT_PARAMS.fuzzy_threshold_abs
 
 # Entity types carrying a value worth comparing. DIMENSION belongs here because a dimension IS
 # the engineering content of a drawing view. While the pools were text-only, every dimension on
@@ -63,7 +64,7 @@ MEASUREMENT_DECIMALS = 6
 # on the KEMCO pair, '2 ロール： 4 (2x2台)' was reported as CHANGED into 'タップ、キリ穴は面取り
 # 仕上げのこと' (0.00 char similarity), and '4 ロール：12' into '１' (0.14). A genuine edit on the
 # same corpus -- 'シム表' -> 'Ｌ　シム表　ｌ' -- scores 0.75, so 0.40 sits cleanly in the gap.
-CHANGED_SIMILARITY_FLOOR = 0.40
+CHANGED_SIMILARITY_FLOOR = DEFAULT_PARAMS.changed_similarity_floor
 
 # Values made entirely of digits and dimension/measurement punctuation. Two such values
 # ('130' -> '125') share few characters yet are a real edit, so they bypass the similarity

@@ -42,6 +42,7 @@ from difflib import SequenceMatcher
 from typing import Any, Optional
 
 from .spatial_differ import SpatialDiffer, _usable_bounds
+from .params import DEFAULT_PARAMS
 
 # ---------------------------------------------------------------------------
 # Fuzzy pass: content that both MOVED and CHANGED
@@ -71,10 +72,10 @@ from .spatial_differ import SpatialDiffer, _usable_bounds
 #
 # Short strings are excluded outright: "8.7" vs "8.65" scores 0.57 and "45" vs "46" scores
 # 0.5, so no threshold separates a real edit from a coincidence at that length.
-SIMILARITY_THRESHOLD = 0.82
-AMBIGUITY_MARGIN = 0.08
-MIN_FUZZY_LENGTH = 4
-MAX_NORMALIZED_MOVE = 0.25
+SIMILARITY_THRESHOLD = DEFAULT_PARAMS.similarity_threshold
+AMBIGUITY_MARGIN = DEFAULT_PARAMS.ambiguity_margin
+MIN_FUZZY_LENGTH = DEFAULT_PARAMS.min_fuzzy_length
+MAX_NORMALIZED_MOVE = DEFAULT_PARAMS.max_normalized_move
 
 
 def _key(marking: dict) -> str:

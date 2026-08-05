@@ -1,0 +1,1568 @@
+{
+  "guideline_version": "2026-08-05",
+  "pairs": [
+    {
+      "held_out": false,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "reference vs FSRS2_kmti, re-ingested 2026-08-05. Engine output already inspected - not eligible as a held-out pair.",
+      "pair_id": "M7452A0N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "b5d425b3df9223951180f88df7579a4b163425d2758d9ce2419c4c5c36bb2569",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "befb518560e048496eef413f819d7f1213aa62c631d2def00bf5b50cb2853bf9",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "5037d13b15c8d1cfa5e76b581c4b3b089c86fa614dd08bf37a7d4d26948d15ef",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "translate_entities"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 5020,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-move000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut2f0170bb6ccfe01010dc7",
+        "drawing_sha256": "ee9f194dbf894cbd81612d9c8cd810fda20db0a2f4362fca8d598f56bd778b09",
+        "entities_sha256": "ab328daf3e97544e37194a7315caff1d4f22988098f3c8198a172abf7ae04e71",
+        "entity_count": 528,
+        "file_hash": "2f0170bb6ccfe01010dc715d5090e9496aefc762a638987a7f99907bd493db75",
+        "file_name": "M7452A0N01-ref-move000.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 2,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "c5c962a842220a355e8a5c86c423d232813362d901b7eb56235b14d694e51062",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "edit_text",
+          "insert_text"
+        ],
+        "operators_rejected": [
+          "edit_title_field (no eligible target)"
+        ],
+        "schema_version": 1,
+        "seed": 1000,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut945c4a54bad6b3d8e590e",
+        "drawing_sha256": "ff3b5707987b5e5b660f333ad1f248219fe0c762001ec0138c508635ebbf45aa",
+        "entities_sha256": "54fcd01c577b41defe81204173c3b74a9dd64de6dc122fbd116c23cd5efcfd13",
+        "entity_count": 529,
+        "file_hash": "945c4a54bad6b3d8e590e40d01ec90a6daa3ece9f1d3e8379d7fe27f0c27b360",
+        "file_name": "M7452A0N01-ref-mut000.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "7a3cd7f385e3ae5bd53c69f5197067598ebb234e96422a1369dd1d7692a82709",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "edit_text",
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [
+          "edit_title_field (no eligible target)"
+        ],
+        "schema_version": 1,
+        "seed": 1001,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut001",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut76d5a14f1c4f5afd42bd9",
+        "drawing_sha256": "762d6b37ff376e85a136dc12fb51eda81ad3300c97f4f3188a09a34c2414f5eb",
+        "entities_sha256": "f46e77ed9e92053916297132909a18eb810faf9434d1d52bd79316963111ca38",
+        "entity_count": 528,
+        "file_hash": "76d5a14f1c4f5afd42bd95f0dcff533e7e83226eb9a9ffd3fdf6797db0c65114",
+        "file_name": "M7452A0N01-ref-mut001.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "ca79bf7e6b8f51d44023d1033e06ff2ab2d7041888b9d07883500d9b85e2ff6d",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "insert_text",
+          "edit_text",
+          "edit_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1002,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut002",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut539c2a8c01f1495d181e9",
+        "drawing_sha256": "29fdff524e4d5cf77a4be885ba6a4c7327e0944f171acef004b4945839dfdbf8",
+        "entities_sha256": "43467f36bf209673ef63c7db609f62e6060141031a9433b04af6b016b26f51d6",
+        "entity_count": 529,
+        "file_hash": "539c2a8c01f1495d181e9c97a20e4c0601d819bc87b97d90d101ffc8e0929150",
+        "file_name": "M7452A0N01-ref-mut002.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 2,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "f511734e4ff5ce3added838bcae842ae52827db8caffece798bce7889ffcd823",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "insert_text",
+          "insert_text"
+        ],
+        "operators_rejected": [
+          "edit_title_field (no eligible target)"
+        ],
+        "schema_version": 1,
+        "seed": 1003,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut003",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut1345b4e3944b604691be2",
+        "drawing_sha256": "5b690e79039784bb7d79d776a275ccd13716381175e86679a1d5ea88b783b253",
+        "entities_sha256": "5d1ea4b2b3751af305d3413d5c60b4a929033b26c0fd8d7800abe129614d20c6",
+        "entity_count": 530,
+        "file_hash": "1345b4e3944b604691be28c1a171e99f6b0d325e5dcbd40f3ddc35acd3399593",
+        "file_name": "M7452A0N01-ref-mut003.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "bccdfba4d9641a4a770676ca10d0e7786ef10fa120b1602ef216da2d7af37227",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "translate_entities",
+          "edit_dimension_measurement"
+        ],
+        "operators_rejected": [
+          "edit_title_field (no eligible target)"
+        ],
+        "schema_version": 1,
+        "seed": 1004,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut004",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut75952fb94d43735bb3cd7",
+        "drawing_sha256": "d05e0566a8911dbbe9969513f6064dda298680da7aae399d09d244583d4440c2",
+        "entities_sha256": "fc74e23ed3c345aea9b9aade128332502e40bc278eca25085f4a57aefbd311a8",
+        "entity_count": 528,
+        "file_hash": "75952fb94d43735bb3cd717dd957abacaf55ee1608468ed0088891bb4170a36a",
+        "file_name": "M7452A0N01-ref-mut004.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "89898554f424b4cb6758dda2bad28792c13fbe1ab45d098f24ca45868d490621",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "translate_entities",
+          "edit_dimension_measurement",
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1005,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut005",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutdb0f5e1f616beb6acf497",
+        "drawing_sha256": "5a07cd61c3d693f63c4f0456b87794beb3795fb4f113a8716c6709757fbd240a",
+        "entities_sha256": "cd9e837b802a00cb170f7fdd94a734598517e6122bc309d5673e909e6d5e8fcc",
+        "entity_count": 528,
+        "file_hash": "db0f5e1f616beb6acf497e26ef50d8b03b23d637671313f92d28d8cd01e51948",
+        "file_name": "M7452A0N01-ref-mut005.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 2,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "365730651253f730e32f058343eacd6dad92123fe0ae43d129a373c17e84058b",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "edit_text",
+          "edit_text",
+          "translate_entities"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1006,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut006",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut983c375643c7a501f5273",
+        "drawing_sha256": "1ba36fa8e037e48530a141631b0e6fa631bf0b68b4f562e56e3f38d03cd99c25",
+        "entities_sha256": "589cce6553a505ae7952fef439e4d3b45458b4db337c4e268b686f1dcc22a1f2",
+        "entity_count": 528,
+        "file_hash": "983c375643c7a501f52733568277e768075265f58f1d57d7d8a74d9dec6fb983",
+        "file_name": "M7452A0N01-ref-mut006.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "332b26aad32cd837ab4c9eeb61ff498398dd12bfbc353b1943c87dd0731b7aec",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "restyle_dimension_text",
+          "edit_dimension_measurement",
+          "translate_entities"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1007,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut007",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutf6818f76d3facfa37b4cf",
+        "drawing_sha256": "09aad5e2c78cebe116b2648c1a99dd768c6b94fd40c06ddaacad5de443ebb92e",
+        "entities_sha256": "9dc5c80f99dd560f9c240a04ceeb72e38bc24e0d62f9ff6f2056ddbf2bf1f295",
+        "entity_count": 528,
+        "file_hash": "f6818f76d3facfa37b4cf648ed449c04164e79ba02fcd893957b73bae9d1f8ab",
+        "file_name": "M7452A0N01-ref-mut007.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "caefa6ae976aa3aefd25ff60a3a6a655542f8533a5491ab716fc454fd3053a7b",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "translate_entities",
+          "delete_text"
+        ],
+        "operators_rejected": [
+          "edit_title_field (no eligible target)"
+        ],
+        "schema_version": 1,
+        "seed": 1008,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut008",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutd5ecba8a251b2abf6d3f0",
+        "drawing_sha256": "e32dac3ca7b95b6a9f3b2be60f936320c59be68e8e58c2ce6b21032b3dedc919",
+        "entities_sha256": "03d0a97f810dd07476ab9f5745e333302d5b31cbfacfa6a13b24d5ff669adb54",
+        "entity_count": 527,
+        "file_hash": "d5ecba8a251b2abf6d3f0b9faabbbdade381b464bde4a86c4b636778e264b979",
+        "file_name": "M7452A0N01-ref-mut008.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "f84a85931907063db4693e1efbe6dfd0e80fcd31218dbe2379a8834729a42464",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "null_mutation"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1009,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut009",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut877fe61a1199a0103535b",
+        "drawing_sha256": "854c7e4af72d0aed07cf4770edd1240641be88656fc78cec673579222ee19238",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "877fe61a1199a0103535b89a446975c435de5d52c9bc9ee3ae4b83ffc3cba6a4",
+        "file_name": "M7452A0N01-ref-mut009.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 2,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "e717d045b69e1fd439ba4ae160250611cfff068d81ca3bb8ff08888f626e7ce9",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "restyle_dimension_text",
+          "delete_text",
+          "edit_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1010,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut010",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut9a121e4b01e0271313502",
+        "drawing_sha256": "8e09135dbcf3428375e8895bd09e9a84b2ad77496ac45fdb5b2cc7543b9c82cf",
+        "entities_sha256": "9d56c78a2aba62fcd655d1cc80e0137401af5b7c51a46fc300f00535ba41535a",
+        "entity_count": 527,
+        "file_hash": "9a121e4b01e0271313502f0903d6e6d9d11bff4081582e722371db86c5054eaa",
+        "file_name": "M7452A0N01-ref-mut010.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "1ce4c9f306143b812dd4e64e5eca7e9fe8541201462d6d08730f283756d72fc4",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "edit_text",
+          "edit_text",
+          "insert_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1011,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut011",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutfb7bffb8fded4380b1ec1",
+        "drawing_sha256": "e985533ac902b607e96106e964b026e0a2b5a2b5105525a0eaa8dcbc0aa08a0c",
+        "entities_sha256": "6988fffcc3dcd7524bf28dbcd7c24a227d1d66f6963d168f5a98eb3880993035",
+        "entity_count": 529,
+        "file_hash": "fb7bffb8fded4380b1ec1fdc204dca27835a442dfe78ee3163bd080d87a91e46",
+        "file_name": "M7452A0N01-ref-mut011.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "df3b2cd522e6aec38ff899d82edf64d3a409f69fec738e924a4cce1e1e551b15",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "edit_text",
+          "edit_text",
+          "edit_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1012,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut012",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut88fb8377322d37a6af66f",
+        "drawing_sha256": "55a9e7e3f4974fd04095521ec880b343c6cfa9dbff22aaa403b8cc8f01709e23",
+        "entities_sha256": "2b91fb581b4f22c5c2391a75fb50c7fe4dff7fe1f8ad8d5bdd1f3a02c6ad328a",
+        "entity_count": 528,
+        "file_hash": "88fb8377322d37a6af66ff5e6a0a191feb0483738ed6f7fd46bad3eee008699a",
+        "file_name": "M7452A0N01-ref-mut012.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "fb774a7733f87f32fe8bc22d19be6aa9ce43fafaf18637efff495269f966dbe1",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [
+          "edit_title_field (no eligible target)",
+          "edit_title_field (no eligible target)"
+        ],
+        "schema_version": 1,
+        "seed": 1013,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut013",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutb0fc75080f6130e19f987",
+        "drawing_sha256": "e5db94374c50dd7bb85454aa080b5bf8f3dc5354bcb628957ba3815d96880177",
+        "entities_sha256": "9953dd88db7375ff0fedeb3bad8bcb09a5f054373f0debd90d08b8002a0339c3",
+        "entity_count": 528,
+        "file_hash": "b0fc75080f6130e19f9876ba6585788a728f6547ba4f12ebdd7e4d425a3a2845",
+        "file_name": "M7452A0N01-ref-mut013.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "fe4f1df736de9bf6ad738ed98fc0fd68fc213b9b3e77d2138fabc77aef765783",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "delete_text",
+          "edit_text",
+          "insert_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1014,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-mut014",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut213dd17930b9d30ed787e",
+        "drawing_sha256": "98794cbe8209a6c2f24d8d0e55a402b8859926b29bce974893d9b53efccb002c",
+        "entities_sha256": "76e2eddae7d22f216e511b4b18b4b4f8de033b7bc613bc30e5dbc3d658992d67",
+        "entity_count": 528,
+        "file_hash": "213dd17930b9d30ed787e710133a9dea257ec94a14c75f8b6a544ce8be490458",
+        "file_name": "M7452A0N01-ref-mut014.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "0023dce6540c70f73487227ef5f4207585b773fce28ae26507a6ec5f11111144",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "null_mutation"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 5000,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-null000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutf375a0634cdf9fb1b2000",
+        "drawing_sha256": "f2dc00520818dab50cf71f04bc95046b80a42ce65fcc6fe41381b6529002480a",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "f375a0634cdf9fb1b20003bf599b840b98450b3474e3cd746f52c9870c5e32b9",
+        "file_name": "M7452A0N01-ref-null000.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "dfd6102b1e7b0e9dc6439c2172c8e35ec4ad38967c285ab3295de798c5e492dd",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "ref",
+        "operators_applied": [
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 5010,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (ref side)",
+      "pair_id": "M7452A0N01-ref-restyle000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd7e431cf70c838b2256",
+        "drawing_sha256": "6b5afe8563468ee36d63237c4bd4e1daf8f85f5c125e0e380138368dd7dfa7b3",
+        "entities_sha256": "e5c44aaf41df87ea97143eb8a858c39e840d26a56f1f03b896949aef4db88381",
+        "entity_count": 528,
+        "file_hash": "2efb5c4ccb8349dd2baf6052ea40b225135a455c523dbff12d7e26a644a6a78d",
+        "file_name": "M7452A0N01_reference.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut9cb5340e247818e85412d",
+        "drawing_sha256": "8e03b5a024ce52658490951c033ba257f41edbc5f084a14c1dd4b7c634055a73",
+        "entities_sha256": "624f66acb92b8eba1e4f197af6a5050c66ae7892658ab23e337099e77379cf42",
+        "entity_count": 528,
+        "file_hash": "9cb5340e247818e85412d787cea89b93f70609b6624ee4a898ca988355fda7db",
+        "file_name": "M7452A0N01-ref-restyle000.dxf",
+        "ocr_sha256": "e36a1850708bc6ac43f8181f9ee1bfc8fd0b5f6d27a7ff032e3c121a626e4f6b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "a470ec83cf12586e910800bbcfcbd1ec7eb276ca6f53faf225c1d12c347cfc1b",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "translate_entities"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 5050,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-move000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut7ea001919594e89467945",
+        "drawing_sha256": "072fe3756b6b9b773b20f010fecb94fc33a4a6ac01274f086b6957e952c6eab9",
+        "entities_sha256": "e1cd186a17deed7f2587d0c5ab5d354a712a376890db6954fd9b5cc7a0ae6e81",
+        "entity_count": 569,
+        "file_hash": "7ea001919594e89467945fa34954f92cb30325bc189286811993e32300cb59f5",
+        "file_name": "M7452A0N01-rev-move000.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "bd5f821b2e308ef8c8c34f97ca31dfffed74f3ecd294c77f868322201921e6b9",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_dimension_measurement",
+          "edit_text",
+          "edit_title_field"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1200,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutbe0a4edd6c44885cfa94c",
+        "drawing_sha256": "92301d76234292222cc3dac59f9b5a672c8b756b79833964e09cfe1127bb53c1",
+        "entities_sha256": "5da22fc4bebb72a781a3372cfdf72efe009f1253afe5a79d947a49f70055dcca",
+        "entity_count": 569,
+        "file_hash": "be0a4edd6c44885cfa94c625a16ee0dc1bbe66011dbfb29d3037885f8ed5363a",
+        "file_name": "M7452A0N01-rev-mut000.dxf",
+        "ocr_sha256": "342f1ab396224d407f4a0dd637a91c7d0fae6ef85e55f6c1e5f752f0cebd347f",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "1931677f1144ea348cf1081623604938dcdedae79c917dddfea44333f6da8812",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "null_mutation"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1201,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut001",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut86a61922540dbd9b59139",
+        "drawing_sha256": "f2a7296fe4bbf5d972da54a3fec77098668117ee6c8b3de4e6abd461c75c644b",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "86a61922540dbd9b5913963b5a72da0c31cc0f3446dfada57184b8fc724c9d7a",
+        "file_name": "M7452A0N01-rev-mut001.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "377bbe276d24e4d5887b122418df69c7c8af2e76b5443e9a03daecae9ccda1c6",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_dimension_measurement",
+          "restyle_dimension_text",
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1202,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut002",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut0e9137e1aa40f52251986",
+        "drawing_sha256": "2048d17b01a1e77c0a62cf14891fc5fc94c472fbd64cc717e1822e31cf4d6fb3",
+        "entities_sha256": "2a4730181bc73bb766a89124d513b7fea554dd3bc7d428aa51a80e644796fe4e",
+        "entity_count": 569,
+        "file_hash": "0e9137e1aa40f5225198686f19a834edc487fb6dfc8f75634044f936d73dcc69",
+        "file_name": "M7452A0N01-rev-mut002.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "946768b3d99b7ec745e383e8c78fcea61752825e768671fc0d81eda57ce5b8d8",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_text",
+          "edit_text",
+          "delete_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1203,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut003",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut3783d0cd7b23784bb86b9",
+        "drawing_sha256": "b070fc11f46c007c03176b870680161c992837bcbbd93df230bcd1757d4fb446",
+        "entities_sha256": "efb46b4051a1ee5ec04b99053a7bb98eb5f0188ebcac3ba80efec7545d528631",
+        "entity_count": 568,
+        "file_hash": "3783d0cd7b23784bb86b926fa71a3172128d2884ec66227e9b2e0ec26c0e9aa0",
+        "file_name": "M7452A0N01-rev-mut003.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "4779f5ccf9e2643f7e01b766da4cf5444d8a041a13b929bf1aa750826e59635e",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "insert_text",
+          "delete_text",
+          "delete_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1204,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut004",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut245fbeb1794e25b992b9b",
+        "drawing_sha256": "d4d9cc28ca796b10cd7384d28053987783b9533de822f6f6ff2acf54a72a56fd",
+        "entities_sha256": "c2b226e782687abcf781e1c27e29581db009fe7dd324ff9145e86e04e2ced525",
+        "entity_count": 568,
+        "file_hash": "245fbeb1794e25b992b9bbd587192b2c5078923937f4e2d99505b3396d9518d9",
+        "file_name": "M7452A0N01-rev-mut004.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 2,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "d66af2402391d67104184e4c23e1d00e2484c43f8fb8096109f4fb50f52162d5",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_title_field",
+          "restyle_dimension_text",
+          "insert_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1205,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut005",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut2918445c335ab5cb3e3f3",
+        "drawing_sha256": "08604c309d47bd120706ff35339a501f3cd30c9ed2fa73968173a9b9fb15940d",
+        "entities_sha256": "8643a50378dc01502b91e9bbfd52c68a7f546e2766ef95cff4a03e0de988de91",
+        "entity_count": 570,
+        "file_hash": "2918445c335ab5cb3e3f3561c6de52b45606865d9e1afbf3ac5db583b3ca0437",
+        "file_name": "M7452A0N01-rev-mut005.dxf",
+        "ocr_sha256": "d287a19c3f6a7f7b959d9ed4e3259a626237925b672bb28fe527ee037848cb2b",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 2,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "d9fac80ea380b6007fbe5c03a2d6c67f9fa3f06da1408fed4b56ab2842455302",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_dimension_measurement",
+          "delete_text",
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1206,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut006",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut6cc1d3b1edf9061d113cf",
+        "drawing_sha256": "2d7a566ea96a3e054d82c1a0064c63ec59a225797d302ed6134a5ad66323fe16",
+        "entities_sha256": "6265c8c802d05e863f9bbedcc299bdde76503da36f2fa6690ab30d9dc3373b3b",
+        "entity_count": 568,
+        "file_hash": "6cc1d3b1edf9061d113cf85af27e6a96428819355c2e61db1e20ca5014c7e187",
+        "file_name": "M7452A0N01-rev-mut006.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 1,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "d4b85b605dc6aea0095f36c1aa94b13ca45f4f63c9c4e44d29b564bd70c08182",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_text",
+          "restyle_dimension_text",
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1207,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut007",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut6247411fe4f54fa1ab9e3",
+        "drawing_sha256": "689c600181a6fb83f2e948cddfcaa06fc8453be77b0791b73f9daea58eac0a45",
+        "entities_sha256": "2709076d20279b2f96c6e48b83925d8c0bfd42f88243374e3ea897afa269c8ad",
+        "entity_count": 569,
+        "file_hash": "6247411fe4f54fa1ab9e3351b7d11bd52fa7b62b110739b4496ccdf3dd1bd38e",
+        "file_name": "M7452A0N01-rev-mut007.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "aa7360415ee55c4ef916ad633761686d24263c81401c08d81641d74a144b9ca3",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "null_mutation"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1208,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut008",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutbcaa40a09291bbced5faf",
+        "drawing_sha256": "1609c92b13986286c949f0fcc63cee591897879c3bc2c570d70229b2aa3a241d",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "bcaa40a09291bbced5faf7133efab4db4487b5695e67212791e6a650289bc0fb",
+        "file_name": "M7452A0N01-rev-mut008.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "2c462090997e196c2ab6331efacc1b6f48794ae41a69abc399d4b7e7a60d4a1f",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_text",
+          "delete_text",
+          "delete_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1209,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut009",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut3cd2b14289a09103e6a00",
+        "drawing_sha256": "298b0d8b391a32b6e43397c521400b7f81c228123848d0c7223bad33964c6777",
+        "entities_sha256": "d42084e60e006931c586e5bc1ab64fb00060d87e0808a7a455aec7fa60e944fc",
+        "entity_count": 567,
+        "file_hash": "3cd2b14289a09103e6a005ef0b65bfc27d4e77a1b2d33f0f3000fcd55bedd068",
+        "file_name": "M7452A0N01-rev-mut009.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "1b204a6adba70c60151ff474862f2d1691a2a7fdf352b235706f0aedeea1f440",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "null_mutation"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1210,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut010",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutebbb792cfc38744b5eb4a",
+        "drawing_sha256": "611ebdeaa1f48bdcc9f1b2cc6bc08770ec7b639ba6ae788f62273d237314d457",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "ebbb792cfc38744b5eb4a5dbbcf0e56f589aadb94a5f255dba6cebb3880727bb",
+        "file_name": "M7452A0N01-rev-mut010.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "4afab8c9057ae6f13ab67004f2fb4609b395e557b27a6840619bf5d188bcd04a",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_dimension_measurement",
+          "insert_text",
+          "delete_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1211,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut011",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut8b859541bef4a3b656acb",
+        "drawing_sha256": "f861b83edb9799008599a6ef9f6e7b9bc46073c746cf31fa15948e168d495d33",
+        "entities_sha256": "380352d6beddc59ce825f223cb5fda1371648cdb545c641edbbfe36de3a32eec",
+        "entity_count": 569,
+        "file_hash": "8b859541bef4a3b656acbff78b52950a3b3d9a5da7dabee4e2f87abfef782f05",
+        "file_name": "M7452A0N01-rev-mut011.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "dca58b661af86f85842627975ecdbd59189a87af4dff55331a059b8b7a23ea49",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "delete_text",
+          "delete_text",
+          "insert_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1212,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut012",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut70f237a4472b749bf8e90",
+        "drawing_sha256": "9feb951d2e2b64149079e61f39f48503bb52448d7b529287866d73bc823d435f",
+        "entities_sha256": "077c1c56ca54d23098fe3ee855fddf9c8034479c8e4e2d1787facf0848f45bb9",
+        "entity_count": 568,
+        "file_hash": "70f237a4472b749bf8e9073891508167c5c75da7649636d05030dcba21dad7a5",
+        "file_name": "M7452A0N01-rev-mut012.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "b022fa06cc89675e473cffdf1b608577d864f5c2c0fd975e23aba5b701ae05e1",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_dimension_measurement",
+          "edit_text",
+          "edit_dimension_measurement"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1213,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut013",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutfbd8c351f183d36a44be6",
+        "drawing_sha256": "528ae7c258f9a6ac8126d7a54a46dcde3cc902cee9ba5556612ee4f61a4a431b",
+        "entities_sha256": "d3f805d612d989479a9b3522bff3e60d824d9bf713a74f18724da186b43c3c0e",
+        "entity_count": 569,
+        "file_hash": "fbd8c351f183d36a44be6b300c52ba86a0691ad9a196ad6d1ba7c9740eca98b3",
+        "file_name": "M7452A0N01-rev-mut013.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 3,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "da21ffba634ba725baa8afa1294350f5c530a76db757dd8c503f05ce8fe3d783",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "edit_title_field",
+          "edit_text",
+          "edit_title_field"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 1214,
+        "zero_finding": false
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-mut014",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutc71f1e8f0f970f3ca4cb1",
+        "drawing_sha256": "0e1c7e268fba69baed4109e6f6f2631616a8784e8e2a7e6f455e3629313646da",
+        "entities_sha256": "1a91871714e92bc9d3ce03fa71cdd54a4c2abdd536ce5dc7a28b4a444e0d36ae",
+        "entity_count": 569,
+        "file_hash": "c71f1e8f0f970f3ca4cb1d0e4f6bceb07c255dccbb9346be90b49800fccc15ca",
+        "file_name": "M7452A0N01-rev-mut014.dxf",
+        "ocr_sha256": "77ce4fe8e9529c1084c016fd76c88e3ad47ed6873b4e49b534b4c2773e620f55",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "c6c226b9bf992bce7e4de0fe715aa986f9aa0af4a435476da755d07a32cd1fa8",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "null_mutation"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 5030,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-null000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mutcfcaf8965dc61e929d78d",
+        "drawing_sha256": "42c52308d7883aa81aa95f0d750269a0f48b5c6358315c9436b116b6787d0c88",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "cfcaf8965dc61e929d78d032e509b73f2b39079e0b248dd09c1b105b4856a65d",
+        "file_name": "M7452A0N01-rev-null000.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "finding_count": 0,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": null,
+      "labels_sha256": "9949f83e6cd857fe1318050a29c013636b6aa41058b898161c3b8c833cb85143",
+      "mutation": {
+        "base_pair_id": "M7452A0N01",
+        "base_side": "rev",
+        "operators_applied": [
+          "restyle_dimension_text"
+        ],
+        "operators_rejected": [],
+        "schema_version": 1,
+        "seed": 5040,
+        "zero_finding": true
+      },
+      "notes": "generated from M7452A0N01 (rev side)",
+      "pair_id": "M7452A0N01-rev-restyle000",
+      "provenance": "mutation",
+      "ref": {
+        "drawing_id": "6a72cd93431cf70c838b2468",
+        "drawing_sha256": "d78831942b97194320774dfd58359e7288bb2e58d4bcd5396b826b7e07006d82",
+        "entities_sha256": "f04cd9d5e11e2e8c00ff1a6d88197fda3a9615ea5ac318812e9ccbb349c54b43",
+        "entity_count": 569,
+        "file_hash": "31d155273f6ce4874b481d5cd422af414c50c43bb1ac676eef09c661385dcbe5",
+        "file_name": "M7452A0N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "mut5395f406691218fdc5c82",
+        "drawing_sha256": "2959653446b940181d6edf3c3c2791336b5ee40d7720e869db194284d9e3ad56",
+        "entities_sha256": "75c60880a128d3a13ade053a368786d7278e72951ac49e9d1d2a265d8f4824a5",
+        "entity_count": 569,
+        "file_hash": "5395f406691218fdc5c82fbaaf704f5ce4677443037d6b3ec98f2362e921b8e4",
+        "file_name": "M7452A0N01-rev-restyle000.dxf",
+        "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
+        "zone_signature": "aspect-1.414"
+      }
+    }
+  ],
+  "schema_version": 1
+}

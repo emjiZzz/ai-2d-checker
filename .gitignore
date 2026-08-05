@@ -25,12 +25,31 @@ downloads/
 
 # === Runtime Local Storage (NEVER commit raw or metadata files) ===
 /storage/
+# The eval corpus is deliberately split across this line. `/storage/eval/` holds the entity
+# payloads and the annotation worksheets, which carry the customer's Japanese drawing text and
+# are the same confidentiality class as the DXFs above. The reviewable half —
+# `tests/fixtures/eval/manifest.json` plus the hand-authored label files — IS tracked: it is
+# sha256 digests, pair ids, drawing numbers and category counts, no drawing content. Do not
+# "fix" this by tracking the payloads. See infrastructure/eval/corpus.py.
 services/storage/uploads/
 # The `/storage/` rule above is anchored to the repo root, so it does NOT cover the
 # backend's own storage tree — which is how services/backend/storage/secure/.api-token
 # came to be committed. That token is generated at startup by
 # core/security.py::initialize_local_api_token and regenerates if absent.
-services/backend/storage/
+#
+# Written as `/*` rather than as a bare directory on purpose: git never descends into an
+# excluded *directory*, so `services/backend/storage/` would make every `!` rule below it
+# unreachable no matter what order they appear in. Excluding the contents instead keeps the
+# same effect while leaving one door openable.
+services/backend/storage/*
+
+# Stage 0h: the learned model moved out of the gitignored vault, because a model that cannot
+# be committed, diffed or shipped is not trainable infrastructure — it blocked rung 3.
+# The `.joblib` payload stays untracked (it is a build artifact); the `.meta.json` beside it
+# is tracked, so every training run is diffable in git without carrying a binary.
+!services/backend/storage/models/
+services/backend/storage/models/*
+!services/backend/storage/models/*.meta.json
 
 # === Environment & Local Configs ===
 .env
@@ -85,9 +104,11 @@ docs/vault/.obsidian/
 # data — it stays local. See CLAUDE.md constraint 4.
 docs/vault/08 - Client Domain & CAD Rules/
 
-# Trained model bundles are build artifacts, not documentation. Stage 0h relocates these to
-# services/backend/storage/models/; until then they stay untracked. Model Card.md IS tracked —
-# it is the human-readable surface.
+# Trained model bundles are build artifacts, not documentation. Stage 0h relocated them to
+# services/backend/storage/models/ (see the negation rules under the storage section above).
+# These two rules cover any bundle left behind by an install that trained before the move —
+# model_holder.py still reads it, deprecated, until the next retrain. Model Card.md IS
+# tracked: it is the human-readable surface and belongs in the vault.
 docs/vault/09 - Learned Models/*.joblib
 docs/vault/09 - Learned Models/*.meta.json
 

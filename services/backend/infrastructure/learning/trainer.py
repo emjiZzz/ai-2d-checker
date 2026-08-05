@@ -14,7 +14,7 @@ from typing import Any, Optional
 from . import config
 from .feature_extractor import exact_key, features_from_snapshot
 from .finding_classifier import FindingClassifier
-from .model_holder import LearnedModelHolder, learned_model_dir, save_bundle, _empty_bundle
+from .model_holder import LearnedModelHolder, model_card_dir, save_bundle, _empty_bundle
 
 try:
     from ...logger import logger
@@ -138,10 +138,15 @@ def build_bundle(docs: list) -> dict:
 
 
 def _write_model_card(bundle: dict) -> None:
-    """(Re)write the human-readable Model Card in the vault. This is the second-brain surface;
-    the .joblib beside it is just the compiled index."""
+    """(Re)write the human-readable Model Card in the vault. This is the second-brain surface.
+
+    Stage 0h split the two apart: the `.joblib` is a build artifact and now lives under
+    `services/backend/storage/models/`, while the card stays here because documentation is
+    what the vault is for. They are no longer siblings, which is why this uses
+    `model_card_dir()` rather than `learned_model_dir()`.
+    """
     try:
-        card = learned_model_dir() / config.CARD_FILENAME
+        card = model_card_dir() / config.CARD_FILENAME
         trained_at = bundle.get("trained_at")
         verdict_ready = bundle.get("verdict_clf") is not None and bundle.get("n_verdict", 0) >= config.MIN_TRAIN
         metrics = bundle.get("metrics", {})

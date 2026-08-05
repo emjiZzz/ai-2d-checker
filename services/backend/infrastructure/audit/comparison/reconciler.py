@@ -8,6 +8,7 @@ from .candidate import ComparisonCandidate
 # (full_ai_orchestrator.py's spatial dedup) — reused here for the cross-generator case,
 # per docs/hybrid-comparison-engine-implementation-plan.md, Phase 3 / section 1.3.
 import re
+from .params import DEFAULT_PARAMS
 
 # NOTE (docs/refactoring-audit-2026-07-23.md, finding #3): this was widened from the
 # original 5.0mm to 35.0mm, and the text-similarity bypass below extends matching to
@@ -17,7 +18,7 @@ import re
 # revisiting this, confirm the basis (e.g. observed AI Vision coordinate error on a
 # specific drawing set) before changing them again, don't assume they're load-bearing
 # as-is. tests/test_hybrid_pipeline.py pins the current boundary behavior.
-MATCH_RADIUS_MM = 35.0
+MATCH_RADIUS_MM = DEFAULT_PARAMS.match_radius_mm
 
 def _normalize_core_text(text: str | None) -> str:
     if not text:

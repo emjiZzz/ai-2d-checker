@@ -24,6 +24,7 @@ import math
 import unicodedata
 from typing import Any, Optional
 from ...utils.text import strip_mtext, safe_decode
+from ..comparison.params import DEFAULT_PARAMS
 
 # ---------------------------------------------------------------------------
 # Zone Anchor Signatures
@@ -182,7 +183,7 @@ ZONE_ANCHORS: dict[str, list[str]] = {
 
 # How close (in CAD units) another entity must be to an anchor seed
 # to be swept into that zone's bounding box
-CLUSTER_RADIUS = 200.0
+CLUSTER_RADIUS = DEFAULT_PARAMS.cluster_radius
 
 # ---------------------------------------------------------------------------
 # Isometric view detection (geometric, not text-anchored)
@@ -203,15 +204,15 @@ CLUSTER_RADIUS = 200.0
 # and leader arrowheads are drawn near 30 degrees and are scattered sheet-wide, and the
 # SX_FinishSymbol_* blocks (surface-finish marks) are too, which smeared the detected
 # span across almost the whole sheet. Do not revisit it without new evidence.
-MIN_ISO_ELLIPSES = 3
+MIN_ISO_ELLIPSES = DEFAULT_PARAMS.min_iso_ellipses
 
 # Fraction of the ellipses that must share one block instance before that block's
 # extent is trusted as the iso view outright.
-ISO_BLOCK_DOMINANCE = 0.6
+ISO_BLOCK_DOMINANCE = DEFAULT_PARAMS.iso_block_dominance
 
 # Single-linkage join distance for the fallback clustering path, as a fraction of the
 # sheet diagonal.
-ISO_CLUSTER_RADIUS_FRACTION = 0.15
+ISO_CLUSTER_RADIUS_FRACTION = DEFAULT_PARAMS.iso_cluster_radius_fraction
 
 # Physical limits on zone size, as (width, height) fractions of the sheet, to stop a
 # runaway flood-fill swallowing the drawing. Module-level rather than local to
@@ -267,7 +268,7 @@ def point_in_any_bbox(x: float, y: float, bboxes) -> bool:
 # the extra constants were not carried. Absolute padding is conceptually odd on sheets at
 # different scales, but it is measurably not what drives zone instability here — see
 # docs/zone-template-alignment-implementation-plan.md, Phase D notes, before retrying it.
-BBOX_PADDING = 30.0
+BBOX_PADDING = DEFAULT_PARAMS.bbox_padding
 
 
 # ---------------------------------------------------------------------------
@@ -682,7 +683,7 @@ def _get_drawing_bounds(entities: list) -> Optional[tuple]:
 # ('行', '号', '発') that no branch below matches. A bare digit 1-12 that is genuine
 # content and sits within 9% of an edge would be wrongly dropped; that exposure existed at
 # 6% and is widened, not introduced, here.
-GRID_LABEL_MARGIN_FRACTION = 0.09
+GRID_LABEL_MARGIN_FRACTION = DEFAULT_PARAMS.grid_label_margin_fraction
 
 
 def is_margin_grid_text(e, bounds: Optional[tuple]) -> bool:

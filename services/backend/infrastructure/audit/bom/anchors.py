@@ -20,11 +20,12 @@ makes the association unambiguous, which is the point -- a trailing glyph is amb
 precisely when values are packed tightly, which in a title block is always.
 """
 from typing import Any, Optional
+from ..comparison.params import DEFAULT_PARAMS
 
 # Fraction of the text height used as the per-character advance when a real bbox is missing.
 # Only reached for entities whose extraction produced no bbox; the estimate just needs to put
 # the anchor inside the text, not to be typographically exact.
-_CHAR_WIDTH_RATIO = 0.6
+_CHAR_WIDTH_RATIO = DEFAULT_PARAMS.char_width_ratio
 
 # DXF justification codes that mean the insert point is already the horizontal centre.
 _CENTERED_HALIGN = (1, 4)

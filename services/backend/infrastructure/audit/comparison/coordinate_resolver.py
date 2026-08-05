@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from ..bom_analyzer import BOMAnalyzer
 from ..bom.title_block_extractor import TITLE_BLOCK_LABEL_KEYWORDS
 from ..bom.anchors import marker_anchor, entity_is_centered
+from .params import DEFAULT_PARAMS
 
 # BOM column header vocabulary (marking_builder.py's bom_cols display labels, English +
 # common Japanese variants) — used only by the Phase 7 value-only-coordinate safety net
@@ -14,7 +15,7 @@ BOM_LABEL_KEYWORDS = [
     "番号", "コード", "寸法", "数量", "重量", "備考", "品名", "図番",
 ]
 
-LABEL_PROXIMITY_TOLERANCE_MM = 3.0
+LABEL_PROXIMITY_TOLERANCE_MM = DEFAULT_PARAMS.label_proximity_tolerance_mm
 
 def _clean_text_for_anchor(raw_text: str) -> str:
     if not raw_text:
