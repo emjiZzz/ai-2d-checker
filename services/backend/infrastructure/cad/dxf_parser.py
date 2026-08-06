@@ -1,4 +1,5 @@
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,93 @@ from .viewport_transform import NO_VIEWPORT, TRANSFORM_VERSION, ViewportTransfor
 # Property keys holding coordinate pairs that must be projected alongside geometry.
 # `bbox` is [[xmin, ymin], [xmax, ymax]].
 PROJECTED_PROPERTY_POINT_LISTS: tuple[str, ...] = ("bbox",)
+
+# Below this, a Z value is treated as "on the drawing plane" rather than as 3D content.
+# Deliberately loose: CAD exporters round-trip coordinates through decimal text, so a
+# nominally flat drawing can carry Z values a few ULPs off zero.
+Z_EPSILON = 1e-9
+
+# DXF entity types that carry genuine 3D geometry and are NOT handled by
+# `EntityMapper.map_any`, so they are dropped at ingestion. Counted (never mapped) purely
+# so a drawing that looks empty in a 3D view can explain why -- see `summarize_three_d`.
+UNMAPPED_3D_TYPES: frozenset[str] = frozenset({
+    "3DFACE", "MESH", "3DSOLID", "BODY", "REGION",
+    "SURFACE", "EXTRUDEDSURFACE", "REVOLVEDSURFACE", "LOFTEDSURFACE",
+    "SWEPTSURFACE", "PLANESURFACE", "NURBSURFACE",
+})
+
+
+def summarize_three_d(
+    entities: list[dict[str, Any]], unmapped_counts: dict[str, int]
+) -> dict[str, Any]:
+    """Report how much genuine 3D geometry a drawing carries.
+
+    Two independent signals, because they fail independently:
+
+    * `nonzero_z` counts non-zero Z on entities that *were* mapped. This is what a 3D
+      view can actually draw today, so it drives `renderable`.
+    * `unmapped_types` counts entity types dropped by `map_any` (see `UNMAPPED_3D_TYPES`).
+      Those contribute nothing renderable, so a drawing can be full of solids and still
+      report `nonzero_z == 0`.
+
+    Keeping them apart is the whole point: it separates "this drawing is flat" from "this
+    drawing's 3D content did not survive ingestion". Collapsed into one boolean those are
+    indistinguishable to every caller, which is precisely how the dropped ELLIPSE/SPLINE
+    geometry stayed hidden for so long.
+
+    Walks `GEOMETRY_SCHEMA`'s coordinate keys rather than every geometry value, so an
+    ellipse's `major_axis` is correctly excluded -- it is a direction vector whose third
+    component is not an elevation.
+    """
+    nonzero = 0
+    z_min: float | None = None
+    z_max: float | None = None
+    types_with_z: Counter = Counter()
+
+    def note(point: Any, entity_type: str) -> None:
+        nonlocal nonzero, z_min, z_max
+        if not isinstance(point, (list, tuple)) or len(point) < 3:
+            return
+        try:
+            z = float(point[2])
+        except (TypeError, ValueError):
+            return
+        z_min = z if z_min is None else min(z_min, z)
+        z_max = z if z_max is None else max(z_max, z)
+        if abs(z) > Z_EPSILON:
+            nonzero += 1
+            types_with_z[entity_type] += 1
+
+    for entity in entities:
+        entity_type = entity.get("entity_type", "")
+        schema = GEOMETRY_SCHEMA.get(entity_type)
+        if not schema:
+            continue
+        geometry = entity.get("geometry") or {}
+
+        for key in schema.get("points", ()):
+            note(geometry.get(key), entity_type)
+
+        for key in schema.get("point_lists", ()):
+            for point in geometry.get(key) or ():
+                note(point, entity_type)
+
+        for key in schema.get("point_list_groups", ()):
+            for group in geometry.get(key) or ():
+                for point in group or ():
+                    note(point, entity_type)
+
+    return {
+        # There is 3D content in the file, whether or not we can draw it.
+        "has_3d": bool(nonzero) or bool(unmapped_counts),
+        # We can draw it. The 3D view gates on this; `has_3d and not renderable` is the
+        # case that needs an explanation in the UI rather than an empty viewport.
+        "renderable": bool(nonzero),
+        "nonzero_z": nonzero,
+        "z_range": [z_min, z_max] if z_min is not None else None,
+        "entity_types": dict(types_with_z),
+        "unmapped_types": dict(unmapped_counts),
+    }
 
 
 def project_mapped_entity(
@@ -50,6 +138,21 @@ def project_mapped_entity(
             state["index"] = result.viewport_index
             state["scale"] = result.scale
             state["resolved"] = True
+        # Z passes through unchanged, and is deliberately NOT transformed: a paper-space
+        # viewport is a window onto the model's XY plane, so it has no Z axis to map into
+        # and no scale that means anything for one. The third component stays the
+        # model-space elevation it already was.
+        #
+        # It used to be dropped here, which destroyed the only 3D information a DXF
+        # carries -- on every drawing with a paper-space layout, i.e. 6 of the 11 files in
+        # the local corpus. Arity is preserved rather than normalised to 3: `bbox` and the
+        # hatch/ellipse/spline tessellations are genuinely 2D and must stay 2-component.
+        # See docs/vault/06 - .../Gotcha - Z Is Truncated by the Paper-Space Projection.
+        if len(point) > 2:
+            try:
+                return [result.x, result.y, float(point[2])]
+            except (TypeError, ValueError):
+                pass
         return [result.x, result.y]
 
     def is_point(value: Any) -> bool:
@@ -190,12 +293,19 @@ class DXFParser:
         # projection. Identity when the drawing has no paper-space viewports.
         transform = ViewportTransform.from_document(doc)
 
+        # 3D entity types `map_any` cannot handle. Tallied as they go past so their
+        # absence downstream is reported rather than silent -- see `summarize_three_d`.
+        unmapped_3d: Counter = Counter()
+
         def process_entity(entity, layout_name, depth=0, is_dimension=False, parent_handle=None):
             if depth > 10:
                 logger.warning(f"Recursive block/dimension explosion depth limit reached at entity: {entity.dxftype()}")
                 return
 
             dxftype = entity.dxftype()
+
+            if dxftype in UNMAPPED_3D_TYPES:
+                unmapped_3d[dxftype] += 1
 
             if dxftype == "INSERT":
                 # Explode the block so its content is individually addressable, and
@@ -273,7 +383,23 @@ class DXFParser:
             "viewport_transform": transform.to_dict(),
             "transform_version": TRANSFORM_VERSION,
             "coordinate_space": "model" if transform.is_identity else "paper",
+            # How much genuine 3D geometry survived ingestion, and how much did not.
+            # Consumed by the desktop 3D view to decide whether it has anything to draw.
+            "three_d": summarize_three_d(entities, dict(unmapped_3d)),
         }
+
+        three_d = metadata["three_d"]
+        if three_d["unmapped_types"]:
+            logger.warning(
+                f"Dropped {sum(three_d['unmapped_types'].values())} 3D entities that "
+                f"`EntityMapper.map_any` does not handle: {three_d['unmapped_types']}. "
+                "They will not appear in any view."
+            )
+        elif three_d["renderable"]:
+            logger.info(
+                f"3D geometry present: {three_d['nonzero_z']} non-zero Z coordinates "
+                f"over {three_d['z_range']} in {three_d['entity_types']}."
+            )
 
         # Dynamic Layout Analysis
         lines = []

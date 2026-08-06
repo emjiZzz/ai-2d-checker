@@ -72,6 +72,7 @@ graph TD
     Gotchas --> G33["[[Gotcha - Title Block QTY Reads the Upper-Left Table]]"]
     Gotchas --> G34["[[Gotcha - Drawing Number Segments Reported as Separate Fields]]"]
     Gotchas --> G35["[[Gotcha - The Views Overlay Showed a Region That Is Not Compared]]"]
+    Gotchas --> G38["[[Gotcha - Z Was Truncated by the Paper-Space Projection]]"]
 
     ADRs --> A2["[[ADR-002 Decoupled Zone Bounding Box Endpoint]]"]
     ADRs --> A3b["[[ADR-003 AI Maturity Ladder]]"]
