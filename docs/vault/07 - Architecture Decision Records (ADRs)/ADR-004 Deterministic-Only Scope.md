@@ -63,6 +63,13 @@ named after a technique it does not contain — no retrieval, no LLM. Stage 0.5 
 cache filenames, the API and the UI, and `drawings.py` substring-matches those filenames). Under
 this ADR that rename goes from tidy-up to **necessary**.
 
+> [!NOTE] **Done 2026-08-07, and two of the premises above were wrong.**
+> The rename landed *without* the cache bump. `clear_cache_for_drawing` matches on **drawing
+> id**, not on the method token, so the purge path was never method-sensitive — the
+> `drawings.py` hazard named here does not exist. And the cache held **one real v42 entry**, so
+> "the one safe moment" was protecting a single re-run. v43 is still unspent.
+> See the ledger's 2026-08-07 work-log rows.
+
 **`current_rung` becomes unanswerable as posed.** The ladder's rungs measure retrieval and
 agency. Left as-is the ledger will keep reporting rung 0 forever, which is technically true and
 practically useless. Needs either a re-scoped ladder or an explicit note that the rung metric is

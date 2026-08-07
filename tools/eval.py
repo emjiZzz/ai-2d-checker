@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Evaluate the comparison engine against the corpus — Stage 0e.
 
-    services/backend/.venv/Scripts/python.exe tools/eval.py --method rag
+    services/backend/.venv/Scripts/python.exe tools/eval.py --method deterministic
     ... tools/eval.py --provenance mutation --json out.json
     ... tools/eval.py --explain M745200N01-rev-mut002
 
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="eval", description=__doc__)
     parser.add_argument(
         "--method",
-        default="rag",
+        default="deterministic",
         help=f"comparison method. Offline-capable today: {sorted(OFFLINE_METHODS)}",
     )
     parser.add_argument(

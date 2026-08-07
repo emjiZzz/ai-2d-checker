@@ -29,10 +29,16 @@ export const RoomSchema = z.object({
   // Must be declared here or Zod's object parse silently strips it from every room fetch,
   // making the zone gate appear to work on click and then re-close on the next sync.
   zones_confirmed_for: z.string().nullable().optional(),
-  // Only the deterministic method survives (ADR-006). Kept as a `z.enum` of one rather than
-  // a literal so a second method is a one-word change, and left `.optional()` because a room
-  // created before the field existed does not carry it.
-  comparison_method: z.enum(["rag"]).default("rag").optional(),
+  // Only the deterministic method survives (ADR-006), renamed from `rag`. Both spellings are
+  // accepted and folded to the new one: the backend normalises on input, but a room fetched
+  // straight out of a *cached* response — or a backend older than the rename — can still say
+  // `"rag"`, and Zod validates what actually arrives rather than what should. `.optional()`
+  // because a room created before the field existed does not carry it at all.
+  comparison_method: z
+    .enum(["deterministic", "rag"])
+    .transform(() => "deterministic" as const)
+    .default("deterministic")
+    .optional(),
   participants: z.array(z.string()).optional()
 });
 

@@ -1,8 +1,13 @@
 from typing import Any, TypeVar, Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..domain.models.cad_point import CadPoint, CoordinateSpace
+from ..domain.models.comparison_method import (
+    DETERMINISTIC,
+    ComparisonMethodName,
+    normalize_comparison_method,
+)
 
 # Re-exported so API consumers import the coordinate envelope from one place.
 __all_coordinate_types__ = ("CadPoint", "CoordinateSpace")
@@ -179,9 +184,12 @@ class UpdateUserRequest(BaseModel):
 class PhysicalComparisonRequest(BaseModel):
     reference_drawing_id: str
     drawing_id: str
-    comparison_method: Literal["rag"] = Field(
-        "rag",
-        description="Comparison pipeline. Only the deterministic method exists; the three Gemini-backed ones were removed (ADR-006)."
+    comparison_method: ComparisonMethodName = Field(
+        DETERMINISTIC,
+        description="Comparison pipeline. Only the deterministic method exists; the three Gemini-backed ones were removed (ADR-006). The legacy name 'rag' is accepted and normalised."
+    )
+    _normalize_method = field_validator("comparison_method", mode="before")(
+        lambda v: normalize_comparison_method(v)
     )
     force_refresh: bool = Field(
         default=False,
@@ -271,9 +279,12 @@ class RoomCreateRequest(BaseModel):
     name: str = Field(..., description="User-facing room label")
     description: str | None = None
     client_name: str | None = None
-    comparison_method: Literal["rag"] = Field(
-        "rag",
-        description="Comparison pipeline for this room. Only the deterministic method exists (ADR-006)."
+    comparison_method: ComparisonMethodName = Field(
+        DETERMINISTIC,
+        description="Comparison pipeline for this room. Only the deterministic method exists (ADR-006). The legacy name 'rag' is accepted and normalised."
+    )
+    _normalize_method = field_validator("comparison_method", mode="before")(
+        lambda v: normalize_comparison_method(v)
     )
 
 class RoomResponse(BaseModel):
@@ -288,7 +299,10 @@ class RoomResponse(BaseModel):
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
     zones_confirmed_for: str | None = None
-    comparison_method: Literal["rag"] = "rag"
+    comparison_method: ComparisonMethodName = DETERMINISTIC
+    _normalize_method = field_validator("comparison_method", mode="before")(
+        lambda v: normalize_comparison_method(v)
+    )
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -389,7 +403,7 @@ class CanvasMarking(BaseModel):
     visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the revision drawing sheet image, normalized 0 to 1000.")
     ref_visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the reference drawing sheet image, normalized 0 to 1000.")
     origin: Optional[Literal["deterministic", "ai_vision"]] = Field(default=None, description="Which generator produced this finding in the removed hybrid pipeline (ADR-006). Always None now; the literal keeps 'ai_vision' so cached payloads written before the removal still parse.")
-    verification: Optional[Literal["confirmed_both", "confirmed_single", "corrected_to_matched", "conflict", "unverified"]] = Field(default=None, description="Hybrid-pipeline outcome: confirmed_both = both generators agreed, confirmed_single = the two disagreed and the crop verifier picked a side, corrected_to_matched = the verifier looked at the actual crops and found no real difference at all, overriding whatever either generator originally claimed (status is forced to MATCHED), conflict = the verifier could not confirm either side, unverified = single-source finding not yet run through the verifier. None for markings from rag/rag_ai/ai_vision.")
+    verification: Optional[Literal["confirmed_both", "confirmed_single", "corrected_to_matched", "conflict", "unverified"]] = Field(default=None, description="Hybrid-pipeline outcome: confirmed_both = both generators agreed, confirmed_single = the two disagreed and the crop verifier picked a side, corrected_to_matched = the verifier looked at the actual crops and found no real difference at all, overriding whatever either generator originally claimed (status is forced to MATCHED), conflict = the verifier could not confirm either side, unverified = single-source finding not yet run through the verifier. Always None since ADR-006 removed the hybrid pipeline; retained so cached payloads written before it still parse.")
     resolution_method: Optional[Literal["entity_handle", "visual_bbox_fallback", "unresolved"]] = Field(default=None, description="How `coordinates` was derived: exact entity-handle lookup, Gemini's normalized visual bbox mapped to CAD space, or not resolved at all.")
     feature: Optional[str] = Field(default=None, description="Sub-item taxonomy key within `category` (e.g. category='title_block', feature='scale') — see services/backend/infrastructure/audit/comparison/taxonomy.py for the canonical list per category. Used to group the checklist panel into named sub-sections instead of one flat list per category. Falls back to 'other' when unset or unrecognized.")
 

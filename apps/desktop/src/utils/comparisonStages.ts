@@ -24,27 +24,34 @@ export interface ComparisonStage {
   durationMs: number;
 }
 
+// Keyed by method name, with `rag` — the pre-rename spelling of the same engine — mapped
+// alongside it. A room fetched from a cached response can still carry the old string, and a
+// missing key here would show a blank label rather than fall back.
 export const COMPARISON_METHOD_LABELS: Record<string, string> = {
-  rag: "RAG",
+  deterministic: "Deterministic",
+  rag: "Deterministic",
 };
 
+// orchestrator.py::generate_deterministic_candidates — zone/BOM/title extraction, a bounded
+// title-block OCR call, then SpatialDiffer + coordinate resolution.
+const DETERMINISTIC_STAGES: ComparisonStage[] = [
+  { id: "extracting", label: "Extracting drawing entities & BOM/title data", durationMs: 600 },
+  { id: "title_block_ocr", label: "Reading title block", durationMs: 700 },
+  { id: "spatial_diff", label: "Running deterministic spatial diff", durationMs: 700 },
+  { id: "finalizing", label: "Resolving coordinates & finalizing", durationMs: 500 },
+];
+
 export const COMPARISON_STAGE_SEQUENCES: Record<string, ComparisonStage[]> = {
-  // orchestrator.py::generate_deterministic_candidates — zone/BOM/title extraction,
-  // a bounded title-block OCR call, then SpatialDiffer + coordinate resolution.
-  rag: [
-    { id: "extracting", label: "Extracting drawing entities & BOM/title data", durationMs: 600 },
-    { id: "title_block_ocr", label: "Reading title block", durationMs: 700 },
-    { id: "spatial_diff", label: "Running deterministic spatial diff", durationMs: 700 },
-    { id: "finalizing", label: "Resolving coordinates & finalizing", durationMs: 500 },
-  ],
+  deterministic: DETERMINISTIC_STAGES,
+  rag: DETERMINISTIC_STAGES,
 };
 
 export function getComparisonStages(method: string | undefined | null): ComparisonStage[] {
-  return COMPARISON_STAGE_SEQUENCES[method ?? "rag"] ?? COMPARISON_STAGE_SEQUENCES.rag;
+  return COMPARISON_STAGE_SEQUENCES[method ?? "deterministic"] ?? DETERMINISTIC_STAGES;
 }
 
 export function getComparisonMethodLabel(method: string | undefined | null): string {
-  return COMPARISON_METHOD_LABELS[method ?? "rag"] ?? "RAG";
+  return COMPARISON_METHOD_LABELS[method ?? "deterministic"] ?? "Deterministic";
 }
 
 // How long the frontend waits before aborting the request outright. The per-method spread
@@ -54,9 +61,10 @@ export function getComparisonMethodLabel(method: string | undefined | null): str
 // p95 durations are known. The `?? 180_000` below covers a room carrying an old method
 // string, deliberately generous rather than clamped to the deterministic budget.
 const COMPARISON_TIMEOUT_MS: Record<string, number> = {
+  deterministic: 120_000,
   rag: 120_000,
 };
 
 export function getComparisonTimeoutMs(method: string | undefined | null): number {
-  return COMPARISON_TIMEOUT_MS[method ?? "rag"] ?? 180_000;
+  return COMPARISON_TIMEOUT_MS[method ?? "deterministic"] ?? 180_000;
 }

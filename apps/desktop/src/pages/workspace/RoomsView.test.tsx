@@ -65,7 +65,7 @@ describe('RoomsView — Create Room dialog', () => {
     await waitFor(() => expect(createRoom).toHaveBeenCalled());
     const payload = createRoom.mock.calls[0][0];
     expect(payload.name).toBe('Bracket Rev C vs Rev D');
-    // The server defaults it to "rag"; sending it from here would be the picker's ghost.
+    // The server defaults it to "deterministic"; sending it here would be the picker's ghost.
     expect(payload).not.toHaveProperty('comparison_method');
   });
 });

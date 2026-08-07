@@ -40,7 +40,7 @@ export const usePhysicalComparison = () => {
     setAiScanProgressPct(5);
 
     try {
-      const comparisonMethod = activeRoom?.comparison_method ?? "rag";
+      const comparisonMethod = activeRoom?.comparison_method ?? "deterministic";
       const stages = getComparisonStages(comparisonMethod);
       if (stages.length > 0) {
         setAiScanProgress(stages[0].id);

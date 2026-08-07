@@ -6,6 +6,7 @@ from datetime import datetime, UTC
 from google.genai import types
 
 from ....domain.models.audit_session import AuditSession
+from ....domain.models.comparison_method import DETERMINISTIC
 from ....domain.models.audit_violation import AuditViolation
 from ....domain.models.drawing_document import DrawingDocument
 from ....domain.models.extracted_entity import ExtractedEntity
@@ -1375,7 +1376,7 @@ async def perform_drawing_comparison(
         rev_drawing_id=str(rev_drawing.id),
         ref_hash=ref_drawing.file_hash,
         rev_hash=rev_drawing.file_hash,
-        method="rag"
+        method=DETERMINISTIC
     )
     if cached_payload:
         try:
@@ -1430,7 +1431,7 @@ async def perform_drawing_comparison(
             timings={},
             diagnostics={
                 "source": "physical_comparison",
-                "comparison_method": "rag",
+                "comparison_method": DETERMINISTIC,
                 "total_markings": total_markings,
                 "non_matched": len(non_matched),
             },
@@ -1485,7 +1486,7 @@ async def perform_drawing_comparison(
             ref_hash=ref_drawing.file_hash,
             rev_hash=rev_drawing.file_hash,
             payload=comparison_response.model_dump(),
-            method="rag"
+            method=DETERMINISTIC
         )
     except Exception as cache_write_err:
         logger.warning(f"Failed to cache physical comparison response: {cache_write_err}")

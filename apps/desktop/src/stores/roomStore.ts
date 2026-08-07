@@ -12,6 +12,16 @@ import { parseOrThrow, parseAndValidate, buildHeaders, baseUrl } from "../servic
 import { RoomSchema, RoomListSchema } from "../schemas/apiSchemas";
 import { useWorkspaceStore, DrawingItem, saveWorkspaceState, loadWorkspaceState } from "./workspaceStore";
 
+/**
+ * The only comparison method. Renamed from `"rag"`, which named a technique it does not
+ * contain — no retrieval, no LLM (see docs/vault/00 - AI Maturity Status.md).
+ *
+ * The backend accepts `"rag"` on input **permanently** and normalises it, so rooms written
+ * before the rename still load. That means this type describes what the API *returns*, and
+ * nothing here needs to handle the legacy spelling.
+ */
+export type ComparisonMethod = "deterministic";
+
 export interface Room {
   id: string;
   name: string;
@@ -29,7 +39,7 @@ export interface Room {
   /** "{old_drawing_id}:{new_drawing_id}" whose zone boxes the user confirmed. */
   zones_confirmed_for?: string | null;
   /** Only the deterministic method exists (ADR-006). Optional: a room predating the field. */
-  comparison_method?: "rag";
+  comparison_method?: ComparisonMethod;
 }
 
 interface RoomState {
@@ -39,7 +49,7 @@ interface RoomState {
   error: string | null;
 
   fetchRooms: () => Promise<void>;
-  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: "rag") => Promise<Room | null>;
+  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: ComparisonMethod) => Promise<Room | null>;
   openRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: (roomId: string) => Promise<boolean>;
@@ -66,7 +76,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     }
   },
 
-  createRoom: async (name, description, clientName, comparisonMethod = "rag") => {
+  createRoom: async (name, description, clientName, comparisonMethod = "deterministic") => {
     set({ error: null });
     try {
       const res = await fetch(`${baseUrl()}/api/v1/rooms`, {

@@ -3,7 +3,13 @@ from typing import Literal
 
 
 from beanie import Document
-from pydantic import Field
+from pydantic import Field, field_validator
+
+from .comparison_method import (
+    DETERMINISTIC,
+    ComparisonMethodName,
+    normalize_comparison_method,
+)
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
@@ -29,7 +35,13 @@ class Room(Document):
     # (ADR-006); no live room used them — all 48 that did were already soft-deleted.
     # Retained as a one-value Literal rather than dropped so the field keeps its meaning in the
     # API and stays the place a second method would be declared.
-    comparison_method: Literal["rag"] = Field("rag", description="Method used for physical comparison in this room")
+    comparison_method: ComparisonMethodName = Field(DETERMINISTIC, description="Method used for physical comparison in this room")
+
+    # Rooms written before the rename say "rag". No migration was run, so this validator is
+    # what makes those documents loadable — see comparison_method.py on why it is permanent.
+    _normalize_method = field_validator("comparison_method", mode="before")(
+        lambda v: normalize_comparison_method(v)
+    )
     
 
     # Per-room data isolation

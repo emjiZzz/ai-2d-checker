@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from ...storage.path_resolver import get_storage_root
 from ....logger import logger
+from ....domain.models.comparison_method import DETERMINISTIC
 
 class ComparisonCacheManager:
     """Manages serialization and invalidation of structured visual drawing comparisons."""
@@ -262,13 +263,17 @@ class ComparisonCacheManager:
         rev_drawing_id: str,
         ref_hash: str,
         rev_hash: str,
-        method: str = "rag"
+        method: str = DETERMINISTIC
     ) -> Path:
         cache_dir = get_storage_root() / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         # Naming format: gemini_comparison_{version}_{method}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json
-        # `method` distinguishes rag vs rag_ai results for the same drawing pair so
-        # switching a room's comparison_method can't silently serve the other method's cached output.
+        # `method` is a path segment so two methods could never serve each other's cached
+        # output for the same drawing pair. Only one method remains (ADR-006), so it no longer
+        # discriminates anything — kept because it is the seam a second method would need, and
+        # because renaming it out would be a third gratuitous invalidation.
+        # Renaming `rag` -> `deterministic` orphaned the pre-rename entries by design; that was
+        # measured at one real v42 file before it was done.
         # This aligns with api/routers/drawings.py cache invalidation glob/string check, which only
         # substring-matches on drawing_id and doesn't care about the extra segments.
         version = ComparisonCacheManager.COMPARISON_CACHE_VERSION
@@ -282,7 +287,7 @@ class ComparisonCacheManager:
         rev_drawing_id: str,
         ref_hash: str,
         rev_hash: str,
-        method: str = "rag"
+        method: str = DETERMINISTIC
     ) -> Optional[Dict[str, Any]]:
         """Retrieves comparison payload if a valid cache hit exists."""
         cache_file = cls._get_cache_path(ref_drawing_id, rev_drawing_id, ref_hash, rev_hash, method)
@@ -304,7 +309,7 @@ class ComparisonCacheManager:
         ref_hash: str,
         rev_hash: str,
         payload: Dict[str, Any],
-        method: str = "rag"
+        method: str = DETERMINISTIC
     ) -> None:
         """Saves comparison payload to cache."""
         cache_file = cls._get_cache_path(ref_drawing_id, rev_drawing_id, ref_hash, rev_hash, method)

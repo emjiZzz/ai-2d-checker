@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from ...domain.models.comparison_method import DETERMINISTIC
 from .corpus import CorpusPair, EvalCorpus
 from .scorer import CorpusScore, Prediction, score_pair
 
@@ -26,8 +27,9 @@ from .scorer import CorpusScore, Prediction, score_pair
 # and `hybrid` were removed. The guard below is kept rather than deleted: it is what makes
 # "zero network calls" a refusal instead of a hope, and the day a Gemini-backed method
 # returns, an unguarded runner would emit a number that quietly cost money and cannot be
-# reproduced. `deterministic` is here for the planned `rag` rename (Stage 0.5).
-OFFLINE_METHODS = frozenset({"rag", "deterministic"})
+# reproduced. `"rag"` is the pre-rename spelling of the same method and stays accepted, so a
+# script or shell alias pinned to `--method rag` keeps working.
+OFFLINE_METHODS = frozenset({"rag", DETERMINISTIC})
 
 _LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", ""})
 
@@ -72,7 +74,7 @@ class RunResult:
     ocr_restored: list[str] = field(default_factory=list)
 
 
-async def run_pair(pair: CorpusPair, method: str = "rag") -> tuple[list[Prediction], list[Any]]:
+async def run_pair(pair: CorpusPair, method: str = DETERMINISTIC) -> tuple[list[Prediction], list[Any]]:
     """One pair through the engine. Returns (predictions, raw candidates)."""
     if method not in OFFLINE_METHODS:
         raise ValueError(
@@ -108,7 +110,7 @@ async def run_pair(pair: CorpusPair, method: str = "rag") -> tuple[list[Predicti
 async def run_corpus(
     corpus: EvalCorpus,
     *,
-    method: str = "rag",
+    method: str = DETERMINISTIC,
     provenance: str | None = None,
     enforce_offline: bool = True,
     progress: Any = None,

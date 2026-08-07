@@ -8,7 +8,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 // The create form used to carry a four-way COMPARISON ENGINE picker behind a DEV badge.
 // `rag_ai`, `ai_vision` and `hybrid` were removed (ADR-006), and a chooser with one option
 // is not a choice — so the whole section is gone rather than reduced to a single button.
-// `comparison_method` is no longer sent on create; the server defaults it to "rag".
+// `comparison_method` is no longer sent on create; the server defaults it to "deterministic".
 
 export const RoomsView: React.FC = () => {
   // useRooms() owns the server state: list, loading, optimistic mutations.
@@ -344,11 +344,11 @@ export const RoomsView: React.FC = () => {
                       {room.client_name}
                     </span>
                   )}
-                  {room.comparison_method === "rag" && (
-                    <span className="inline-flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-widest shrink-0">
-                      RAG
-                    </span>
-                  )}
+                  {/* Unconditional: there is one engine, and a room that predates the field
+                      runs it too, so gating on the value would hide the badge on old rooms. */}
+                  <span className="inline-flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-widest shrink-0">
+                    Deterministic
+                  </span>
                 </div>
 
                 <p className="text-sm text-text-muted transition-colors font-medium">

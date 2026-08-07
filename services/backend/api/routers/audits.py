@@ -13,6 +13,7 @@ from google import genai
 from google.genai import types
 
 from ...domain.models.annotation_document import AnnotationDocument
+from ...domain.models.comparison_method import DETERMINISTIC
 from ...domain.models.audit_session import AuditSession
 from ...domain.models.audit_violation import AuditViolation
 from ...domain.models.drawing_document import DrawingDocument
@@ -590,7 +591,7 @@ async def _dispatch_comparison(
 async def perform_physical_comparison(request: PhysicalComparisonRequest):
     ref_drawing, rev_drawing, ref_entities, rev_entities = await _load_comparison_inputs(request)
 
-    method = getattr(request, "comparison_method", "rag")
+    method = getattr(request, "comparison_method", DETERMINISTIC)
     logger.info(f"Physical comparison dispatched with method='{method}' for drawing {request.drawing_id}")
 
     try:
@@ -621,7 +622,7 @@ async def perform_physical_comparison(request: PhysicalComparisonRequest):
 async def stream_physical_comparison(request: PhysicalComparisonRequest):
     ref_drawing, rev_drawing, ref_entities, rev_entities = await _load_comparison_inputs(request)
 
-    method = getattr(request, "comparison_method", "rag")
+    method = getattr(request, "comparison_method", DETERMINISTIC)
     logger.info(f"Physical comparison stream dispatched with method='{method}' for drawing {request.drawing_id}")
 
     async def event_generator():

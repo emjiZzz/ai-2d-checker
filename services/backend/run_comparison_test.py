@@ -41,7 +41,7 @@ async def main():
     req = PhysicalComparisonRequest(
         reference_drawing_id=ref_id,
         drawing_id=rev_id,
-        comparison_method="rag"
+        comparison_method="deterministic"
     )
     
     print("Running physical comparison endpoint logic...")
