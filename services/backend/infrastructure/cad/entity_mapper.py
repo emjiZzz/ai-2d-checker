@@ -355,14 +355,8 @@ class EntityMapper:
 
         # Polyline can be lwpolyline or standard 3d polyline
         if entity.dxftype() == "LWPOLYLINE":
-            # An LWPOLYLINE is planar by definition, but that plane is not necessarily
-            # z=0: the entity stores its height once, in `dxf.elevation`, instead of
-            # repeating it per vertex. Reading `format="xy"` and hardcoding 0.0 flattened
-            # every LWPOLYLINE onto the origin plane -- which reads as correct on the 2D
-            # canvas and is wrong everywhere else.
-            elevation = float(_dxf_get(entity.dxf, "elevation", 0.0) or 0.0)
             for p in entity.get_points(format="xy"):
-                points.append([p[0], p[1], elevation])
+                points.append([p[0], p[1], 0.0])
         else:
             for p in entity.vertices:
                 pt = p.dxf.location
