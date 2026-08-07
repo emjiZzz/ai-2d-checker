@@ -8,12 +8,12 @@ import { createClientSlice } from "./workspace/slices/createClientSlice";
 import { createUndoSlice } from "./workspace/slices/createUndoSlice";
 import { createNavSlice } from "./workspace/slices/createNavSlice";
 import { createAnnotationsSlice } from "./workspace/slices/createAnnotationsSlice";
+import { useHistoryStore } from "./historyStore";
 
 // Re-export types so we don't break existing imports
 export type {
   DrawingItem,
   ViolationItem,
-  UndoAction,
   UploadState,
   QueueEntry,
   ClientItem,
@@ -60,8 +60,14 @@ export const saveWorkspaceState = async (roomId: string): Promise<void> => {
 };
 
 export const loadWorkspaceState = async (roomId: string): Promise<void> => {
+  // Undo history belongs to the room being left, not the one being opened. Its entries name
+  // drawing ids and zone keys from that room, so replaying one here would write a box onto an
+  // unrelated drawing. Cleared before the swap so it cannot outlive it on any path — the
+  // success branch below does not go through resetWorkspace.
+  useHistoryStore.getState().clear();
+
   const data = await idbStorage.getItem(`workspace-${roomId}`);
-  
+
   if (data) {
     try {
       const partial = JSON.parse(data);

@@ -1,21 +1,26 @@
 import { StateCreator } from "zustand";
-import { WorkspaceState, UndoSlice, UndoAction } from "../types";
+import { WorkspaceState, UndoSlice } from "../types";
+import { useHistoryStore } from "../../historyStore";
 
+/**
+ * The "Undo Delete" context-menu affordance: a stack of deleted markers, newest first.
+ *
+ * This is NOT the general undo stack any more. Ctrl+Z / Ctrl+Y run off `historyStore`, which
+ * covers zone alignment as well as markers and supports redo. What survives here is the one
+ * thing that history does not express: a menu item that restores the last deleted marker
+ * specifically, independent of whatever else the user has done since.
+ *
+ * The two are kept consistent at their two points of contact — `applyHistoryEntry` filters a
+ * restored marker out of this stack, and `popAndRestoreViolation` below drops the matching
+ * history entry — so a deletion can be walked back by either route without the marker coming
+ * back twice.
+ */
 export const createUndoSlice: StateCreator<WorkspaceState, [], [], UndoSlice> = (set, get) => ({
   deletedViolationsStack: [],
-  undoStack: [],
 
-  pushDeletedViolation: (v) => set((state) => {
-    const action: UndoAction = {
-      type: "delete",
-      violationId: v.id,
-      violation: v
-    };
-    return {
-      deletedViolationsStack: [...state.deletedViolationsStack, v],
-      undoStack: [...state.undoStack, action]
-    };
-  }),
+  pushDeletedViolation: (v) => set((state) => ({
+    deletedViolationsStack: [...state.deletedViolationsStack, v],
+  })),
 
   popAndRestoreViolation: () => {
     const stack = get().deletedViolationsStack;
@@ -24,39 +29,16 @@ export const createUndoSlice: StateCreator<WorkspaceState, [], [], UndoSlice> = 
     set({
       deletedViolationsStack: stack.slice(0, -1),
       violations: [...get().violations, last],
-      undoStack: get().undoStack.filter(act => !(act.type === "delete" && act.violationId === last.id))
     });
-  },
-
-  pushUndoAction: (action) => set((state) => ({
-    undoStack: [...state.undoStack, action]
-  })),
-
-  undoLastAction: () => {
-    const stack = get().undoStack;
-    if (stack.length === 0) return;
-    const last = stack[stack.length - 1];
-    const newStack = stack.slice(0, -1);
-    
-    if (last.type === "delete" && last.violation) {
-      set({
-        undoStack: newStack,
-        violations: [...get().violations, last.violation],
-        deletedViolationsStack: get().deletedViolationsStack.filter(v => v.id !== last.violationId)
-      });
-    } else if (last.type === "move") {
-      set({
-        undoStack: newStack,
-        violations: get().violations.map(v => {
-          if (v.id === last.violationId) {
-            const updated = { ...v };
-            if (last.oldCoords) updated.coordinates = last.oldCoords;
-            if (last.oldRefCoords) updated.ref_coordinates = last.oldRefCoords;
-            return updated;
-          }
-          return v;
-        })
-      });
-    }
+    // Drop this deletion from the keyboard history too. Leaving it would let a later Ctrl+Z
+    // "undo" a delete that the menu has already undone, adding a second copy of the marker.
+    useHistoryStore.setState((s) => ({
+      past: s.past.filter(
+        (entry) => !(entry.kind === "violation/delete" && entry.violationId === last.id),
+      ),
+      future: s.future.filter(
+        (entry) => !(entry.kind === "violation/delete" && entry.violationId === last.id),
+      ),
+    }));
   },
 });

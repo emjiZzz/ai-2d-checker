@@ -90,16 +90,6 @@ export interface AnnotationItem {
   coordinate_drift?: boolean;
 }
 
-export interface UndoAction {
-  type: "move" | "delete";
-  violationId: string;
-  oldCoords?: [number, number];
-  newCoords?: [number, number];
-  oldRefCoords?: [number, number];
-  newRefCoords?: [number, number];
-  violation?: ViolationItem;
-}
-
 export type UploadState = "idle" | "dragging" | "validating" | "uploading" | "processing" | "completed" | "failed";
 
 export interface QueueEntry {
@@ -216,13 +206,12 @@ export interface ClientSlice {
 }
 
 export interface UndoSlice {
+  /** Deleted markers, for the context menu's "Undo Delete". See createUndoSlice for how this
+   *  stays consistent with the Ctrl+Z history in `stores/historyStore.ts`. */
   deletedViolationsStack: ViolationItem[];
-  undoStack: UndoAction[];
 
   pushDeletedViolation: (violation: ViolationItem) => void;
   popAndRestoreViolation: () => void;
-  pushUndoAction: (action: UndoAction) => void;
-  undoLastAction: () => void;
 }
 
 export interface AnnotationsSlice {

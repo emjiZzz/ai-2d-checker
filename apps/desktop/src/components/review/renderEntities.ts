@@ -6,7 +6,12 @@ import {
   isPlaceholderOnly,
   type DrawingZonesResponse,
 } from '../../services/drawingsApi';
-import { fractionsToScreenRect, type RegionFractions } from '../../utils/zoneFractions';
+import {
+  fractionsToScreenRect,
+  isPolygonZone,
+  shapePointsToScreen,
+  type RegionFractions,
+} from '../../utils/zoneFractions';
 
 
 // Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags
@@ -726,11 +731,27 @@ export const renderZoneEditor = ({
     const isPinned = pinnedKeys?.includes(key) ?? false;
     const wasMeasured = isPinned || detected?.[key]?.confidence === 'content_aware';
 
+    // A zone the user reshaped has an explicit outline; every other zone is its rectangle.
+    // `shapePointsToScreen` returns the rectangle's four corners in the un-reshaped case, so
+    // the polygon path below is the single drawing path for both.
+    const polygon = isPolygonZone(frac);
+    const screenPoints = shapePointsToScreen(frac, renderBounds, norm, viewport);
+    const tracePath = () => {
+      ctx.beginPath();
+      screenPoints.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.closePath();
+    };
+
     ctx.strokeStyle = color;
     ctx.globalAlpha = isSelected ? 1 : 0.4;
     ctx.lineWidth = (isSelected ? 2 : 1.5) * resolutionMultiplier;
     ctx.setLineDash(wasMeasured ? [] : [6 * resolutionMultiplier, 4 * resolutionMultiplier]);
-    ctx.strokeRect(left, top, w, h);
+    if (polygon) {
+      tracePath();
+      ctx.stroke();
+    } else {
+      ctx.strokeRect(left, top, w, h);
+    }
     ctx.setLineDash([]);
 
     ctx.fillStyle = color;
@@ -748,23 +769,39 @@ export const renderZoneEditor = ({
       // hole. A single even-odd path would re-fill their intersection — and sibling overlap is
       // real here; the orchestrator logs "Spatial region overlap detected!" for BOM vs title.
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(left, top, w, h);
+      tracePath();
       ctx.clip();
       VIEWS_EXCLUDED_ZONES.forEach((siblingKey) => {
         const siblingFrac = customRegions[siblingKey];
         if (!siblingFrac) return;
-        const s = fractionsToScreenRect(siblingFrac, renderBounds, norm, viewport);
-        const sw = s.right - s.left;
-        const sh = s.bottom - s.top;
-        if (sw <= 0 || sh <= 0) return;
+        // A reshaped sibling cuts its OUTLINE out of the views tint, not its bounding box —
+        // matching `views_exclusions`, which excludes on the outline for the same reason.
+        // Punching the bbox would show content as excluded that the engine still compares.
         const hole = new Path2D();
         hole.rect(0, 0, renderWidth, renderHeight);
-        hole.rect(s.left, s.top, sw, sh);
+        if (isPolygonZone(siblingFrac)) {
+          const sp = shapePointsToScreen(siblingFrac, renderBounds, norm, viewport);
+          sp.forEach((p, i) => (i === 0 ? hole.moveTo(p.x, p.y) : hole.lineTo(p.x, p.y)));
+          hole.closePath();
+        } else {
+          const s = fractionsToScreenRect(siblingFrac, renderBounds, norm, viewport);
+          const sw = s.right - s.left;
+          const sh = s.bottom - s.top;
+          if (sw <= 0 || sh <= 0) return;
+          hole.rect(s.left, s.top, sw, sh);
+        }
         ctx.clip(hole, 'evenodd');
       });
-      ctx.fillRect(left, top, w, h);
+      if (polygon) {
+        tracePath();
+        ctx.fill();
+      } else {
+        ctx.fillRect(left, top, w, h);
+      }
       ctx.restore();
+    } else if (polygon) {
+      tracePath();
+      ctx.fill();
     } else {
       ctx.fillRect(left, top, w, h);
     }
@@ -792,25 +829,61 @@ export const renderZoneEditor = ({
 
     if (!isSelected) return;
 
-    // Corner handles. Ids and positions mirror the hit-test's `handles` array in
-    // useCanvasInteraction.ts; its hit radius is 12px, so these are drawn at 9px half-width
-    // — visibly smaller than the grab area, which makes the target forgiving rather than
-    // fiddly. Four corners only: the hit-test recognizes no edge midpoints, and an
-    // affordance that does not respond is worse than an absent one.
+    // Handles. Ids and positions mirror the hit-test in useCanvasInteraction.ts; its hit
+    // radius is 12px, so these are drawn at 9px half-width — visibly smaller than the grab
+    // area, which makes the target forgiving rather than fiddly.
+    //
+    // A RECTANGLE keeps its four corner handles and its rectangular resize, unchanged. A
+    // RESHAPED zone's handles are its vertices, because once an outline exists "resize the
+    // box" has no meaning — there are five or nine corners and no opposite edge to hold.
     const HALF = 9 * resolutionMultiplier;
-    const corners: Array<{ id: string; x: number; y: number }> = [
-      { id: 'top-left', x: left, y: top },
-      { id: 'top-right', x: right, y: top },
-      { id: 'bottom-left', x: left, y: bottom },
-      { id: 'bottom-right', x: right, y: bottom },
-    ];
-    corners.forEach((c) => {
+    const handles: Array<{ id: string; x: number; y: number }> = polygon
+      ? screenPoints.map((p, i) => ({ id: `node:${i}`, x: p.x, y: p.y }))
+      : [
+          { id: 'top-left', x: left, y: top },
+          { id: 'top-right', x: right, y: top },
+          { id: 'bottom-left', x: left, y: bottom },
+          { id: 'bottom-right', x: right, y: bottom },
+        ];
+    handles.forEach((c) => {
       ctx.fillStyle = hoveredHandleId === c.id ? '#ffffff' : color;
       ctx.strokeStyle = '#0b0f19';
       ctx.lineWidth = 1.5 * resolutionMultiplier;
       ctx.fillRect(c.x - HALF, c.y - HALF, HALF * 2, HALF * 2);
       ctx.strokeRect(c.x - HALF, c.y - HALF, HALF * 2, HALF * 2);
     });
+
+    // Edge hint — the affordance that makes node insertion discoverable at all. When the
+    // cursor is over an edge, a hollow "+" ghost appears at the point the node would be
+    // added, so the gesture is visible before it is committed rather than being something
+    // you have to already know about.
+    const hoveredEdge = hoveredHandleId?.startsWith('edge:')
+      ? Number(hoveredHandleId.slice('edge:'.length))
+      : null;
+    if (hoveredEdge !== null && Number.isFinite(hoveredEdge) && screenPoints.length > 0) {
+      const a = screenPoints[hoveredEdge % screenPoints.length];
+      const b = screenPoints[(hoveredEdge + 1) % screenPoints.length];
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const r = 7 * resolutionMultiplier;
+
+      ctx.strokeStyle = color;
+      ctx.fillStyle = '#0b0f19';
+      ctx.lineWidth = 2 * resolutionMultiplier;
+      ctx.beginPath();
+      ctx.arc(mx, my, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * resolutionMultiplier;
+      ctx.beginPath();
+      ctx.moveTo(mx - r * 0.5, my);
+      ctx.lineTo(mx + r * 0.5, my);
+      ctx.moveTo(mx, my - r * 0.5);
+      ctx.lineTo(mx, my + r * 0.5);
+      ctx.stroke();
+    }
   });
 
   ctx.restore();

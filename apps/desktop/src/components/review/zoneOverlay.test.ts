@@ -54,6 +54,12 @@ function makeCtx() {
   /** One entry per clip(): the rects of the path, or null for the current-path form. */
   const clips: (RectCall[] | null)[] = [];
   const pathRects: RectCall[] = [];
+  /** Vertices traced on the CURRENT path, reset by beginPath. */
+  const pathPoints: { x: number; y: number }[] = [];
+  /** One entry per stroke()/fill(): the vertices the path held at that moment. */
+  const strokedPaths: { x: number; y: number }[][] = [];
+  const filledPaths: { x: number; y: number }[][] = [];
+  const arcs: { x: number; y: number; r: number }[] = [];
 
   const ctx = {
     _strokeRects: strokeRects,
@@ -63,11 +69,21 @@ function makeCtx() {
     _lineDashes: lineDashes,
     _clips: clips,
     _pathRects: pathRects,
+    _strokedPaths: strokedPaths,
+    _filledPaths: filledPaths,
+    _arcs: arcs,
     beginPath: () => {
       pathRects.length = 0;
+      pathPoints.length = 0;
     },
     rect: (left: number, top: number, w: number, h: number) =>
       pathRects.push({ left, top, w, h }),
+    moveTo: (x: number, y: number) => pathPoints.push({ x, y }),
+    lineTo: (x: number, y: number) => pathPoints.push({ x, y }),
+    closePath: vi.fn(),
+    stroke: () => strokedPaths.push([...pathPoints]),
+    fill: () => filledPaths.push([...pathPoints]),
+    arc: (x: number, y: number, r: number) => arcs.push({ x, y, r }),
     clip: (path?: FakePath2D) => clips.push(path ? [...path.rects] : null),
     set lineWidth(v: number) {
       lineWidths.push(v);

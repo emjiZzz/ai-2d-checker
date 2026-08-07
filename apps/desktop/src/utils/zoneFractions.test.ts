@@ -14,6 +14,7 @@ import {
   fractionsToZoneBox,
   normalizeFractions,
   zoneBoxToFractions,
+  zonesToTemplatePayload,
   type RenderBoundsTuple,
 } from "./zoneFractions";
 
@@ -177,5 +178,58 @@ describe("normalizeFractions", () => {
   it("leaves a valid box untouched", () => {
     const ok = { xMin: 0.1, xMax: 0.9, yMin: 0.2, yMax: 0.8 };
     expect(normalizeFractions(ok)).toEqual(ok);
+  });
+});
+
+describe("zonesToTemplatePayload — a reshaped zone must survive being saved", () => {
+  const RESHAPED = {
+    xMin: 0.1, xMax: 0.5, yMin: 0.1, yMax: 0.5,
+    points: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.5, y: 0.1 },
+      { x: 0.5, y: 0.3 },
+      { x: 0.3, y: 0.3 },
+      { x: 0.3, y: 0.5 },
+      { x: 0.1, y: 0.5 },
+    ],
+  };
+
+  it("carries the outline through instead of flattening it to a bounding box", () => {
+    const payload = zonesToTemplatePayload({ views: RESHAPED });
+    expect(payload.views.points).toHaveLength(6);
+    expect(payload.views.points).toEqual(RESHAPED.points);
+  });
+
+  it("keeps a plain rectangle a rectangle", () => {
+    const payload = zonesToTemplatePayload({
+      title: { xMin: 0.2, xMax: 0.8, yMin: 0.2, yMax: 0.8 },
+    });
+    expect(payload.title.points).toBeUndefined();
+  });
+
+  it("clamps outline vertices the same way it clamps the scalars", () => {
+    const payload = zonesToTemplatePayload({
+      views: {
+        xMin: -3, xMax: 9, yMin: -1, yMax: 4,
+        points: [{ x: -2, y: 0.5 }, { x: 0.5, y: 7 }, { x: 0.5, y: 0.5 }],
+      },
+    });
+    expect(payload.views.xMin).toBe(0);
+    expect(payload.views.xMax).toBe(1);
+    expect(payload.views.points).toEqual([
+      { x: 0, y: 0.5 }, { x: 0.5, y: 1 }, { x: 0.5, y: 0.5 },
+    ]);
+  });
+
+  it("drops an outline with too few vertices — it would contain nothing", () => {
+    const payload = zonesToTemplatePayload({
+      views: { xMin: 0.1, xMax: 0.5, yMin: 0.1, yMax: 0.5, points: [{ x: 0.1, y: 0.1 }] },
+    });
+    expect(payload.views.points).toBeUndefined();
+  });
+
+  it("skips null and undefined zones rather than emitting empty entries", () => {
+    const payload = zonesToTemplatePayload({ views: null, notes: undefined });
+    expect(Object.keys(payload)).toHaveLength(0);
   });
 });

@@ -13,8 +13,11 @@ import {
   fetchDefaultZoneTemplate,
   saveZoneTemplate,
   zoneSignature,
+  type ZoneTemplateFractions,
 } from "../../services/drawingsApi";
+import { zonesToTemplatePayload } from "../../utils/zoneFractions";
 import { useReviewStore, type RegionFractions } from "../../stores/reviewStore";
+import { recordHistoryGroup, type HistoryEntry } from "../../stores/historyStore";
 import { useRoomStore } from "../../stores/roomStore";
 import {
   isRoomSyncedWithDrawings,
@@ -110,7 +113,10 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative bg-bg-dark w-full">
-      <div className="flex-grow min-h-0 min-w-0 relative flex items-center justify-center overflow-hidden" ref={containerRef}>
+      <div
+        className="flex-grow min-h-0 min-w-0 relative flex items-center justify-center overflow-hidden"
+        ref={containerRef}
+      >
         {drawing ? (
           <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
             <DrawingCanvas
@@ -120,10 +126,10 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
               height={size.height}
               drawing={drawing}
             />
-            <Minimap 
-              drawing={drawing} 
-              canvasWidth={size.width} 
-              canvasHeight={size.height} 
+            <Minimap
+              drawing={drawing}
+              canvasWidth={size.width}
+              canvasHeight={size.height}
             />
           </div>
         ) : (
@@ -178,7 +184,10 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative bg-bg-dark w-full">
-      <div className="flex-grow min-h-0 min-w-0 relative flex items-center justify-center overflow-hidden" ref={containerRef}>
+      <div
+        className="flex-grow min-h-0 min-w-0 relative flex items-center justify-center overflow-hidden"
+        ref={containerRef}
+      >
         {drawing ? (
           <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
             <DrawingCanvas
@@ -188,10 +197,10 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
               height={size.height}
               drawing={drawing}
             />
-            <Minimap 
-              drawing={drawing} 
-              canvasWidth={size.width} 
-              canvasHeight={size.height} 
+            <Minimap
+              drawing={drawing}
+              canvasWidth={size.width}
+              canvasHeight={size.height}
             />
           </div>
         ) : (
@@ -284,38 +293,52 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       return;
     }
 
-    const clamp01 = (v: number) => Math.max(0, Math.min(1, Number(v) || 0));
     const oldReg = oldDrawingForZones ? useReviewStore.getState().getRegionsFor(oldDrawingForZones.id) : {};
     const newReg = newDrawingForZones ? useReviewStore.getState().getRegionsFor(newDrawingForZones.id) : {};
     const regions = { ...oldReg, ...newReg };
-    const zones: Record<string, { xMin: number; xMax: number; yMin: number; yMax: number }> = {};
-    for (const [key, frac] of Object.entries(regions)) {
-      if (frac) {
-        zones[key] = {
-          xMin: clamp01(frac.xMin),
-          xMax: clamp01(frac.xMax),
-          yMin: clamp01(frac.yMin),
-          yMax: clamp01(frac.yMax),
-        };
-      }
-    }
+    // Pure and tested in zoneFractions.test.ts. It carries the reshaped outline through —
+    // this used to be an inline four-field literal that silently flattened every hand-drawn
+    // polygon to its bounding box, and `applyZoneTemplate` below then wrote that flattened
+    // version straight back over the live regions, so a reshape vanished on screen at the
+    // moment of saving it.
+    const zones = zonesToTemplatePayload(regions) as Record<string, ZoneTemplateFractions>;
 
     setTemplateSaveState({ status: "saving" });
     try {
       await saveZoneTemplate(signature, { zones, name: signature });
 
       const applyZoneTemplate = useReviewStore.getState().applyZoneTemplate;
+      const entries: HistoryEntry[] = [];
       for (const d of [oldDrawing, newDrawing]) {
         if (!d) continue;
         const detected = zoneRegions[d.id];
         const bounds = d.metadata?.render_bounds;
+        const before = useReviewStore.getState().customRegions[d.id] ?? null;
+        const pinnedBefore = useReviewStore.getState().pinnedZoneKeys[d.id] ?? null;
         applyZoneTemplate(
           d.id,
           zones as any,
           detected as any,
           bounds as [number, number, number, number]
         );
+        // Applying the template rewrites every zone on both panes from the merged set, which
+        // can move zones the user never touched on this sheet. Undoable for the same reason
+        // Reset is — though note this only walks back the LOCAL boxes; the template itself
+        // stays saved on the server, since that is a deliberate cross-drawing decision and
+        // not something a keystroke should silently retract.
+        const after = useReviewStore.getState().customRegions[d.id] ?? null;
+        entries.push({
+          kind: 'zone/bulk',
+          label: 'Apply sheet template',
+          drawingId: d.id,
+          before,
+          after,
+          pinnedBefore,
+          pinnedAfter: useReviewStore.getState().pinnedZoneKeys[d.id] ?? null,
+        });
       }
+      // One click, one Ctrl+Z — the two entries are the two panes, not two user actions.
+      recordHistoryGroup(entries);
 
       setTemplateSaveState({
         status: "saved",
@@ -429,13 +452,28 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const selectZone = (key: string) => {
     setSelectedComparisonRegion(key);
     const store = useReviewStore.getState();
+    const entries: HistoryEntry[] = [];
     for (const d of [oldDrawingForZones, newDrawingForZones]) {
       if (!d?.id) continue;
       const existing = store.getRegionsFor(d.id)?.[key];
       if (!existing) {
-        store.updateCustomRegion(d.id, key, { xMin: 0.40, xMax: 0.60, yMin: 0.42, yMax: 0.68 });
+        const seeded = { xMin: 0.40, xMax: 0.60, yMin: 0.42, yMax: 0.68 };
+        store.updateCustomRegion(d.id, key, seeded);
+        // `before: null` — the zone had no box at all, so undo must REMOVE the key rather
+        // than leave a zero-size one behind, which this chip would then read as "placed"
+        // and never re-seed.
+        entries.push({
+          kind: 'zone/update',
+          label: 'Add zone box',
+          drawingId: d.id,
+          zoneKey: key,
+          before: null,
+          after: seeded,
+        });
       }
     }
+    // Grouped: the chip seeds a box on each pane, and taking that back is one keystroke.
+    recordHistoryGroup(entries);
   };
 
   /** The ⋮ menu handler: still a toggle, so the user can leave and re-enter at will. */
@@ -951,7 +989,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               {/* Only the selected zone has drag handles — the underlying hit-test tracks a
                   single region — so the picker is how you reach the other six. */}
               <span className="text-[10px] text-text-muted ml-1">
-                drag inside to move · corners to resize
+                drag inside to move · corners to resize · click an edge to add a node ·
+                alt-click a node to remove
               </span>
               {/* Dashed boxes with a '?' are zones the detector guessed from the percentage
                   grid rather than anchoring on real content. Counting them here saves
@@ -991,8 +1030,28 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                 </button>
                 <button
                   onClick={() => {
-                    if (oldDrawingForZones) resetCustomRegions(oldDrawingForZones.id);
-                    if (newDrawingForZones) resetCustomRegions(newDrawingForZones.id);
+                    // Reset deletes the drawing's alignment AND its localStorage entry, so it
+                    // is the one action here that can throw away a long session of hand
+                    // placement. Snapshot each pane before it runs, then record the pair as
+                    // ONE action: Reset is a single click and a single Ctrl+Z has to take all
+                    // of it back. Undoing one pane at a time left the two sides disagreeing,
+                    // which looks like undo failing rather than undo half-finishing.
+                    const entries: HistoryEntry[] = [];
+                    for (const d of [oldDrawingForZones, newDrawingForZones]) {
+                      if (!d?.id) continue;
+                      const store = useReviewStore.getState();
+                      entries.push({
+                        kind: 'zone/bulk',
+                        label: 'Reset zone alignment',
+                        drawingId: d.id,
+                        before: store.customRegions[d.id] ?? null,
+                        after: null,
+                        pinnedBefore: store.pinnedZoneKeys[d.id] ?? null,
+                        pinnedAfter: null,
+                      });
+                      resetCustomRegions(d.id);
+                    }
+                    recordHistoryGroup(entries);
                   }}
                   className="px-2 py-1 text-[10px] font-bold uppercase rounded border border-border-color text-text-muted hover:text-text-primary transition-colors cursor-pointer"
                   title="Discard this drawing's local alignment and return to the defaults"

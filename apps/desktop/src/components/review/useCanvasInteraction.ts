@@ -1,7 +1,17 @@
 import { useState, useEffect, useCallback, RefObject, useRef, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
-import { DEFAULT_CUSTOM_REGIONS } from '../../utils/zoneFractions';
+import {
+  DEFAULT_CUSTOM_REGIONS,
+  insertPointOnEdge,
+  isPolygonZone,
+  movePointTo,
+  removePointAt,
+  shapePointsToScreen,
+  translateShape,
+} from '../../utils/zoneFractions';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { recordHistory } from '../../stores/historyStore';
+import type { RegionFractions } from '../../utils/zoneFractions';
 import { getNormalization, screenToWorld, screenToWorldUnflipped, screenDeltaToWorldDelta, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
 import { hitTestMarker, getRoiDragPercentages } from './canvasInteraction';
 
@@ -13,6 +23,58 @@ interface UseCanvasInteractionProps {
   oldDrawing: any;
   setRedrawTrigger: React.Dispatch<React.SetStateAction<number>>;
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
+}
+
+type ScreenPoint = { x: number; y: number };
+
+/**
+ * Index of the edge within `tolerance` px of (mx, my), or null.
+ *
+ * Edge *i* runs from vertex i to vertex i+1, wrapping — the same numbering
+ * `insertPointOnEdge` uses, so the ghost node the hint draws and the node the click creates
+ * are always the same point.
+ *
+ * Distance is to the SEGMENT, not to the infinite line: near a corner the perpendicular
+ * distance to a line stays small far outside the shape, which would light up an edge hint
+ * while the cursor sits well off the zone.
+ */
+function nearestEdgeWithin(
+  points: ScreenPoint[],
+  mx: number,
+  my: number,
+  tolerance: number,
+): number | null {
+  let best: number | null = null;
+  let bestDist = tolerance;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    // A zero-length edge has no direction to project onto; skip rather than divide by zero.
+    if (lenSq === 0) continue;
+    const t = Math.max(0, Math.min(1, ((mx - a.x) * dx + (my - a.y) * dy) / lenSq));
+    const dist = Math.hypot(mx - (a.x + t * dx), my - (a.y + t * dy));
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** Winding test in SCREEN space, so the body-drag target matches the drawn outline. */
+function pointInScreenShape(points: ScreenPoint[], mx: number, my: number): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const a = points[i];
+    const b = points[j];
+    if (a.y > my !== b.y > my && mx < ((b.x - a.x) * (my - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 export function useCanvasInteraction({
@@ -84,10 +146,15 @@ export function useCanvasInteraction({
   const [preventNextContextMenu, setPreventNextContextMenu] = useState(false);
   const [isHoveringMarkerState, setIsHoveringMarkerState] = useState(false);
 
-  // ROI Interactive Drag handles local states
+  // ROI Interactive Drag handles local states.
+  //
+  // `handleId` is a corner for a rectangular zone, `node:<i>` for a vertex of a reshaped one,
+  // or `center` for the whole-zone drag. `edge:<i>` never becomes an ACTIVE handle — clicking
+  // an edge inserts a node and immediately hands the drag to that new `node:<i>`, so the
+  // gesture is add-and-place in one motion rather than add-then-find-it.
   const [activeDragHandle, setActiveDragHandle] = useState<{
     regionKey: string;
-    handleId: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+    handleId: string;
   } | null>(null);
   
   const [hoveredHandleInfo, setHoveredHandleInfo] = useState<{
@@ -95,6 +162,48 @@ export function useCanvasInteraction({
     handleId: string;
     cursor: string;
   } | null>(null);
+
+  /**
+   * The zone's geometry as it was when the current drag gesture STARTED.
+   *
+   * Undo has to coalesce here. The drag handler writes to the store on every mousemove frame,
+   * so recording per write would turn one nudge of a corner into a couple of hundred undo
+   * steps and make Ctrl+Z appear broken — you would hold it down and watch the box creep.
+   * One gesture (mousedown → mouseup) is one entry.
+   *
+   * A ref, not state: it is written during mousedown and read during mouseup within the same
+   * gesture, and a state update would not be visible to the mouseup handler that reads it.
+   */
+  const zoneGestureRef = useRef<{
+    drawingId: string;
+    zoneKey: string;
+    before: RegionFractions | null;
+  } | null>(null);
+
+  /**
+   * Closes an in-flight zone gesture, recording it only if the geometry actually changed.
+   *
+   * The equality check matters: clicking a handle without moving it, or clicking inside a zone
+   * to select it, both run through the drag lifecycle and would otherwise push a no-op entry
+   * that makes the user press Ctrl+Z twice to undo one real edit.
+   */
+  const commitZoneGesture = useCallback(() => {
+    const gesture = zoneGestureRef.current;
+    zoneGestureRef.current = null;
+    if (!gesture) return;
+
+    const after = useReviewStore.getState().getRegionsFor(gesture.drawingId)[gesture.zoneKey] ?? null;
+    if (JSON.stringify(gesture.before) === JSON.stringify(after)) return;
+
+    recordHistory({
+      kind: 'zone/update',
+      label: gesture.before === null ? 'Add zone box' : 'Edit zone box',
+      drawingId: gesture.drawingId,
+      zoneKey: gesture.zoneKey,
+      before: gesture.before,
+      after,
+    });
+  }, []);
   
   const [centerDragStart, setCenterDragStart] = useState<{
     pctX: number;
@@ -251,12 +360,10 @@ export function useCanvasInteraction({
         return;
       }
 
+      // NOTE: Ctrl+Z / Ctrl+Y are NOT handled here. This hook runs once per canvas pane and
+      // the workspace renders two, so a window-level binding here fired twice per press and
+      // undid two actions. Undo lives in hooks/useUndoRedo.ts, mounted once by App.
       const key = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && key === 'z') {
-        e.preventDefault();
-        useWorkspaceStore.getState().undoLastAction();
-        return;
-      }
       if (key === 'escape') {
         e.preventDefault();
         selectViolation(null);
@@ -275,10 +382,21 @@ export function useCanvasInteraction({
           const targetY = height / 2 - stdY * targetScale;
           setViewport(clampViewport({ x: targetX, y: targetY, scale: targetScale }));
         }
-      } else if (e.key === 'delete' || e.key === 'backspace') {
+      } else if (key === 'delete' || key === 'backspace') {
         if (selectedViolation) {
           e.preventDefault();
           const currentViolations = useWorkspaceStore.getState().violations;
+          // Record BEFORE removing, and push onto the deleted stack, so this deletion is
+          // reachable by both Ctrl+Z and the context menu's "Undo Delete". Previously it did
+          // neither, making keyboard-deleted markers the one unrecoverable action in the
+          // workspace — alt-click delete had always been undoable.
+          useWorkspaceStore.getState().pushDeletedViolation(selectedViolation);
+          recordHistory({
+            kind: 'violation/delete',
+            label: 'Delete marker',
+            violationId: selectedViolation.id,
+            violation: selectedViolation,
+          });
           setViolations(currentViolations.filter(v => v.id !== selectedViolation.id));
           selectViolation(null);
         }
@@ -393,10 +511,54 @@ export function useCanvasInteraction({
       }
 
       if (isRoiEditModeEnabled && hoveredHandleInfo) {
-        setActiveDragHandle({
-          regionKey: hoveredHandleInfo.regionKey,
-          handleId: hoveredHandleInfo.handleId as any
-        });
+        const { regionKey, handleId } = hoveredHandleInfo;
+        const current = customRegions[regionKey];
+
+        // ALT+click a node removes it — the inverse of clicking an edge. Bounded at three
+        // vertices by `removePointAt`, because two points enclose nothing and a zone that
+        // contains nothing reports nothing, silently.
+        if (e.altKey && handleId.startsWith('node:') && current && drawing?.id) {
+          const removed = removePointAt(current, Number(handleId.slice('node:'.length)));
+          updateCustomRegion(drawing.id, regionKey, removed);
+          // Recorded immediately rather than through the gesture ref: this is a complete
+          // edit on mousedown with no drag to follow, so there is no mouseup to commit it.
+          recordHistory({
+            kind: 'zone/update',
+            label: 'Remove zone node',
+            drawingId: drawing.id,
+            zoneKey: regionKey,
+            before: current,
+            after: removed,
+          });
+          setRedrawTrigger(prev => prev + 1);
+          return;
+        }
+
+        // Click an edge to insert a node at that point, then drag it straight away: the new
+        // vertex becomes the active handle, so adding and placing are one gesture. On a
+        // rectangle this is also the moment the zone stops being one.
+        if (handleId.startsWith('edge:') && current && drawing?.id) {
+          const edgeIndex = Number(handleId.slice('edge:'.length));
+          // Snapshot BEFORE the insert, and let mouseup commit it — so inserting a node and
+          // dragging it into place is a single undo step, matching the single gesture the
+          // user performed.
+          zoneGestureRef.current = { drawingId: drawing.id, zoneKey: regionKey, before: current };
+          updateCustomRegion(drawing.id, regionKey, insertPointOnEdge(current, edgeIndex));
+          setActiveDragHandle({ regionKey, handleId: `node:${edgeIndex + 1}` });
+          setIsDragging(true);
+          setRedrawTrigger(prev => prev + 1);
+          return;
+        }
+
+        if (drawing?.id) {
+          zoneGestureRef.current = {
+            drawingId: drawing.id,
+            zoneKey: regionKey,
+            before: current ?? null,
+          };
+        }
+
+        setActiveDragHandle({ regionKey, handleId });
 
         if (hoveredHandleInfo.handleId === 'center') {
           const rect = canvasRef.current?.getBoundingClientRect();
@@ -564,18 +726,34 @@ export function useCanvasInteraction({
         const screenYMin = (ryMin + h * customReg.yMin - norm.ymin) * effectiveScale + currentViewport.y;
         const screenYMax = (ryMin + h * customReg.yMax - norm.ymin) * effectiveScale + currentViewport.y;
 
-        const handles = [
-          { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
-          { id: 'top-right', x: screenXMax, y: screenYMin, cursor: 'nesw-resize' },
-          { id: 'bottom-left', x: screenXMin, y: screenYMax, cursor: 'nesw-resize' },
-          { id: 'bottom-right', x: screenXMax, y: screenYMax, cursor: 'nwse-resize' }
-        ];
+        const isPolygon = isPolygonZone(customReg);
+        const pts = shapePointsToScreen(customReg, drawing.metadata.render_bounds, norm, currentViewport);
+
+        // A RECTANGLE keeps its four corner handles and its rectangular resize. A RESHAPED
+        // zone's handles are its vertices: once an outline exists there is no opposite edge
+        // to hold, so "resize the box" has no meaning.
+        const handles = isPolygon
+          ? pts.map((p, i) => ({ id: `node:${i}`, x: p.x, y: p.y, cursor: 'move' }))
+          : [
+              { id: 'top-left', x: screenXMin, y: screenYMin, cursor: 'nwse-resize' },
+              { id: 'top-right', x: screenXMax, y: screenYMin, cursor: 'nesw-resize' },
+              { id: 'bottom-left', x: screenXMin, y: screenYMax, cursor: 'nesw-resize' },
+              { id: 'bottom-right', x: screenXMax, y: screenYMax, cursor: 'nwse-resize' },
+            ];
 
         const hovered = handles.find(hd => Math.hypot(mx - hd.x, my - hd.y) <= 12);
         if (hovered) {
           setHoveredHandleInfo({ regionKey, handleId: hovered.id, cursor: hovered.cursor });
         } else {
-          if (mx >= screenXMin && mx <= screenXMax && my >= screenYMin && my <= screenYMax) {
+          // Edge hover — the "add a node here" affordance. Checked AFTER the vertex handles
+          // so a corner never loses to the two edges meeting at it, and with a tighter
+          // tolerance (8px vs 12px) so grabbing an existing node stays easier than minting a
+          // new one. `copy` is the cursor because the click adds something rather than moving
+          // what is there.
+          const edge = nearestEdgeWithin(pts, mx, my, 8);
+          if (edge !== null) {
+            setHoveredHandleInfo({ regionKey, handleId: `edge:${edge}`, cursor: 'copy' });
+          } else if (pointInScreenShape(pts, mx, my)) {
             setHoveredHandleInfo({ regionKey, handleId: 'center', cursor: 'move' });
           } else {
             setHoveredHandleInfo(null);
@@ -605,6 +783,37 @@ export function useCanvasInteraction({
       const pctY = Math.max(0.0, Math.min(1.0, (worldY - ryMin) / h));
 
       const currentBounds = { ...customRegions[activeDragHandle.regionKey] };
+
+      // Dragging a VERTEX of a reshaped zone. Handled before the rectangle branches because
+      // those all write xMin/xMax/yMin/yMax, which on a polygon are the DERIVED bounds — the
+      // write would be recomputed away by `normalizeFractions` and the node would snap back.
+      if (activeDragHandle.handleId.startsWith('node:')) {
+        const index = Number(activeDragHandle.handleId.slice('node:'.length));
+        updateCustomRegion(
+          drawing.id,
+          activeDragHandle.regionKey,
+          movePointTo(currentBounds, index, { x: pctX, y: pctY }),
+        );
+        setRedrawTrigger(prev => prev + 1);
+        return;
+      }
+
+      // Whole-zone drag of a reshaped zone: every vertex moves together. The rectangle path
+      // below cannot express this — it slides four edges, and a polygon has no four edges.
+      if (activeDragHandle.handleId === 'center' && centerDragStart && isPolygonZone(currentBounds)) {
+        updateCustomRegion(
+          drawing.id,
+          activeDragHandle.regionKey,
+          translateShape(
+            currentBounds,
+            pctX - centerDragStart.pctX,
+            pctY - centerDragStart.pctY,
+          ),
+        );
+        setCenterDragStart({ ...centerDragStart, pctX, pctY });
+        setRedrawTrigger(prev => prev + 1);
+        return;
+      }
 
       if (activeDragHandle.handleId === 'center' && centerDragStart) {
         const deltaPctX = pctX - centerDragStart.pctX;
@@ -658,6 +867,9 @@ export function useCanvasInteraction({
     }, 50);
     setActiveDragHandle(null);
     setCenterDragStart(null);
+    // Close the zone gesture opened in mousedown. No-ops when the press was a pan or a plain
+    // click, since nothing was snapshotted and the geometry is unchanged either way.
+    commitZoneGesture();
 
     // If we didn't click on a marker, and we didn't drag/pan significantly, it's a "click outside" -> deselect
     if (!dragMarkerId && selectedViolation) {
@@ -686,6 +898,12 @@ export function useCanvasInteraction({
         if (markerToDelete) {
           if (e.altKey) {
             useWorkspaceStore.getState().pushDeletedViolation(markerToDelete);
+            recordHistory({
+              kind: 'violation/delete',
+              label: 'Delete marker',
+              violationId: markerToDelete.id,
+              violation: markerToDelete,
+            });
             setViolations(currentViolations.filter(v => v.id !== dragMarkerId));
             if (selectedViolation?.id === dragMarkerId) {
               selectViolation(null);
@@ -705,13 +923,18 @@ export function useCanvasInteraction({
             markerItem.ref_coordinates?.[1] !== dragMarkerOriginalCoords.ref_coordinates?.[1];
 
           if (coordsChanged) {
-            useWorkspaceStore.getState().pushUndoAction({
-              type: "move",
+            recordHistory({
+              kind: 'violation/move',
+              label: 'Move marker',
               violationId: dragMarkerId,
-              oldCoords: dragMarkerOriginalCoords.coordinates,
-              newCoords: markerItem.coordinates,
-              oldRefCoords: dragMarkerOriginalCoords.ref_coordinates,
-              newRefCoords: markerItem.ref_coordinates
+              before: {
+                coordinates: dragMarkerOriginalCoords.coordinates,
+                refCoordinates: dragMarkerOriginalCoords.ref_coordinates,
+              },
+              after: {
+                coordinates: markerItem.coordinates,
+                refCoordinates: markerItem.ref_coordinates,
+              },
             });
           }
         }
@@ -741,7 +964,7 @@ export function useCanvasInteraction({
       setDragAnnotationId(null);
       setDragAnnotationStartPos(null);
     }
-  }, [dragMarkerId, hasDragMarkerMoved, dragMarkerOriginalCoords, selectedViolation, selectViolation, dragAnnotationId, hasDragAnnotationMoved, selectedAnnotationId]);
+  }, [dragMarkerId, hasDragMarkerMoved, dragMarkerOriginalCoords, selectedViolation, selectViolation, dragAnnotationId, hasDragAnnotationMoved, selectedAnnotationId, commitZoneGesture]);
 
   const handleMouseLeave = useCallback(() => {
     setIsDragging(false);
@@ -752,6 +975,10 @@ export function useCanvasInteraction({
     }, 50);
     setActiveDragHandle(null);
     setCenterDragStart(null);
+    // The cursor leaving the canvas ends the drag, and the moves made up to that point are
+    // already in the store — so the gesture must be recorded here too. Without this, dragging
+    // a zone off the edge of the pane left an edit that Ctrl+Z could not reach.
+    commitZoneGesture();
     setHoveredHandleInfo(null);
     setIsHoveringMarkerState(false);
     setDragMarkerId(null);
@@ -763,7 +990,7 @@ export function useCanvasInteraction({
     // the canvas, jumping the pin to wherever the cursor re-entered).
     setDragAnnotationId(null);
     setDragAnnotationStartPos(null);
-  }, []);
+  }, [commitZoneGesture]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -828,6 +1055,11 @@ export function useCanvasInteraction({
     if (isPlacingAnnotation) return 'crosshair';
     if (isSpacePressed) return isDragging ? 'grabbing' : 'grab';
     if (activeDragHandle) {
+      // A vertex or whole-zone drag is a move, not a resize — the diagonal resize cursors
+      // only mean something for a rectangle's corners.
+      if (activeDragHandle.handleId.startsWith('node:') || activeDragHandle.handleId === 'center') {
+        return 'move';
+      }
       return (activeDragHandle.handleId === 'top-left' || activeDragHandle.handleId === 'bottom-right') ? 'nwse-resize' : 'nesw-resize';
     }
     if (hoveredHandleInfo) return hoveredHandleInfo.cursor;

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { LayoutTemplate, Save, Trash2, Check, Move, RefreshCw, X, Star } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useReviewStore } from "../../stores/reviewStore";
+import { recordHistoryGroup, type HistoryEntry } from "../../stores/historyStore";
+import { zonesToTemplatePayload } from "../../utils/zoneFractions";
 import { Button } from "../ui/Button";
 import {
   fetchAllZoneTemplates,
@@ -55,46 +57,78 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
+  /**
+   * Stamps a template over BOTH panes, as one undoable action.
+   *
+   * This rewrites every zone on both drawings from the template's set, which can move zones the
+   * user never touched on this sheet — the same destructive reach as Reset, and until now with
+   * no way back at all, because this modal recorded no history whatsoever. The toolbar's
+   * `saveZonesAsTemplate` was undoable and this was not, for the identical operation.
+   *
+   * Grouped: the user clicked once, so one Ctrl+Z takes both panes back. Recording per drawing
+   * inside the loop is what made undo restore one pane and leave the other — see
+   * `docs/vault/06 - .../Gotcha - One Click on Two Panes Recorded Two Undo Steps.md`.
+   *
+   * Only the LOCAL boxes are walked back. The template stays saved on the server, since that is
+   * a deliberate cross-drawing decision and not something a keystroke should silently retract.
+   */
+  const applyToBothPanes = (zones: Record<string, any>) => {
+    const entries: HistoryEntry[] = [];
+    for (const d of [oldDrawing, newDrawing]) {
+      if (!d) continue;
+      const detected = zoneState[d.id];
+      const bounds = d.metadata?.render_bounds;
+      const before = useReviewStore.getState().customRegions[d.id] ?? null;
+      const pinnedBefore = useReviewStore.getState().pinnedZoneKeys[d.id] ?? null;
+      applyZoneTemplate(
+        d.id,
+        zones as any,
+        detected as any,
+        bounds as [number, number, number, number]
+      );
+      entries.push({
+        kind: "zone/bulk",
+        label: "Apply sheet template",
+        drawingId: d.id,
+        before,
+        after: useReviewStore.getState().customRegions[d.id] ?? null,
+        pinnedBefore,
+        pinnedAfter: useReviewStore.getState().pinnedZoneKeys[d.id] ?? null,
+      });
+    }
+    recordHistoryGroup(entries);
+  };
+
   const handleSaveTemplate = async () => {
     if (!signature || !activeDrawing) {
       setStatusMsg({ type: "error", text: "No active drawing signature available" });
       return;
     }
-    const clamp01 = (v: number) => Math.max(0, Math.min(1, Number(v) || 0));
     const oldReg = oldDrawing ? useReviewStore.getState().getRegionsFor(oldDrawing.id) : {};
     const newReg = newDrawing ? useReviewStore.getState().getRegionsFor(newDrawing.id) : {};
     const regions = { ...oldReg, ...newReg };
-    const zones: Record<string, any> = {};
+
+    // Only persist real comparison zones. `regions` can carry non-zone keys
+    // (e.g. drawing_id, render_bounds) copied from the zones response object;
+    // saving those pollutes the template. Backend strips them too — belt and braces.
     const allowed = new Set<string>(ZONE_KEYS);
-    for (const [key, frac] of Object.entries(regions)) {
-      // Only persist real comparison zones. `regions` can carry non-zone keys
-      // (e.g. drawing_id, render_bounds) copied from the zones response object;
-      // saving those pollutes the template. Backend strips them too — belt and braces.
-      if (frac && allowed.has(key)) {
-        zones[key] = {
-          xMin: clamp01(frac.xMin),
-          xMax: clamp01(frac.xMax),
-          yMin: clamp01(frac.yMin),
-          yMax: clamp01(frac.yMax),
-        };
-      }
-    }
+    const zoneOnly = Object.fromEntries(
+      Object.entries(regions).filter(([key, frac]) => frac && allowed.has(key)),
+    );
+    // Shaped by the shared, tested helper rather than an inline four-field literal. The literal
+    // that used to be here enumerated xMin/xMax/yMin/yMax and therefore dropped `points`,
+    // flattening every hand-drawn outline to its bounding box — and `applyZoneTemplate` below
+    // then wrote the flattened version straight back over the live regions, so a reshape
+    // vanished on screen at the moment of saving it. That defect was fixed in the toolbar's
+    // `saveZonesAsTemplate` and left standing here.
+    // See `docs/vault/06 - .../Gotcha - A Reshaped Zone Was Flattened by the Template Round Trip.md`.
+    const zones = zonesToTemplatePayload(zoneOnly) as Record<string, any>;
 
     try {
       await saveZoneTemplate(signature, { name: templateName || signature, zones });
 
       // Immediately apply saved template to both drawings in workspace store
-      for (const d of [oldDrawing, newDrawing]) {
-        if (!d) continue;
-        const detected = zoneState[d.id];
-        const bounds = d.metadata?.render_bounds;
-        applyZoneTemplate(
-          d.id,
-          zones as any,
-          detected as any,
-          bounds as [number, number, number, number]
-        );
-      }
+      applyToBothPanes(zones);
 
       setStatusMsg({ type: "success", text: `Saved template with ${Object.keys(zones).length} pinned zone(s)` });
       setTemplateName("");
@@ -105,17 +139,7 @@ export const SavedTemplatesModal: React.FC<SavedTemplatesModalProps> = ({ isOpen
   };
 
   const handleApplyTemplate = (tpl: ZoneTemplate) => {
-    for (const d of [oldDrawing, newDrawing]) {
-      if (!d) continue;
-      const detected = zoneState[d.id];
-      const bounds = d.metadata?.render_bounds;
-      applyZoneTemplate(
-        d.id,
-        tpl.zones as any,
-        detected as any,
-        bounds as [number, number, number, number]
-      );
-    }
+    applyToBothPanes(tpl.zones as Record<string, any>);
     setStatusMsg({ type: "success", text: `Applied template ${tpl.name || tpl.signature}` });
   };
 

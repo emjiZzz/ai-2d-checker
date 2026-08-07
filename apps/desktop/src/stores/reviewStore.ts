@@ -93,6 +93,31 @@ interface ReviewState {
   /** Regions for one drawing, falling back to defaults so callers never handle undefined. */
   getRegionsFor: (drawingId: string | null | undefined) => Record<string, RegionFractions>;
   updateCustomRegion: (drawingId: string, key: string, bounds: RegionFractions) => void;
+  /**
+   * Undo/redo entry point for a SINGLE zone. Writes `bounds` verbatim, or DELETES the zone
+   * when `bounds` is null.
+   *
+   * Separate from `updateCustomRegion` because that one cannot express removal — it takes a
+   * `RegionFractions` and always writes one. Undoing the zone picker's auto-seed (which
+   * creates a box for a zone that had none) has to leave the key absent, not leave a
+   * zero-size box behind that the picker would then treat as already placed.
+   *
+   * Never normalizes: the value came out of the store already normalized, and re-normalizing
+   * a polygon's derived bounding box on the way back in is how a restored shape drifts.
+   */
+  restoreCustomRegion: (drawingId: string, key: string, bounds: RegionFractions | null) => void;
+  /**
+   * Undo/redo entry point for a WHOLE drawing's alignment — the inverse of `resetCustomRegions`
+   * and of applying a template. `regions: null` restores the "never aligned" state, matching
+   * what Reset produces, including clearing the localStorage key rather than storing `{}`
+   * (an empty object is a drawing whose every zone was deleted, which is not the same thing
+   * and would suppress re-seeding from the detector).
+   */
+  restoreDrawingRegions: (
+    drawingId: string,
+    regions: Record<string, RegionFractions> | null,
+    pinned: string[] | null,
+  ) => void;
   resetCustomRegions: (drawingId?: string | null) => void;
   loadCustomRegions: (drawingId: string | null) => void;
   /**
@@ -136,6 +161,32 @@ interface ReviewState {
    */
   pinnedZoneKeys: Record<string, string[]>;
   getPinnedZoneKeys: (drawingId: string | null | undefined) => string[];
+  /**
+   * Zone keys a **human** has moved, resized or reshaped, per drawing. Persisted.
+   *
+   * ## Why this has to exist
+   *
+   * `customRegions` holds two different things under one key: boxes the *detector* seeded and
+   * boxes the *user* dragged. They are indistinguishable once written, and localStorage keeps
+   * both. That ambiguity caused a bug in each direction:
+   *
+   * - Trusting localStorage meant a stale **detector** seed masked a pinned template zone, so
+   *   a saved alignment looked reverted.
+   * - The fix for that — stamping the template over everything on every editor open — meant a
+   *   **user's** own alignment was silently destroyed, on every open and on every restart.
+   *
+   * Recording *who* placed a box resolves both: the template overrides a detector seed and
+   * never overrides a human one.
+   *
+   * ## Persisted, not session-scoped
+   *
+   * It was session-scoped at first, on the reasoning that "Save to template" is how an edit
+   * outlives a session. That was wrong in practice: a per-drawing alignment is legitimate work
+   * that a user expects to survive a restart, and a template is a per-*layout* default, so the
+   * more specific value should win — the same precedence the backend already uses when a
+   * signature-specific template beats the global default.
+   */
+  userAlignedZoneKeys: Record<string, string[]>;
 
   // Context Menu Marker Filters
   visibleMarkerTypes: Record<string, boolean>;
@@ -144,6 +195,35 @@ interface ReviewState {
   // Layout Presets
   activeLayoutPreset: "grid" | "left" | "right";
   setActiveLayoutPreset: (preset: "grid" | "left" | "right") => void;
+}
+
+/**
+ * Where a drawing's human-aligned zone keys live on disk.
+ *
+ * A sibling of `custom_regions_<id>` rather than a field inside it, so the stored region
+ * shape is unchanged and an install that predates this key simply reads back "nothing was
+ * hand-aligned" — which is the safe direction: the template still applies, exactly as before.
+ */
+const alignedKeysStorageKey = (drawingId: string) => `custom_regions_aligned_${drawingId}`;
+
+function persistAlignedKeys(drawingId: string, keys: string[] | null): void {
+  if (!keys || keys.length === 0) {
+    localStorage.removeItem(alignedKeysStorageKey(drawingId));
+    return;
+  }
+  localStorage.setItem(alignedKeysStorageKey(drawingId), JSON.stringify(keys));
+}
+
+function readAlignedKeys(drawingId: string): string[] {
+  const raw = localStorage.getItem(alignedKeysStorageKey(drawingId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((k) => typeof k === "string") : [];
+  } catch {
+    localStorage.removeItem(alignedKeysStorageKey(drawingId));
+    return [];
+  }
 }
 
 export const useReviewStore = create<ReviewState>((set, get) => ({
@@ -214,6 +294,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   setRoiEditMode: (enabled) => set({ isRoiEditModeEnabled: enabled }),
   customRegions: {},
   pinnedZoneKeys: {},
+  userAlignedZoneKeys: {},
   hasSeededCustomRegions: false,
 
   // Uses zustand's `get`, not useReviewStore.getState(): referencing the store from inside
@@ -261,9 +342,17 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     // in its pinned place every time the editor opens; RESET is the way back to detection.
     //
     // No Y flip here: ZoneFractions is stored Y-DOWN precisely to match customRegions.
+    //
+    // EXCEPT for a zone the user has aligned in this session. Stamping over one of those
+    // silently discarded hand alignment every time the editor was re-opened, and it was
+    // worst on a *reshaped* zone: the template carries a rectangle, so the user's outline was
+    // replaced by its own bounding box and the nodes they had placed simply disappeared.
+    // Restoring from `localStorage` is what the stamp is meant to override; a live edit is
+    // not. See `userAlignedZoneKeys`.
+    const aligned = new Set(state.userAlignedZoneKeys[drawingId] || []);
     if (templateZones && Object.keys(templateZones).length > 0) {
       for (const [key, frac] of Object.entries(templateZones)) {
-        if (frac) seeded[key] = normalizeFractions(frac);
+        if (frac && !aligned.has(key)) seeded[key] = normalizeFractions(frac);
       }
     }
 
@@ -297,9 +386,16 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
 
     localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(seeded));
+    // Applying a template is an explicit, deliberate "use these boxes everywhere" decision,
+    // so it clears the edit record: those boxes ARE the template now, and the next open
+    // should stamp them rather than treat them as untouchable local work.
+    const nextAligned = { ...state.userAlignedZoneKeys };
+    delete nextAligned[drawingId];
+    persistAlignedKeys(drawingId, null);
     return {
       customRegions: { ...state.customRegions, [drawingId]: seeded },
       pinnedZoneKeys: nextPinned,
+      userAlignedZoneKeys: nextAligned,
       hasSeededCustomRegions: true,
     };
   }),
@@ -314,7 +410,107 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       [key]: normalizeFractions(bounds),
     };
     localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(updated));
-    return { customRegions: { ...state.customRegions, [drawingId]: updated } };
+    // This is the *user's* write path — seeding writes through `set` directly, never here —
+    // so it is the right place to record that a zone must not be re-stamped from the
+    // template. Persisted alongside the regions so it survives a restart; see
+    // `userAlignedZoneKeys`.
+    const touched = state.userAlignedZoneKeys[drawingId] || [];
+    if (touched.includes(key)) {
+      return { customRegions: { ...state.customRegions, [drawingId]: updated } };
+    }
+    const nextTouched = [...touched, key];
+    persistAlignedKeys(drawingId, nextTouched);
+    return {
+      customRegions: { ...state.customRegions, [drawingId]: updated },
+      userAlignedZoneKeys: { ...state.userAlignedZoneKeys, [drawingId]: nextTouched },
+    };
+  }),
+
+  // Undo/redo of a single zone. Like `restoreDrawingRegions`, the restored box is the user's
+  // own work and keeps its immunity to template re-stamping; a redo that reinstates a reshape
+  // must not leave it flattenable on the next editor open. The one exception is a restore that
+  // removes the box entirely — see the `bounds === null` branch.
+  restoreCustomRegion: (drawingId, key, bounds) => set((state) => {
+    if (!drawingId) return {};
+    const forDrawing = state.customRegions[drawingId] || { ...DEFAULT_CUSTOM_REGIONS };
+    const updated = { ...forDrawing };
+    if (bounds === null) {
+      delete updated[key];
+    } else {
+      updated[key] = bounds;
+    }
+    localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(updated));
+
+    const touched = state.userAlignedZoneKeys[drawingId] || [];
+
+    // `bounds === null` is undoing the CREATION of a box, so the alignment record goes with
+    // it — same rule as `regions === null` in `restoreDrawingRegions`. Keeping the mark left
+    // the zone in the worst of both states: no box, and immune to the template that had one,
+    // so the next editor open produced an empty zone the template should have filled.
+    if (bounds === null) {
+      if (!touched.includes(key)) {
+        return { customRegions: { ...state.customRegions, [drawingId]: updated } };
+      }
+      const nextTouched = touched.filter((k) => k !== key);
+      persistAlignedKeys(drawingId, nextTouched);
+      return {
+        customRegions: { ...state.customRegions, [drawingId]: updated },
+        userAlignedZoneKeys: { ...state.userAlignedZoneKeys, [drawingId]: nextTouched },
+      };
+    }
+
+    if (touched.includes(key)) {
+      return { customRegions: { ...state.customRegions, [drawingId]: updated } };
+    }
+    const nextTouched = [...touched, key];
+    persistAlignedKeys(drawingId, nextTouched);
+    return {
+      customRegions: { ...state.customRegions, [drawingId]: updated },
+      userAlignedZoneKeys: { ...state.userAlignedZoneKeys, [drawingId]: nextTouched },
+    };
+  }),
+
+  restoreDrawingRegions: (drawingId, regions, pinned) => set((state) => {
+    if (!drawingId) return {};
+    const nextRegions = { ...state.customRegions };
+    const nextPinned = { ...state.pinnedZoneKeys };
+
+    if (regions === null) {
+      delete nextRegions[drawingId];
+      localStorage.removeItem(`custom_regions_${drawingId}`);
+    } else {
+      nextRegions[drawingId] = regions;
+      localStorage.setItem(`custom_regions_${drawingId}`, JSON.stringify(regions));
+    }
+
+    if (pinned === null) {
+      delete nextPinned[drawingId];
+    } else {
+      nextPinned[drawingId] = pinned;
+    }
+
+    // The restored boxes are the user's own work, so they must carry the same immunity to
+    // template re-stamping that making them by hand would have. Without this, undoing a Reset
+    // brought the alignment back and then the next editor open flattened it again — the boxes
+    // returned, their protection did not. `regions === null` is the "never aligned" state, so
+    // the record goes with them.
+    const nextAligned = { ...state.userAlignedZoneKeys };
+    if (regions === null) {
+      delete nextAligned[drawingId];
+      persistAlignedKeys(drawingId, null);
+    } else {
+      nextAligned[drawingId] = Object.keys(regions);
+      persistAlignedKeys(drawingId, nextAligned[drawingId]);
+    }
+
+    return {
+      customRegions: nextRegions,
+      pinnedZoneKeys: nextPinned,
+      userAlignedZoneKeys: nextAligned,
+      // Mirrors resetCustomRegions: with no regions there is nothing seeded, so the editor is
+      // free to re-seed from the detector next time it opens.
+      hasSeededCustomRegions: regions !== null,
+    };
   }),
 
   resetCustomRegions: (drawingId) => set((state) => {
@@ -326,7 +522,18 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     // leaving them would label detector boxes as human-aligned.
     const nextPinned = { ...state.pinnedZoneKeys };
     delete nextPinned[drawingId];
-    return { customRegions: next, pinnedZoneKeys: nextPinned, hasSeededCustomRegions: false };
+    // Reset is an explicit "discard my alignment", so the protection against re-stamping
+    // goes with it -- otherwise the zones the user had touched would be the only ones the
+    // template could never reach again, which is the opposite of what Reset means.
+    const nextAligned = { ...state.userAlignedZoneKeys };
+    delete nextAligned[drawingId];
+    persistAlignedKeys(drawingId, null);
+    return {
+      customRegions: next,
+      pinnedZoneKeys: nextPinned,
+      userAlignedZoneKeys: nextAligned,
+      hasSeededCustomRegions: false,
+    };
   }),
 
   loadCustomRegions: (drawingId) => set((state) => {
@@ -334,13 +541,22 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const saved = localStorage.getItem(`custom_regions_${drawingId}`);
     if (!saved) return { drawingId };
     try {
+      // The aligned-key record is restored with the regions, and this is the whole reason it
+      // is persisted: without it a restart made every hand-aligned box look like a detector
+      // seed again, so the template stamped over it and the user's work "went back to
+      // default". See `userAlignedZoneKeys`.
       return {
         drawingId,
         customRegions: { ...state.customRegions, [drawingId]: JSON.parse(saved) },
+        userAlignedZoneKeys: {
+          ...state.userAlignedZoneKeys,
+          [drawingId]: readAlignedKeys(drawingId),
+        },
       };
     } catch {
       // Corrupt entry: drop it rather than leaving a poisoned key that fails every load.
       localStorage.removeItem(`custom_regions_${drawingId}`);
+      persistAlignedKeys(drawingId, null);
       return { drawingId };
     }
   }),

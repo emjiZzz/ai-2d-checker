@@ -1,11 +1,16 @@
 import { useEffect } from 'react';
 import { useReviewStore } from '../stores/reviewStore';
 import { useNavStore } from '../stores/navStore';
+import { useUndoRedo } from './useUndoRedo';
 
 export const useGlobalShortcuts = () => {
   const setViewport = useReviewStore(s => s.setViewport);
   const toggleMinimap = useReviewStore(s => s.toggleMinimap);
   const { setCurrentNav } = useNavStore();
+
+  // Ctrl+Z / Ctrl+Y. Lives here because this hook is mounted exactly once (App.tsx), which
+  // is a hard requirement for a window-level listener — see the note in useUndoRedo.ts.
+  useUndoRedo();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

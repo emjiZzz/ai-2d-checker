@@ -196,11 +196,33 @@ export async function fetchDrawingZones(
 // ─── Zone templates ───────────────────────────────────────────────────────────
 
 /** Mirrors `services/backend/domain/models/zone_template.py::ZoneFractions` (Y-DOWN). */
+/** One vertex of a zone outline, as fractions of render_bounds, Y-DOWN (0 = top). */
+export interface ZoneTemplatePoint {
+  x: number;
+  y: number;
+}
+
 export interface ZoneTemplateFractions {
   xMin: number;
   xMax: number;
   yMin: number;
   yMax: number;
+  /**
+   * The reshaped outline, when the zone is a polygon rather than a rectangle.
+   *
+   * **Load-bearing, and it was missing.** A zone stopped being four scalars when reshaping
+   * landed, but this interface — and `saveZonesAsTemplate`, which rebuilt each zone as a
+   * four-field literal — still described the old shape. So every hand-drawn outline was
+   * silently flattened to its bounding box on save, and `applyZoneTemplate` then wrote that
+   * flattened version straight back over the local regions, erasing the reshape on screen
+   * the moment it was saved.
+   *
+   * The domain model (`ZoneFractions.points`) and the API have always accepted it; only the
+   * client's type and its payload builder were blind to it. Silent rather than an error
+   * because the outline is *additive* — a zone with no `points` is a valid rectangle, so a
+   * dropped field degrades instead of failing.
+   */
+  points?: ZoneTemplatePoint[];
 }
 
 export interface ZoneTemplate {
