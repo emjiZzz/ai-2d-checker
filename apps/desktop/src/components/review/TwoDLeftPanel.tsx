@@ -25,9 +25,10 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
     resetComparison
   } = usePhysicalComparison();
 
-  // Stage list/labels match whichever comparison_method this Room actually runs (see
-  // utils/comparisonStages.ts) — no longer a fixed 4-step sequence written for one
-  // generic AI call that doesn't describe what hybrid, rag, etc. each actually do.
+  // Stage list/labels describe what the backend pipeline actually does (see
+  // utils/comparisonStages.ts) rather than a fixed 4-step sequence written for a generic
+  // AI call. Still looked up by comparison_method: there is only one now (ADR-006), but a
+  // room created before the removal can carry an old string, and the lookup falls back.
   const stages = getComparisonStages(activeRoom?.comparison_method);
   const methodLabel = getComparisonMethodLabel(activeRoom?.comparison_method);
   const aiScanProgressPct = useWorkspaceStore(s => s.aiScanProgressPct);

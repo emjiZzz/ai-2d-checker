@@ -561,24 +561,19 @@ async def _dispatch_comparison(
     method: str,
     progress_callback=None,
 ) -> PhysicalComparisonResponse:
-    """Routes a comparison_method to its orchestrator.
+    """Runs the deterministic comparison. One method, so no routing table.
 
-    Single source of truth for the routing table, because the streaming and non-streaming
-    endpoints must agree on which method maps to which engine — two copies would let one
-    silently serve a different engine than the other for the same room.
+    This was a three-way branch over `rag` / `rag_ai`+`ai_vision` / `hybrid`. The three
+    Gemini-backed methods were removed — see
+    `docs/vault/07 - .../ADR-006 Removing the Three AI Comparison Methods.md`.
+
+    Kept as a function rather than inlined at both call sites: the streaming and
+    non-streaming endpoints must run the same engine, and one shared callee is what
+    guarantees that. It is also where a second method would land if one ever returns.
+
+    `method` is still taken and still logged by the callers, because a request may carry a
+    value from a room created before the removal. It no longer selects anything.
     """
-    if method in ("rag_ai", "ai_vision"):
-        from ...infrastructure.audit.comparison.full_ai_orchestrator import perform_full_ai_comparison
-        return await perform_full_ai_comparison(
-            request, ref_drawing, rev_drawing, ref_entities, rev_entities,
-            method=method, progress_callback=progress_callback,
-        )
-    if method == "hybrid":
-        from ...infrastructure.audit.comparison.hybrid_orchestrator import perform_hybrid_comparison
-        return await perform_hybrid_comparison(
-            request, ref_drawing, rev_drawing, ref_entities, rev_entities,
-            progress_callback=progress_callback,
-        )
     from ...infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
     return await perform_drawing_comparison(
         request, ref_drawing, rev_drawing, ref_entities, rev_entities,

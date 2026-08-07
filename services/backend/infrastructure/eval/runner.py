@@ -22,10 +22,11 @@ from typing import Any
 from .corpus import CorpusPair, EvalCorpus
 from .scorer import CorpusScore, Prediction, score_pair
 
-# Only the deterministic method can run offline today. `rag_ai`, `hybrid` and `ai_vision`
-# all call Gemini, and there is no recorded output in this repository to replay — that is
-# Stage 0f's record/replay cassette. Refusing loudly beats emitting a number that quietly
-# cost money and cannot be reproduced.
+# The deterministic method is the only one there is, as of ADR-006 — `rag_ai`, `ai_vision`
+# and `hybrid` were removed. The guard below is kept rather than deleted: it is what makes
+# "zero network calls" a refusal instead of a hope, and the day a Gemini-backed method
+# returns, an unguarded runner would emit a number that quietly cost money and cannot be
+# reproduced. `deterministic` is here for the planned `rag` rename (Stage 0.5).
 OFFLINE_METHODS = frozenset({"rag", "deterministic"})
 
 _LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", ""})
@@ -75,8 +76,9 @@ async def run_pair(pair: CorpusPair, method: str = "rag") -> tuple[list[Predicti
     """One pair through the engine. Returns (predictions, raw candidates)."""
     if method not in OFFLINE_METHODS:
         raise ValueError(
-            f"method {method!r} calls Gemini and cannot be evaluated offline. Stage 0f's "
-            f"cassette is what unlocks it; until then only {sorted(OFFLINE_METHODS)} run here."
+            f"method {method!r} cannot be evaluated offline. Only {sorted(OFFLINE_METHODS)} "
+            f"run here; every other method that ever existed called Gemini, and no recorded "
+            f"output exists in this repository to replay."
         )
     from ..audit.comparison.orchestrator import generate_deterministic_candidates
 

@@ -5,7 +5,10 @@ import { useRooms } from "../../hooks/useRooms";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 
-type ComparisonMethod = "rag" | "rag_ai" | "ai_vision" | "hybrid";
+// The create form used to carry a four-way COMPARISON ENGINE picker behind a DEV badge.
+// `rag_ai`, `ai_vision` and `hybrid` were removed (ADR-006), and a chooser with one option
+// is not a choice — so the whole section is gone rather than reduced to a single button.
+// `comparison_method` is no longer sent on create; the server defaults it to "rag".
 
 export const RoomsView: React.FC = () => {
   // useRooms() owns the server state: list, loading, optimistic mutations.
@@ -21,19 +24,17 @@ export const RoomsView: React.FC = () => {
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
   const [description, setDescription] = useState("");
-  const [comparisonMethod, setComparisonMethod] = useState<ComparisonMethod>("rag");
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     try {
-      const newRoom = await createRoom({ name, description, client_name: clientName, comparison_method: comparisonMethod });
+      const newRoom = await createRoom({ name, description, client_name: clientName });
       setIsCreating(false);
       setName("");
       setClientName("");
       setDescription("");
-      setComparisonMethod("rag");
       // openRoom is a Zustand action that hydrates the workspace — called after
       // the Query mutation resolves so we have the real server-generated ID.
       openRoom(newRoom.id);
@@ -239,83 +240,6 @@ export const RoomsView: React.FC = () => {
                   />
                 </div>
 
-                {/* Comparison Engine */}
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)" }}>COMPARISON ENGINE</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 99, padding: "2px 8px" }}>DEV</span>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-                    {/* RAG */}
-                    <button
-                      type="button"
-                      id="method-rag"
-                      onClick={() => setComparisonMethod("rag")}
-                      style={{
-                        background: comparisonMethod === "rag" ? "var(--bg-sidebar)" : "var(--bg-dark)",
-                        border: comparisonMethod === "rag" ? "1.5px solid #7c3aed" : "1.5px solid var(--border-color)",
-                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "rag" ? "0 2px 8px rgba(124,58,237,0.15)" : "none",
-                        transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                      }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag" ? "#7c3aed" : "#a78bfa"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag" ? "var(--text-primary)" : "var(--text-muted)" }}>RAG</span>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>SpatialDiffer + BOM</span>
-                    </button>
-                    {/* RAG + AI */}
-                    <button
-                      type="button"
-                      id="method-rag-ai"
-                      onClick={() => setComparisonMethod("rag_ai")}
-                      style={{
-                        background: comparisonMethod === "rag_ai" ? "var(--bg-sidebar)" : "var(--bg-dark)",
-                        border: comparisonMethod === "rag_ai" ? "1.5px solid #0284c7" : "1.5px solid var(--border-color)",
-                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "rag_ai" ? "0 2px 8px rgba(2,132,199,0.15)" : "none",
-                        transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                      }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "rag_ai" ? "#0284c7" : "#7dd3fc"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "rag_ai" ? "var(--text-primary)" : "var(--text-muted)" }}>RAG + AI</span>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Gemini (PNG+JSON)</span>
-                    </button>
-                    {/* AI Vision */}
-                    <button
-                      type="button"
-                      id="method-ai-vision"
-                      onClick={() => setComparisonMethod("ai_vision")}
-                      style={{
-                        background: comparisonMethod === "ai_vision" ? "var(--bg-sidebar)" : "var(--bg-dark)",
-                        border: comparisonMethod === "ai_vision" ? "1.5px solid #059669" : "1.5px solid var(--border-color)",
-                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "ai_vision" ? "0 2px 8px rgba(5,150,105,0.15)" : "none",
-                        transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                      }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "ai_vision" ? "#059669" : "#6ee7b7"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "ai_vision" ? "var(--text-primary)" : "var(--text-muted)" }}>AI Vision</span>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>Real DXF AI</span>
-                    </button>
-                    {/* Hybrid */}
-                    <button
-                      type="button"
-                      id="method-hybrid"
-                      onClick={() => setComparisonMethod("hybrid")}
-                      style={{
-                        background: comparisonMethod === "hybrid" ? "var(--bg-sidebar)" : "var(--bg-dark)",
-                        border: comparisonMethod === "hybrid" ? "1.5px solid #ea580c" : "1.5px solid var(--border-color)",
-                        borderRadius: 12, padding: "10px 6px", cursor: "pointer",
-                        boxShadow: comparisonMethod === "hybrid" ? "0 2px 8px rgba(234,88,12,0.15)" : "none",
-                        transition: "all 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                      }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={comparisonMethod === "hybrid" ? "#ea580c" : "#fdba74"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: comparisonMethod === "hybrid" ? "var(--text-primary)" : "var(--text-muted)" }}>HYBRID</span>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>2 gens + verify</span>
-                    </button>
-                  </div>
-                </div>
               </form>
 
               {/* Footer */}
@@ -423,21 +347,6 @@ export const RoomsView: React.FC = () => {
                   {room.comparison_method === "rag" && (
                     <span className="inline-flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-widest shrink-0">
                       RAG
-                    </span>
-                  )}
-                  {room.comparison_method === "rag_ai" && (
-                    <span className="inline-flex items-center text-xs font-bold text-violet-500 bg-violet-500/10 px-3 py-1 rounded-full border border-violet-500/20 uppercase tracking-widest shrink-0">
-                      RAG + AI
-                    </span>
-                  )}
-                  {room.comparison_method === "ai_vision" && (
-                    <span className="inline-flex items-center text-xs font-bold text-fuchsia-500 bg-fuchsia-500/10 px-3 py-1 rounded-full border border-fuchsia-500/20 uppercase tracking-widest shrink-0">
-                      AI VISION
-                    </span>
-                  )}
-                  {room.comparison_method === "hybrid" && (
-                    <span className="inline-flex items-center text-xs font-bold text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20 uppercase tracking-widest shrink-0">
-                      HYBRID
                     </span>
                   )}
                 </div>

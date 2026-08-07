@@ -1,18 +1,27 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { expect, test, vi, describe } from 'vitest';
 import { RoomsView } from './RoomsView';
 
-// Audit finding #5 (docs/refactoring-audit-2026-07-23.md): RoomsView.tsx was manually
-// merged (per REFACTORING_SUMMARY.md §1: light-theme modal forms + a 4-column
-// comparison-engine selector grid) with zero automated coverage. This is a smoke test
-// only — it does not forensically re-verify the merge, just guards against a future
-// change silently dropping one of the 4 engine options or breaking selection.
+// Audit finding #5 (docs/refactoring-audit-2026-07-23.md): RoomsView.tsx was manually merged
+// with zero automated coverage, and this file was the smoke test that guarded the merge.
+//
+// It used to assert that all four comparison-engine options rendered and were individually
+// selectable. `rag_ai`, `ai_vision` and `hybrid` were removed in ADR-006, and a chooser with
+// one option is not a choice, so the whole COMPARISON ENGINE section went with them. The test
+// now asserts the *inverse*: that the picker is gone, and that creating a room no longer sends
+// a method. Written this way on purpose — a deleted test would let the picker come back
+// unnoticed, and the DEV-badged section reappearing is exactly the regression worth catching.
+//
+// (This also retires a long-standing failure: the old test asserted a literal
+// `rgb(255, 255, 255)` background that had since become a CSS variable.)
+
+const createRoom = vi.fn(async (_params: Record<string, unknown>) => ({ id: 'room-1' }));
 
 vi.mock('../../hooks/useRooms', () => ({
   useRooms: () => ({
     rooms: [],
     isLoading: false,
-    createRoom: vi.fn(),
+    createRoom,
     deleteRoom: vi.fn(),
   }),
 }));
@@ -23,35 +32,40 @@ vi.mock('../../stores/roomStore', () => ({
   }),
 }));
 
-describe('RoomsView — Create Room comparison-engine selector', () => {
-  test('all 4 engine options render and are individually selectable', () => {
-    render(<RoomsView />);
+function openCreateDialog() {
+  render(<RoomsView />);
+  // Both the header button and the empty-state button open the same modal.
+  fireEvent.click(screen.getAllByRole('button', { name: /create room/i })[0]);
+}
 
-    // Both the header button and the empty-state button open the same modal.
-    fireEvent.click(screen.getAllByRole('button', { name: /create room/i })[0]);
+describe('RoomsView — Create Room dialog', () => {
+  test('no comparison-engine picker is offered', () => {
+    openCreateDialog();
 
-    const ragBtn = document.getElementById('method-rag') as HTMLButtonElement;
-    const ragAiBtn = document.getElementById('method-rag-ai') as HTMLButtonElement;
-    const aiVisionBtn = document.getElementById('method-ai-vision') as HTMLButtonElement;
-    const hybridBtn = document.getElementById('method-hybrid') as HTMLButtonElement;
+    // The section, its DEV badge, and every per-method button.
+    expect(screen.queryByText(/comparison engine/i)).toBeNull();
+    expect(screen.queryByText('DEV')).toBeNull();
+    for (const id of ['method-rag', 'method-rag-ai', 'method-ai-vision', 'method-hybrid']) {
+      expect(document.getElementById(id)).toBeNull();
+    }
+    for (const label of ['RAG + AI', 'AI Vision', 'HYBRID']) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+  });
 
-    expect(ragBtn).toBeTruthy();
-    expect(ragAiBtn).toBeTruthy();
-    expect(aiVisionBtn).toBeTruthy();
-    expect(hybridBtn).toBeTruthy();
+  test('the dialog still renders and creates a room without a method', async () => {
+    // The removal must not have taken the form with it — the picker sat inside the <form>,
+    // and deleting a block by line range is exactly the edit that can swallow a sibling.
+    openCreateDialog();
 
-    expect(screen.getByText('RAG')).toBeInTheDocument();
-    expect(screen.getByText('RAG + AI')).toBeInTheDocument();
-    expect(screen.getByText('AI Vision')).toBeInTheDocument();
-    expect(screen.getByText('HYBRID')).toBeInTheDocument();
+    const nameInput = screen.getByPlaceholderText(/architectural phase/i);
+    fireEvent.change(nameInput, { target: { value: 'Bracket Rev C vs Rev D' } });
+    fireEvent.click(screen.getByRole('button', { name: /create & open/i }));
 
-    // Default selection is "rag" (RoomsView.tsx: useState<ComparisonMethod>("rag")).
-    expect(ragBtn.style.background).toBe('rgb(255, 255, 255)');
-    expect(hybridBtn.style.background).toBe('transparent');
-
-    // Selecting HYBRID must flip which button is visually "active" (white bg + border).
-    fireEvent.click(hybridBtn);
-    expect(hybridBtn.style.background).toBe('rgb(255, 255, 255)');
-    expect(ragBtn.style.background).toBe('transparent');
+    await waitFor(() => expect(createRoom).toHaveBeenCalled());
+    const payload = createRoom.mock.calls[0][0];
+    expect(payload.name).toBe('Bracket Rev C vs Rev D');
+    // The server defaults it to "rag"; sending it from here would be the picker's ghost.
+    expect(payload).not.toHaveProperty('comparison_method');
   });
 });

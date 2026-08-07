@@ -130,9 +130,10 @@ def calibrate_candidate_confidence(
         # always paired with status="CONFLICT" so it reads as "needs review" without
         # needing a separate boolean flag duplicating that same signal.
         "conflict": 0.50,
-        # Not currently produced by hybrid_orchestrator.py (every disputed finding is
-        # run through the verifier) — kept for schema completeness/future use, e.g. a
-        # later cost optimization that skips verification for some disputes.
+        # Unreachable since ADR-006 removed the only producer of a disputed finding, along
+        # with "conflict" above. Both are kept rather than deleted: they are written into
+        # cached comparison payloads, and a reader that no longer knows the key would fail
+        # on an old cache entry instead of rendering it.
         "unverified": 0.60,
     }
     score = base_by_verification.get(verification, 0.5)

@@ -176,8 +176,8 @@ def classify_notes_feature(text_content: str, details: str = "") -> str:
 
 def classify_iso_feature(text_content: str, details: str = "") -> str:
     """
-    isometric_view findings from SpatialDiffer are rare (isometric views often lack
-    text labels — see full_ai_orchestrator.py's own prompt comment on this) and there
+    isometric_view findings from SpatialDiffer are rare (isometric views often lack text
+    labels — a point the removed AI generators' prompts made too, per ADR-006) and there
     is no reliable text signal to distinguish orientation/scale/location from each
     other. Always `other` rather than guess; kept as a function (not inlined) for
     interface consistency with the other two classifiers and so a future pass has an

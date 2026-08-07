@@ -131,8 +131,14 @@ Not everything is a gap, and the plan is built on these:
 - **A clean eval seam.** `generate_deterministic_candidates` (`orchestrator.py:290`) makes no DB
   call, no LLM call, across 960 lines. All impurity sits in the `:1253` wrapper. The whole pipeline
   can be run offline, in-process, at zero cost.
-- **A proto-agentic pattern.** `hybrid_orchestrator.py`'s dual-generator + `crop_verifier.py`
-  adjudicator is the right shape for rung 4 — it needs generalising, not replacing.
+- ~~**A proto-agentic pattern.** `hybrid_orchestrator.py`'s dual-generator + `crop_verifier.py`
+  adjudicator is the right shape for rung 4 — it needs generalising, not replacing.~~
+  **Deleted 2026-08-07, [[ADR-006 Removing the Three AI Comparison Methods]].** Rung 4 remains
+  the stated end goal, so this is a real cost and is recorded as one: the pattern is now
+  recoverable only from git
+  (`git log --diff-filter=D -- services/backend/infrastructure/audit/comparison/hybrid_orchestrator.py`).
+  Worth remembering that `hybrid` **could not complete a single run** until the Stage 0a
+  `NameError` fix, so what is preserved is a shape, never a working system.
 - **37 cache versions of hard-won fixes**, each documented. See the gotchas index in the MOC.
 
 ---
@@ -147,6 +153,13 @@ Not everything is a gap, and the plan is built on these:
 > to the highest-value work in the plan. Rung 1 ("Basic RAG") is **unreachable** under this
 > scope — retrieval feeds only the Gemini system prompt, which the default method never sees.
 > The rung metric therefore needs re-scoping or retiring; that is **not yet decided**.
+>
+> **Made permanent 2026-08-07 — [[ADR-006 Removing the Three AI Comparison Methods]].** The
+> three methods are **deleted**, backend and frontend: ~2,100 lines, 12 files, the routing
+> table, the second cache lever, and the Create Room picker. `comparison_method` is
+> `Literal["rag"]`. ADR-004 explicitly left "whether to delete" undecided; this closes it.
+> There is now **one comparison method in this system**, and the `rag` misnomer is the only
+> name it has.
 
 **Stage 0b's labels. Nothing else is the bottleneck any more.**
 
@@ -281,9 +294,14 @@ Then, in rough order of what the baseline says is worth attacking:
   section callouts are deliberately suppressed (`DROP_SECTION_CALLOUT_LABELS`, cache v38), so
   such a pair would be a guaranteed recall miss *by design*. Now measurable, once someone
   decides which way that trade should go.
-- **Rename `rag` → `deterministic`.** [[ADR-004 Deterministic-Only Scope]] makes this necessary
+- **Rename `rag` → `deterministic`.** [[ADR-004 Deterministic-Only Scope]] made this necessary
   rather than tidy: the sole method under development is named after a technique it does not
-  contain. Do it at Stage 0.5's cache bump, the one moment everything is invalidated anyway.
+  contain. [[ADR-006 Removing the Three AI Comparison Methods]] sharpens it again — `rag` is
+  no longer the *default* method, it is the **only** method, so the misnomer is now the
+  system's whole vocabulary for what it does. Do it at Stage 0.5's cache bump, the one moment
+  everything is invalidated anyway. The removal deliberately did **not** do it: renaming
+  touches the DB, cache filenames, the API and the UI, and bundling that into a deletion would
+  have made two risky changes inseparable. `OFFLINE_METHODS` already accepts `deterministic`.
 
 None of that changes the headline: **the sweep itself must not run on a mutation-only corpus.**
 Coordinate descent over 16 constants, validated against pairs drawn from the engine's own
@@ -359,6 +377,10 @@ a judgement call. Tick a box only when its criterion is *measured*, not when the
       object through the call tree was deliberately deferred; the reason is in the module
       docstring.)*
 - [ ] Matching constants swept (coordinate descent, leave-one-pair-out CV)
+      *(**2026-08-07: the default pass is now 13 constants, not 14.** `match_radius_mm` was
+      removed with `reconciler.py` — and the removal exposed that it was tuning the eval
+      **scorer**, not the engine, so a sweep of it would have moved F1 with nothing in the
+      engine changing. See [[ADR-006 Removing the Three AI Comparison Methods]].)*
       *(⛔ **blocked, and harder than "needs a better corpus"** — 2026-08-05: measured, **13 of
       14 constants cannot be exercised at all** by mutation pairs, because both sides share one
       coordinate system exactly. The sweep machinery exists and works (`tools/sweep.py`); it has
@@ -415,8 +437,11 @@ output today.*
 ### Stage 4 — ~~Agent loop → rung 4: Agentic & Adaptive~~ **DROPPED**
 
 *[[ADR-004 Deterministic-Only Scope]]: the loop exists to adjudicate disputed `hybrid` findings,
-and `hybrid` is out of scope. `hybrid_orchestrator.py`'s dual-generator + `crop_verifier.py`
-adjudicator — recorded above as "the right shape for rung 4" — is shelved with it, not deleted.*
+and `hybrid` is out of scope. ~~`hybrid_orchestrator.py`'s dual-generator + `crop_verifier.py`
+adjudicator — recorded above as "the right shape for rung 4" — is shelved with it, not
+deleted.~~ **Deleted 2026-08-07** ([[ADR-006 Removing the Three AI Comparison Methods]]); the
+"not deleted" clause above is no longer true and is struck rather than edited, because the
+change of mind is the fact worth keeping.*
 
 - [x] ~~`audit/agent/{tools,loop,budget}.py`, tool-schema guard, `ClientPolicy`, trace-caching
       decision~~ **DROPPED** *(returns at full cost if the scope decision reverses; it was also
@@ -459,6 +484,7 @@ explicitly that it is unmeasured — **never omit it.**
 | 2026-08-06 | **Human corpus taken from 1 to 7 pairs, and the held-out constraint measured rather than assumed.** All seven ingested `reference` ↔ `FSRS2_kmti` pairs exported, zone-captured and worksheet-generated. Held-out eligibility was checked against `storage/cache/` **before** exporting anything: six of the seven already carry a comparison cache entry and are therefore burned under the guideline's "designate before looking at engine output" rule, so **M745206N01 was exported `--held-out` first**, before any other command touched the corpus. A second sheet signature appeared — `aspect-1.361` on `M745203N01`'s reference side against `aspect-1.414` on its revision — with no template pinned for it, so that side takes the global default scaled onto a differently-shaped sheet ([[Gotcha - Global Default Zone Template & the Aspect Caveat]]); recorded as an annotator note rather than silently absorbed. | 0b | **Measured: 7 / 8 registered, 0 / 8 labelled, 1 / 3 held out.** Payload digests confirm all seven pairs are distinct, but A0/A1/A2 are one drawing family, so the corpus samples **~5 layouts, not 7** — stated because "7 pairs" overstates the diversity every downstream conclusion inherits. Eval unchanged (P 0.98 / R 0.85 / F1 0.91): unlabelled pairs are skipped for having no ground truth, which is the correct behaviour and was verified rather than assumed. **The held-out shortfall cannot be closed with drawings on this machine** — it needs pairs ingested and exported without ever running a comparison. Also found: the held-out pair has no OCR cache *because* nothing has run on it, so offline-readiness and held-out eligibility are in direct tension; the ScanText path is the way out. | — |
 | 2026-08-06 | **The mutator scopes with the engine's zones, and the corpus was regenerated at schema v2.** `Mutator.__init__` takes a `zone_template` and builds its regions via `extract_dynamic_regions_with_template` — the **synchronous twin** of the async path, sharing `apply_zone_overrides` so the override policy (safe-zone anchoring, BOM growth, grown-zone outline drop) has exactly one implementation; a mutator applying *nearly* the engine's rules would be the same defect one layer down. `MUTATION_SCHEMA_VERSION` 1 → 2, because **both halves** of a v1 label are stale — v1 pairs were targeted *and* categorised against detector boxes, so they must be regenerated rather than re-scored. All 36 pairs regenerated from the same seeds and operators; same shape (36 pairs, 11 zero-finding, 55 expected findings), so the comparison is like for like. `tests/test_eval_mutator.py` (+4, two verified to fail when the template is dropped on the floor). | 0c | **Measured: recall 0.78 → 0.85 (47/55), F1 0.88 → 0.91, macro 0.86 → 0.87, and the trustworthy match tier grew 15 → 22** (more findings matched by entity handle than by text). One new false positive in `bill_of_materials` — precision 1.00 → 0.98 (47/48) — reported rather than smoothed. **Two findings matter more than the deltas.** (1) **Attribution hit 1.00 (47/47) with an empty confusion matrix, and that is a tautology, not an achievement**: the mutator and engine now scope with identical boxes, so category agreement is true by construction. Its whole history — 0.90 → 0.81 → 0.74 → 1.00 — measured detector-vs-detector, then template-vs-detector, then nothing. **Only human pairs can measure attribution.** (2) **`isometric_view` coverage went 5 → 0, correctly**: the hand-aligned `iso` box holds **zero** comparable entities on either side (measured), because `COMPARABLE_ENTITY_TYPES` is text+dimension and an isometric view is geometry — so the old `isometric_view` F1 of 0.89 was measured on text the detector's looser box swept in. The corpus honestly covers **4 of 6 categories** now. | — |
 | 2026-08-06 | **Annotation guideline promoted to `active`; its four open questions resolved and `guideline_version` bumped to 2026-08-06.** Ruled rows: one finding per row when the rows carry independent facts (名称/TITLE), one for the whole value when they are segments of an identifier (DWG No.) — descriptive of two existing bug fixes that went in *opposite* directions. Revision rows: a new one is not a finding, a missing one is, an edited one is. Amendment content → `title_block`, balloon-vs-BOM → `bill_of_materials`, under a new general rule — *label by what the change is about, not where it is drawn*. Bulk: semantic rule plus `is_bulk` at ≥5 entities and a deterministic anchor order, explicitly marked a convention. **A second defect surfaced during the bump and was fixed: the version guard blocked its own remedy** — bumping made every existing label stale, and `mutate` could not load the corpus whose labels it was about to regenerate, nor `verify`/`status` report what needed regenerating. `tools/eval_corpus.py` now loads with `allow_stale_guideline=True` and *prints* which pairs are stale; `tools/eval.py` keeps the strict check, which is the only place a stale label could corrupt a number. `tests/test_eval_corpus.py` (+2). | 0b | **Measured: the eval is byte-identical after the bump** — P 0.98 (47/48), R 0.85 (47/55), F1 0.91, macro 0.87, attribution 1.00, 0 false positives across 11 zero-finding pairs. That equality is the evidence that the four resolutions changed **no mutation label's content, only its version stamp**: all 36 pairs were regenerated under the new version and scored the same. Timing was the deliberate part — settled at 0 labels, so nothing needed re-labelling; the guard's own rule is that a later change is a re-label, not an edit. **One resolution knowingly buys a systematic false positive** (new revision rows), which is how an invisible product behaviour becomes a measured one. | — |
+| 2026-08-07 | **The three AI comparison methods removed, backend and frontend** — [[ADR-006 Removing the Three AI Comparison Methods]], closing the two questions [[ADR-004 Deterministic-Only Scope]] explicitly left open ("whether to delete the three methods' code" and "whether the picker should still show them": delete, and no). ~2,100 lines across 12 files: `full_ai_orchestrator`, `live_dxf_orchestrator`, `hybrid_orchestrator`, `crop_verifier`, the `full_ai/` package, `reconciler`, `few_shot_retriever` and three test modules, plus the `_dispatch_comparison` routing table, the `hybrid_candidates_*` cache lever, and the DEV-badged four-button picker in the Create Room dialog. `comparison_method` is now `Literal["rag"]` in `room.py` and all three `schemas.py` sites. **Four things were deliberately NOT removed and are the traps a grep-and-delete pass takes:** `gemini_client.py` (the deterministic path calls `execute_title_block_ocr` — *"remove the AI methods" is not "remove Gemini"*), `image_cropper.py` (used by `orchestrator.py` directly), the canvas `renderMode: 'hybrid' \| 'vector' \| 'raster'` (an unrelated name collision), and the `CONFLICT`/`unverified` statuses (unreachable, but present in cached payloads, and a reader that drops them renders an old audit wrong rather than not at all). | scope | **Measured against the live database before deciding, not assumed: 108 rooms, 8 live, all 8 `rag`.** All 48 rooms carrying a removed method were already soft-deleted, and `list_rooms` filters `is_deleted == False` *in the Mongo query*, so no tombstone is ever fetched or validated — hence no migration. **Eval and engine unaffected: no cache bump** (v42 stands, leaving v43 free for Stage 0.5), because nothing on the deterministic path changed. `pytest tests/ -q` green bar the two known `test_vision_ocr_grounding` failures; `tsc` clean; **vitest 232/232 — the first fully green frontend run in this log**, since rewriting `RoomsView.test.tsx` around the picker's absence also retired its stale `rgb(255,255,255)` assertion. **The finding that outlives the removal: `match_radius_mm` was being swept as an engine constant while tuning the *measurement*.** Deleting `reconciler.py` left the eval scorer as its only reader, which exposed that it decides how the scorer pairs a prediction with an expected finding — sweeping it moves F1 with the engine untouched, the same class as the rejected "sweeping on detection F1 alone". Moved to `eval/scorer.py` as `SPATIAL_MATCH_RADIUS_MM` at its original value (scores byte-identical), pinned out of `_BINDINGS` by test. **The default sweep pass is now 13 constants, not 14.** | — (v42 unchanged) |
 
 ---
 

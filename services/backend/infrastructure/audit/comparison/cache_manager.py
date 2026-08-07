@@ -14,15 +14,10 @@ class ComparisonCacheManager:
     # already ran a comparison on -- the cache keeps serving the pre-fix result until
     # someone thinks to manually clear it. Content-hash alone (ref_hash/rev_hash) only
     # catches the file changing, not the code that interprets it changing.
-    # v3: hybrid_orchestrator.py::_resolve_disputed and _pick_cad_bbox both changed —
-    # the crop verifier's `differs` field is now read (previously collected and
-    # silently ignored, so every disputed finding fell to CONFLICT even when the
-    # verifier reported no real difference), and REMOVED/ADDED findings now get a
-    # same-drawing fallback crop instead of no crop at all. Existing cached "hybrid"
-    # results reflect the old, wrong resolution logic and must not be served as-is.
-    # rag/rag_ai/ai_vision are unaffected by this change but share the version lever;
-    # their cached entries are also byte-identical to what today's code would produce
-    # anyway, so the extra invalidation is harmless, not just unavoidable.
+    # v3: (historical — the methods this note describes were removed in ADR-006) hybrid's
+    # disputed-finding resolution and crop selection both changed, invalidating cached
+    # "hybrid" results. Kept in the version log because the log is a record of why each
+    # number was burned, and a gap would read as a mistake.
     # v7: Added MAP, Part No. anchors to title_upper_left in zone_detector.py to exclude top-left administrative table (45 | 2A0 | 4 | 0) from drawing_views.
     # v8: zone_detector._expand_bbox now clamps the padded box back inside max_w/max_h.
     # Padding was previously applied *after* the growth loop returned, so every
@@ -320,81 +315,15 @@ class ComparisonCacheManager:
         except Exception as e:
             logger.error(f"Failed to write comparison cache: {e}")
 
-    # Separate version lever from COMPARISON_CACHE_VERSION on purpose (docs/hybrid-
-    # comparison-engine-implementation-plan.md, Phase 7): a change to reconciliation or
-    # crop-verifier logic invalidates the *final* hybrid result but not what either
-    # generator itself produced, and vice versa for a change to one generator's own
-    # diffing/prompt logic. Bumping COMPARISON_CACHE_VERSION forces every method
-    # (rag/rag_ai/ai_vision/hybrid) to recompute; bumping this only forces hybrid's
-    # generator step to recompute, leaving a still-valid final-result cache entry alone
-    # until reconciliation logic changes too.
-    # v2: both generators' own output changed (see COMPARISON_CACHE_VERSION v4's note)
-    # — Generator A's entity filtering and Generator B's system instruction both
-    # changed, so cached hybrid_gen_a/hybrid_gen_b candidates from before this fix no
-    # longer reflect what the current code would produce.
-    # v3: Generator A now drops section-callout labels (see COMPARISON_CACHE_VERSION v38).
-    # Generator B is unaffected, but the two share one lever, so gen_b recomputes too.
-    CANDIDATE_CACHE_VERSION = "v3"
-
-    @staticmethod
-    def _get_candidate_cache_path(
-        ref_drawing_id: str,
-        rev_drawing_id: str,
-        ref_hash: str,
-        rev_hash: str,
-        generator: str,
-    ) -> Path:
-        cache_dir = get_storage_root() / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        # Naming format: hybrid_candidates_{version}_{generator}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json
-        # `generator` is "hybrid_gen_a" or "hybrid_gen_b" — kept separate rather than
-        # unified with rag's own cache entry (which stores a differently-shaped final
-        # PhysicalComparisonResponse, not a raw candidate list) to avoid coupling
-        # hybrid's cache format to rag's; noted as a possible future consolidation,
-        # not forced here (see Phase 7 completion log).
-        version = ComparisonCacheManager.CANDIDATE_CACHE_VERSION
-        filename = f"hybrid_candidates_{version}_{generator}_{ref_drawing_id}_{rev_drawing_id}_{ref_hash}_{rev_hash}.json"
-        return cache_dir / filename
-
-    @classmethod
-    def get_cached_candidates(
-        cls,
-        ref_drawing_id: str,
-        rev_drawing_id: str,
-        ref_hash: str,
-        rev_hash: str,
-        generator: str,
-    ) -> Optional[Dict[str, Any]]:
-        """Retrieves one hybrid generator's cached candidate-stage output (pre-reconciliation)."""
-        cache_file = cls._get_candidate_cache_path(ref_drawing_id, rev_drawing_id, ref_hash, rev_hash, generator)
-        if cache_file.exists():
-            try:
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    payload = json.load(f)
-                logger.info(f"Hybrid candidate cache hit ({generator}) for reference {ref_drawing_id} and revision {rev_drawing_id}")
-                return payload
-            except Exception as e:
-                logger.error(f"Failed to read hybrid candidate cache: {e}")
-        return None
-
-    @classmethod
-    def set_cached_candidates(
-        cls,
-        ref_drawing_id: str,
-        rev_drawing_id: str,
-        ref_hash: str,
-        rev_hash: str,
-        generator: str,
-        payload: Dict[str, Any],
-    ) -> None:
-        """Stores one hybrid generator's candidate-stage output (pre-reconciliation)."""
-        cache_file = cls._get_candidate_cache_path(ref_drawing_id, rev_drawing_id, ref_hash, rev_hash, generator)
-        try:
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
-            logger.debug(f"Hybrid candidate cache stored ({generator}) at: {cache_file.name}")
-        except Exception as e:
-            logger.error(f"Failed to write hybrid candidate cache: {e}")
+    # REMOVED (ADR-006): `CANDIDATE_CACHE_VERSION` and the `hybrid_candidates_*` read/write
+    # pair. They were a second version lever, separate from COMPARISON_CACHE_VERSION on
+    # purpose, so a change to hybrid's reconciliation could invalidate the final result
+    # without discarding what each generator had produced. With `hybrid` gone there is one
+    # method, one stage and one lever.
+    #
+    # Any `hybrid_candidates_*.json` left in `storage/cache/` is now orphaned. They are not
+    # deleted here — nothing reads them, they cost only disk, and a cache directory is not
+    # something this class should garbage-collect on import.
 
     OCR_CACHE_VERSION = "v1"
 

@@ -16,7 +16,7 @@ export interface CreateRoomParams {
   name: string;
   description?: string;
   client_name?: string;
-  comparison_method?: "rag" | "rag_ai" | "ai_vision" | "hybrid";
+  comparison_method?: "rag";
 }
 
 export interface UpdateRoomParams {

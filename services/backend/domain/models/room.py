@@ -25,7 +25,11 @@ class Room(Document):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_opened_at: datetime | None = Field(None, description="Updated each time the room is opened")
-    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = Field("rag", description="Method used for physical comparison in this room")
+    # Only the deterministic method survives. `rag_ai`, `ai_vision` and `hybrid` were removed
+    # (ADR-006); no live room used them — all 48 that did were already soft-deleted.
+    # Retained as a one-value Literal rather than dropped so the field keeps its meaning in the
+    # API and stays the place a second method would be declared.
+    comparison_method: Literal["rag"] = Field("rag", description="Method used for physical comparison in this room")
     
 
     # Per-room data isolation

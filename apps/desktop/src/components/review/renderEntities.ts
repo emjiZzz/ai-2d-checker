@@ -377,7 +377,10 @@ export const renderViolationReticles = ({
       const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
       const displayStat = `Stat: ${statusLabel}`;
 
-      // For CONFLICT (hybrid method only), reuse the same card slot/sizing CHANGED
+      // For CONFLICT — only ever produced by the `hybrid` method, removed in ADR-006, so
+      // this is reachable now only from a cached payload written before that. Kept for
+      // exactly that reason: dropping the branch would render an old audit's pin wrong.
+      // Reuse the same card slot/sizing CHANGED
       // already uses for its extra line — a CONFLICT pin's whole point is "needs a
       // human look," so surfacing that here is the highest-value single addition,
       // without touching the card's pixel-layout math for a third text line.

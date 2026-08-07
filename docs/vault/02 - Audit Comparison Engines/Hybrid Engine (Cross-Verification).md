@@ -1,10 +1,22 @@
 ---
 title: Hybrid Engine (Cross-Verification)
 type: engine
+status: removed
 tags: [engine, hybrid, cross-verification, crop-verifier]
 ---
 
 # ⚖️ Hybrid Engine (Cross-Verification)
+
+> [!WARNING] **REMOVED 2026-08-07 — this engine no longer exists.**
+> `method == "hybrid"` was deleted, backend and frontend, by
+> [[ADR-006 Removing the Three AI Comparison Methods]], which closed the deletion question
+> [[ADR-004 Deterministic-Only Scope]] had explicitly left open. Implementation:
+> `hybrid_orchestrator.py + crop_verifier.py + reconciler.py` — recoverable from git history only.
+>
+> **This note is kept as the record of what the engine did and why**, not as a description of
+> the system. Everything below is past tense in fact if not in grammar. `comparison_method` is
+> now `Literal["rag"]`, and the deterministic differ is the only engine there is.
+
 
 The **Hybrid Engine** (`method == "hybrid"`) is the dual-generator cross-verification engine. It runs both Generator A (Deterministic RAG) and Generator B (AI Vision) in parallel, then uses a Crop Verifier to reconcile any disputes.
 

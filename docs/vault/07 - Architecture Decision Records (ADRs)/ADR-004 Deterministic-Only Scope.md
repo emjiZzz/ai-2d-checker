@@ -70,6 +70,10 @@ retired. **Not decided here** — flagged for the next session.
 
 ## What is *not* decided
 
+> [!NOTE] **Both resolved 2026-08-07 by [[ADR-006 Removing the Three AI Comparison Methods]]:
+> delete, and no, the picker is gone.** Left below as written — this section is why ADR-006
+> is a completion of this decision rather than a reversal of it.
+
 - Whether to delete the three methods' code (12 backend files reference them). Leaving them
   in place costs nothing while they are DEV-badged and unmeasured; deleting is reversible only
   from git.
@@ -89,5 +93,7 @@ retired. **Not decided here** — flagged for the next session.
 
 - The rung ladder and much of ADR-003's framing no longer describe the work.
 - `hybrid`'s dual-generator + adjudicator pattern — recorded in the ledger as "the right shape
-  for rung 4" — is shelved with it.
-- If the decision reverses, Stage 0f and 1b return with their full original cost.
+  for rung 4" — is shelved with it. *(Deleted outright as of
+  [[ADR-006 Removing the Three AI Comparison Methods]]; recoverable from git only.)*
+- If the decision reverses, Stage 0f and 1b return with their full original cost. *(Under
+  ADR-006, at more than that — the code they were to be built against is gone too.)*

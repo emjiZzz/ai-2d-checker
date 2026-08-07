@@ -47,10 +47,23 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..audit.comparison.reconciler import MATCH_RADIUS_MM
 from ..audit.comparison.spatial_differ import SpatialDiffer
 from ..audit.comparison.taxonomy import TAXONOMY
 from .corpus import CorpusPair, ExpectedFinding
+
+# The scorer's own spatial fallback radius, in mm.
+#
+# This used to be imported from `comparison/reconciler.py` — the hybrid method's
+# cross-generator match radius — and was carried in `ComparisonParams` as a sweepable engine
+# constant. When the AI methods were removed the reconciler went with them, and that exposed
+# something the shared import had been hiding: **this number tunes the MEASUREMENT, not the
+# engine.** It decides which prediction the scorer pairs with which expected finding, so
+# sweeping it moves F1 without any engine behaviour changing at all — the same class of
+# mistake the ledger already records under "Sweeping on detection F1 alone".
+#
+# It therefore lives here, is deliberately NOT in `_BINDINGS`, and must not be added back.
+# The value is unchanged from the constant it replaces, so scores are byte-identical.
+SPATIAL_MATCH_RADIUS_MM = 35.0
 
 # Matched by text when the normalised strings are equal. Deliberately equality rather than a
 # similarity threshold: a threshold here would be a seventeenth hand-guessed constant, and
@@ -308,7 +321,7 @@ def _viable(
     viable = []
     for index in available:
         distance = _distance(context.coordinates, predictions[index].coordinates)
-        if distance is not None and distance <= MATCH_RADIUS_MM:
+        if distance is not None and distance <= SPATIAL_MATCH_RADIUS_MM:
             viable.append((index, distance))
     return viable
 

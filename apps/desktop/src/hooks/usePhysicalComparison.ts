@@ -62,8 +62,9 @@ export const usePhysicalComparison = () => {
       // backend without the /stream route, dropped socket, malformed frame) means we learned
       // nothing about the comparison, so fall back to the plain POST. A backend-REPORTED
       // error means the comparison itself failed — falling back there would re-run the whole
-      // pipeline, which for `hybrid` is minutes of work and a second Gemini bill, only to fail
-      // the same way. That one is rethrown to the outer handler.
+      // pipeline only to fail the same way. That one is rethrown to the outer handler. (The
+      // distinction was originally worth minutes and a second Gemini bill on `hybrid`, removed
+      // in ADR-006; it still holds on the deterministic path, just more cheaply.)
       class ComparisonStreamError extends Error {}
 
       try {

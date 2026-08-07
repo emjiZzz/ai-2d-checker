@@ -1,10 +1,22 @@
 ---
 title: AI Vision Engine (Live DXF)
 type: engine
+status: removed
 tags: [engine, ai-vision, gemini, live-dxf]
 ---
 
 # 👁️ AI Vision Engine (Live DXF)
+
+> [!WARNING] **REMOVED 2026-08-07 — this engine no longer exists.**
+> `method == "ai_vision"` was deleted, backend and frontend, by
+> [[ADR-006 Removing the Three AI Comparison Methods]], which closed the deletion question
+> [[ADR-004 Deterministic-Only Scope]] had explicitly left open. Implementation:
+> `live_dxf_orchestrator.py + full_ai_orchestrator.py` — recoverable from git history only.
+>
+> **This note is kept as the record of what the engine did and why**, not as a description of
+> the system. Everything below is past tense in fact if not in grammar. `comparison_method` is
+> now `Literal["rag"]`, and the deterministic differ is the only engine there is.
+
 
 The **AI Vision Engine** (`method == "ai_vision"`) performs live multimodal drawing audit comparisons by reading physical `.dxf` disk files on the fly and pairing them with high-resolution drawing PNG image renders inside Gemini LLM prompts.
 

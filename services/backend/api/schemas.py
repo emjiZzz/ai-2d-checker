@@ -179,9 +179,9 @@ class UpdateUserRequest(BaseModel):
 class PhysicalComparisonRequest(BaseModel):
     reference_drawing_id: str
     drawing_id: str
-    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = Field(
+    comparison_method: Literal["rag"] = Field(
         "rag",
-        description="Pipeline to use: rag, rag_ai (Gemini w/ CAD), ai_vision (Gemini image only), or hybrid (dual-generator cross-verification)"
+        description="Comparison pipeline. Only the deterministic method exists; the three Gemini-backed ones were removed (ADR-006)."
     )
     force_refresh: bool = Field(
         default=False,
@@ -271,9 +271,9 @@ class RoomCreateRequest(BaseModel):
     name: str = Field(..., description="User-facing room label")
     description: str | None = None
     client_name: str | None = None
-    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = Field(
+    comparison_method: Literal["rag"] = Field(
         "rag",
-        description="Comparison pipeline for this room (dev-only)"
+        description="Comparison pipeline for this room. Only the deterministic method exists (ADR-006)."
     )
 
 class RoomResponse(BaseModel):
@@ -288,7 +288,7 @@ class RoomResponse(BaseModel):
     active_audit_session_id: str | None = None
     physical_comparison_results: dict | None = None
     zones_confirmed_for: str | None = None
-    comparison_method: Literal["rag", "rag_ai", "ai_vision", "hybrid"] = "rag"
+    comparison_method: Literal["rag"] = "rag"
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -388,21 +388,23 @@ class CanvasMarking(BaseModel):
     original_value: Optional[str] = Field(default=None, description="The original value from the reference drawing, if changed.")
     visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the revision drawing sheet image, normalized 0 to 1000.")
     ref_visual_bbox: Optional[list[float]] = Field(default=None, description="Optional visual bounding box [ymin, xmin, ymax, xmax] on the reference drawing sheet image, normalized 0 to 1000.")
-    origin: Optional[Literal["deterministic", "ai_vision"]] = Field(default=None, description="Which generator produced this finding in the hybrid pipeline. None for markings from rag/rag_ai/ai_vision, which have a single source by construction.")
+    origin: Optional[Literal["deterministic", "ai_vision"]] = Field(default=None, description="Which generator produced this finding in the removed hybrid pipeline (ADR-006). Always None now; the literal keeps 'ai_vision' so cached payloads written before the removal still parse.")
     verification: Optional[Literal["confirmed_both", "confirmed_single", "corrected_to_matched", "conflict", "unverified"]] = Field(default=None, description="Hybrid-pipeline outcome: confirmed_both = both generators agreed, confirmed_single = the two disagreed and the crop verifier picked a side, corrected_to_matched = the verifier looked at the actual crops and found no real difference at all, overriding whatever either generator originally claimed (status is forced to MATCHED), conflict = the verifier could not confirm either side, unverified = single-source finding not yet run through the verifier. None for markings from rag/rag_ai/ai_vision.")
     resolution_method: Optional[Literal["entity_handle", "visual_bbox_fallback", "unresolved"]] = Field(default=None, description="How `coordinates` was derived: exact entity-handle lookup, Gemini's normalized visual bbox mapped to CAD space, or not resolved at all.")
     feature: Optional[str] = Field(default=None, description="Sub-item taxonomy key within `category` (e.g. category='title_block', feature='scale') — see services/backend/infrastructure/audit/comparison/taxonomy.py for the canonical list per category. Used to group the checklist panel into named sub-sections instead of one flat list per category. Falls back to 'other' when unset or unrecognized.")
 
 class CategoryAgreement(BaseModel):
     """
-    Per-category generator agreement counts for the hybrid method (docs/hybrid-
-    comparison-engine-implementation-plan.md, Phase 8) — a fixed-shape object, not a
-    dict keyed by category name, for the same reason ComparisonDiagnostics itself isn't
-    a bare dict below: Gemini's structured-output API rejects open-ended
-    additionalProperties schemas, and this model nests inside PhysicalComparisonResponse
-    which rag_ai/ai_vision also hand to Gemini as response_schema. A list of these,
-    one entry per category that had any candidate from either generator, is the
-    Gemini-safe equivalent of "a dict by category."
+    Per-category generator agreement counts, from the removed `hybrid` method (ADR-006) —
+    always empty now, and kept because it is present in cached payloads.
+
+    Still a fixed-shape object rather than a dict keyed by category name, for the same
+    reason ComparisonDiagnostics isn't a bare dict below: Gemini's structured-output API
+    rejects open-ended additionalProperties schemas, and this nests inside
+    PhysicalComparisonResponse, which is `execute_gemini_cascade`'s **default**
+    `response_schema`. See CLAUDE.md constraint 1 — and note the removal changed that
+    constraint from "fires on every request" to "fires on the first caller that omits a
+    schema", which is dormant, not gone.
     """
     category: str
     generator_a_candidates: int = 0

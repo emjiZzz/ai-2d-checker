@@ -6,6 +6,12 @@ test that says so is the most important one in the file: without it the ledger e
 "fixed" by someone computing those features in TypeScript, which is strictly worse than the
 nulls it replaces (see test_finding_snapshot_nulls_are_recomputed_server_side).
 
+**0a.1's two tests are gone** (ADR-006). They pinned the signature of
+`full_ai_orchestrator.generate_ai_vision_candidates`, whose `request`-NameError made `hybrid`
+100% non-functional. That module was deleted with the three AI methods, so the defect is
+unreachable rather than fixed, and a test asserting on a deleted function's signature would
+only have measured that it stayed deleted. The ledger entry stands as history.
+
 See CLAUDE.md constraint 5.
 """
 import inspect
@@ -13,41 +19,11 @@ import inspect
 import pytest
 
 from services.backend.config import settings
-from services.backend.infrastructure.audit.comparison import full_ai_orchestrator
 from services.backend.infrastructure.learning.feature_extractor import (
     build_feature_row,
     features_from_marking,
     features_from_snapshot,
 )
-
-
-# ─── 0a.1 — generate_ai_vision_candidates referenced an undefined `request` ───────────────
-#
-# `client_name = getattr(request, "client_name", None)` sat inside a function whose signature
-# has no `request`. Python resolves `request` at call time, so this raised NameError on every
-# invocation. Its only caller is the `hybrid` method, and no `hybrid` cache entry has ever
-# existed to mask it — so `hybrid` was 100% broken, silently, for as long as the line was there.
-
-
-def test_ai_vision_generator_takes_client_name_as_a_parameter():
-    sig = inspect.signature(full_ai_orchestrator.generate_ai_vision_candidates)
-    assert "client_name" in sig.parameters, (
-        "generate_ai_vision_candidates must accept client_name explicitly. It has no request "
-        "object to read it off, and reading one anyway is what caused the NameError."
-    )
-    assert "request" not in sig.parameters, (
-        "Adding a `request` parameter would fix the NameError the wrong way — this generator is "
-        "deliberately request-free so the hybrid path can call it without an HTTP request."
-    )
-
-
-def test_ai_vision_generator_body_does_not_reference_a_free_request_name():
-    """The bug class, not just the one line: any bare `request.` here is unresolvable."""
-    source = inspect.getsource(full_ai_orchestrator.generate_ai_vision_candidates)
-    assert "request" not in source.split('"""')[-1], (
-        "generate_ai_vision_candidates references `request` outside its docstring, but has no "
-        "such parameter — this is exactly the NameError Stage 0a fixed."
-    )
 
 
 # ─── 0a.2 — the standards AI pass was pinned to a retired model ───────────────────────────

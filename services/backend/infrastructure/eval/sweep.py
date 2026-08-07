@@ -56,9 +56,12 @@ SWEEP_RANGES: dict[str, list[Any]] = {
     "fuzzy_threshold_abs": [50.0, 100.0, 150.0, 250.0, 400.0],
     # The CHANGED gate. 1.0 admits only identical text; 0.0 admits any pairing at all.
     "changed_similarity_floor": [0.0, 0.2, 0.40, 0.6, 0.8, 1.0],
-    # Cross-generator radius. Reconciliation only runs on `hybrid`, which ADR-004 puts out of
-    # scope — included so the sweep can *show* it is inert rather than leaving it assumed.
-    "match_radius_mm": [5.0, 15.0, 35.0, 65.0, 120.0],
+    # REMOVED (ADR-006): `match_radius_mm`. It was the cross-generator radius, and it was in
+    # this table so the sweep could *show* it inert rather than assume it. `hybrid` is now
+    # gone, and the constant survives only as the eval scorer's own
+    # `SPATIAL_MATCH_RADIUS_MM` — which must never be swept, because it moves the scorer's
+    # prediction↔label pairing and would register as an F1 change with the engine untouched.
+    # This takes the default pass from 14 constants to 13.
     # Marking reconciliation — "calibrated against one observed case".
     "similarity_threshold": [0.6, 0.7, 0.82, 0.9, 0.98],
     "ambiguity_margin": [0.0, 0.04, 0.08, 0.16, 0.32],

@@ -28,7 +28,8 @@ export interface Room {
   physical_comparison_results?: any | null;
   /** "{old_drawing_id}:{new_drawing_id}" whose zone boxes the user confirmed. */
   zones_confirmed_for?: string | null;
-  comparison_method?: "rag" | "rag_ai" | "ai_vision" | "hybrid";
+  /** Only the deterministic method exists (ADR-006). Optional: a room predating the field. */
+  comparison_method?: "rag";
 }
 
 interface RoomState {
@@ -38,7 +39,7 @@ interface RoomState {
   error: string | null;
 
   fetchRooms: () => Promise<void>;
-  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: "rag" | "rag_ai" | "ai_vision" | "hybrid") => Promise<Room | null>;
+  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: "rag") => Promise<Room | null>;
   openRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: (roomId: string) => Promise<boolean>;
@@ -171,8 +172,8 @@ export const useRoomStore = create<RoomState>((set, get) => ({
               pen_type: penType,
               is_resolved: marking.status === "MATCHED",
               original_value: marking.original_value,
-              // hybrid-only provenance (docs/hybrid-comparison-engine-implementation-plan.md,
-              // Phase 6) — undefined for rag/rag_ai/ai_vision markings, same as backend.
+              // Provenance from the removed `hybrid` method (ADR-006) — always undefined
+              // now, kept for cached payloads written before the removal, same as backend.
               verification: marking.verification,
               origin: marking.origin,
               // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,

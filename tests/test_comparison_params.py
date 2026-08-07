@@ -22,9 +22,9 @@ import pytest
 from services.backend.infrastructure.audit.comparison import (
     coordinate_resolver,
     marking_reconciler,
-    reconciler,
     spatial_differ,
 )
+from services.backend.infrastructure.eval.scorer import SPATIAL_MATCH_RADIUS_MM
 from services.backend.infrastructure.audit.comparison.params import (
     DEFAULT_PARAMS,
     ZONE_PARAMS,
@@ -52,7 +52,6 @@ def test_modules_read_exactly_the_default_params():
         (spatial_differ, "TWIN_THRESHOLD_ABS", "twin_threshold_abs"),
         (spatial_differ, "FUZZY_THRESHOLD_ABS", "fuzzy_threshold_abs"),
         (spatial_differ, "CHANGED_SIMILARITY_FLOOR", "changed_similarity_floor"),
-        (reconciler, "MATCH_RADIUS_MM", "match_radius_mm"),
         (marking_reconciler, "SIMILARITY_THRESHOLD", "similarity_threshold"),
         (marking_reconciler, "AMBIGUITY_MARGIN", "ambiguity_margin"),
         (marking_reconciler, "MIN_FUZZY_LENGTH", "min_fuzzy_length"),
@@ -62,6 +61,16 @@ def test_modules_read_exactly_the_default_params():
 )
 def test_each_constant_still_holds_its_original_value(module, attribute, field_name):
     assert getattr(module, attribute) == getattr(DEFAULT_PARAMS, field_name)
+
+
+def test_the_scorer_radius_is_not_a_sweepable_engine_constant():
+    """`match_radius_mm` was swept as an engine constant while living in the hybrid method's
+    `reconciler.py`. Removing the AI methods left the eval scorer as its only reader, which
+    exposed that it tunes the **measurement**: it decides which prediction the scorer pairs
+    with which expected finding, so a sweep would move F1 with no engine behaviour changing.
+    It keeps its old value, so scores are byte-identical, and it must stay out of the params."""
+    assert SPATIAL_MATCH_RADIUS_MM == 35.0
+    assert "match_radius_mm" not in {f.name for f in fields(ComparisonParams)}
 
 
 def test_the_original_literals_are_preserved():
@@ -74,7 +83,6 @@ def test_the_original_literals_are_preserved():
         150.0,
     )
     assert DEFAULT_PARAMS.changed_similarity_floor == 0.40
-    assert DEFAULT_PARAMS.match_radius_mm == 35.0
     assert DEFAULT_PARAMS.similarity_threshold == 0.82
     assert DEFAULT_PARAMS.ambiguity_margin == 0.08
     assert DEFAULT_PARAMS.min_fuzzy_length == 4
@@ -116,7 +124,7 @@ def test_override_restores_even_when_the_block_raises():
     subsequent measurement in that run is quietly wrong."""
     before = current_params()
     with pytest.raises(RuntimeError):
-        with sweep_override(DEFAULT_PARAMS.with_value("match_radius_mm", 999.0)):
+        with sweep_override(DEFAULT_PARAMS.with_value("max_normalized_move", 9.0)):
             raise RuntimeError("sweep blew up mid-pair")
     assert current_params() == before
 

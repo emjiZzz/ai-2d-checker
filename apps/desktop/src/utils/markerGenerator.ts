@@ -233,8 +233,9 @@ export const generateComparisonMarkings = ({
         pen_type: penType,
         is_resolved: marking.status === "MATCHED",
         original_value: marking.original_value,
-        // hybrid-only provenance (docs/hybrid-comparison-engine-implementation-plan.md,
-        // Phase 6) — undefined for rag/rag_ai/ai_vision markings.
+        // Provenance from the removed `hybrid` method (ADR-006) — always undefined now.
+        // Passed through rather than dropped: it is present in cached payloads written
+        // before the removal, and dropping it would silently change how those render.
         verification: marking.verification,
         origin: marking.origin,
         // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,

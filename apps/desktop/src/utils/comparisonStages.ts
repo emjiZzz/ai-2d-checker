@@ -1,13 +1,18 @@
 /**
- * Per-method comparison stage definitions, shared between usePhysicalComparison.ts
- * (drives the simulated timing) and TwoDLeftPanel.tsx (renders the labels/progress).
+ * Comparison stage definitions, shared between usePhysicalComparison.ts (drives the
+ * simulated timing) and TwoDLeftPanel.tsx (renders the labels/progress).
  *
  * The backend returns one final response with no intermediate progress events — these
  * durations are still simulated, not driven by real backend signals. What changed from
  * the old hardcoded 4-step "Scanning Original Drawing / Extracting Metadata / Scanning
  * KMTI Drawing / Comparing Matches" sequence is that the labels are no longer generic:
- * each comparison_method gets the stage list that actually describes what that method's
- * backend pipeline does (see services/backend/infrastructure/audit/comparison/).
+ * they describe what the backend pipeline actually does
+ * (see services/backend/infrastructure/audit/comparison/).
+ *
+ * These were keyed per comparison_method until ADR-006 removed `rag_ai`, `ai_vision` and
+ * `hybrid`. The maps are kept keyed rather than flattened to a single sequence: a room
+ * created before the removal can still carry an old method string, and the `?? .rag`
+ * fallbacks below turn that into the deterministic sequence instead of an empty list.
  */
 
 export interface ComparisonStage {
@@ -21,9 +26,6 @@ export interface ComparisonStage {
 
 export const COMPARISON_METHOD_LABELS: Record<string, string> = {
   rag: "RAG",
-  rag_ai: "RAG + AI",
-  ai_vision: "AI Vision",
-  hybrid: "Hybrid",
 };
 
 export const COMPARISON_STAGE_SEQUENCES: Record<string, ComparisonStage[]> = {
@@ -35,30 +37,6 @@ export const COMPARISON_STAGE_SEQUENCES: Record<string, ComparisonStage[]> = {
     { id: "spatial_diff", label: "Running deterministic spatial diff", durationMs: 700 },
     { id: "finalizing", label: "Resolving coordinates & finalizing", durationMs: 500 },
   ],
-  // full_ai_orchestrator.py::perform_full_ai_comparison(method="rag_ai") — structured
-  // CAD context assembled and handed to Gemini alongside the rendered PNGs.
-  rag_ai: [
-    { id: "extracting", label: "Extracting drawing entities & BOM/title data", durationMs: 700 },
-    { id: "building_context", label: "Building structured context for Gemini", durationMs: 600 },
-    { id: "gemini_analyzing", label: "Gemini analyzing (RAG + AI)", durationMs: 1800 },
-    { id: "finalizing", label: "Resolving coordinates & finalizing", durationMs: 500 },
-  ],
-  // full_ai_orchestrator.py::perform_full_ai_comparison(method="ai_vision") — only the
-  // two rendered PNGs go to Gemini, no structured context.
-  ai_vision: [
-    { id: "rendering", label: "Rendering drawings for AI Vision", durationMs: 600 },
-    { id: "gemini_analyzing", label: "Gemini analyzing (images only)", durationMs: 2000 },
-    { id: "finalizing", label: "Resolving coordinates & finalizing", durationMs: 500 },
-  ],
-  // hybrid_orchestrator.py::perform_hybrid_comparison — two independent generators run
-  // concurrently, their candidates are reconciled by location, and any disagreement
-  // goes through a narrow crop-based verifier before the final result is assembled.
-  hybrid: [
-    { id: "dual_generators", label: "Running deterministic diff + AI Vision scan in parallel", durationMs: 1800 },
-    { id: "reconciling", label: "Reconciling findings between generators", durationMs: 600 },
-    { id: "verifying", label: "Verifying disputed findings", durationMs: 1200 },
-    { id: "finalizing", label: "Finalizing results", durationMs: 500 },
-  ],
 };
 
 export function getComparisonStages(method: string | undefined | null): ComparisonStage[] {
@@ -69,20 +47,14 @@ export function getComparisonMethodLabel(method: string | undefined | null): str
   return COMPARISON_METHOD_LABELS[method ?? "rag"] ?? "RAG";
 }
 
-// How long the frontend waits before aborting the request outright. A flat 180s for
-// every method caused real failures ("signal is aborted without reason") on hybrid:
-// its pipeline runs two generators, then reconciliation, then a crop-verification
-// call per batch of disputed findings — structurally more work than the other three
-// methods' single Gemini call, so it needs more headroom even after the backend fix
-// (crop_verifier.py's batches now run concurrently instead of sequentially, which
-// helps a lot but doesn't make hybrid as fast as a single-call method on a drawing
-// pair with many disputed findings). Unmeasured, generous placeholders — tune once
-// real p95 durations per method are known.
+// How long the frontend waits before aborting the request outright. The per-method spread
+// (up to 420s for `hybrid`, which ran two generators plus a crop-verification pass) went
+// with those methods in ADR-006. The deterministic path makes at most one bounded
+// title-block OCR call, so 120s is the only budget left. Still unmeasured — tune once real
+// p95 durations are known. The `?? 180_000` below covers a room carrying an old method
+// string, deliberately generous rather than clamped to the deterministic budget.
 const COMPARISON_TIMEOUT_MS: Record<string, number> = {
   rag: 120_000,
-  rag_ai: 240_000,
-  ai_vision: 240_000,
-  hybrid: 420_000,
 };
 
 export function getComparisonTimeoutMs(method: string | undefined | null): number {

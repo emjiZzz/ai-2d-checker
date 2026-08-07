@@ -61,8 +61,12 @@ _BINDINGS: dict[str, tuple[str, str]] = {
     "twin_threshold_abs": ("..comparison.spatial_differ", "TWIN_THRESHOLD_ABS"),
     "fuzzy_threshold_abs": ("..comparison.spatial_differ", "FUZZY_THRESHOLD_ABS"),
     "changed_similarity_floor": ("..comparison.spatial_differ", "CHANGED_SIMILARITY_FLOOR"),
-    # reconciler — cross-generator match radius
-    "match_radius_mm": ("..comparison.reconciler", "MATCH_RADIUS_MM"),
+    # NOTE: `match_radius_mm` used to sit here, bound to `comparison/reconciler.py`. Both are
+    # gone — the reconciler was the hybrid method's cross-generator matcher. Its one surviving
+    # reader was the eval scorer, so the constant moved to `eval/scorer.py` as
+    # `SPATIAL_MATCH_RADIUS_MM` and is deliberately NOT swept: it decides how the scorer pairs
+    # a prediction with an expected finding, so changing it moves F1 with no engine behaviour
+    # changing at all. Do not add it back.
     # marking_reconciler — the fuzzy pass, calibrated against one observed case
     "similarity_threshold": ("..comparison.marking_reconciler", "SIMILARITY_THRESHOLD"),
     "ambiguity_margin": ("..comparison.marking_reconciler", "AMBIGUITY_MARGIN"),
@@ -121,11 +125,6 @@ class ComparisonParams:
     # The one constant here with a recorded derivation: unrelated notes scored 0.00–0.14 and a
     # genuine edit scored 0.75 on the KEMCO pair, so 0.40 sits in the gap. Two data points.
     changed_similarity_floor: float = 0.40
-
-    # --- reconciliation ---------------------------------------------------
-    # Widened from 5.0 to 35.0 with no recorded justification; a text-similarity bypass extends
-    # it to 65.0 with a 0.3x discount. `tests/test_hybrid_pipeline.py` pins current behaviour.
-    match_radius_mm: float = 35.0
 
     # --- marking reconciliation (calibrated against one observed case) ----
     similarity_threshold: float = 0.82

@@ -25,7 +25,6 @@ from ...utils.text import (
 )
 from ..bom_analyzer import BOMAnalyzer
 from .revision_resolver import resolve_revisions
-from .gemini_client import execute_gemini_cascade
 from .hallucination_guardrails import (
     is_title_block_category,
     is_bom_category,
@@ -322,9 +321,9 @@ def build_marking_table(markings: list, category_filter: str | None = None) -> s
 
     Module-level (hoisted out of generate_deterministic_candidates, where it started as
     a nested closure — it doesn't close over anything, so the move is behavior-neutral)
-    so hybrid_orchestrator.py can reuse it to rebuild category tables from the final
-    reconciled/verified candidate list instead of only Generator A's raw output
-    (docs/hybrid-comparison-engine-implementation-plan.md, Phase 6 follow-up).
+    so the removed `hybrid` orchestrator could rebuild category tables from its final
+    reconciled list rather than Generator A's raw output. That caller is gone (ADR-006);
+    the hoist stays because it is behaviour-neutral and re-nesting it would be churn.
     """
     rows = [m for m in markings if category_filter is None or m.get("category") == category_filter]
     if not rows:
@@ -378,8 +377,8 @@ async def generate_deterministic_candidates(
         zone_detection_warnings: unchanged from today's diagnostics.
 
     progress_callback, when supplied, is awaited at each coarse stage boundary so the SSE
-    endpoint can stream real progress. hybrid_orchestrator deliberately passes None — it runs
-    this concurrently with Generator B and reports the pair as one stage.
+    endpoint can stream real progress. It stays optional: the eval runner calls this directly
+    and passes None, and the removed `hybrid` orchestrator did too (ADR-006).
     """
     if progress_callback:
         await progress_callback("extracting", 20, "Extracting drawing entities & BOM/title data")
@@ -1322,8 +1321,9 @@ async def generate_deterministic_candidates(
                 m["ref_bbox"] = [[validated_bbox.xmin, validated_bbox.ymin], [validated_bbox.xmax, validated_bbox.ymax]]
 
     # Tag provenance — deterministic candidates only ever resolve via exact entity
-    # handle or don't resolve at all; the visual-bbox fallback is AI-generator-only
-    # (see generate_ai_vision_candidates in full_ai_orchestrator.py, Phase 2).
+    # handle or don't resolve at all. The visual-bbox fallback belonged to the removed AI
+    # generators (ADR-006), so today this is the only provenance there is; the tag is kept
+    # because it is written into cached results and read by the learned overlay.
     #
     # Check coordinates OR ref_coordinates, not just coordinates: a REMOVED item never
     # has rev-side coordinates by definition (it doesn't exist on the revision) even
