@@ -2,9 +2,10 @@
 title: Eval Corpus Annotation Guideline
 type: architecture
 tags: [evaluation, ground-truth, annotation, corpus, ai-architecture]
-status: draft
-date: 2026-08-05
-verified-against: schema enforced by `infrastructure/eval/corpus.py`; still zero labels written
+status: active
+guideline_version: 2026-08-06
+date: 2026-08-06
+verified-against: schema enforced by `infrastructure/eval/corpus.py`; 7 pairs registered, 0 labelled
 ---
 
 # 📏 Eval Corpus Annotation Guideline
@@ -16,10 +17,20 @@ Part of Stage 0b in [[AI Maturity Ladder — Staged Plan]]. Status: [[00 - AI Ma
 > shifting definition is worthless — you cannot tell a scoring change from a definition change after
 > the fact. **Version this note. If a rule changes, re-label every affected pair or discard them.**
 
-> [!WARNING] `status: draft`
-> The rules below are reasoned, not yet validated against real labelling. Expect them to change once
-> the first two pairs are annotated. Promote to `status: active` only after ≥2 pairs have been
-> labelled by hand and the ambiguities recorded at the bottom have been resolved.
+> [!NOTE] `status: active` as of 2026-08-06 — `guideline_version: 2026-08-06`
+> The four open questions are resolved and folded into the rules below. Promotion happened
+> **before** the first label rather than after two, which reverses the original plan
+> deliberately: the corpus reached 7 registered pairs with 0 labelled, so resolving the
+> questions first costs nothing, while labelling under a draft would have meant re-labelling
+> every pair once they were settled.
+>
+> Three of the four had a **de facto answer already in the code**, which is what made them
+> settleable without labelling experience — the resolutions are largely descriptive of
+> behaviour the engine already has, and each is traced to the bug that produced it. The one
+> genuinely free choice is the bulk threshold, and it is marked as a convention.
+>
+> `corpus.py` rejects a label file authored under a different `guideline_version`, so any
+> later change to these rules is a re-label, not an edit.
 
 ---
 
@@ -86,12 +97,50 @@ happens when the engine gets it wrong in both directions at once.
 | Two independent notes both edited | **2 CHANGED** | Two acts. |
 | A BOM row edited | **1 CHANGED** per row, not per cell | Unless two cells changed for unrelated reasons — then use judgement and record it. |
 | A BOM row inserted, shifting all rows below | **1 ADDED** | The shift is a consequence, not a change. If the engine reports the shifted rows, those are false positives and the number is real. |
+| A title field whose cell holds two ruled rows, one changed | **1 CHANGED for that row** | See "Ruled rows" below — the rows are independent fields. |
+| A value split across ruled sub-cells (DWG No.) | **1 CHANGED** for the whole value | The segments cannot change independently. |
+
+### Ruled rows: independent fields, or one value?
+
+A ruled cell divided into rows is **two findings or one, depending on whether the rows can
+change independently.** The discriminator is the information, not the ruling.
+
+| Case | Label | Why |
+| :--- | :--- | :--- |
+| 名称 / TITLE — machine name over part name | **one finding per changed row** | Different facts, changed by different edits. The engine agrees: it emits `TITLE` and `TITLE SUB` separately, precisely so "a change confined to one row cannot be told apart from a change to both". Measured on M7452A1N01 the upper row changed while the lower was byte-identical. See [[Gotcha - Title Read the Drawing Number and Was Never Compared]]. |
+| DWG No. sub-cells — `M745203N01` = `M745` + `203` + `N01` | **one finding for the identifier** | Three segments of one number; none can change without the DWG No. changing. Reporting them separately gave four checklist items for one identifier. See [[Gotcha - Drawing Number Segments Reported as Separate Fields]]. |
+
+Both halves were paid for with production bugs in opposite directions — merging hid a real
+change, splitting invented three fake ones — so this rule describes behaviour the engine
+already has rather than imposing a new one.
 
 **Caveat on bulk additions.** Anchoring a 40-entity view addition to one handle means the engine
 finds it if it reports *any* of those 40. That is generous, and it is the right generosity for
 recall: an inspection tool that flags the view once has done its job. But it means recall on
 bulk-add cases is easier than it looks — report those cases' counts separately so the aggregate is
 not read as harder than it is.
+
+### How large is "bulk", and what does it anchor to?
+
+**The rule is semantic: if a checker would describe it in one sentence, it is one finding.**
+"Iso view added." "Detail B added." The entity count is evidence for that, not the definition
+of it.
+
+**Set `is_bulk: true` when the change spans ≥ 5 comparable entities.**
+
+> [!NOTE] Five is a convention, not a measured threshold — and that is fine.
+> Its job is to be applied *uniformly*, not to be correct. Because bulk cases' counts are
+> reported separately, anyone can recompute the aggregate under a different cut without
+> re-labelling, which is exactly the property that makes the precise number cheap. Stated
+> plainly rather than dressed up as a finding, per this vault's rule about keeping the
+> reasoned and the measured apart.
+
+**Anchor deterministically**, so two annotators pick the same entity and a re-label does not
+move the address:
+
+1. the view's own label or callout — `Ａ－Ａ`, `詳細B`, a section designation;
+2. failing that, the largest text by height;
+3. failing that, the lowest payload index (`REF#`/`REV#`).
 
 ---
 
@@ -114,6 +163,55 @@ Do not label these. Getting this list wrong inflates recall by making the engine
   [[Gotcha - drawing_views Was the Residual, Not the Views Box]]. If you believe a real change sits
   there, that is a **zone-detection bug**: record it in `notes` and file it, do not label it as a
   comparison finding.
+- **A newly added revision / amendment row.** See below — it is present on every revised
+  drawing by construction.
+
+### Revision-table rows
+
+**A *new* revision row is not a finding. A *missing* one is. An edit to an *existing* row is.**
+
+A revision entry appearing on a revised drawing is the drawing correctly documenting itself; it
+is true of every pair in this corpus, so flagging it tells a checker nothing. The two carve-outs
+are where the real defects live: a revision that documents nothing, and a rewritten history row.
+
+| Situation | Label |
+| :--- | :--- |
+| New revision row on the revision side | **not a finding** |
+| Revision side has no new row at all | **1 finding**, `title_block`, status `REMOVED` — record the reasoning in `notes` |
+| An existing revision row's text edited | **1 CHANGED**, `title_block` |
+
+> [!WARNING] This rule will produce false positives, deliberately, and the number is the point.
+> The engine reports these today. `amendment_table_bboxes` is used *"ONLY to reclassify
+> drawing_views findings to title_block, never to exclude entities from comparison"* — only the
+> column **headers** are dropped from the pool. So every human pair will show at least one
+> title_block false positive from its new revision row.
+>
+> That is the correct outcome, and it follows this document's own precedent for shifted BOM
+> rows: *"those are false positives and the number is real."* It converts an invisible product
+> behaviour into a measured one. Expect it to motivate suppressing new revision rows in the
+> engine — and when that decision is made it will have evidence behind it instead of taste.
+
+---
+
+## Choosing the category
+
+**Label by what the change is *about*, not by where it is drawn.**
+
+That principle decides the cases that look ambiguous:
+
+| Change | Category | Why |
+| :--- | :--- | :--- |
+| Amendment / revision-table content | `title_block` | The amendment table is title-block furniture; a checker reads it as metadata, not as drawing geometry. The engine reclassifies it the same way, so following the checker here happens to agree — the feared mismatch does not arise. See [[Gotcha - Full-Width Grid Labels Bridged Zones]]. |
+| A balloon whose item number no longer resolves to a BOM row | `bill_of_materials` | It is a parts-list error that happens to be drawn on a view. The engine agrees: `reconcile_bom_with_balloons` emits `bom_balloon_mismatch`. |
+| A balloon that appears because a view gained a component | *part of that view's ADDED finding* | Not a separate finding. One editorial act. |
+
+> [!IMPORTANT] Do not bend a label toward the engine's category to avoid a mismatch.
+> Category attribution is scored **independently** of detection, and since the mutator was made
+> template-aware, attribution on mutation pairs is a tautology that measures nothing — the
+> mutator and the engine now derive the category from identical zone boxes, so they agree by
+> construction. **Human labels are the only place category attribution can be measured at all.**
+> Matching the engine on purpose would destroy the last independent signal. See
+> [[Gotcha - Mutation Labels Predate the Zone Template]].
 
 ---
 
@@ -194,18 +292,20 @@ pairs are unreachable without a written reason that is logged.
 
 ---
 
-## Open questions — resolve before promoting to `active`
+## Resolved questions — 2026-08-06
 
-Recorded rather than guessed, per this vault's directive to keep the reasoned and the measured apart.
+All four are folded into the rules above; this is the record of *why*, so the reasoning is not
+re-derived. Resolved **before** the first label rather than after two pairs, reversing the
+original plan: with 7 pairs registered and 0 labelled, settling first cost nothing while
+labelling under a draft would have meant re-labelling everything.
 
-1. **Title-block fields with two ruled rows** — when only the upper row changes, is that one finding
-   or one per row? [[Gotcha - Title Read the Drawing Number and Was Never Compared]] shows the
-   extractor merged them and hid a real change, so the answer affects what "correct" means here.
-2. **Revision-table rows.** A new revision entry is expected on every revised drawing. Is it a
-   finding, or metadata? Leaning "not a finding", but it must be decided once and applied uniformly.
-3. **Amendment/balloon markers.** Currently reclassified to `title_block`
-   ([[Gotcha - Full-Width Grid Labels Bridged Zones]]). Should the label follow that engine choice,
-   or describe what a checker would say? Labels should generally describe the checker, not the
-   engine — but that would guarantee a category mismatch here.
-4. **How large is "bulk"?** The one-label-per-added-view rule needs a threshold, or a stated
-   judgement call, before the first multi-view pair is annotated.
+| # | Question | Resolution | Basis |
+| :--- | :--- | :--- | :--- |
+| 1 | Two ruled rows — one finding or one per row? | **One per changed row when the rows carry independent facts** (名称/TITLE); **one for the whole value** when they are segments of one identifier (DWG No.). | Descriptive: the engine already emits `TITLE`/`TITLE SUB` separately and already suppresses DWG No. segments. Both behaviours were bug fixes in **opposite** directions — merging hid a real change, splitting invented three fake fields. |
+| 2 | Revision-table rows — finding or metadata? | **New row: not a finding. Missing row: a finding. Edited existing row: a finding.** | The original lean was right, sharpened by the two carve-outs. Accepts a deliberate, systematic false positive because the engine reports these today — the number is the point. |
+| 3 | Amendment / balloon markers — follow the engine or the checker? | **Follow the checker, always.** Amendment content → `title_block` (which happens to agree with the engine); balloon-vs-BOM → `bill_of_materials`; a balloon riding an added view → part of that view's finding. | The question conflated two different objects. Also: human labels are now the **only** independent measure of attribution, so bending them toward the engine would destroy the signal. |
+| 4 | How large is "bulk"? | **Semantic rule** (one checker sentence = one finding), with `is_bulk: true` at **≥ 5 comparable entities**, plus a deterministic anchor order. | The only genuinely free choice of the four, and marked as a convention rather than a finding. Bulk counts are reported separately, so the cut can be revisited without re-labelling. |
+
+**What is still open, and is deliberately not a labelling question:** whether the engine should
+*stop* reporting new revision rows. Question 2 makes that measurable rather than arguable; the
+decision belongs to the engine, after the first pairs are scored.

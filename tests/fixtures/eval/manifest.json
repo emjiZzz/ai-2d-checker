@@ -1,6 +1,118 @@
 {
-  "guideline_version": "2026-08-05",
+  "guideline_version": "2026-08-06",
   "pairs": [
+    {
+      "held_out": false,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "pair_id": "M745203N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a72fc3a90ea9f72a44da76c",
+        "drawing_sha256": "c7db8720990df9639489d35393c836ee62687b1a3c3a0ba2fdde36b9e081edf7",
+        "entities_sha256": "20ea330e00820f260afc978cb6eccf4985fc5cc2e4320f324e455ce266991a8d",
+        "entity_count": 333,
+        "file_hash": "bc17b56d6284418c920d903e652ea064e6838c5e472c34d3a3709238b2d74701",
+        "file_name": "M745203N01_reference.dxf",
+        "ocr_sha256": "10c43252835c36efc24948bf940930913a623f0f76354c3a2709afbb7059c4fc",
+        "zone_signature": "aspect-1.361"
+      },
+      "rev": {
+        "drawing_id": "6a72fc4390ea9f72a44da8bb",
+        "drawing_sha256": "925cd599d892fc3d173176a6075a515fb58f673cc033827d58c8542beead08f8",
+        "entities_sha256": "3decb6acb5708fd043a34ee428ada5d76af3c84213a7f517d6a34208604af7d4",
+        "entity_count": 495,
+        "file_hash": "63adc691976bdd520e1a9ef1784f098eb0cce53ae8e94dcfce5916799b26f72e",
+        "file_name": "M745203N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "a11aa7733fde92a23f142a5279b51afe549d41a7866fa3f7e01d6696e2d3c29c",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "held_out": true,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "held out at export, before any engine run: the only pair on this machine with no comparison cache entry",
+      "pair_id": "M745206N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a741fb4e01d720e27be276a",
+        "drawing_sha256": "d13537923c9c372b65c64308d35b8f83a4907c60949cda523346c777a7c29b1f",
+        "entities_sha256": "605d0928556be0a94e20f9262719d5123f5ef03f6f922fe0bd0ffb38d9474fb0",
+        "entity_count": 373,
+        "file_hash": "ee6632589e27cddf22956480983f5d203e89a232cd5a55f3394c03804b421eae",
+        "file_name": "M745206N01_reference.dxf",
+        "ocr_sha256": "",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a741fc6e01d720e27be28e1",
+        "drawing_sha256": "e10e53224081f111812f0dc8f3a7f438ee72903bd6d854bdfc0111adb7bda1e8",
+        "entities_sha256": "0d18493d0379f51f7359d23b59520cbb75b42578a6eb93c382c8c74ed8d44f07",
+        "entity_count": 523,
+        "file_hash": "e7bafd963c7f20d035262d10f48863f60ff14b7d1a1e7fa64b953cdd459adf0c",
+        "file_name": "M745206N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "held_out": false,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "pair_id": "M745227N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a72f3de76705e5e6de70a0f",
+        "drawing_sha256": "20163b54f2308ae8a4155666309cabf017f767d81de6c462c1fcc2957a557977",
+        "entities_sha256": "c7e9129d1c36520b22a5e5c6fe9310b22a06860419aadba88f21177de0a9c9c2",
+        "entity_count": 389,
+        "file_hash": "602766edcc4ab356cd1776e140ac455de1f044b2ab151364685bf59db616019c",
+        "file_name": "M745227N01_reference.dxf",
+        "ocr_sha256": "d601fdab5199cb0ac66a0c3b013eb514efa660fd2175880107e5a24e8b7ec1f3",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a72f3eb76705e5e6de70b96",
+        "drawing_sha256": "5b8238a45b41b60287ea618ee79318c6e4e9c1d9ef2341168f845e93dd992f18",
+        "entities_sha256": "debba1afd67acf8d055cb9abf45c3518ca8e1b4ecbcf698322af8957b8f7ad9f",
+        "entity_count": 532,
+        "file_hash": "fc636ba297285792f1453d12ca336c14712691acd4ea686ae4bad2f5cc497cb2",
+        "file_name": "M745227N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "fc5c3c419adf9a9810cbee455281924a3b647ada288fe7e7453b03b18f3d5038",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "held_out": false,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "pair_id": "M745230A01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a72ecba562fa3aa7e38d58e",
+        "drawing_sha256": "fad98b25f2bcbd0419df473fb100d8ad58de935f532892a26e0c9d9e2812ef44",
+        "entities_sha256": "666b5ad94313f6dc476c8fed9c92cf5541ce5c196bf420c023e727d8bdbd6203",
+        "entity_count": 530,
+        "file_hash": "ef0432233df6615c6d968559c6b68d669bf38a478f008700b8cd83b25fe478e6",
+        "file_name": "M745230A01_reference.dxf",
+        "ocr_sha256": "4eef9b4547a5686d42cdb2ee0156f89edb6fb835ba016a82dee8f4d04ed1a11c",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a72ecd0562fa3aa7e38d7a2",
+        "drawing_sha256": "0ad63e33e548e9a1bae2e5fee040056c96abf20a48f0df1cecf19ab3767aa8dd",
+        "entities_sha256": "af3a032db07bc4fb9b2d3ad3f8bbed73987de1ac49857356d0bd93f26e989410",
+        "entity_count": 725,
+        "file_hash": "daabcba67d1dd8006dc87d362924341bddadf4cb8cc59effcaff7c81d1c492d6",
+        "file_name": "M745230A01_FSRS2_kmti.dxf",
+        "ocr_sha256": "65536bc63271783445c354ad41e155dc864da0b51c43bbe4590ca5e5029708e4",
+        "zone_signature": "aspect-1.414"
+      }
+    },
     {
       "held_out": false,
       "label_state": "unlabelled",
@@ -34,7 +146,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "5037d13b15c8d1cfa5e76b581c4b3b089c86fa614dd08bf37a7d4d26948d15ef",
+      "labels_sha256": "9110dfb4c85c26cb67781216cdd08b08222fa287127784ef42bb13758ae09e18",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -42,7 +154,7 @@
           "translate_entities"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 5020,
         "zero_finding": true
       },
@@ -75,7 +187,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "c5c962a842220a355e8a5c86c423d232813362d901b7eb56235b14d694e51062",
+      "labels_sha256": "4e77949c5a7d03bd1d104eac76e2850607be597a68cec49de086774c460a6169",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -86,7 +198,7 @@
         "operators_rejected": [
           "edit_title_field (no eligible target)"
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1000,
         "zero_finding": false
       },
@@ -119,7 +231,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "7a3cd7f385e3ae5bd53c69f5197067598ebb234e96422a1369dd1d7692a82709",
+      "labels_sha256": "a7753a6e0b8a92b085c0dad01938888e185de2d35fd8132edec0f4ab9bfd201f",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -130,7 +242,7 @@
         "operators_rejected": [
           "edit_title_field (no eligible target)"
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1001,
         "zero_finding": false
       },
@@ -163,7 +275,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "ca79bf7e6b8f51d44023d1033e06ff2ab2d7041888b9d07883500d9b85e2ff6d",
+      "labels_sha256": "4dea000fd4677a747608ac6112aa3a1692ca685b4c767d5419f514419290c589",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -173,7 +285,7 @@
           "edit_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1002,
         "zero_finding": false
       },
@@ -193,7 +305,7 @@
       "rev": {
         "drawing_id": "mut539c2a8c01f1495d181e9",
         "drawing_sha256": "29fdff524e4d5cf77a4be885ba6a4c7327e0944f171acef004b4945839dfdbf8",
-        "entities_sha256": "43467f36bf209673ef63c7db609f62e6060141031a9433b04af6b016b26f51d6",
+        "entities_sha256": "34be7d14fee703bfbad8449a6cacf3fb9334800e7fbc2de27c433e101859b1d4",
         "entity_count": 529,
         "file_hash": "539c2a8c01f1495d181e9c97a20e4c0601d819bc87b97d90d101ffc8e0929150",
         "file_name": "M7452A0N01-ref-mut002.dxf",
@@ -206,7 +318,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "f511734e4ff5ce3added838bcae842ae52827db8caffece798bce7889ffcd823",
+      "labels_sha256": "c030b5d4d2f88806163c09bc4263eeb2ff90013ab73987efc2ec7353d253c4ba",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -217,7 +329,7 @@
         "operators_rejected": [
           "edit_title_field (no eligible target)"
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1003,
         "zero_finding": false
       },
@@ -250,7 +362,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "bccdfba4d9641a4a770676ca10d0e7786ef10fa120b1602ef216da2d7af37227",
+      "labels_sha256": "d15304e75236a5cc70f9e6f602c21f8642483864510b48ca8ec308d228833a05",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -261,7 +373,7 @@
         "operators_rejected": [
           "edit_title_field (no eligible target)"
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1004,
         "zero_finding": false
       },
@@ -294,7 +406,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "89898554f424b4cb6758dda2bad28792c13fbe1ab45d098f24ca45868d490621",
+      "labels_sha256": "4b4a15b1b6327134db55cd0fa905c9e43a9489b80644c13a3af1674170fbf4ce",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -304,7 +416,7 @@
           "restyle_dimension_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1005,
         "zero_finding": false
       },
@@ -337,7 +449,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "365730651253f730e32f058343eacd6dad92123fe0ae43d129a373c17e84058b",
+      "labels_sha256": "b621bebb6c2e237e12fecc9c7eac2f95c99a72a7dc686068e7b186b0bf62e7c0",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -347,7 +459,7 @@
           "translate_entities"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1006,
         "zero_finding": false
       },
@@ -367,7 +479,7 @@
       "rev": {
         "drawing_id": "mut983c375643c7a501f5273",
         "drawing_sha256": "1ba36fa8e037e48530a141631b0e6fa631bf0b68b4f562e56e3f38d03cd99c25",
-        "entities_sha256": "589cce6553a505ae7952fef439e4d3b45458b4db337c4e268b686f1dcc22a1f2",
+        "entities_sha256": "7d986db4fa64048a005640fb184e6d9fbc8a75a18c050291cc70b5cc9cd08f7d",
         "entity_count": 528,
         "file_hash": "983c375643c7a501f52733568277e768075265f58f1d57d7d8a74d9dec6fb983",
         "file_name": "M7452A0N01-ref-mut006.dxf",
@@ -380,7 +492,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "332b26aad32cd837ab4c9eeb61ff498398dd12bfbc353b1943c87dd0731b7aec",
+      "labels_sha256": "25d40fdc71757ddd29618a40979d91cd573b1d53d0442516d6e345c7d9acf282",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -390,7 +502,7 @@
           "translate_entities"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1007,
         "zero_finding": false
       },
@@ -423,7 +535,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "caefa6ae976aa3aefd25ff60a3a6a655542f8533a5491ab716fc454fd3053a7b",
+      "labels_sha256": "a422a135074d8091a9289fd7c54943d700479d09d31db7c774f5e8bb7f83e0ca",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -434,7 +546,7 @@
         "operators_rejected": [
           "edit_title_field (no eligible target)"
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1008,
         "zero_finding": false
       },
@@ -454,7 +566,7 @@
       "rev": {
         "drawing_id": "mutd5ecba8a251b2abf6d3f0",
         "drawing_sha256": "e32dac3ca7b95b6a9f3b2be60f936320c59be68e8e58c2ce6b21032b3dedc919",
-        "entities_sha256": "03d0a97f810dd07476ab9f5745e333302d5b31cbfacfa6a13b24d5ff669adb54",
+        "entities_sha256": "f29f2099c7954a0fd62130d9c0b39ab38f181ecb15a1df5cae0a03128dc572f3",
         "entity_count": 527,
         "file_hash": "d5ecba8a251b2abf6d3f0b9faabbbdade381b464bde4a86c4b636778e264b979",
         "file_name": "M7452A0N01-ref-mut008.dxf",
@@ -467,7 +579,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "f84a85931907063db4693e1efbe6dfd0e80fcd31218dbe2379a8834729a42464",
+      "labels_sha256": "1d4eae50834eb83293c6e7b1393c2a5c8b8623202c23e28885c917b1dcdce257",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -475,7 +587,7 @@
           "null_mutation"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1009,
         "zero_finding": true
       },
@@ -508,7 +620,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "e717d045b69e1fd439ba4ae160250611cfff068d81ca3bb8ff08888f626e7ce9",
+      "labels_sha256": "e9d5b841ec0c7c06836e0643e9851e39a0e2fc457ac9060dbfe17e9662813e8e",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -518,7 +630,7 @@
           "edit_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1010,
         "zero_finding": false
       },
@@ -551,7 +663,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "1ce4c9f306143b812dd4e64e5eca7e9fe8541201462d6d08730f283756d72fc4",
+      "labels_sha256": "2396d564b74e58c37d0f3edf5dd28c306f566d23174ead36a950b8641f715970",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -561,7 +673,7 @@
           "insert_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1011,
         "zero_finding": false
       },
@@ -581,7 +693,7 @@
       "rev": {
         "drawing_id": "mutfb7bffb8fded4380b1ec1",
         "drawing_sha256": "e985533ac902b607e96106e964b026e0a2b5a2b5105525a0eaa8dcbc0aa08a0c",
-        "entities_sha256": "6988fffcc3dcd7524bf28dbcd7c24a227d1d66f6963d168f5a98eb3880993035",
+        "entities_sha256": "875e784c9db9deb1312fdebacea8fd98493c2ffa6bf76cb60dc3b70689af5c4b",
         "entity_count": 529,
         "file_hash": "fb7bffb8fded4380b1ec1fdc204dca27835a442dfe78ee3163bd080d87a91e46",
         "file_name": "M7452A0N01-ref-mut011.dxf",
@@ -594,7 +706,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "df3b2cd522e6aec38ff899d82edf64d3a409f69fec738e924a4cce1e1e551b15",
+      "labels_sha256": "e69cf60ab704cdeb2a4589a1ed332b5a96d1dc37dab0018f5c6dc55f73acd850",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -604,7 +716,7 @@
           "edit_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1012,
         "zero_finding": false
       },
@@ -624,7 +736,7 @@
       "rev": {
         "drawing_id": "mut88fb8377322d37a6af66f",
         "drawing_sha256": "55a9e7e3f4974fd04095521ec880b343c6cfa9dbff22aaa403b8cc8f01709e23",
-        "entities_sha256": "2b91fb581b4f22c5c2391a75fb50c7fe4dff7fe1f8ad8d5bdd1f3a02c6ad328a",
+        "entities_sha256": "d7d2b4a88286327b9b29bb0387f68b02e3dd3e38dc4ee2f025ce36a652cdd3e9",
         "entity_count": 528,
         "file_hash": "88fb8377322d37a6af66ff5e6a0a191feb0483738ed6f7fd46bad3eee008699a",
         "file_name": "M7452A0N01-ref-mut012.dxf",
@@ -637,7 +749,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "fb774a7733f87f32fe8bc22d19be6aa9ce43fafaf18637efff495269f966dbe1",
+      "labels_sha256": "4d616a1393accf122dfed737df0a596ec7d73c9b6ed32de648b789dc36567786",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -648,7 +760,7 @@
           "edit_title_field (no eligible target)",
           "edit_title_field (no eligible target)"
         ],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1013,
         "zero_finding": true
       },
@@ -681,7 +793,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "fe4f1df736de9bf6ad738ed98fc0fd68fc213b9b3e77d2138fabc77aef765783",
+      "labels_sha256": "4613eadcbca839bd3395c8be11de5c03f39cdf30c9dd80cbf5ec444bc24132d6",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -691,7 +803,7 @@
           "insert_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1014,
         "zero_finding": false
       },
@@ -711,7 +823,7 @@
       "rev": {
         "drawing_id": "mut213dd17930b9d30ed787e",
         "drawing_sha256": "98794cbe8209a6c2f24d8d0e55a402b8859926b29bce974893d9b53efccb002c",
-        "entities_sha256": "76e2eddae7d22f216e511b4b18b4b4f8de033b7bc613bc30e5dbc3d658992d67",
+        "entities_sha256": "e177f43bdfbfeeb845c792b5eefd9a6865d599d4048673309a69b8f0fd037713",
         "entity_count": 528,
         "file_hash": "213dd17930b9d30ed787e710133a9dea257ec94a14c75f8b6a544ce8be490458",
         "file_name": "M7452A0N01-ref-mut014.dxf",
@@ -724,7 +836,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "0023dce6540c70f73487227ef5f4207585b773fce28ae26507a6ec5f11111144",
+      "labels_sha256": "5b60239bef188fba6a1e7bb7e31061e062234f520a9fd535bd7ba3de9d4731f5",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -732,7 +844,7 @@
           "null_mutation"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 5000,
         "zero_finding": true
       },
@@ -765,7 +877,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "dfd6102b1e7b0e9dc6439c2172c8e35ec4ad38967c285ab3295de798c5e492dd",
+      "labels_sha256": "239ab714befc52b9eeef99a675461f63925d61399447f89655c6fa40bb9328cf",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "ref",
@@ -773,7 +885,7 @@
           "restyle_dimension_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 5010,
         "zero_finding": true
       },
@@ -806,7 +918,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "a470ec83cf12586e910800bbcfcbd1ec7eb276ca6f53faf225c1d12c347cfc1b",
+      "labels_sha256": "a60fd6e4effce073887043f24568aab583e74eed8da79d5184fd9501a7cd236d",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -814,7 +926,7 @@
           "translate_entities"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 5050,
         "zero_finding": true
       },
@@ -847,7 +959,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "bd5f821b2e308ef8c8c34f97ca31dfffed74f3ecd294c77f868322201921e6b9",
+      "labels_sha256": "f176371818b956b6b0c75c704c1814c65849614b4bf0138b110d620e7332ee11",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -857,7 +969,7 @@
           "edit_title_field"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1200,
         "zero_finding": false
       },
@@ -877,7 +989,7 @@
       "rev": {
         "drawing_id": "mutbe0a4edd6c44885cfa94c",
         "drawing_sha256": "92301d76234292222cc3dac59f9b5a672c8b756b79833964e09cfe1127bb53c1",
-        "entities_sha256": "5da22fc4bebb72a781a3372cfdf72efe009f1253afe5a79d947a49f70055dcca",
+        "entities_sha256": "786631e25ed7dfbb33b901c1dc290cf74e5e5328cff6c309430c9623fbc94045",
         "entity_count": 569,
         "file_hash": "be0a4edd6c44885cfa94c625a16ee0dc1bbe66011dbfb29d3037885f8ed5363a",
         "file_name": "M7452A0N01-rev-mut000.dxf",
@@ -890,7 +1002,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "1931677f1144ea348cf1081623604938dcdedae79c917dddfea44333f6da8812",
+      "labels_sha256": "26bee48c3ac1bc54b9be0b2587cd5343d9752d9f0d452477006ee35bf7dd51cd",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -898,7 +1010,7 @@
           "null_mutation"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1201,
         "zero_finding": true
       },
@@ -931,7 +1043,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "377bbe276d24e4d5887b122418df69c7c8af2e76b5443e9a03daecae9ccda1c6",
+      "labels_sha256": "4a4a830fa35394bf5402e969cc53e12ebc72dcc68385ef957de74145d67ea8ef",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -941,7 +1053,7 @@
           "restyle_dimension_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1202,
         "zero_finding": false
       },
@@ -974,7 +1086,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "946768b3d99b7ec745e383e8c78fcea61752825e768671fc0d81eda57ce5b8d8",
+      "labels_sha256": "d9d21c3539de3b65da012fa154a330b160bb3867604faaa2ea5dad63b56a519d",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -984,7 +1096,7 @@
           "delete_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1203,
         "zero_finding": false
       },
@@ -1004,7 +1116,7 @@
       "rev": {
         "drawing_id": "mut3783d0cd7b23784bb86b9",
         "drawing_sha256": "b070fc11f46c007c03176b870680161c992837bcbbd93df230bcd1757d4fb446",
-        "entities_sha256": "efb46b4051a1ee5ec04b99053a7bb98eb5f0188ebcac3ba80efec7545d528631",
+        "entities_sha256": "0adb4b0b92f487747e1291c3b605ce6f93a90b6a7839494042ed93f0e0ddc4a5",
         "entity_count": 568,
         "file_hash": "3783d0cd7b23784bb86b926fa71a3172128d2884ec66227e9b2e0ec26c0e9aa0",
         "file_name": "M7452A0N01-rev-mut003.dxf",
@@ -1017,7 +1129,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "4779f5ccf9e2643f7e01b766da4cf5444d8a041a13b929bf1aa750826e59635e",
+      "labels_sha256": "4902720ccea9caa76ed8a0d9a70c538989fd7ff2f95e7f2f1098643a802d7c48",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1027,7 +1139,7 @@
           "delete_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1204,
         "zero_finding": false
       },
@@ -1060,7 +1172,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "d66af2402391d67104184e4c23e1d00e2484c43f8fb8096109f4fb50f52162d5",
+      "labels_sha256": "83a32348a4f28af615b21881b1a331f3ff773cae0e1bd62c924143f19e3e0df1",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1070,7 +1182,7 @@
           "insert_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1205,
         "zero_finding": false
       },
@@ -1103,7 +1215,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "d9fac80ea380b6007fbe5c03a2d6c67f9fa3f06da1408fed4b56ab2842455302",
+      "labels_sha256": "141d5aa32becd0e01afc4073cf9f09ef3ace620c7fd15b286ca3f71c7512fde2",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1113,7 +1225,7 @@
           "restyle_dimension_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1206,
         "zero_finding": false
       },
@@ -1146,7 +1258,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "d4b85b605dc6aea0095f36c1aa94b13ca45f4f63c9c4e44d29b564bd70c08182",
+      "labels_sha256": "4bbfc9fdca3c489bcbbcbbf76517f8a115cd293c81cb25385335e5a11127d914",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1156,7 +1268,7 @@
           "restyle_dimension_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1207,
         "zero_finding": false
       },
@@ -1176,7 +1288,7 @@
       "rev": {
         "drawing_id": "mut6247411fe4f54fa1ab9e3",
         "drawing_sha256": "689c600181a6fb83f2e948cddfcaa06fc8453be77b0791b73f9daea58eac0a45",
-        "entities_sha256": "2709076d20279b2f96c6e48b83925d8c0bfd42f88243374e3ea897afa269c8ad",
+        "entities_sha256": "cbcedd33906cfbeab965fd364277d6bf9672c8c377925fc44293e9c4e1ef2dac",
         "entity_count": 569,
         "file_hash": "6247411fe4f54fa1ab9e3351b7d11bd52fa7b62b110739b4496ccdf3dd1bd38e",
         "file_name": "M7452A0N01-rev-mut007.dxf",
@@ -1189,7 +1301,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "aa7360415ee55c4ef916ad633761686d24263c81401c08d81641d74a144b9ca3",
+      "labels_sha256": "7159342b3ad153fe03f1c7d262e36a36453a62b5989d65fb4d433947cd1dcaf6",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1197,7 +1309,7 @@
           "null_mutation"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1208,
         "zero_finding": true
       },
@@ -1230,7 +1342,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "2c462090997e196c2ab6331efacc1b6f48794ae41a69abc399d4b7e7a60d4a1f",
+      "labels_sha256": "5e544c3bb4a522c2dba4cb4f7e7e48760d1b82ca2c9696c0c9673f9a2353d0ef",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1240,7 +1352,7 @@
           "delete_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1209,
         "zero_finding": false
       },
@@ -1260,7 +1372,7 @@
       "rev": {
         "drawing_id": "mut3cd2b14289a09103e6a00",
         "drawing_sha256": "298b0d8b391a32b6e43397c521400b7f81c228123848d0c7223bad33964c6777",
-        "entities_sha256": "d42084e60e006931c586e5bc1ab64fb00060d87e0808a7a455aec7fa60e944fc",
+        "entities_sha256": "eaaf8607dcc975e45c48d028634b8549ae281cb77be93ccff624e00e2faab470",
         "entity_count": 567,
         "file_hash": "3cd2b14289a09103e6a005ef0b65bfc27d4e77a1b2d33f0f3000fcd55bedd068",
         "file_name": "M7452A0N01-rev-mut009.dxf",
@@ -1273,7 +1385,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "1b204a6adba70c60151ff474862f2d1691a2a7fdf352b235706f0aedeea1f440",
+      "labels_sha256": "d97686d215374f15f443bcf3d74a81fb77d1d150caad79bd61a6bec98587cedf",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1281,7 +1393,7 @@
           "null_mutation"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1210,
         "zero_finding": true
       },
@@ -1314,7 +1426,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "4afab8c9057ae6f13ab67004f2fb4609b395e557b27a6840619bf5d188bcd04a",
+      "labels_sha256": "cee1ca3a6300ddb811ae81206b2a7dc1ee434cf34d6de5290bf5fdb0ae6b2af8",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1324,7 +1436,7 @@
           "delete_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1211,
         "zero_finding": false
       },
@@ -1344,7 +1456,7 @@
       "rev": {
         "drawing_id": "mut8b859541bef4a3b656acb",
         "drawing_sha256": "f861b83edb9799008599a6ef9f6e7b9bc46073c746cf31fa15948e168d495d33",
-        "entities_sha256": "380352d6beddc59ce825f223cb5fda1371648cdb545c641edbbfe36de3a32eec",
+        "entities_sha256": "69d502a4e06ecf6dde8cb3a7554c779a65aab5ee5f67f5fe0f425ce4f7786e2e",
         "entity_count": 569,
         "file_hash": "8b859541bef4a3b656acbff78b52950a3b3d9a5da7dabee4e2f87abfef782f05",
         "file_name": "M7452A0N01-rev-mut011.dxf",
@@ -1357,7 +1469,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "dca58b661af86f85842627975ecdbd59189a87af4dff55331a059b8b7a23ea49",
+      "labels_sha256": "364dab96f2f2964203844d743aa087382fc5dcbf8732cbf3899bc681a65400d5",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1367,7 +1479,7 @@
           "insert_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1212,
         "zero_finding": false
       },
@@ -1387,7 +1499,7 @@
       "rev": {
         "drawing_id": "mut70f237a4472b749bf8e90",
         "drawing_sha256": "9feb951d2e2b64149079e61f39f48503bb52448d7b529287866d73bc823d435f",
-        "entities_sha256": "077c1c56ca54d23098fe3ee855fddf9c8034479c8e4e2d1787facf0848f45bb9",
+        "entities_sha256": "8dbda69f316af3c4f4ab77e8c99ad908136b44453da50d03612165971cf64870",
         "entity_count": 568,
         "file_hash": "70f237a4472b749bf8e9073891508167c5c75da7649636d05030dcba21dad7a5",
         "file_name": "M7452A0N01-rev-mut012.dxf",
@@ -1400,7 +1512,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "b022fa06cc89675e473cffdf1b608577d864f5c2c0fd975e23aba5b701ae05e1",
+      "labels_sha256": "ad8f738b959f5988a6ce09958033dfa1a56f3cc23404649f79d1114f8798126d",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1410,7 +1522,7 @@
           "edit_dimension_measurement"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1213,
         "zero_finding": false
       },
@@ -1443,7 +1555,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "da21ffba634ba725baa8afa1294350f5c530a76db757dd8c503f05ce8fe3d783",
+      "labels_sha256": "32bf1cd18edc41c95667f25669671d40ea58aa19795e104f59ff9beec66c4f8f",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1453,7 +1565,7 @@
           "edit_title_field"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 1214,
         "zero_finding": false
       },
@@ -1486,7 +1598,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "c6c226b9bf992bce7e4de0fe715aa986f9aa0af4a435476da755d07a32cd1fa8",
+      "labels_sha256": "ae9a650f229c56f259d44bf50ba02c8dcfd0abcf3cf6665329164b815d11adb6",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1494,7 +1606,7 @@
           "null_mutation"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 5030,
         "zero_finding": true
       },
@@ -1527,7 +1639,7 @@
       "held_out": false,
       "label_state": "labelled",
       "labels": null,
-      "labels_sha256": "9949f83e6cd857fe1318050a29c013636b6aa41058b898161c3b8c833cb85143",
+      "labels_sha256": "634e726e0eec8d7232ff89d46699f00c6525247c4976bea186af4b242b2c1a40",
       "mutation": {
         "base_pair_id": "M7452A0N01",
         "base_side": "rev",
@@ -1535,7 +1647,7 @@
           "restyle_dimension_text"
         ],
         "operators_rejected": [],
-        "schema_version": 1,
+        "schema_version": 2,
         "seed": 5040,
         "zero_finding": true
       },
@@ -1562,7 +1674,153 @@
         "ocr_sha256": "412e31a7061298f26a9addfdca9634efe06709b1fc562a596702f93ff5a08f3d",
         "zone_signature": "aspect-1.414"
       }
+    },
+    {
+      "held_out": false,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "pair_id": "M7452A1N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a72eb5c3ba5d3b893e45f1e",
+        "drawing_sha256": "d02993af519e5a6a0c48e99665d434daee245360f0cfe5de35fbba35ceb04aa9",
+        "entities_sha256": "0ecbd18778ad8da1a77d9d1ee5fed055353eb832f4ba6564258915f12c73a9c8",
+        "entity_count": 528,
+        "file_hash": "efc3a45c300f7e81e072b6d79ddb3b7390af4d43ad88e2398e06812300faa6bc",
+        "file_name": "M7452A1N01_reference.dxf",
+        "ocr_sha256": "6b1b6119cb5c811a91e635c8085bc5bb10ee5ddf55d8f076ec71ff1f56226d1d",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a72eb713ba5d3b893e46130",
+        "drawing_sha256": "919c2646da21c9c7b2a39279382033c40e6870cdcf689f2ff456e0ffd791cb2a",
+        "entities_sha256": "25f344f9a21bac39d30895eeb41eb8d2b7fb89fd01039b3467e2e489193c89c9",
+        "entity_count": 569,
+        "file_hash": "eb717bec77db0c2676843e23f7c2d211a557a66d3b94863e1a0c58c64fa9d7ca",
+        "file_name": "M7452A1N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "097abfbe88fc04fa047dc31441bca94bb1cb809d54ba2fc6a1a5c18fb478eae1",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
+      "held_out": false,
+      "label_state": "unlabelled",
+      "labels": null,
+      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "pair_id": "M7452A2N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a742500e01d720e27be2d2a",
+        "drawing_sha256": "cf7382acdf5c36de8213e5f03a89a1750e0105eb6cebe1cac5b7fb42a5feca42",
+        "entities_sha256": "9d1eb76e1d7bd10613e3941298887d3995e5dc17b80fd7deb1bf7f88b5415fb3",
+        "entity_count": 528,
+        "file_hash": "5dffd60e2fefd7972c51255c2eff6b03f0360d6c65d9f8c373ff6a62570f6112",
+        "file_name": "M7452A2N01_reference.dxf",
+        "ocr_sha256": "55c5f3eaf1e9c452f7e62206cf1501fd4701deedbf3ab91cd00eec64c92b12bc",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a7422e1e01d720e27be2aef",
+        "drawing_sha256": "bd702361a1f54da868599198cc4f5ec81166a63acdd248bb92e12d402f5f337a",
+        "entities_sha256": "10896d276cbd5cc11683d1eae374f45a852b94fdecf34523894d694b7ea91c44",
+        "entity_count": 569,
+        "file_hash": "60bd619043fc020c30d5b3677b31a11b3a078e4bc2db05cb23322073b1f34496",
+        "file_name": "M7452A2N01_FSRS2_kmti2.dxf",
+        "ocr_sha256": "3c78dfb8c0909c14aa3d1afd3c7ad27a39f396ff12fa52b93f584bd10165599e",
+        "zone_signature": "aspect-1.414"
+      }
     }
   ],
-  "schema_version": 1
+  "schema_version": 1,
+  "zone_templates": {
+    "aspect-1.361": {
+      "bom": {
+        "xMax": 0.9317991781723118,
+        "xMin": 0.4777474581363917,
+        "yMax": 0.1421001567307592,
+        "yMin": 0.07661408325681095
+      },
+      "iso": {
+        "xMax": 0.928293406723144,
+        "xMin": 0.7667971753328265,
+        "yMax": 0.3833635012698504,
+        "yMin": 0.15076935405306702
+      },
+      "notes": {
+        "xMax": 0.4049111111111112,
+        "xMin": 0.11862971754152711,
+        "yMax": 0.32898357806459655,
+        "yMin": 0.15446287064240777
+      },
+      "title": {
+        "xMax": 0.9325111565391,
+        "xMin": 0.37391797282816003,
+        "yMax": 0.9246631452350718,
+        "yMin": 0.7937760106956069
+      },
+      "title_upper_left": {
+        "xMax": 0.2703063646070325,
+        "xMin": 0.09972480042278428,
+        "yMax": 0.1408155509640012,
+        "yMin": 0.07478850655136585
+      },
+      "tolerance": {
+        "xMax": 0.3742283909897991,
+        "xMin": 0.09975260693196963,
+        "yMax": 0.925217820365326,
+        "yMin": 0.7984005071372671
+      },
+      "views": {
+        "xMax": 0.9123185185185185,
+        "xMin": 0.12589876543209885,
+        "yMax": 0.7724303918817808,
+        "yMin": 0.16487333988028435
+      }
+    },
+    "aspect-1.414": {
+      "bom": {
+        "xMax": 0.9317991781723118,
+        "xMin": 0.4777474581363917,
+        "yMax": 0.1421001567307592,
+        "yMin": 0.07661408325681095
+      },
+      "iso": {
+        "xMax": 0.928293406723144,
+        "xMin": 0.7667971753328265,
+        "yMax": 0.3833635012698504,
+        "yMin": 0.15076935405306702
+      },
+      "notes": {
+        "xMax": 0.4049111111111112,
+        "xMin": 0.11862971754152711,
+        "yMax": 0.32898357806459655,
+        "yMin": 0.15446287064240777
+      },
+      "title": {
+        "xMax": 0.9325111565391,
+        "xMin": 0.37391797282816003,
+        "yMax": 0.9246631452350718,
+        "yMin": 0.7937760106956069
+      },
+      "title_upper_left": {
+        "xMax": 0.2703063646070325,
+        "xMin": 0.09972480042278428,
+        "yMax": 0.1408155509640012,
+        "yMin": 0.07478850655136585
+      },
+      "tolerance": {
+        "xMax": 0.3742283909897991,
+        "xMin": 0.09975260693196963,
+        "yMax": 0.925217820365326,
+        "yMin": 0.7984005071372671
+      },
+      "views": {
+        "xMax": 0.9123185185185185,
+        "xMin": 0.12589876543209885,
+        "yMax": 0.7724303918817808,
+        "yMin": 0.16487333988028435
+      }
+    }
+  }
 }

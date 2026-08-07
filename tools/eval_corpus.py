@@ -351,7 +351,7 @@ def cmd_mutate(args: argparse.Namespace) -> int:
         ocr_cache_payload,
     )
 
-    corpus = load_corpus()
+    corpus = _load_for_management()
     base = corpus.by_id(args.base)
     if base is None:
         raise SystemExit(f"No base pair {args.base!r} in the corpus. Export it first.")
@@ -371,7 +371,17 @@ def cmd_mutate(args: argparse.Namespace) -> int:
             f"label. Expected at {ocr_path}"
         )
 
-    mutator = Mutator(base_drawing, base_entities, base_ocr)
+    # The mutator must scope with the same zone boxes the engine will, or the categories it
+    # writes into the labels describe a different sheet layout than the one under test.
+    # `base_meta.zone_template` is None when the sheet has never been captured, which keeps
+    # the old detection-only behaviour rather than guessing.
+    if base_meta.zone_template is None:
+        print(
+            f"  [warn] sheet '{base_meta.zone_signature}' has no captured zone template, so "
+            f"these labels will be scoped by plain detection while the engine may use a "
+            f"pinned one. Run: eval_corpus.py capture-zones --pair-id {args.base}"
+        )
+    mutator = Mutator(base_drawing, base_entities, base_ocr, base_meta.zone_template)
     manifest = _load_or_init_manifest()
     generated = 0
     zero_finding_pairs = 0
@@ -468,7 +478,7 @@ def cmd_mutate(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    corpus = load_corpus(
+    corpus = _load_for_management(
         include_held_out=True,
         held_out_reason="integrity verification — no engine output is read",
     )
@@ -491,11 +501,109 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     f"       [warn] sheet '{signature}'"
                     + (" has a pinned zone template" if pinned else " may have a pinned template")
                     + " that an offline run cannot resolve - its zone boxes will differ"
-                    " from the app's."
+                    " from the app's. Run: eval_corpus.py capture-zones"
+                    f" --pair-id {pair.pair_id}"
                 )
     if failures:
         print(f"\n{failures} pair(s) failed integrity verification.")
     return 1 if failures else 0
+
+
+def _resolve_template_zones(db: Any, signature: str) -> dict[str, Any]:
+    """The zone fractions the app would apply to this sheet, as a plain dict.
+
+    Mirrors `resolve_zone_overrides`' lookup order exactly — signature-specific first, then
+    the global default — because a capture that resolved differently from the app would
+    substitute one divergence for another. Returns `{}` when nothing is pinned, which is a
+    real answer and is stored as such.
+    """
+    template = db["zone_templates"].find_one({"signature": signature}) if signature else None
+    if not template:
+        template = db["zone_templates"].find_one({"is_default": True})
+    if not template:
+        return {}
+    return {
+        key: value
+        for key, value in (template.get("zones") or {}).items()
+        if isinstance(value, dict)
+    }
+
+
+def _load_for_management(**kwargs: Any):
+    """Load the corpus for a command that inspects or *rewrites* labels.
+
+    Tolerates a stale `guideline_version`, and says so. The strict check belongs on the path
+    where a stale label would corrupt a number — `tools/eval.py`, which keeps it — not on the
+    commands you need in order to *fix* the staleness. Without this the guard blocks its own
+    remedy: bumping the version makes `mutate` unable to load the corpus whose labels it is
+    about to regenerate, and `verify`/`status` unable to report what needs regenerating.
+    """
+    corpus = load_corpus(allow_stale_guideline=True, **kwargs)
+    stale = sorted(
+        p.pair_id
+        for p in corpus.pairs
+        if p.labels is not None and p.labels.guideline_version != GUIDELINE_VERSION
+    )
+    if stale:
+        print(
+            f"  [warn] {len(stale)} pair(s) labelled under an older guideline than "
+            f"{GUIDELINE_VERSION}; `tools/eval.py` will refuse them until they are "
+            f"regenerated or re-labelled: {', '.join(stale[:4])}"
+            + (f" (+{len(stale) - 4} more)" if len(stale) > 4 else "")
+        )
+    return corpus
+
+
+def cmd_capture_zones(args: argparse.Namespace) -> int:
+    """Freeze each side's hand-aligned zone template into the manifest.
+
+    Zone boxes decide what `drawing_views` contains and what the safe zones exclude
+    entirely, so an offline run that cannot reach Mongo was silently scoring against
+    different boxes than the app uses. Capturing the fractions makes the zone boxes a
+    property of the corpus. See the vault gotcha "Zone Templates Vanish in Offline Eval".
+    """
+    from pymongo import MongoClient
+
+    db = MongoClient(args.mongo_uri, serverSelectionTimeoutMS=5000)[args.mongo_db]
+    manifest = _load_or_init_manifest()
+    captured: dict[str, dict[str, Any]] = manifest.get("zone_templates") or {}
+
+    # Keyed by sheet signature, not by side. A zone template is a property of the sheet
+    # layout, so every pair of the same layout shares one entry — writing it per side put
+    # the identical block in the manifest 74 times.
+    wanted: dict[str, list[str]] = {}
+    for entry in manifest.get("pairs", []):
+        if args.pair_id and entry.get("pair_id") != args.pair_id:
+            continue
+        for side in ("ref", "rev"):
+            signature = str((entry.get(side) or {}).get("zone_signature") or "")
+            if not signature:
+                continue
+            wanted.setdefault(signature, []).append(f"{entry.get('pair_id')}/{side}")
+
+    fresh = 0
+    for signature, users in sorted(wanted.items()):
+        if signature in captured and not args.force:
+            print(f"  {signature}: already captured ({len(users)} side(s)) - skipped")
+            continue
+        zones = _resolve_template_zones(db, signature)
+        captured[signature] = zones
+        fresh += 1
+        print(
+            f"  {signature}: "
+            + (f"{len(zones)} pinned zone(s) {sorted(zones)}" if zones else "no template")
+            + f" -> {len(users)} side(s)"
+        )
+
+    if not fresh:
+        print("\nNothing to capture — every sheet already has its template (--force to redo).")
+        return 0
+
+    manifest["zone_templates"] = captured
+    path = write_manifest(manifest)
+    print(f"\nCaptured {fresh} sheet layout(s). Manifest: {path}")
+    print("The baseline moves: the engine now applies these boxes offline. Re-publish it.")
+    return 0
 
 
 def _pinned_template_exists(signature: str) -> bool | None:
@@ -516,7 +624,7 @@ def _pinned_template_exists(signature: str) -> bool | None:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    corpus = load_corpus()
+    corpus = _load_for_management()
     report = corpus.status_report()
     print("Stage 0b - human corpus (needs an annotator)\n")
     print(f"  human pairs        {report['human_pairs']:>3} / {report['human_pairs_required']}")
@@ -557,7 +665,7 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
     """
     from services.backend.infrastructure.audit.comparison.spatial_differ import SpatialDiffer
 
-    corpus = load_corpus(
+    corpus = _load_for_management(
         include_held_out=args.include_held_out,
         held_out_reason=args.reason,
     )
@@ -827,6 +935,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_verify = sub.add_parser("verify", help="check payload digests and offline readiness")
     p_verify.set_defaults(func=cmd_verify)
+
+    p_zones = sub.add_parser(
+        "capture-zones",
+        help="freeze each side's hand-aligned zone template into the manifest",
+    )
+    p_zones.add_argument("--pair-id", default="", help="one pair; default is every pair")
+    p_zones.add_argument("--mongo-uri", default=MONGO_URI_DEFAULT)
+    p_zones.add_argument("--mongo-db", default=MONGO_DB_DEFAULT)
+    p_zones.add_argument(
+        "--force",
+        action="store_true",
+        help="re-capture sides that already carry a template (moves the baseline)",
+    )
+    p_zones.set_defaults(func=cmd_capture_zones)
 
     p_status = sub.add_parser("status", help="progress against Stage 0b's exit criteria")
     p_status.set_defaults(func=cmd_status)

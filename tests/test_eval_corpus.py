@@ -552,3 +552,43 @@ async def test_deterministic_candidates_run_offline_over_a_real_pair():
     for category in TAXONOMY:
         assert category in rollups, f"rollups missing category {category!r}"
     assert isinstance(warnings, list)
+
+
+# ─── guideline version: strict where it matters, tolerant where it must be ─────────────
+
+
+def test_the_scorer_refuses_labels_from_an_older_guideline(tmp_path, monkeypatch):
+    """`tools/eval.py` must keep the strict check. Mixing two definitions of "one finding"
+    corrupts every metric derived from the corpus, and the corruption is invisible."""
+    import services.backend.infrastructure.eval.corpus as corpus_mod
+
+    raw = {
+        "guideline_version": "1999-01-01",
+        "findings": [],
+    }
+    with pytest.raises(corpus_mod.LabelSchemaError) as excinfo:
+        corpus_mod.PairLabels.from_dict(raw, allow_stale_guideline=False)
+    assert "1999-01-01" in str(excinfo.value)
+    assert corpus_mod.GUIDELINE_VERSION in str(excinfo.value)
+
+
+def test_management_commands_can_still_load_a_stale_corpus():
+    """The guard must not block its own remedy.
+
+    Bumping `GUIDELINE_VERSION` makes every existing label stale by definition. If the
+    corpus-management commands enforced the same check as the scorer, `mutate` could not load
+    the corpus whose labels it is about to regenerate, and `verify`/`status` could not report
+    what needs regenerating — the version bump would be unrecoverable without hand-editing
+    JSON. `tools/eval_corpus.py` therefore loads with `allow_stale_guideline=True` and prints
+    which pairs are stale; only `tools/eval.py` is strict.
+    """
+    import services.backend.infrastructure.eval.corpus as corpus_mod
+
+    stale = corpus_mod.PairLabels.from_dict(
+        {"guideline_version": "1999-01-01", "findings": []},
+        allow_stale_guideline=True,
+    )
+    assert stale.guideline_version == "1999-01-01", (
+        "a tolerant load must preserve the stale version rather than silently restamping it "
+        "— restamping would relabel by fiat, which is the corruption the guard exists to stop"
+    )

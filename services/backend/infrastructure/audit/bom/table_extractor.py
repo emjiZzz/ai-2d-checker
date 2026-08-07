@@ -92,6 +92,7 @@ async def extract_dynamic_regions_async(
     entities: list,
     render_bounds: Optional[list] = None,
     signature: Optional[str] = None,
+    zone_template: Optional[dict] = None,
 ) -> dict:
     """Zone boxes with any hand-aligned template applied on top of detection.
 
@@ -102,29 +103,103 @@ async def extract_dynamic_regions_async(
 
     Pinned zones are marked `"user_pinned_template"` in `_zone_confidence`, so the overlay
     and the diagnostics can distinguish a human decision from a detector guess.
+
+    ## `zone_template` — the offline seam
+
+    `None` (the app) means *resolve the template from Mongo*. A dict means *use exactly
+    this*, with **no database access and no silent degradation**; `{}` asserts positively
+    that the sheet has no pinned zones.
+
+    That three-way distinction is the whole point. An offline eval run has no Beanie
+    session, so the lookup below raises and the handler degrades to plain detection — right
+    for an audit, wrong for a measurement, because the run then compares against different
+    zone boxes than the app uses and nothing says so. Passing the fractions in makes the
+    zone boxes a property of the corpus rather than of whichever machine ran it. `{}` and
+    `None` must stay distinguishable: collapsing them would send a genuinely-untemplated
+    pair back to the database and reintroduce the divergence for exactly the pairs that
+    looked safe. See docs/vault/06 - .../Gotcha - Zone Templates Vanish in Offline Eval.
     """
     result = extract_dynamic_regions(entities)
 
     if not render_bounds:
         return result
 
-    try:
-        from .zone_template_resolver import resolve_zone_overrides
-        overrides = await resolve_zone_overrides(render_bounds, signature=signature)
-    except Exception as err:
-        # Deliberately non-fatal: a template lookup problem should degrade to detection
-        # rather than fail the audit. Logged at error level, not warning -- this path
-        # previously swallowed an ImportError for the entire feature and nobody noticed,
-        # because a warning among normal comparison chatter reads as routine.
-        import logging
-        logging.getLogger(__name__).error(
-            f"Zone template could not be applied, falling back to detection: {err}",
-            exc_info=True,
-        )
+    if zone_template is not None:
+        from .zone_template_resolver import overrides_from_template_zones
+        overrides = overrides_from_template_zones(zone_template, render_bounds)
+    else:
+        try:
+            from .zone_template_resolver import resolve_zone_overrides
+            overrides = await resolve_zone_overrides(render_bounds, signature=signature)
+        except Exception as err:
+            # Deliberately non-fatal: a template lookup problem should degrade to detection
+            # rather than fail the audit. Logged at error level, not warning -- this path
+            # previously swallowed an ImportError for the entire feature and nobody noticed,
+            # because a warning among normal comparison chatter reads as routine.
+            import logging
+            logging.getLogger(__name__).error(
+                f"Zone template could not be applied, falling back to detection: {err}",
+                exc_info=True,
+            )
+            return result
+
+    return apply_zone_overrides(result, overrides, render_bounds)
+
+
+def extract_dynamic_regions_with_template(
+    entities: list,
+    render_bounds: Optional[list] = None,
+    zone_template: Optional[dict] = None,
+) -> dict:
+    """The synchronous twin of `extract_dynamic_regions_async`, for a caller that already
+    holds the template and cannot await.
+
+    The eval mutator is why this exists. It has to build its zone map from the **same** boxes
+    the engine will use, because those boxes decide both where a mutation lands and which
+    category its expected finding gets — and when they disagreed, the corpus graded the
+    engine against an answer key describing different zones. See
+    docs/vault/06 - .../Gotcha - Mutation Labels Predate the Zone Template.
+
+    Shares `apply_zone_overrides` with the async path rather than restating the policy: the
+    safe-zone anchoring rule, the BOM growth rule and the grown-zone outline drop are subtle
+    enough that a second copy would drift, and a mutator applying *nearly* the engine's rules
+    is the same defect one layer down.
+    """
+    result = extract_dynamic_regions(entities)
+    if not render_bounds or zone_template is None:
         return result
 
+    from .zone_template_resolver import overrides_from_template_zones
+
+    return apply_zone_overrides(
+        result, overrides_from_template_zones(zone_template, render_bounds), render_bounds
+    )
+
+
+def apply_zone_overrides(
+    result: dict,
+    overrides: dict,
+    render_bounds: Optional[list] = None,
+) -> dict:
+    """Merge template boxes into a detection result, in place, and return it.
+
+    The whole override *policy* lives here and nowhere else — which zones a template may
+    replace, which may only grow, and when a hand-drawn outline survives.
+    """
     confidence = result.get("_zone_confidence")
+
+    # Reshaped zones arrive under a reserved key as {zone_key: [(x, y), ...]} rather than as a
+    # bbox, so they are copied across whole and excluded from the per-zone logic below (which
+    # is all bbox arithmetic). Only zones that survive that loop keep their outline: a template
+    # box skipped because detection outranks it must not leave its polygon behind, or the
+    # comparison would gate content on an outline that no longer matches the box it belongs to.
+    from .zone_geometry import ZONE_POLYGONS_KEY
+    pinned_polygons = overrides.get(ZONE_POLYGONS_KEY) or {}
+    applied_polygons: dict = {}
+
     for zone_key, bbox in overrides.items():
+        if zone_key.startswith("_"):
+            continue
         grown = False
         detected_conf = (confidence or {}).get(zone_key)
 
@@ -155,6 +230,25 @@ async def extract_dynamic_regions_async(
             confidence[zone_key] = (
                 "user_pinned_template_grown" if grown else "user_pinned_template"
             )
+
+        # A GROWN zone's box no longer matches the outline the user drew — the union extended
+        # it past the shape. Keeping the outline would gate content on the smaller original
+        # while every bbox consumer used the larger union, so the outline is dropped and the
+        # zone reverts to its (grown) rectangle. Growth is a floor-raising safety net; the
+        # reshape is a statement about a specific sheet, and when they conflict the safety net
+        # wins because dropping content is the worse failure.
+        outline = pinned_polygons.get(zone_key)
+        if outline and not grown:
+            applied_polygons[zone_key] = outline
+        elif outline and grown:
+            from ....logger import logger
+            logger.warning(
+                f"[zone_template] '{zone_key}' was grown against detection, so its hand-drawn "
+                f"outline no longer bounds the zone and was dropped; using the grown rectangle."
+            )
+
+    if applied_polygons:
+        result[ZONE_POLYGONS_KEY] = applied_polygons
 
     return result
 

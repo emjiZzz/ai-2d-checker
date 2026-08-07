@@ -57,7 +57,13 @@ from .serialize import EvalDrawing, EvalEntity
 
 # Bump when an operator's semantics change such that previously generated pairs no longer
 # mean what their labels say. Recorded per pair so a stale pair is identifiable.
-MUTATION_SCHEMA_VERSION = 1
+#
+# v2: zone scoping honours the sheet's hand-aligned template (see `Mutator.__init__`). Both
+#     halves of a v1 label are affected, not just one: the regions decide **where** a
+#     mutation may land and **which category** its finding gets, so a v1 pair was targeted
+#     and categorised against detector boxes while the engine now compares against pinned
+#     ones. v1 pairs must be regenerated, not re-scored.
+MUTATION_SCHEMA_VERSION = 2
 
 # Zones an operator may target, and the category a finding inside each implies.
 ZONE_CATEGORY: dict[str, str] = {
@@ -136,8 +142,9 @@ class Mutator:
         base_drawing: EvalDrawing,
         base_entities: list[EvalEntity],
         base_ocr: dict[str, Any] | None = None,
+        zone_template: dict[str, Any] | None = None,
     ) -> None:
-        from ..audit.bom.table_extractor import extract_dynamic_regions
+        from ..audit.bom.table_extractor import extract_dynamic_regions_with_template
         from ..audit.bom.zone_detector import entity_anchor
 
         self.base_drawing = base_drawing
@@ -145,7 +152,26 @@ class Mutator:
         self.base_ocr = base_ocr or {}
         self._anchor = entity_anchor
 
-        self.regions = extract_dynamic_regions(base_entities)
+        # These regions do two jobs: they decide **where a mutation may land** and they
+        # assign each ExpectedFinding its **category**. So they have to be the boxes the
+        # engine will use, or the corpus grades the engine against an answer key describing
+        # a different sheet layout.
+        #
+        # This used to call the detection-only `extract_dynamic_regions`. When the eval
+        # started applying hand-aligned templates offline, the engine moved and the labels
+        # did not: attribution fell 0.81 -> 0.74 and a `notes_section -> drawing_views`
+        # confusion appeared out of nothing, entirely because the template's notes box is
+        # tighter than the detector's. The engine was right seven times and the label was
+        # stale. See docs/vault/06 - .../Gotcha - Mutation Labels Predate the Zone Template.
+        #
+        # `zone_template=None` keeps the old detection-only behaviour, which is correct for
+        # a sheet whose layout nobody has pinned.
+        self.zone_template = zone_template
+        self.regions = extract_dynamic_regions_with_template(
+            base_entities,
+            render_bounds=(base_drawing.metadata or {}).get("render_bounds"),
+            zone_template=zone_template,
+        )
         self.zones: dict[str, tuple] = {
             key: tuple(value)
             for key, value in self.regions.items()

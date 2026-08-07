@@ -18,6 +18,29 @@ VALID_ZONE_KEYS: frozenset[str] = frozenset(
 )
 
 
+# Below this an outline encloses no area. Mirrors MIN_ZONE_POINTS in
+# infrastructure/audit/bom/zone_geometry.py and apps/desktop/src/utils/zoneFractions.ts.
+MIN_ZONE_POINTS = 3
+
+
+class ZonePoint(BaseModel):
+    """One vertex of a zone outline, as fractions of render_bounds, Y-DOWN (0 = top).
+
+    Same space and same clamping as ZoneFractions' scalars, so an outline and the box it
+    derives cannot end up in different coordinate systems.
+    """
+
+    x: float = Field(..., ge=-0.5, le=1.5)
+    y: float = Field(..., ge=-0.5, le=1.5)
+
+    @field_validator("x", "y", mode="before")
+    @classmethod
+    def clamp_bounds(cls, v: float) -> float:
+        if isinstance(v, (int, float)):
+            return max(0.0, min(1.0, float(v)))
+        return v
+
+
 class ZoneFractions(BaseModel):
     """One zone's position as fractions of the drawing's render_bounds.
 
@@ -34,6 +57,16 @@ class ZoneFractions(BaseModel):
     xMax: float = Field(..., ge=-0.5, le=1.5)
     yMin: float = Field(..., ge=-0.5, le=1.5)
     yMax: float = Field(..., ge=-0.5, le=1.5)
+    points: Optional[list[ZonePoint]] = Field(
+        default=None,
+        description=(
+            "Polygon outline in the same Y-DOWN fraction space, in draw order. Present only "
+            "for a zone the user reshaped by inserting nodes on its edges; the four scalars "
+            "above are then this outline's DERIVED bounding box. Absent means the zone is the "
+            "rectangle it has always been, so templates written before reshaping existed "
+            "parse unchanged and need no migration."
+        ),
+    )
 
     @field_validator("xMin", "xMax", "yMin", "yMax", mode="before")
     @classmethod
@@ -41,6 +74,27 @@ class ZoneFractions(BaseModel):
         if isinstance(v, (int, float)):
             return max(0.0, min(1.0, float(v)))
         return v
+
+    @field_validator("points")
+    @classmethod
+    def drop_degenerate_outline(
+        cls, points: Optional[list[ZonePoint]]
+    ) -> Optional[list[ZonePoint]]:
+        """An outline with fewer than 3 vertices encloses nothing.
+
+        Stored as-is it would be a shape that contains no entity at all — a zone that silently
+        compares nothing, which is the false-negative direction. Dropped to None instead, which
+        degrades the zone to its bounding rectangle: visibly wrong rather than invisibly empty.
+        """
+        if points is not None and len(points) < MIN_ZONE_POINTS:
+            return None
+        return points
+
+    def outline(self) -> Optional[list[tuple[float, float]]]:
+        """The outline as plain (x, y) pairs, or None for a rectangle."""
+        if not self.points or len(self.points) < MIN_ZONE_POINTS:
+            return None
+        return [(p.x, p.y) for p in self.points]
 
 
 class ZoneTemplateDocument(Document):

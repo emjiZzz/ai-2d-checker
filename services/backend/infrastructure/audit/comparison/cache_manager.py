@@ -253,7 +253,13 @@ class ComparisonCacheManager:
     # component keeps its row rather than vanishing on a sheet where DWG No. failed to extract.
     # The DWG No. card's label loses its sub-header list for the same reason. A v40 entry still
     # shows the three component rows and the long label.
-    COMPARISON_CACHE_VERSION = "v41"
+    # v42: a zone can be RESHAPED into a polygon in the alignment editor (a node inserted on an
+    # edge), and containment now honours that outline instead of the bounding box —
+    # scope_entities_to_views for `views`, views_exclusions/safe_filter for the siblings. A
+    # sheet whose template carries a reshaped zone therefore has a different drawing_views pool
+    # than its v41 entry. Inert on templates of plain rectangles, which is every zone nobody has
+    # reshaped. See bom/zone_geometry.py.
+    COMPARISON_CACHE_VERSION = "v42"
 
     @staticmethod
     def _get_cache_path(

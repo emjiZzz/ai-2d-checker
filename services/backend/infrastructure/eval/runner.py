@@ -81,8 +81,16 @@ async def run_pair(pair: CorpusPair, method: str = "rag") -> tuple[list[Predicti
     from ..audit.comparison.orchestrator import generate_deterministic_candidates
 
     ref_drawing, rev_drawing, ref_entities, rev_entities = pair.load()
+    # Zone boxes come from the corpus, not from whichever machine is running this. A side
+    # that has never been captured passes None, which sends the engine back to the Mongo
+    # lookup — offline that degrades to plain detection, which is the divergence
+    # `capture-zones` exists to close. `tools/eval_corpus.py verify` reports those sides.
     candidates, _rollups, _warnings = await generate_deterministic_candidates(
-        ref_drawing, rev_drawing, ref_entities, rev_entities
+        ref_drawing,
+        rev_drawing,
+        ref_entities,
+        rev_entities,
+        zone_templates=(pair.ref.zone_template, pair.rev.zone_template),
     )
     # A prediction is a reported discrepancy. MATCHED rows are checklist entries for items
     # checked and found unchanged — counting them would put precision near zero on a

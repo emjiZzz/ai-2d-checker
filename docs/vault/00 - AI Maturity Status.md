@@ -5,8 +5,8 @@ tags: [status, ledger, agent-guide, roadmap, ai-architecture]
 status: active
 current_rung: 0
 rung_evidence: none
-date: 2026-08-05
-verified-against: cache v38, no eval corpus yet
+date: 2026-08-06
+verified-against: cache v42, baseline-v42.json (36 mutation pairs, 0 human labels)
 ---
 
 # 📊 AI Maturity Status — the living ledger
@@ -100,7 +100,7 @@ The system is **not on rung 1**. This is a measured statement about the code, no
 | Vector store | **Fake.** `lancedb_manager.py` is not LanceDB — one `index_shards.json` + a numpy loop. The store is empty. |
 | Retrieval | `few_shot_retriever.py` = `find(client_name).sort("-created_at").limit(5)`. A recency filter with no query and no similarity. It feeds only the Gemini system prompt — which the default method never invokes. |
 | Learned model | **Real and wired**, but **inert**: 21 verdict labels against `MIN_TRAIN = 40`, `metrics: {}`. Only exact-match overrides fire today. The 21 labels are **sound**, not degraded — see the 2026-08-05 Stage 0a work-log entry. See [[Gotcha - Learned Corrections Model and Post-Cache Inference]]. |
-| Evaluation | **Substrate exists as of 2026-08-05; ground truth does not.** `tools/eval.py` prints per-category precision/recall/F1 over 36 mutation pairs in ~16 s, offline, with a published v38 baseline. But **0 human-labelled pairs**, and after the 2026-08-05 rebuild the corpus covers **one drawing family**, so per-category figures are a property of that sheet rather than of the client. Nothing yet measures what a checker would flag. |
+| Evaluation | **Substrate exists as of 2026-08-05; ground truth does not.** `tools/eval.py` prints per-category precision/recall/F1 over 36 mutation pairs in ~13 s, offline, with a published **v42** baseline (P 1.00 / R 0.78 / F1 0.88) that now applies the same hand-aligned zone boxes users see. But **0 human-labelled pairs**, and after the 2026-08-05 rebuild the corpus covers **one drawing family**, so per-category figures are a property of that sheet rather than of the client. Nothing yet measures what a checker would flag. |
 | Observability | **None.** `storage/ai-artifacts/{prompts,responses,embeddings}/` all exist and are all empty. |
 
 Corrected 2026-08-05, from running the pipeline offline for the first time: the eval **seam** is
@@ -151,39 +151,61 @@ Not everything is a gap, and the plan is built on these:
 **Stage 0b's labels. Nothing else is the bottleneck any more.**
 
 Stages 0a–0e, 0g and 0h are done and the harness works: `tools/eval.py` prints per-category
-precision/recall/F1 over 36 mutation pairs in ~16 s with zero network calls, and there is a
-published v38 baseline. What that harness cannot do is judge itself. **Every number in the
-baseline is mutation-only, and since the 2026-08-05 rebuild they all come from one drawing
-family** — so a per-category figure describes that sheet, not this client. Mutation pairs have
-three further stated blind spots:
+precision/recall/F1 over 36 mutation pairs in ~13 s with zero network calls, against a
+published `baseline-v42.json` that now applies the same hand-aligned zone boxes users see.
+What that harness cannot do is judge itself. **Every number in the baseline is mutation-only,
+and since the 2026-08-05 rebuild they all come from one drawing family** — so a per-category
+figure describes that sheet, not this client. Mutation pairs have three further stated blind
+spots:
 
 - they are drawn from the engine's own comparison pool, so they **cannot reveal a scoping
   bug** — and that is a live bug class here ([[Gotcha - A Naive Mutator Manufactures Recall Misses]]);
-- their category attribution is **not independent** of `zone_detector`, so the 0.90 attribution
-  accuracy is partly circular;
+- their category attribution is **not independent** of `zone_detector` — no longer a suspicion
+  but a demonstrated fact, since changing the zone boxes moved attribution 0.81 → 0.74 without
+  the engine regressing at all ([[Gotcha - Mutation Labels Predate the Zone Template]]);
 - they cannot gate Stage 3's learned matcher, which is trained on that distribution.
 
-So `recall 0.65` is a real number about synthetic edits on one sheet, and **not yet the number
+So `recall 0.78` is a real number about synthetic edits on one sheet, and **not yet the number
 the gap analysis asked for** — "whether the engine catches the changes a human checker would
 flag". Closing that is annotation, not engineering.
 
-**Two things are needed, in this order:**
+**Step 1 is done as of 2026-08-06 — the corpus is 7 / 8 human pairs.** All seven ingested
+`reference` ↔ `FSRS2_kmti` pairs are exported, integrity-checked, zone-captured and (bar the
+held-out one) offline-ready: M745203N01, M745206N01, M745227N01, M745230A01, M7452A0N01,
+M7452A1N01, M7452A2N01. Payload digests confirm all seven are distinct, though A0/A1/A2 are
+one drawing family, so the corpus samples roughly **five** layouts rather than seven.
 
-1. **Five more drawing pairs.** Only three exist on this machine — M745200N01, M7452A0N01,
-   M7452A1N01, all `reference` ↔ `FSRS2_kmti`, all already exported and integrity-checked.
-   Add more with:
+**The binding constraint is now held-out pairs, at 1 / 3, and it needs drawings that do not
+exist yet.** The guideline requires a held-out pair be designated *before* anyone looks at
+engine output on it. Measured against `storage/cache/`: **six of the seven already carry a
+comparison cache entry**, so only **M745206N01** was eligible, and it was exported
+`--held-out` first, before anything else touched it. The other two must come from pairs
+ingested and exported **without ever running a comparison on them**:
 
-   ```
-   tools/eval_corpus.py export --pair-id <ID> --ref <file_name|_id> --rev <file_name|_id>
-   ```
+```
+tools/eval_corpus.py export --pair-id <ID> --ref <file> --rev <file> --held-out
+```
 
-   > **None of the existing three can be a held-out pair.** Engine output on all three has
-   > already been inspected — they have cache entries. The guideline requires held-out pairs be
-   > chosen *before* anyone looks at engine output on them, so **all 3 held-out pairs must come
-   > from the new ones, and must be designated at export time**, with `--held-out`, before the
-   > engine is ever run on them.
+> [!WARNING] The held-out pair is not offline-ready, and the reason is circular.
+> `M745206N01` has no title-block OCR cache — precisely *because* no comparison has ever run
+> on it, and OCR is populated on a comparison's cache miss. So the thing that makes a pair
+> offline-ready is the thing that burns its held-out eligibility. The way out is the
+> **ScanText / deep Re-test** path, which re-reads the crop without running a comparison
+> ([[Gotcha - Re-test and the Four Caches]]). Until then an eval run *including* held-out
+> pairs would hit the no-network guard rather than silently differ — the guard working.
 
-2. **Label all 8.** For each pair: `tools/eval_corpus.py worksheet --pair-id <ID>` writes a
+2. **Label all 8 — this is now the whole of the critical path, and it is annotation work.**
+   Worksheets and empty drafts are already generated for the six labellable pairs, under
+   `storage/eval/worksheets/`. Nothing else in Stage 0 is waiting on engineering.
+
+   > **Annotator note for `M745203N01`:** its two sides have *different sheet shapes* — ref is
+   > `aspect-1.361`, rev is `aspect-1.414` — and no template is pinned for 1.361, so that side
+   > takes the global default scaled onto a differently-shaped sheet. Per
+   > [[Gotcha - Global Default Zone Template & the Aspect Caveat]] its zone boxes may be
+   > misplaced, and the reference side is where REMOVED findings anchor. Check the overlay on
+   > that pair before trusting a category.
+
+   For each pair: `tools/eval_corpus.py worksheet --pair-id <ID>` writes a
    neutral annotation aid (a naive high-recall text inventory — deliberately *not* engine
    output, so the engine's own misses stay visible) plus an empty label draft. Fill the draft in
    against [[Eval Corpus Annotation Guideline]], then
@@ -191,15 +213,38 @@ flag". Closing that is annotation, not engineering.
    categories, bad statuses, malformed addresses and stale guideline versions, so a filled draft
    that installs is a well-formed one.
 
-**Three decisions are waiting on the first two annotated pairs** — the guideline's own open
-questions (title-block rows, revision-table rows, amendment markers, and what counts as "bulk").
-It is `status: draft` until they are resolved, and resolving them later means re-labelling.
+~~**Three decisions are waiting on the first two annotated pairs**~~ — **resolved 2026-08-06.**
+[[Eval Corpus Annotation Guideline]] is `status: active` at `guideline_version: 2026-08-06`,
+with all four open questions folded into the rules. Settled *before* the first label rather
+than after two, reversing the original plan deliberately: at 7 registered pairs and 0 labelled
+it cost nothing, while labelling under a draft would have meant re-labelling everything.
 
-**One decision is waiting on nothing**, and the baseline is already affected by it:
-[[Gotcha - Zone Templates Vanish in Offline Eval]] — either thread resolved zone overrides into
-`extract_dynamic_regions_async`, or declare templates out of scope and assert it. The v38
-baseline was measured **without** this machine's seven hand-aligned zones, which is not what
-users see. Not choosing produces a number everyone trusts and nobody can reproduce.
+Three of the four had a **de facto answer already in the code**, which is why they were
+settleable without labelling experience — ruled rows (the engine already emits `TITLE` and
+`TITLE SUB` separately, and already suppresses DWG No. segments) and the amendment/balloon
+categories. The one free choice, the bulk threshold, is marked as a convention rather than
+dressed up as a finding.
+
+**One resolution deliberately buys a false positive.** A newly added revision row is *not* a
+finding, but the engine reports it today — `amendment_table_bboxes` reclassifies rather than
+excludes. Every human pair will therefore show a title_block false positive by construction.
+That is the point: it converts an invisible product behaviour into a measured one, and the
+follow-on decision (should the engine suppress new revision rows?) now has evidence waiting
+for it instead of taste.
+
+~~**One decision is waiting on nothing**~~ — **resolved 2026-08-06.**
+[[Gotcha - Zone Templates Vanish in Offline Eval]] is fixed: the corpus now carries its own zone
+fractions and the engine applies them offline. **Precision 0.78 → 1.00, recall 0.65 → 0.78,
+F1 0.71 → 0.88** — all ten false positives in the v38 baseline were artifacts of the
+measurement, not defects in the engine. New baseline `baseline-v42.json`.
+
+~~**It left one piece of debt**~~ — **paid 2026-08-06.**
+[[Gotcha - Mutation Labels Predate the Zone Template]]: the mutator now scopes with the
+engine's zones and all 36 pairs were regenerated at mutation schema **v2**. **Recall 0.78 →
+0.85, F1 0.88 → 0.91, handle-tier matches 15 → 22.** It also settled two things that outlive
+it — attribution on mutation pairs is a **tautology** and cannot measure the engine, and
+`isometric_view` has no coverage because the correct `iso` box holds zero comparable entities.
+Both are in the negative-results table.
 
 ### Unblocked engineering, under the deterministic-only scope
 
@@ -216,7 +261,15 @@ mutation-only sweep would overfit"; it is "a mutation-only sweep has nothing to 
 
 Then, in rough order of what the baseline says is worth attacking:
 
-- **`notes_section` is the weakest category — P 0.47 / R 0.54** on the rebuilt corpus.
+- ~~**`notes_section` is the weakest category — P 0.47 / R 0.54**~~ — **fixed for free,
+  2026-08-06.** It was never an engine weakness: applying the hand-aligned zones took it to
+  **P 1.00 / R 0.92 / F1 0.96**. The weakest category is now **`bill_of_materials`
+  (P 0.86 / R 0.60 / F1 0.71)** — it carries the corpus's only false positive *and* half its
+  recall loss, so it is the one category worth attacking on engine grounds.
+- **Two categories have no coverage at all, both structurally** — `isometric_view` (the
+  correct `iso` box holds zero comparable entities) and `other_engineering_references`
+  (callouts deliberately suppressed). Neither is fixable by adding mutation operators; both
+  need human pairs. See the negative-results table.
 - **A single-character deletion goes unreported** (confirmed by the scorer hand-audit: `G`
   removed from the notes zone produced no finding). Prime suspect:
   `marking_reconciler.MIN_FUZZY_LENGTH = 4` — and it is one of the 16 constants, so 0.5 may
@@ -248,12 +301,16 @@ a judgement call. Tick a box only when its criterion is *measured*, not when the
 - [x] 0a — poisoning bugs fixed; working set clean *(2026-08-05 — 2 of the 3 were real; the third
       was not a defect. See the work log.)*
 - [ ] 0b — fixture corpus: ≥8 human-labelled pairs, 3 held out permanently
+      *(2026-08-06 — **7 / 8 registered, 0 / 8 labelled, 1 / 3 held out.** All seven ingested
+      pairs exported, zone-captured, distinct by payload digest; worksheets generated for the
+      six labellable ones. Held-out is the blocker and needs **new** drawings: six of seven
+      already carry a comparison cache entry, so only M745206N01 was eligible under the
+      "designate before looking at engine output" rule. Labelling is the whole remaining
+      critical path and no engineering is waiting on it.)*
       *(2026-08-05 — **infrastructure done, corpus not**. Format, loader, drift detection,
       held-out lock and CLI landed and tested; the offline seam is demonstrated end to end.
-      **1 / 8 pairs registered, 0 / 8 labelled, 0 / 3 held out** — down from 3 after the
-      2026-08-05 rebuild, which lost two pairs whose source DXFs and OCR readings were both
-      deleted. Run `tools/eval_corpus.py status` for the live count — it reads the manifest,
-      so it cannot go stale the way this line can.)*
+      Run `tools/eval_corpus.py status` for the live count — it reads the manifest, so it
+      cannot go stale the way this line can.)*
 - [x] 0c — mutation generator incl. `null_mutation` (the pure precision probe)
       *(2026-08-05 — 8 operators, 36 pairs from 2 bases, 11 of them zero-finding. Measured:
       **0 false positives across all 11 zero-finding pairs.** `tools/eval_corpus.py status`
@@ -264,7 +321,11 @@ a judgement call. Tick a box only when its criterion is *measured*, not when the
       52 matches; the rest fall back to text, which the report states rather than hides.)*
 - [x] 0e — `tools/eval.py` runner + CLI
       *(2026-08-05 — 54 pairs in 19 s, zero non-local sockets **enforced** by patching
-      `socket.connect`. Baseline published at `tests/fixtures/eval/baseline-v38.json`.)*
+      `socket.connect`. Baseline published at `tests/fixtures/eval/baseline-v38.json`.
+      **2026-08-06 — 0e's open decision closed**: hand-aligned zone templates are now applied
+      offline via the `zone_template` seam, so the run scores against the boxes users
+      actually see. Baseline superseded by `baseline-v42.json` — P 1.00 / R 0.78 / F1 0.88,
+      36 pairs in ~13 s. See [[Gotcha - Zone Templates Vanish in Offline Eval]].)*
 - [x] ~~0f — cassette + trace capture, wired only at `gemini_client.py`~~ **DROPPED**
       *(2026-08-05 — [[ADR-004 Deterministic-Only Scope]]. It exists solely to make the Gemini
       paths replayable; with none in scope it buys nothing. `tools/eval.py` already refuses
@@ -284,8 +345,10 @@ a judgement call. Tick a box only when its criterion is *measured*, not when the
       artifact.)*
 
 > **Exit:** `tools/eval.py --method rag` prints per-category precision/recall/F1 over ≥8 human pairs
-> and ≥30 mutation pairs, in <60 s, with **zero network calls**, green in CI. A published v38
-> baseline exists for all 6 categories. `pytest tests/ -q` green including the 3 relocated tests.
+> and ≥30 mutation pairs, in <60 s, with **zero network calls**, green in CI. A published
+> baseline exists for all 6 categories (now `baseline-v42.json`). `pytest tests/ -q` green
+> including the 3 relocated tests. **Only the ≥8 human pairs are outstanding** — every other
+> clause is met.
 
 ### Stage 0.5 — Calibration
 - [x] `ComparisonParams` extracted; refactor proven **byte-identical** on the corpus
@@ -303,7 +366,7 @@ a judgement call. Tick a box only when its criterion is *measured*, not when the
       [[Gotcha - Mutation Pairs Cannot Exercise a Spatial Constant]].)*
 - [ ] Zone constants swept separately, with "pinned templates still resolve" asserted
       *(machinery ready behind `--include-zone`; the pinned-template assertion is not written)*
-- [ ] `COMPARISON_CACHE_VERSION` bumped (**v42** — v38 through v41 were all spent on
+- [ ] `COMPARISON_CACHE_VERSION` bumped (**v43** — v38 through v42 were all spent on
       2026-08-05); `rag` renamed
       `deterministic` with a compat alias
 
@@ -385,9 +448,17 @@ explicitly that it is unmeasured — **never omit it.**
 | 2026-08-05 | **Correction UI reworded, and a new class of feedback added.** The menu asked the same question two ways depending on the engine's own verdict (`isMatched ? "Actually a change" : "Confirm real change"`), so a reviewer had to decode that verdict before describing what they saw. Buttons now state an observation about the drawings; the wire verb is chosen underneath, so **no schema migration and the 21 existing labels are untouched**. Added `mispaired_missing_counterpart` / `mispaired_wrong_match` — the first feedback that judges the **matcher** rather than a finding's verdict, prompted by a real 'NONE → 260' card where the engine had failed to pair an entity that does have a counterpart. Captured, deliberately **not** mapped to a verdict label (`trainer.MATCHER_FEEDBACK`): label 0 would suppress a finding that may be genuine, label 1 would affirm a pairing the human just rejected. `tests/test_matcher_feedback.py` (6 tests) + `CorrectionControls.test.tsx` (6). | 2a (partial) | **Unmeasured, and it cannot be measured yet** — the learned model is inert at 21 of 40 labels, and these new verbs train nothing until the Stage 3 matcher exists. What is established by test: the verbs reach the corpus, produce no verdict label, and do not disturb the existing ones. Also fixed a documentation defect found in passing — `schemas.py` called `confirmed_valid` label 0 while `trainer.py` puts it in `VERDICT_ONE`; the prose agreed with the trainer, so the parenthetical was wrong. | — |
 | 2026-08-05 | **Two UI bugs reported live, both fixed.** (1) A title-upper-left column produced **two cards for one unchanged value** — `コードNO. 230→NONE` and `PART NO. NONE→230`, both MATCHED. A recurrence of [[Gotcha - Title Upper-Left Double-Reported by Scale]]: its shared-token fix cannot pair fields when the two drawings keep **different halves** of a bilingual header. Added `_TITLE_UL_SYNONYMS`, tried only after the literal match fails. (2) Clicking a checklist card selected a different finding's marker: row→violation resolution was a per-row `violations.find(...)` with **no record of what had already been claimed**, so several rows resolved to the same marker, first-match-wins, and substring matching let a loose match on an early row steal the marker an exact match later needed. Now two passes — exact before substring — with each violation claimed once. | — (product defects) | **Measured: the eval corpus scores identically to the v38 baseline**, so the title fix is inert on pairs that do not exhibit the split — what a surgical fix should look like. The two frontend regression tests were **verified to fail against the old logic** before being kept; a regression test that passes either way proves nothing. `tests/test_title_ul_bilingual_pairing.py` (11) + `ChecklistPanel.test.tsx` (+2). **Both rows read MATCHED, not REMOVED/ADDED** — the bilateral corroboration guard masking the pairing failure rather than fixing it, which is the signature to watch for next time. | **v38 → v39** |
 | 2026-08-05 | **A correction can be taken back.** The teach-the-model menu was one-way: by the time the card showed "Taught: …" the correction was persisted and had already kicked a retrain. `POST /audits/feedback/{id}/retract` sets `retracted_at` rather than deleting — the collection is the training corpus **and** the record of who taught the model what — and `build_bundle` skips retracted rows entirely. Idempotent, so a retry after a dropped response is not a 404. Deliberately does **not** rewrite a learned dismissal rule `AutoDocEngine` may already have written into the vault; those are human-editable notes. | 2a (partial) | **Unmeasured** — the verdict head is still inert. What is established by test: a retracted correction contributes **nothing**, not even to `n_total`. The obvious cheaper design was rejected on a measured basis rather than taste: a compensating `confirmed_valid` record does win the exact-match override (docs are sorted by `created_at`), but classifier rows are appended per document, so an undone correction would leave **two rows with identical features and opposite labels** — 2 verdict rows vs 0. At 33 of 40 labels that is expensive noise. Pinned by `test_a_compensating_record_was_not_the_chosen_design`. | — |
+| 2026-08-05 | **Zone boxes can be reshaped — hover an edge, click to insert a node, drag the vertices.** Full-stack, because a zone's shape is what the comparison runs on: `zone_geometry.py` (containment), `ZonePoint`/`ZoneFractions.points` (persistence), `fractions_to_absolute_polygon` (the Y flip), `scope_entities_to_views` / `views_exclusions` / `safe_filter` (the gates), plus outline rendering, the `+` edge ghost, per-vertex handles and alt-click delete. Kept small by making the outline **additive**: the four scalars become its *derived* bounding box, `regions[zone_key]` stays a 4-tuple for the ~29 sites that index it, and the outline rides under the reserved `_zone_polygons` key. Old templates have no `points` and parse as the rectangles they were — **no migration**. See [[Gotcha - A Reshaped Zone Is Not Its Bounding Box]]. | — (tooling) | **Measured. Reshaping the reference `views` zone to its left half via a real template outline cut the pool 85 → 41, and the revision 70 → 22, with the result asserted to be a SUBSET — a reshape can only ever remove.** Eval over 36 pairs is **byte-identical to the v38 baseline**: inert until someone reshapes something, and nothing reshapes automatically. **Two silent failure modes drove the design and are both pinned.** (1) A *vertex* conversion is not the *box* conversion — the box flips Y and swaps min/max, but that swap is an artifact of the names; a vertex is the flip alone. Get it wrong and the outline is vertically mirrored: closed, right size, right bounding box, gating the opposite half. (2) Excluding a reshaped sibling on its bounding box drops content from the notch cut out of it, which **no other category picks up** — the false-negative direction, in the system whose headline gap is that false negatives have never been measured. Also two non-obvious rules: a **grown** zone drops its outline (growth is the safety net against dropping content, the reshape is a claim about one sheet, and the safety net wins), and fewer than 3 vertices is not a shape. `test_zone_polygons.py` (14) + `zoneShapes.test.ts` (25) + `zonePolygonRender.test.ts` (9), the last verified to fail against a bbox punch. | **v41 → v42** |
 | 2026-08-05 | **A third duplicate card, from a different mechanism — and the eval cannot see any of them.** One physical cell (`16組`) produced **two MATCHED cards against one canvas marker**: `QTY (QUANTITY)` and `T. Q'TY / 総製作個数`. Unlike the v39 defect this one is **cross-extractor**: the bottom title block's QTY field searches for `T. Q'ty` / `総製作個数`, which *are* the upper-left table's own column header, and `keep_for_title_extraction` excluded only the tolerance box — so the proximity search reached from the title block (ends y≈299) up to the UL label at y≈702 and read the other table's cell. Fixed by excluding `title_upper_left` from title extraction exactly as `tolerance` already was, keeping the "unless also in the title box" guard so an over-wide box cannot blank the title block. See [[Gotcha - Title Block QTY Reads the Upper-Left Table]]. `tests/test_title_input_filter.py` (+4). | — (product defect) | **Measured, and the split between what was and was not measured is the point.** The eval scores **byte-identical to the v38 baseline** over 36 pairs (P 0.78 / R 0.65 / F1 0.713, macro 0.750, attribution 0.806) — real evidence of **no regression**, and **no evidence at all** about the duplicate. `runner.py` drops every `status == "MATCHED"` candidate before scoring, and both duplicate cards were MATCHED, so the scorer's `duplicates: 0` read zero *while the bug was live*. **All three duplicate-row defects to date (v13/v16, v39, v40) were invisible to it by construction** — do not cite that counter as coverage. The fix was verified at candidate level instead: 28 → 27 candidates, the removed one an exact twin of the survivor at the *same coordinates* `[75.25, 273.0]`. Field-level: QTY only, `'4'` → `'NONE'`, both sides; the other 15 title fields byte-identical. | **v39 → v40** |
 | 2026-08-05 | **Four checklist items collapsed to one drawing number.** The bottom title block's DWG No. cell is ruled into sub-cells that spell out the number — `M745203N01` is `M745` (Machine Type) + `203` (Unit Code) + `N01` (Part No.) — and each had its own checklist row, all three reading `NONE` on the live pair while the DWG No. carried the value. Suppressed via `COMPONENT_OF_DWG_NO_FIELDS` + `is_component_of_dwg_no` in `utils/text.py`, imported by `marking_builder` rather than restated so the cards and the table cannot disagree; the DWG No. card label drops its five-name sub-header list. See [[Gotcha - Drawing Number Segments Reported as Separate Fields]]. `tests/test_dwg_no_component_rows.py` (18). | — (product defect) | **Measured: eval byte-identical to the v38 baseline again** (P 0.78 / R 0.65 / F1 0.713), which as with v40 is evidence of no regression and — these rows being `MATCHED` — *no* evidence about the noise reduction. Checklist verified directly: **11 rows → 8**, upper-left rows untouched. **Two deliberate non-simplifications, both of which would have been silent losses.** (1) Corroboration is *checked*: the live revision reads `DWG NO: NONE`, so unconditional suppression would leave a changed segment reported by nothing. (2) Matching is *positional*: the first implementation used `value in dwg_no` and **its own test caught that `45` sits inside `M745`203N01 without being a segment** — the same failure that once shipped a green tick in [[Gotcha - Title Field Read Across a Ruled Cell Boundary]]. Also pinned the name collision that makes this class dangerous: the **upper-left** table's `Unit No.`/`Part No.` are standalone fields, and its `Part No.` genuinely reads `203`, so aiming this rule at that table would delete a real field. | **v40 → v41** |
 | 2026-08-05 | **A reported scoping bug that was not one — the overlay was lying, the engine was right.** The `DRAWING VIEWS` box visibly swallowed the NOTES / ISO / BOM / TITLE UL boxes on the revision. `views` means "this rectangle minus the sibling zones", and when pinned from a template it is a plain rectangle with the subtraction re-applied at use time by `scope_entities_to_views`; the renderer filled the raw rectangle and so claimed those regions were being diffed as drawing geometry. Fixed in `renderEntities.ts` by subtracting the siblings from the *tint* only — stroke stays whole so the box is still draggable — using a chained even-odd clip per sibling, because chained clips intersect and a single even-odd path would re-fill two overlapping siblings' intersection (BOM vs title overlap is logged on real sheets). See [[Gotcha - The Views Overlay Showed a Region That Is Not Compared]]. | — (UI truthfulness) | **Measured, and the measurement is the finding: the exclusion is doing 83–88% of the work, not a detail.** On `M7452A0N01`, **423 of 508** anchors inside the reference's views rectangle sit in a sibling zone and **492 of 562** on the revision, leaving pools of 85 and 70. On the reporter's own cached audit every note line came back as a `notes_section` card and every `drawing_views` card was a dimension or `２－７キリ` — nothing leaked. **No cache bump and no eval delta: no engine behaviour changed.** `zoneOverlay.test.ts` +5, of which the two that assert the subtraction were **verified to fail against the old renderer**; the suite had never rendered the `views` zone at all, which is why the branch was unpinned. | — (tint only) |
+| 2026-08-06 | **Undo/redo unified and moved to the one hook mounted once.** Ctrl+Z undid **two** actions per press: the handler was correct but installed twice, because `useCanvasInteraction` binds to `window` and `TwoDWorkspace` renders `DrawingCanvas` twice. Moved to `useGlobalShortcuts` (mounted once from `App.tsx`), with a single stack in `stores/historyStore.ts` now spanning zone alignment as well as marker moves. Two smaller defects in the same handler: the Delete/Backspace branch compared `e.key === 'delete'` against a key that reports `'Delete'` — dead code that never ran — and the keyboard delete path recorded no history, so fixing the casing alone would have introduced the workspace's only unrecoverable destructive action. See [[Gotcha - A Window Listener in a Per-Pane Hook Fires Once Per Pane]]. | — (product defect) | **Unmeasured by the eval, and it cannot be** — this is desktop interaction state, not engine behaviour, so no corpus number moves. What is established by test: `historyStore.test.ts` and the shortcut tests pin one-undo-per-press and the delete-records-history path. | — | 
+| 2026-08-06 | **3D DXF ingestion and the in-pane 2D↔3D toggle removed, entirely.** Built the same day as backend ingestion (Z preserved through the paper-space projection, `3DFACE`/`MESH`/polyface mappers, a `metadata.three_d` summary) plus a per-pane toggle and F1 hotkey in `TwoDWorkspace`; reverted on instruction, including the committed backend work. The feature was gated on ingesting a genuine revised DXF and that gate was never met, so the button's enabled state, the toggle and camera framing on real extents all shipped unexercised. Cache **v43 → v42**, which re-frees v43 for Stage 0.5's own bump. Four ingestion defects are live again **by decision, not oversight** — recorded rather than left silent. See [[Gotcha - 3D DXF Ingestion Was Built and Removed]]. | — (scope) | **Measured: eval byte-identical to the v38 baseline** over 36 pairs (P 0.78 / R 0.65 / F1 0.713) — real evidence the removal caught nothing non-3D, since three files carried co-mingled undo/redo and zone-reshape work that had to survive. Full suite green bar the two known `test_vision_ocr_grounding` failures; `tsc` clean; vitest 205 passed (down from 222 with the 17 `dxfSceneGeometry` tests gone). Also recorded, and it outlives the feature: **`tools/eval.py` can never validate a parser change** — the corpus reads frozen `entities.jsonl` and never re-parses a DXF, so it never reaches `project_mapped_entity`. | **v43 → v42** |
+| 2026-08-06 | **Stage 0e's open decision resolved — the eval now measures what users see.** `extract_dynamic_regions_async` gained a `zone_template` parameter with three states: `None` resolves from Mongo (the app, unchanged), `{}` asserts the sheet has no pinned zones, `{...}` applies exactly those with no database access. `overrides_from_template_zones` is the pure half split out of `resolve_zone_overrides`; `tools/eval_corpus.py capture-zones` freezes the fractions into the committed manifest, mirroring the app's lookup order (signature-specific, then global default). The seam takes **fractions, not resolved boxes**, so an offline run still exercises `fractions_to_absolute_bbox` — the conversion whose failure mode is a plausible mirrored zone. Stored **once per sheet signature**: the first cut stored it per side and grew the manifest by 3,330 lines (the same 7-zone block 74 times, since every pair here is one layout) against a fixture the staged plan requires stay "tiny, reviewable, diffable" — keyed by signature it is 47 lines, and presence in that map *is* the capture state, so there is no second flag to fall out of step. One layout captured, covering all 74 sides. `tests/test_offline_zone_templates.py` (7). See [[Gotcha - Zone Templates Vanish in Offline Eval]]. | 0e | **Measured, and it is the largest single move this project has recorded: precision 0.78 → 1.00 (43/43), recall 0.65 → 0.78, F1 0.71 → 0.88, macro 0.75 → 0.86.** All **ten** false positives in the v38 baseline were artifacts of the measurement, not defects in the engine — the eval had been scoring against detector boxes while users see hand-aligned ones. `notes_section`, the weakest category in the project (P 0.47 / R 0.54 / F1 0.50), is now **1.00 / 1.00 / 1.00**; `drawing_views` precision 0.89 → 1.00. Still 0 false positives across 11 zero-finding probes. New baseline `tests/fixtures/eval/baseline-v42.json`. **The refactor was proven inert first** — eval byte-identical to v38 before any template was captured, so the jump is attributable to the zones and not to the code move. **One number fell: category attribution 0.81 → 0.74**, which is the labels going stale, not the engine regressing — see the next row and [[Gotcha - Mutation Labels Predate the Zone Template]]. | — (no engine behaviour changed for the app; the app already applied templates) |
+| 2026-08-06 | **A metric degraded while everything it measures improved.** Applying the templates surfaced a `notes_section -> drawing_views: 7` confusion from nothing and dropped attribution 0.81 → 0.74. Cause: `mutator.py:148` builds its zone map with the detection-only `extract_dynamic_regions`, and those regions both place the mutations **and** assign each `ExpectedFinding` its category — so every expected category was decided under different zone boxes than the engine now uses. The engine is right; the label is stale, seven times. Recorded, **not fixed in the same change**: making the mutator template-aware moves the mutation targets too, so every pair becomes a different pair and every detection number moves again, and landing both at once means neither is attributable. See [[Gotcha - Mutation Labels Predate the Zone Template]]. | 0c (debt) | **Measured, and the decomposition is the point: the *correct* count went UP, 29 → 32.** The ratio fell only because 43 findings are now matched instead of 36 — the denominator grew faster than the numerator. Detection metrics are unaffected because the scorer matches on handle then text with category as a *preference*, not a filter ([[Gotcha - The Scorer Is a Differ Too]]). This is the circularity this ledger already flagged — attribution "is not independent of `zone_detector`" — cashing out. **Attribution on mutation pairs is not currently a measure of the engine; do not cite 0.74 as quality and do not chase it.** | — |
+| 2026-08-06 | **Human corpus taken from 1 to 7 pairs, and the held-out constraint measured rather than assumed.** All seven ingested `reference` ↔ `FSRS2_kmti` pairs exported, zone-captured and worksheet-generated. Held-out eligibility was checked against `storage/cache/` **before** exporting anything: six of the seven already carry a comparison cache entry and are therefore burned under the guideline's "designate before looking at engine output" rule, so **M745206N01 was exported `--held-out` first**, before any other command touched the corpus. A second sheet signature appeared — `aspect-1.361` on `M745203N01`'s reference side against `aspect-1.414` on its revision — with no template pinned for it, so that side takes the global default scaled onto a differently-shaped sheet ([[Gotcha - Global Default Zone Template & the Aspect Caveat]]); recorded as an annotator note rather than silently absorbed. | 0b | **Measured: 7 / 8 registered, 0 / 8 labelled, 1 / 3 held out.** Payload digests confirm all seven pairs are distinct, but A0/A1/A2 are one drawing family, so the corpus samples **~5 layouts, not 7** — stated because "7 pairs" overstates the diversity every downstream conclusion inherits. Eval unchanged (P 0.98 / R 0.85 / F1 0.91): unlabelled pairs are skipped for having no ground truth, which is the correct behaviour and was verified rather than assumed. **The held-out shortfall cannot be closed with drawings on this machine** — it needs pairs ingested and exported without ever running a comparison. Also found: the held-out pair has no OCR cache *because* nothing has run on it, so offline-readiness and held-out eligibility are in direct tension; the ScanText path is the way out. | — |
+| 2026-08-06 | **The mutator scopes with the engine's zones, and the corpus was regenerated at schema v2.** `Mutator.__init__` takes a `zone_template` and builds its regions via `extract_dynamic_regions_with_template` — the **synchronous twin** of the async path, sharing `apply_zone_overrides` so the override policy (safe-zone anchoring, BOM growth, grown-zone outline drop) has exactly one implementation; a mutator applying *nearly* the engine's rules would be the same defect one layer down. `MUTATION_SCHEMA_VERSION` 1 → 2, because **both halves** of a v1 label are stale — v1 pairs were targeted *and* categorised against detector boxes, so they must be regenerated rather than re-scored. All 36 pairs regenerated from the same seeds and operators; same shape (36 pairs, 11 zero-finding, 55 expected findings), so the comparison is like for like. `tests/test_eval_mutator.py` (+4, two verified to fail when the template is dropped on the floor). | 0c | **Measured: recall 0.78 → 0.85 (47/55), F1 0.88 → 0.91, macro 0.86 → 0.87, and the trustworthy match tier grew 15 → 22** (more findings matched by entity handle than by text). One new false positive in `bill_of_materials` — precision 1.00 → 0.98 (47/48) — reported rather than smoothed. **Two findings matter more than the deltas.** (1) **Attribution hit 1.00 (47/47) with an empty confusion matrix, and that is a tautology, not an achievement**: the mutator and engine now scope with identical boxes, so category agreement is true by construction. Its whole history — 0.90 → 0.81 → 0.74 → 1.00 — measured detector-vs-detector, then template-vs-detector, then nothing. **Only human pairs can measure attribution.** (2) **`isometric_view` coverage went 5 → 0, correctly**: the hand-aligned `iso` box holds **zero** comparable entities on either side (measured), because `COMPARABLE_ENTITY_TYPES` is text+dimension and an isometric view is geometry — so the old `isometric_view` F1 of 0.89 was measured on text the detector's looser box swept in. The corpus honestly covers **4 of 6 categories** now. | — |
+| 2026-08-06 | **Annotation guideline promoted to `active`; its four open questions resolved and `guideline_version` bumped to 2026-08-06.** Ruled rows: one finding per row when the rows carry independent facts (名称/TITLE), one for the whole value when they are segments of an identifier (DWG No.) — descriptive of two existing bug fixes that went in *opposite* directions. Revision rows: a new one is not a finding, a missing one is, an edited one is. Amendment content → `title_block`, balloon-vs-BOM → `bill_of_materials`, under a new general rule — *label by what the change is about, not where it is drawn*. Bulk: semantic rule plus `is_bulk` at ≥5 entities and a deterministic anchor order, explicitly marked a convention. **A second defect surfaced during the bump and was fixed: the version guard blocked its own remedy** — bumping made every existing label stale, and `mutate` could not load the corpus whose labels it was about to regenerate, nor `verify`/`status` report what needed regenerating. `tools/eval_corpus.py` now loads with `allow_stale_guideline=True` and *prints* which pairs are stale; `tools/eval.py` keeps the strict check, which is the only place a stale label could corrupt a number. `tests/test_eval_corpus.py` (+2). | 0b | **Measured: the eval is byte-identical after the bump** — P 0.98 (47/48), R 0.85 (47/55), F1 0.91, macro 0.87, attribution 1.00, 0 false positives across 11 zero-finding pairs. That equality is the evidence that the four resolutions changed **no mutation label's content, only its version stamp**: all 36 pairs were regenerated under the new version and scored the same. Timing was the deliberate part — settled at 0 labels, so nothing needed re-labelling; the guard's own rule is that a later change is a re-label, not an edit. **One resolution knowingly buys a systematic false positive** (new revision rows), which is how an invisible product behaviour becomes a measured one. | — |
 
 ---
 
@@ -401,6 +472,8 @@ and valuable outcome.
 | Idea | Verdict | Why |
 | :--- | :--- | :--- |
 | Sweeping the 16 tuning constants against the mutation corpus (Stage 0.5's coordinate descent, as planned) | **Rejected — impossible, not merely unreliable** (2026-08-05) | Measured: **13 of 14 constants are flat across their entire declared range**, and the cause is structural. A mutation pair is a drawing and a copy of it, so both sides share one coordinate system exactly — 253 of 253 comparable entities at identical coordinates, versus 0 of 11 on the human pair, which is a re-trace. Distance is zero, so every matching radius succeeds on the first tier and the twin/fuzzy tiers are unreachable; `reconcile_relocated_markings` never engages because nothing is relocated. The plan's concern was that a mutation-only sweep would *fit* the constants to the mutator. The real risk is worse: it reports them **inert**, which invites deleting them. Only `changed_similarity_floor` responds, because it gates text and text is what mutations edit. See [[Gotcha - Mutation Pairs Cannot Exercise a Spatial Constant]]. |
+| Category-attribution accuracy on mutation pairs, as a measure of the engine | **Rejected — it is structurally circular, and now provably so** (2026-08-06) | Ground truth for a mutation pair's category is `ZONE_CATEGORY[zone containing the target]`, computed by the mutator's own zone map. Once that map was made to match the engine's — the correct fix for [[Gotcha - Mutation Labels Predate the Zone Template]] — attribution went to **1.00 (47/47) with an empty confusion matrix**, because agreement is true by construction for any entity in exactly one zone. The full history is four numbers and none of them describe the engine: **0.90** (detector-vs-detector, three sheet layouts), **0.81** (one layout), **0.74** (template-vs-detector *disagreement*, after the engine moved and the labels had not), **1.00** (nothing). A metric that reaches a perfect score by construction has told you it was never independent. Only human-labelled pairs can measure attribution, because only a human assigns a category without consulting `zone_detector`. Do not cite 1.00, and do not read a future drop as an engine regression. |
+| The corpus's `isometric_view` coverage | **Withdrawn — the old number was measured on the wrong content** (2026-08-06) | Making the mutator template-aware took expected `isometric_view` findings from 5 to **0**, which looked like lost coverage and is in fact a correction. Measured: the hand-aligned `iso` box contains **zero** comparable entities on either side. `COMPARABLE_ENTITY_TYPES` is text + dimension and an isometric view is geometry, so there is nothing in the correct box for any operator to target. The five findings the old corpus carried were landing on text the *detector's* looser box swept in and the user's box excludes — meaning the previously reported `isometric_view` **F1 of 0.89 was never about the isometric view.** The corpus now honestly covers 4 of 6 categories; both gaps (`isometric_view`, `other_engineering_references`) are structural rather than unfinished. |
 | Treating the eval's `duplicates` counter as coverage for duplicate checklist rows | **Rejected — the metric cannot see the defect class** (2026-08-05) | Assumed while diagnosing the v40 QTY duplicate, and false. `runner.py` builds predictions from candidates with `status != "MATCHED"` — correct for precision/recall, since scoring MATCHED checklist rows would put precision near zero on a clean run. But **every duplicate-row defect this project has found surfaced as a *MATCHED* pair** (cache v13/v16; v39's bilingual UL split, flipped to MATCHED by the bilateral corroboration guard; v40's cross-extractor QTY). All three sat in the population the scorer discards, and `duplicates: 0` was reported throughout — including on runs where the bug was live and visible in the UI. The counter is real, but it only covers duplicates among *reported findings*. Measuring the MATCHED kind needs a distinct check — two rows in one zone with the same normalized value and the same coordinates — which does not exist. See [[Gotcha - Title Block QTY Reads the Upper-Left Table]]. |
 | Sweeping on detection F1 alone | **Rejected — measured wrong** (2026-08-05) | The first sweep run reported **14 of 14** constants flat, i.e. "nothing in this engine is connected to anything" — contradicted by a passing test proving the same override changed real engine output. Both were right: the scorer matches a finding to its label *before* comparing status, so a constant that flips CHANGED into ADDED+REMOVED reshapes every verdict without moving detection by a thousandth. `Measurement` now carries **exactness** alongside F1, and `distance()` takes the max rather than the mean so a large move in one metric cannot hide behind a flat other. |
 | "Expect failures" from the 3 never-collected `services/backend/tests/` files (Stage 0g) | **Wrong prediction** (2026-08-05) | All 10 relocated tests passed on first execution. The plan assumed code that had never been run must have rotted; what had actually rotted was the *collection path*, not the assertions. One genuine problem was found, but a different one: two of the three files asserted Japanese tolerance keywords against the **real** `08 - Client Domain & CAD Rules/`, which is gitignored — so they tested one developer's filesystem and would have failed in CI for a reason unrelated to the code. Both now inject a vault path, which `VaultSyncManager.__init__` already supported. Lesson: "never executed" predicts nothing about whether the assertions hold; run it before planning around the answer. |

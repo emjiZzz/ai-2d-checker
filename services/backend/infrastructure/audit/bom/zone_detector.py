@@ -242,23 +242,36 @@ VIEWS_EXCLUDED_ZONES: tuple = (
 
 
 def views_exclusions(regions: dict) -> list:
-    """Zone boxes that must be subtracted from `views` at the point of use.
+    """Zone shapes that must be subtracted from `views` at the point of use.
 
-    Returns the sibling zone boxes present in `regions`. Callers that treat `views` as a
-    containment region should skip anything falling inside one of these.
+    Returns `(bbox, outline)` pairs for the sibling zones present in `regions` — `outline` is
+    None for the ordinary rectangular zone and the hand-drawn polygon for a reshaped one.
+    Callers that treat `views` as a containment region should skip anything falling inside one
+    of these.
+
+    Pairs rather than bare boxes so that a reshaped sibling excludes only what it actually
+    covers. Using its bounding box instead would over-exclude — content in the notch the user
+    deliberately cut out of, say, the notes zone would be dropped from `views` as well, and
+    land in no category at all. That is the silent false-negative direction.
     """
+    from .zone_geometry import polygon_for
+
     return [
-        bbox for key, bbox in (regions or {}).items()
+        (bbox, polygon_for(regions, key))
+        for key, bbox in (regions or {}).items()
         if key in VIEWS_EXCLUDED_ZONES and bbox
     ]
 
 
 def point_in_any_bbox(x: float, y: float, bboxes) -> bool:
-    """True when (x, y) falls inside any of `bboxes`."""
-    for bbox in bboxes or ():
-        if bbox and bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]:
-            return True
-    return False
+    """True when (x, y) falls inside any of `bboxes`.
+
+    Accepts either bare bboxes or `(bbox, outline)` pairs as returned by `views_exclusions`,
+    so existing callers that pass plain boxes keep working unchanged.
+    """
+    from .zone_geometry import point_in_any_shape
+
+    return point_in_any_shape(x, y, bboxes or ())
 
 # Safety padding added around the final computed bounding box.
 #
@@ -385,8 +398,10 @@ def entity_anchor(entity: Any) -> Optional[tuple]:
     return sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
 
 
-def scope_entities_to_views(entities: list, views_bbox, exclude_bboxes=None) -> list:
-    """Entities that belong to the `views` zone: anchor inside `views_bbox` and not inside
+def scope_entities_to_views(
+    entities: list, views_bbox, exclude_bboxes=None, views_polygon=None
+) -> list:
+    """Entities that belong to the `views` zone: anchor inside the views SHAPE and not inside
     any sibling zone in `exclude_bboxes` (pass `views_exclusions(regions)`).
 
     Returns [] when `views_bbox` is falsy — strict scoping with **no residual fallback**: a
@@ -394,19 +409,24 @@ def scope_entities_to_views(entities: list, views_bbox, exclude_bboxes=None) -> 
     This is what makes the `views` box the definitive comparison boundary instead of comparing
     everything that falls outside the other zones.
 
+    `views_polygon` is the hand-drawn outline when the user has reshaped the zone by inserting
+    nodes on its edges (`zone_geometry.polygon_for(regions, "views")`). Absent, the bbox is the
+    shape, which is the case for every zone nobody has reshaped.
+
     The anchor point comes from `entity_anchor` — a centroid for ordinary entities, the
     `text_point` for dimensions. See there for why dimensions cannot use a centroid.
     """
+    from .zone_geometry import point_in_shape
+
     if not views_bbox:
         return []
-    x0, y0, x1, y1 = views_bbox[0], views_bbox[1], views_bbox[2], views_bbox[3]
     result = []
     for e in entities:
         anchor = entity_anchor(e)
         if anchor is None:
             continue
         cx, cy = anchor
-        if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+        if not point_in_shape(cx, cy, views_bbox, views_polygon):
             continue
         if point_in_any_bbox(cx, cy, exclude_bboxes):
             continue

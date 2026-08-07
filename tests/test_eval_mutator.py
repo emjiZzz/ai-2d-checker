@@ -273,3 +273,94 @@ def test_dimension_text_and_measurement_stay_coherent(base):
 )
 def test_retarget_number_keeps_the_callout_shape(text, value, expected):
     assert _retarget_number(text, value) == expected
+
+
+# ─── zone templates ───────────────────────────────────────────────────────────────────
+#
+# The mutator's zone map does two jobs — it decides WHERE a mutation may land and WHICH
+# category the resulting ExpectedFinding gets — so it has to be the same map the engine
+# compares against. When it was not, the corpus graded the engine against an answer key
+# describing a different sheet layout. See
+# docs/vault/06 - .../Gotcha - Mutation Labels Predate the Zone Template.
+
+
+def _template_covering(zone_fractions):
+    """A template dict in the Y-DOWN fraction form `ZoneTemplateDocument.zones` stores."""
+    return {
+        key: {"xMin": x0, "xMax": x1, "yMin": y0, "yMax": y1}
+        for key, (x0, y0, x1, y1) in zone_fractions.items()
+    }
+
+
+def _base_with(zone_template):
+    entities = [
+        _line("F01", 0, 0, 1000, 0),
+        _line("F02", 1000, 0, 1000, 900),
+        _line("F03", 1000, 900, 0, 900),
+        _line("F04", 0, 900, 0, 0),
+    ]
+    entities += [
+        _text(f"T{i:02X}", f"note {i} value {100 + i}", 80 + (i % 5) * 60, 300 + (i // 5) * 40)
+        for i in range(20)
+    ]
+    drawing = EvalDrawing(
+        id="base0001",
+        file_name="base.dxf",
+        file_hash="f" * 64,
+        metadata={"render_bounds": [0.0, 0.0, 1000.0, 900.0]},
+    )
+    return Mutator(drawing, entities, None, zone_template)
+
+
+def test_a_supplied_template_moves_the_zone_boxes_the_mutator_targets():
+    """The template must reach `Mutator.regions`, not just be accepted and ignored.
+
+    Asserted as a *difference* from the detection-only map: a test that only checked the
+    box existed would pass while the parameter was dropped on the floor.
+    """
+    detection_only = _base_with(None)
+    # yMin/yMax are measured DOWN from the top, so this pins `notes` to a band the
+    # detector's percentage grid does not produce.
+    templated = _base_with(_template_covering({"notes": (0.05, 0.05, 0.35, 0.25)}))
+
+    assert templated.zones["notes"] != detection_only.zones["notes"]
+    # And the Y flip survived: yMin=0.05 from the top of a 900-high sheet is a HIGH box.
+    assert templated.zones["notes"][3] == pytest.approx(855.0)
+
+
+def test_the_template_decides_the_expected_category_not_just_the_target():
+    """Both halves of a label follow the zone map, which is why a stale map was expensive.
+
+    An entity's category comes from whichever zone contains it, so moving a zone box over
+    different content changes what the corpus *claims* the engine should report.
+    """
+    # `views` pinned over the text cluster: everything there becomes drawing_views.
+    over_text = _base_with(_template_covering({"views": (0.0, 0.5, 1.0, 1.0)}))
+    zone_of = {
+        key: box for key, box in over_text.zones.items()
+    }
+    sample = over_text.base_entities[5]  # one of the T** texts at y≈300
+    inside = [key for key, box in zone_of.items() if over_text._in_box(sample, box)]
+    assert "views" in inside, (
+        "a pinned views box over the text cluster must claim that text; if it does not, "
+        "the mutator and the engine disagree about where the entity lives"
+    )
+
+
+def test_no_template_keeps_the_detection_only_behaviour():
+    """`None` is not 'empty template' — a sheet nobody has pinned must detect as before."""
+    assert _base_with(None).zones == _base_with(None).zones
+    assert _base_with(None).zones != _base_with(
+        _template_covering({"notes": (0.05, 0.05, 0.35, 0.25)})
+    ).zones
+
+
+def test_schema_version_is_bumped_past_the_detection_only_labels():
+    """v1 pairs were targeted AND categorised against detector boxes.
+
+    Both halves of the label are affected, so a v1 pair has to be regenerated rather than
+    re-scored — which is exactly what a schema version exists to make identifiable.
+    """
+    from services.backend.infrastructure.eval.mutator import MUTATION_SCHEMA_VERSION
+
+    assert MUTATION_SCHEMA_VERSION >= 2

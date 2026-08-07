@@ -1,15 +1,23 @@
 ---
 tags: [gotcha, evaluation, zones, zone-template, reproducibility, measurement]
-status: measured — visible, not yet fixed
+status: FIXED 2026-08-06 — the corpus now owns its zone boxes
 cache-version: n/a — the divergence is between two run modes, not between two cache versions
 date: 2026-08-05
-verified-against: the first offline run of generate_deterministic_candidates, 3 eval pairs
+verified-against: 36 pairs re-scored with templates applied; baseline-v42.json
 ---
 
 # Gotcha — Zone Templates Vanish in Offline Eval
 
 > [!WARNING] A baseline measured offline is **not** a baseline of what users see, unless
 > this is dealt with. The offline run silently uses different zone boxes.
+
+> [!TIP] Resolved 2026-08-06 — and the size of the effect is the headline.
+> Option 1 below was taken. Applying this machine's seven hand-aligned zones to the corpus
+> moved **precision 0.78 → 1.00, recall 0.65 → 0.78, F1 0.71 → 0.88**. Every one of the ten
+> false positives in the v38 baseline was an artifact of the measurement, not a defect in the
+> engine: `notes_section` went from the weakest category (F1 0.50) to **1.00**. See "How it
+> was fixed" at the bottom — and [[Gotcha - Mutation Labels Predate the Zone Template]] for
+> the one number that went the other way.
 
 ## What happened
 
@@ -81,9 +89,9 @@ Note the CLI distinguishes "no template" from "could not check". An unreachable 
 returns *unknown*, and the warning still fires. Treating an unreachable database as an
 absence is how this class of divergence stays invisible in the first place.
 
-## What still has to be decided — Stage 0e
+## What was decided — Stage 0e
 
-The runner needs one of:
+The two options were:
 
 1. **Thread resolved overrides in.** Add a parameter to `extract_dynamic_regions_async` so
    the corpus can supply the boxes it recorded at export time. Zone fractions are stored
@@ -93,9 +101,68 @@ The runner needs one of:
    that the eval measures detection-only behaviour — stating plainly that the number is not
    what users see.
 
-Option 1 is better and is the reason `zone_signature` is already in the manifest. Either
-way it must be **chosen and recorded**, because the failure mode of not choosing is a
-number everyone trusts and nobody can reproduce.
+**Option 1, taken 2026-08-06.**
+
+## How it was fixed
+
+`extract_dynamic_regions_async` gained a `zone_template` parameter with **three** states,
+and the three-way distinction is load-bearing:
+
+| Value | Meaning |
+| :--- | :--- |
+| `None` | Resolve from Mongo. The app's path, unchanged. |
+| `{}` | Captured, and this sheet has no pinned zones. **Not** a fall-through. |
+| `{...}` | Apply exactly these, with no database access and no degradation. |
+
+Collapsing `{}` into `None` — writing `if zone_template:` instead of `is not None` —
+reintroduces the divergence for precisely the pairs a capture proved were safe. That bug is
+**invisible to a result-only assertion**, because the degradation handler swallows the
+failure and returns detection either way; the regression test asserts on whether the
+database was *reached*, and was verified to fail against the truthy check.
+
+The seam takes **fractions, not resolved boxes**, deliberately. Handing the engine
+pre-resolved boxes would bypass `fractions_to_absolute_bbox` — the one conversion here whose
+failure mode is a plausible-looking vertically mirrored zone — and the eval would go blind
+to a regression in it.
+
+Captured by `tools/eval_corpus.py capture-zones`, which mirrors `resolve_zone_overrides`'
+lookup order exactly (signature-specific, then global default); a capture that resolved
+differently from the app would substitute one divergence for another. The fractions live in
+the **committed manifest** rather than in a payload file: they are layout geometry, not
+customer drawing text, so they are diffable and reviewable, and being in the manifest means
+they cannot drift from the digests recorded beside them.
+
+Stored **once per sheet signature**, in a top-level `zone_templates` map — not per side. The
+first implementation wrote them per side and grew the manifest by **3,330 lines**: the same
+seven-zone block, 74 times, because every pair in this corpus is one sheet layout. A zone
+template is a property of the layout, so the signature is its natural key, and the manifest
+the staged plan requires stay *"tiny, reviewable, diffable"* grew by 47 lines instead.
+
+That also removes the need for a second "captured?" flag: **presence in the map is the
+capture state.** A signature that is absent was never asked; one that maps to `{}` was asked
+and the answer was none. Two fields would eventually disagree; one cannot.
+
+Pinned by `tests/test_offline_zone_templates.py` (6 tests).
+
+### What it measured
+
+Over 36 pairs, all 74 sides carrying the same seven hand-aligned zones:
+
+| | v38 (no templates) | v42 (templates applied) |
+| :--- | :--- | :--- |
+| precision | 0.78 (36/46) | **1.00 (43/43)** |
+| recall | 0.65 (36/55) | **0.78 (43/55)** |
+| F1 | 0.71 | **0.88** |
+| macro F1 | 0.75 | 0.86 |
+| `notes_section` F1 | 0.50 | **1.00** |
+| category attribution | 0.81 (29/36) | **0.74 (32/43)** ⚠ |
+
+**Ten false positives disappeared, and they were the measurement's, not the engine's.** The
+weakest category in the entire project became perfect. Zero false positives across the 11
+zero-finding probes, unchanged.
+
+**Attribution fell, and that is a different finding entirely** — see
+[[Gotcha - Mutation Labels Predate the Zone Template]]. Do not read it as a regression.
 
 ## The transferable lesson
 

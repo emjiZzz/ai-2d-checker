@@ -53,7 +53,15 @@ MANIFEST_SCHEMA_VERSION = 1
 
 # Must track the `date:` frontmatter of the annotation guideline. Labels authored under an
 # older version are not silently accepted — see rule 3 in the module docstring.
-GUIDELINE_VERSION = "2026-08-05"
+# Bumped when a labelling *rule* changes, because a corpus labelled under two definitions
+# cannot be read: you can no longer tell a scoring change from a definition change. A label
+# file carrying a different version is rejected rather than migrated — re-label or discard.
+#
+# 2026-08-06: the guideline's four open questions resolved and it moved to `status: active`.
+#   Ruled rows, revision-table rows, amendment/balloon categories, and the bulk threshold all
+#   now have rules where they previously had judgement. Safe to bump without re-labelling
+#   anything because **zero labels existed** — which is exactly why they were settled first.
+GUIDELINE_VERSION = "2026-08-06"
 
 VALID_CATEGORIES: frozenset[str] = frozenset(get_args(Category))
 VALID_STATUSES: frozenset[str] = frozenset({"CHANGED", "ADDED", "REMOVED"})
@@ -393,6 +401,22 @@ class PairSide:
     # Digest of `{side}.ocr.json`, the captured title-block OCR reading. Empty when the
     # drawing had no cached reading at capture time. See `CorpusPair.restore_ocr_cache`.
     ocr_sha256: str = ""
+    # The hand-aligned zone template for this sheet, as Y-DOWN fractions. Resolved at load
+    # time from the manifest's `zone_templates` map, keyed by `zone_signature` — **not**
+    # serialized per side. A zone template is a property of the sheet layout, and every pair
+    # in this corpus is the same layout, so storing it per side wrote the identical block 74
+    # times and buried the manifest the staged plan requires stay "tiny, reviewable,
+    # diffable".
+    #
+    # Three states, and they are not interchangeable:
+    #   None -> never captured. The run falls back to the Mongo lookup, which offline
+    #           degrades to plain detection, so the score is not what users see.
+    #   {}   -> captured, and this sheet genuinely has no pinned template.
+    #   {..} -> captured zones, applied offline exactly as the app applies them.
+    #
+    # "Captured" is therefore `zone_signature in manifest["zone_templates"]` — one mechanism,
+    # no second flag to fall out of step with the map.
+    zone_template: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -407,7 +431,18 @@ class PairSide:
         }
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> PairSide:
+    def from_dict(
+        cls,
+        raw: dict[str, Any],
+        zone_templates: dict[str, dict[str, Any]] | None = None,
+    ) -> PairSide:
+        """`zone_templates` is the manifest-level `{signature: zones}` map.
+
+        Passing `None` (the default) means "no capture information available", which leaves
+        `zone_template` as None and sends the engine back to the database. Passing the map —
+        even an empty one — is what makes a *missing* signature mean "never captured" and a
+        present one mean "captured", including when the captured value is `{}`.
+        """
         return cls(
             drawing_id=str(raw.get("drawing_id") or ""),
             file_name=str(raw.get("file_name") or ""),
@@ -417,6 +452,11 @@ class PairSide:
             entity_count=int(raw.get("entity_count") or 0),
             zone_signature=str(raw.get("zone_signature") or ""),
             ocr_sha256=str(raw.get("ocr_sha256") or ""),
+            # zone_template is filled in by `load_corpus` from the manifest-level map; a
+            # PairSide built straight from a dict is deliberately "never captured".
+            zone_template=zone_templates.get(str(raw.get("zone_signature") or ""))
+            if zone_templates is not None
+            else None,
         )
 
     def ocr_cache_filename(self) -> str:
@@ -572,19 +612,31 @@ class CorpusPair:
 
         `extract_dynamic_regions_async` applies hand-aligned zone templates on top of
         detection, resolved from Mongo by sheet signature. An offline run has no Beanie
-        session, `resolve_zone_overrides` raises, and `table_extractor.py:114` degrades to
-        plain detection — logged, then carried on. So a pair whose sheet has a pinned
-        template is compared against *different zone boxes* offline than in the app, and
-        a baseline measured that way is not a baseline of what users see.
+        session, `resolve_zone_overrides` raises, and the handler degrades to plain
+        detection — logged, then carried on. So a pair whose sheet has a pinned template is
+        compared against *different zone boxes* offline than in the app, and a baseline
+        measured that way is not a baseline of what users see.
 
-        Reported as a risk rather than fixed here: injecting resolved overrides needs a
-        parameter threaded through `extract_dynamic_regions_async`, which is a production
-        change belonging to Stage 0e's runner, not to the corpus format. See the vault
-        gotcha "Zone Templates Vanish in Offline Eval".
+        A side that has **captured** its template carries the fractions in the manifest and
+        is no longer at risk, including when the capture found no template at all — `{}` is
+        an answer, `None` is an unasked question. Run `tools/eval_corpus.py capture-zones`
+        to clear a pair. See the vault gotcha "Zone Templates Vanish in Offline Eval".
         """
         return sorted(
-            {side.zone_signature for side in (self.ref, self.rev) if side.zone_signature}
+            {
+                side.zone_signature
+                for side in (self.ref, self.rev)
+                if side.zone_signature and side.zone_template is None
+            }
         )
+
+    def uncaptured_zone_sides(self) -> list[str]:
+        """Sides whose zone template is still resolved from the database at run time."""
+        return [
+            name
+            for name, side in (("ref", self.ref), ("rev", self.rev))
+            if side.zone_template is None
+        ]
 
     # -- serialization ----------------------------------------------------
 
@@ -746,6 +798,11 @@ def load_corpus(
     fixtures = fixtures_dir or default_fixtures_dir()
     payloads = payload_dir or default_payload_dir()
     manifest = read_manifest(fixtures)
+    # `{sheet_signature: zone_fractions}`, captured by `eval_corpus.py capture-zones`. A
+    # signature present here is one the corpus can reproduce offline; a signature absent
+    # falls back to the Mongo lookup, which offline means plain detection. See the vault
+    # gotcha "Zone Templates Vanish in Offline Eval".
+    zone_templates: dict[str, dict[str, Any]] = manifest.get("zone_templates") or {}
 
     if include_held_out and not held_out_reason.strip():
         raise HeldOutAccessError(
@@ -813,8 +870,8 @@ def load_corpus(
                 provenance=str(entry.get("provenance") or "human"),
                 held_out=is_held_out,
                 label_state=label_state,
-                ref=PairSide.from_dict(entry.get("ref") or {}),
-                rev=PairSide.from_dict(entry.get("rev") or {}),
+                ref=PairSide.from_dict(entry.get("ref") or {}, zone_templates),
+                rev=PairSide.from_dict(entry.get("rev") or {}, zone_templates),
                 labels=labels,
                 notes=str(entry.get("notes") or ""),
                 payload_dir=payloads,

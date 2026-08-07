@@ -355,6 +355,7 @@ async def generate_deterministic_candidates(
     rev_entities: list,
     refresh_ocr: bool = False,
     progress_callback=None,
+    zone_templates: tuple[dict | None, dict | None] | None = None,
 ) -> tuple[list[ComparisonCandidate], dict, list[str]]:
     """
     Generator A (deterministic): runs SpatialDiffer + BOMAnalyzer end to end and returns
@@ -411,12 +412,21 @@ async def generate_deterministic_candidates(
     # Bypassing the LLM for Phase 1 to achieve deterministic 100% mathematical accuracy.
     from .spatial_differ import SpatialDiffer
 
-    def is_in_bbox(entity, bbox: tuple) -> bool:
+    def is_in_bbox(entity, bbox: tuple, polygon=None) -> bool:
+        """Whether an entity's insert point is inside a zone.
+
+        `polygon` is the hand-drawn outline for a zone the user reshaped in the editor; when
+        absent the bbox is the shape, which is every un-reshaped zone. Passing it matters most
+        for the EXCLUSION calls in safe_filter: excluding on a reshaped zone's bounding box
+        would drop content from the notch the user deliberately cut out of it, and that content
+        belongs to no other category — a silent false negative.
+        """
+        from ..bom.zone_geometry import point_in_shape
         if not bbox: return False
         geom = getattr(entity, 'geometry', {})
         if not geom or 'insert' not in geom or len(geom['insert']) < 2: return False
         x, y = geom['insert'][0], geom['insert'][1]
-        return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+        return point_in_shape(x, y, bbox, polygon)
 
     # Compute bounding boxes for visual overlap warnings and spatial constraints
     from ..bom.table_extractor import extract_dynamic_regions_async, summarize_zone_detection_confidence
@@ -426,8 +436,18 @@ async def generate_deterministic_candidates(
     ref_bounds = (ref_drawing.metadata or {}).get("render_bounds")
     rev_bounds = (rev_drawing.metadata or {}).get("render_bounds")
 
-    ref_regions = await extract_dynamic_regions_async(ref_entities, render_bounds=ref_bounds)
-    rev_regions = await extract_dynamic_regions_async(rev_entities, render_bounds=rev_bounds)
+    # `zone_templates` is the offline eval seam and is None everywhere in the app, which
+    # leaves the Mongo lookup below exactly as it was. An offline run supplies the fractions
+    # it captured at export so the zone boxes are a property of the corpus rather than of
+    # whichever machine ran it. See extract_dynamic_regions_async for why None and {} differ.
+    ref_template, rev_template = zone_templates or (None, None)
+
+    ref_regions = await extract_dynamic_regions_async(
+        ref_entities, render_bounds=ref_bounds, zone_template=ref_template
+    )
+    rev_regions = await extract_dynamic_regions_async(
+        rev_entities, render_bounds=rev_bounds, zone_template=rev_template
+    )
     zone_detection_warnings = summarize_zone_detection_confidence(ref_regions, rev_regions)
     if zone_detection_warnings:
         logger.info(f"Zone detection confidence warnings: {zone_detection_warnings}")
@@ -762,7 +782,7 @@ async def generate_deterministic_candidates(
                     result.append(e)
         return result
 
-    def safe_filter(entities: list, bom_bbox, title_bbox, tol_bbox, notes_bbox, iso_bbox, title_ul_bbox, global_bounds, exclude_values: set | None = None, shim_bbox=None) -> list:
+    def safe_filter(entities: list, bom_bbox, title_bbox, tol_bbox, notes_bbox, iso_bbox, title_ul_bbox, global_bounds, exclude_values: set | None = None, shim_bbox=None, polygons: dict | None = None) -> list:
         """Apply the drawing_views noise filters to an already views-scoped entity set.
 
         `entities` here is the views-scoped pool (scope_entities_to_views), NOT the whole sheet.
@@ -771,7 +791,13 @@ async def generate_deterministic_candidates(
         already captured by structured extraction. The sibling-bbox exclusions are now largely
         defensive (scope_entities_to_views already dropped centroid-in-sibling entities), kept
         because they also catch entities that straddle a boundary. Never uses a bbox that covers
-        too much of the drawing for exclusion."""
+        too much of the drawing for exclusion.
+
+        `polygons` maps a zone key to its hand-drawn outline for zones reshaped in the editor
+        (`regions[_zone_polygons]`). Exclusion honours the outline rather than the bounding box,
+        so content sitting in a notch the user cut out of a sibling zone stays in the pool. On
+        the bounding box it would be dropped here and picked up by nothing."""
+        poly = polygons or {}
         use_bom      = bom_bbox      and not _bbox_covers_too_much(bom_bbox,      global_bounds)
         use_title    = title_bbox    and not _bbox_covers_too_much(title_bbox,    global_bounds)
         use_tol      = tol_bbox      and not _bbox_covers_too_much(tol_bbox,      global_bounds)
@@ -786,13 +812,13 @@ async def generate_deterministic_candidates(
         result = [
             e for e in entities
             if not (
-                (use_bom      and is_in_bbox(e, bom_bbox))      or
-                (use_title    and is_in_bbox(e, title_bbox))    or
-                (use_tol      and is_in_bbox(e, tol_bbox))      or
-                (use_notes    and is_in_bbox(e, notes_bbox))    or
-                (use_iso      and is_in_bbox(e, iso_bbox))      or
-                (use_title_ul and is_in_bbox(e, title_ul_bbox)) or
-                (use_shim     and is_in_bbox(e, shim_bbox))     or
+                (use_bom      and is_in_bbox(e, bom_bbox,      poly.get("bom")))              or
+                (use_title    and is_in_bbox(e, title_bbox,    poly.get("title")))            or
+                (use_tol      and is_in_bbox(e, tol_bbox,      poly.get("tolerance")))        or
+                (use_notes    and is_in_bbox(e, notes_bbox,    poly.get("notes")))            or
+                (use_iso      and is_in_bbox(e, iso_bbox,      poly.get("iso")))              or
+                (use_title_ul and is_in_bbox(e, title_ul_bbox, poly.get("title_upper_left"))) or
+                (use_shim     and is_in_bbox(e, shim_bbox,     poly.get("shim")))             or
                 is_in_margin(e, global_bounds)
             )
         ]
@@ -929,12 +955,20 @@ async def generate_deterministic_candidates(
     # NOT diffed as its own category -- assembly-thickness data does not change meaningfully
     # between revisions, so comparing it is noise.
     from ..bom.zone_detector import scope_entities_to_views, views_exclusions
+    from ..bom.zone_geometry import polygon_for, zone_polygons
+
+    # Hand-drawn outlines for zones the user reshaped in the editor. Empty for every sheet
+    # whose template carries plain rectangles, which is the default and the common case.
+    ref_polygons = zone_polygons(ref_regions)
+    rev_polygons = zone_polygons(rev_regions)
 
     ref_views_pool = scope_entities_to_views(
-        ref_entities, ref_views_bbox_raw, views_exclusions(ref_regions)
+        ref_entities, ref_views_bbox_raw, views_exclusions(ref_regions),
+        polygon_for(ref_regions, "views"),
     )
     rev_views_pool = scope_entities_to_views(
-        rev_entities, rev_views_bbox_raw, views_exclusions(rev_regions)
+        rev_entities, rev_views_bbox_raw, views_exclusions(rev_regions),
+        polygon_for(rev_regions, "views"),
     )
 
     filtered_ref_entities = safe_filter(
@@ -944,6 +978,7 @@ async def generate_deterministic_candidates(
         ref_global_bounds,
         exclude_values=ref_structured_values,
         shim_bbox=ref_shim_bbox_raw,
+        polygons=ref_polygons,
     )
     filtered_rev_entities = safe_filter(
         rev_views_pool,
@@ -952,6 +987,7 @@ async def generate_deterministic_candidates(
         rev_global_bounds,
         exclude_values=rev_structured_values,
         shim_bbox=rev_shim_bbox_raw,
+        polygons=rev_polygons,
     )
 
     logger.info(
