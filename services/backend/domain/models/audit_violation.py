@@ -8,6 +8,15 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 from .cad_point import CadPoint, coerce_cad_point_list
 
 
+#: The two values `resolution_type` actually holds. Defined here because R1 made the field
+#: readable for the first time — until then it had exactly one writer (`audits.py`) and **no
+#: readers at all**, which is how its own description came to advertise `confirmed` /
+#: `rejected_hallucination`, a pair nothing has ever written. The written spelling wins: it is
+#: what is in the database, and inventing a migration to satisfy a docstring would be backwards.
+RESOLUTION_APPROVED = "APPROVED"
+RESOLUTION_REJECTED = "REJECTED"
+
+
 class AuditViolation(Document):
     audit_session_id: str = Field(..., description="Reference ID of the associated AuditSession")
     severity: str = Field(..., description="Severity level: critical, high, medium, low")
@@ -25,7 +34,7 @@ class AuditViolation(Document):
     entity_handle: str | None = Field(None, description="Source CAD entity handle cited by AI")
     standard_reference: str | None = Field(None, description=" Grounding text or section identifier in the standard document")
     pen_type: str = Field("ai_red", description="Virtual pen color: ai_green, ai_red, checker_blue, resolved_green, resolved_pink")
-    resolution_type: str | None = Field(None, description="Resolution classification: confirmed or rejected_hallucination")
+    resolution_type: str | None = Field(None, description="Resolution classification: APPROVED or REJECTED (see RESOLUTION_APPROVED/RESOLUTION_REJECTED)")
     is_resolved: bool = Field(False, description="Whether the violation has been verified as resolved")
     resolved_at: datetime | None = Field(None, description="Timestamp when the violation was verified as resolved")
     checker_remarks: str | None = Field(None, description="Supervisor or checker feedback comment")

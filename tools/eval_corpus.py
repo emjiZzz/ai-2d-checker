@@ -647,11 +647,127 @@ def cmd_status(args: argparse.Namespace) -> int:
     if report["burned_pairs"]:
         print(f"\n  BURNED (used for tuning, must be replaced): {report['burned_pairs']}")
 
+    # Per-pair queue. The aggregate above says how much is left; this says what to open next,
+    # which is the question an annotator actually has. Human pairs only — the 36 mutation pairs
+    # are labelled by construction and listing them would bury the six that need a person.
+    human = [p for p in corpus.pairs if p.provenance == "human"]
+    if human:
+        print("\n  Annotation queue (human pairs)\n")
+        for pair in sorted(human, key=lambda p: p.pair_id):
+            if pair.labels is None:
+                state = "UNLABELLED"
+            elif pair.labels.guideline_version != GUIDELINE_VERSION:
+                state = f"STALE ({pair.labels.guideline_version})"
+            else:
+                state = f"labelled  {len(pair.labels.findings):>3} finding(s)"
+            flag = "  [held out]" if pair.held_out else ""
+            print(f"    {pair.pair_id:<14} {state}{flag}")
+        hidden = report["human_pairs"] - len(human)
+        if hidden > 0:
+            # Not a discrepancy: held-out pairs load only with an explicit reason, which is the
+            # lock working. Said out loud so the count above does not read as a bug.
+            print(
+                f"\n    ({hidden} held-out pair(s) not listed — they load only with "
+                f"--include-held-out and a --reason, which is logged.)"
+            )
+
     log = held_out_access_log()
     if log.exists():
         lines = [line for line in read_text_stable(log).splitlines() if line.strip()]
         print(f"\n  held-out access log: {len(lines)} entr(y/ies) at {log}")
     return 0
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Check a draft in place, without installing it.
+
+    The loop before this was fill -> `label --from` -> rejection, with no way to check work in
+    progress; a malformed address found after an hour of annotation cost that hour. This runs
+    the same `PairLabels.from_dict` the installer runs, plus address resolution against the
+    frozen payload, and reports every problem at once rather than the first.
+
+    Deliberately read-only: it never writes the manifest and never installs. `label` is still
+    the only command that changes ground truth.
+    """
+    source = Path(args.source).resolve()
+    if not source.exists():
+        raise SystemExit(f"{source} does not exist.")
+
+    problems: list[str] = []
+    try:
+        raw = json.loads(read_text_stable(source))
+    except json.JSONDecodeError as err:
+        raise SystemExit(f"[fail] {source.name} is not valid JSON: {err}")
+
+    raw.setdefault("pair_id", args.pair_id)
+    if not str(raw.get("annotator") or "").strip():
+        problems.append("`annotator` is empty — required before this can be installed.")
+
+    labels = None
+    try:
+        # Version drift is reported as its own problem rather than aborting, so an annotator
+        # working against an older guideline still gets the rest of their errors in one pass.
+        labels = PairLabels.from_dict(raw, allow_stale_guideline=True)
+    except Exception as err:
+        problems.append(f"schema: {err}")
+
+    if labels is not None:
+        if labels.guideline_version != GUIDELINE_VERSION:
+            problems.append(
+                f"guideline_version is {labels.guideline_version!r}, current is "
+                f"{GUIDELINE_VERSION!r}. `tools/eval.py` will refuse these labels. Re-generate "
+                f"the worksheet (--force) and re-check the rules that changed."
+            )
+        if not labels.findings:
+            problems.append(
+                "zero findings — legitimate only for a null_mutation pair; on a human pair it "
+                "usually means the draft is not filled in yet."
+            )
+
+        corpus = _load_for_management()
+        pair = corpus.by_id(args.pair_id)
+        if pair is None:
+            problems.append(f"no pair {args.pair_id!r} in the manifest — export it first.")
+        else:
+            try:
+                _, _, ref_entities, rev_entities = pair.load()
+            except Exception as err:
+                problems.append(f"payload unreadable, addresses not checked: {err}")
+            else:
+                known = _addressable(ref_entities, rev_entities)
+                for index, finding in enumerate(labels.findings):
+                    address = getattr(finding, "entity_handle", None)
+                    if address and address not in known:
+                        problems.append(
+                            f"findings[{index}]: address {address!r} resolves to no entity on "
+                            f"either side. Copy it verbatim from the worksheet's `address` "
+                            f"column."
+                        )
+
+    if problems:
+        print(f"[fail] {args.pair_id}: {len(problems)} problem(s)\n")
+        for problem in problems:
+            print(f"  - {problem}")
+        return 1
+
+    print(
+        f"[ok] {args.pair_id}: {len(labels.findings)} finding(s) — this draft will install.\n"
+        f"     tools/eval_corpus.py label --pair-id {args.pair_id} --from {source}"
+    )
+    return 0
+
+
+def _addressable(ref_entities: list, rev_entities: list) -> set[str]:
+    """Every address form the worksheet emits, for both sides.
+
+    Mirrors `cmd_worksheet.address` exactly — handle when one exists, payload line number
+    otherwise. If the two ever disagree the worksheet would print addresses this rejects.
+    """
+    known: set[str] = set()
+    for side, entities in (("REF", ref_entities), ("REV", rev_entities)):
+        for index, entity in enumerate(entities):
+            known.add(f"{side}-{entity.handle}" if entity.handle else f"{side}#{index}")
+    return known
 
 
 def cmd_worksheet(args: argparse.Namespace) -> int:
@@ -959,6 +1075,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_ws.add_argument("--reason", default="")
     p_ws.add_argument("--force", action="store_true", help="overwrite an existing draft")
     p_ws.set_defaults(func=cmd_worksheet)
+
+    p_validate = sub.add_parser(
+        "validate", help="check a draft in place without installing it"
+    )
+    p_validate.add_argument("--pair-id", required=True)
+    p_validate.add_argument("--from", dest="source", required=True)
+    p_validate.set_defaults(func=cmd_validate)
 
     p_label = sub.add_parser("label", help="install a filled-in label draft")
     p_label.add_argument("--pair-id", required=True)

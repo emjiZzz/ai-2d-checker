@@ -50,8 +50,7 @@ spatial-extraction gap, not this).
 
 `tests/test_title_ul_matching.py` (token split, same-field pairing incl. the Japanese-label
 Stock case, genuine ADDED stays one-sided, no cross-match). Cache **v23→v24**. This is the
-same hardcoded-threshold-vs-coordinate-scale family as [[Gotcha - SCALE Field Read the Date
-Column]] and [[Gotcha - Mislocated OCR Crop and Ungrounded Misreads]].
+same hardcoded-threshold-vs-coordinate-scale family as [[Gotcha - SCALE Field Read the Date Column]] and [[Gotcha - Mislocated OCR Crop and Ungrounded Misreads]].
 
 
 ---

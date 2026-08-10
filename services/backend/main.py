@@ -85,6 +85,20 @@ async def startup_event() -> None:
     if db_success:
         # D. Index bootstrapping
         await bootstrap_indexes()
+
+        # D2. Retrieval indexes (R1, ADR-008). Builds only collections with no usable index,
+        # so a normal restart costs nothing. Never fatal — the app serves without retrieval,
+        # and `retrieval.query()` reports a missing index rather than returning [] as though
+        # it had searched.
+        # Imported here rather than at module scope, matching section E below: startup
+        # imports are deferred so that importing `main` stays cheap and side-effect free.
+        from .infrastructure.retrieval.service import bootstrap_retrieval_indexes  # noqa: PLC0415
+
+        for collection, result in (await bootstrap_retrieval_indexes()).items():
+            if result.built:
+                logger.info(f"[retrieval] Built '{collection}': {result.n_records} record(s).")
+            else:
+                logger.info(f"[retrieval] '{collection}' not built: {result.reason}.")
     else:
         logger.warning("FastAPI backend is operating in offline/disconnected fallback mode.")
 

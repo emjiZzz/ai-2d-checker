@@ -10,8 +10,8 @@ tags: [learned-model, hitl]
 > folder; this note is the human-readable summary. Trained purely on human corrections —
 > no LLM involved.
 
-- **Last trained**: 2026-08-06T05:22:00.271472+00:00
-- **Total corrections**: 68
+- **Last trained**: 2026-08-09T23:37:54.725166+00:00
+- **Total corrections**: 70
 - **Verdict labels**: 36  (threshold to activate model: 40)
 - **Category labels**: 6
 - **Verdict model**: ⏳ warming up (36/40)
@@ -23,18 +23,20 @@ tags: [learned-model, hitl]
 ```
 
 ## Sample of learned "not a real change" patterns
-- `title_block|field`
-- `drawing_views|none`
-- `drawing_views|l油溝詳細l`
+- `title_block|machinecode/unitcode`
+- `title_block|jobno(jobnumber)`
 - `notes_section|4ロール:12(2x6台)`
+- `title_block|partno(partnumber)`
+- `drawing_views|l油溝詳細l`
+- `title_block|scale(sheetscale)`
+- `title_block|ブシュ`
 - `title_block|stockqty(stockqty)`
-- `drawing_views|20`
+- `drawing_views|geometry:24line,3polyline`
 - `title_block|qty(quantity)`
-- `title_block|unitno(unitnumber)`
-- `drawing_views|総厚サ6mm`
-- `drawing_views|geometry:4line,1polyline`
 
 ## Changelog
+- 2026-08-09T23:37:54.725166+00:00 — trained on 70 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
+- 2026-08-09T23:37:43.609025+00:00 — trained on 69 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
 - 2026-08-06T05:22:00.271472+00:00 — trained on 68 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
 - 2026-08-06T05:22:00.244468+00:00 — trained on 67 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
 - 2026-08-05T09:08:52.039570+00:00 — trained on 66 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
@@ -74,5 +76,3 @@ tags: [learned-model, hitl]
 - 2026-08-05T08:07:17.633904+00:00 — trained on 34 corrections (verdict labels: 28, category labels: 1); verdict model warming up.
 - 2026-08-05T08:07:15.964016+00:00 — trained on 33 corrections (verdict labels: 27, category labels: 1); verdict model warming up.
 - 2026-08-05T08:07:05.783121+00:00 — trained on 32 corrections (verdict labels: 26, category labels: 1); verdict model warming up.
-- 2026-08-05T08:07:04.650991+00:00 — trained on 31 corrections (verdict labels: 25, category labels: 1); verdict model warming up.
-- 2026-08-05T08:07:00.946885+00:00 — trained on 30 corrections (verdict labels: 24, category labels: 1); verdict model warming up.

@@ -146,7 +146,7 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
     return (
       <span
         data-testid={`correction-done-${rowId}`}
-        style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.65rem", fontWeight: 700, color: "#10b981" }}
+        style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: "6px", minWidth: 0, fontSize: "0.65rem", fontWeight: 700, color: "#10b981" }}
       >
         <Brain size={12} /> Taught: {corrected}
         {feedbackId && (
@@ -205,18 +205,25 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
 
   const menuItemStyle: React.CSSProperties = {
     display: "flex",
-    alignItems: "center",
+    // flex-start, not center: these labels are full sentences and wrap to two or three lines in
+    // the narrow left panel, and a centred icon then floats mid-paragraph.
+    alignItems: "flex-start",
     gap: "6px",
     padding: "5px 8px",
     borderRadius: "6px",
     cursor: "pointer",
     fontSize: "0.72rem",
+    lineHeight: 1.3,
     color: "var(--text-primary)",
     background: "transparent",
     border: "none",
     width: "100%",
+    minWidth: 0,
     textAlign: "left",
   };
+
+  /** Keeps a leading lucide icon from being squashed when its label wraps. */
+  const menuIconStyle: React.CSSProperties = { flexShrink: 0, marginTop: "1px" };
 
   if (mode === null) {
     return (
@@ -248,7 +255,15 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
         border: "1px solid var(--border-color)",
         borderRadius: "8px",
         padding: "6px",
-        minWidth: "190px",
+        // This menu is in flow (position: relative), not floating, so a hard minWidth reserved
+        // real width in the parent row. 190px did not fit the left panel at its 220px floor,
+        // where a finding card has ~138px of content -- the menu simply ran off the clipped
+        // edge. flex-basis 100% takes a full line of the (now wrapping) control row instead.
+        flex: "1 1 100%",
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        boxSizing: "border-box",
         boxShadow: "0 6px 20px rgba(0,0,0,0.18)",
         zIndex: 5,
       }}
@@ -271,7 +286,7 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
             style={menuItemStyle}
             onClick={() => submit(isMatched ? "verdict_changed" : "confirmed_change", "Real change")}
           >
-            <AlertTriangle size={13} color="#f97316" /> This is a real change
+            <AlertTriangle size={13} color="#f97316" style={menuIconStyle} /> This is a real change
           </button>
           {!isMatched && (
             <button
@@ -279,17 +294,17 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
               style={menuItemStyle}
               onClick={() => submit("verdict_matched", "Not a change")}
             >
-              <Check size={13} color="#10b981" /> Not a change — these match
+              <Check size={13} color="#10b981" style={menuIconStyle} /> Not a change — these match
             </button>
           )}
           <button data-testid={`correction-paired-open-${rowId}`} style={menuItemStyle} onClick={() => setMode("paired")}>
-            <Unlink size={13} color="#eab308" /> Wrongly paired
+            <Unlink size={13} color="#eab308" style={menuIconStyle} /> Wrongly paired
           </button>
           <button style={menuItemStyle} onClick={() => setMode("reclassify")}>
-            <Tag size={13} color="#3b82f6" /> Wrong section
+            <Tag size={13} color="#3b82f6" style={menuIconStyle} /> Wrong section
           </button>
           <button style={menuItemStyle} onClick={() => { setValueInput(row.kmti || ""); setMode("value"); }}>
-            <Pencil size={13} color="#a855f7" /> Wrong value
+            <Pencil size={13} color="#a855f7" style={menuIconStyle} /> Wrong value
           </button>
         </>
       )}
@@ -302,14 +317,14 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
             style={menuItemStyle}
             onClick={() => submit("mispaired_missing_counterpart", "Has a match", { human_comment: noteInput.trim() || undefined })}
           >
-            <Unlink size={13} color="#eab308" /> It does have a match on the other drawing
+            <Unlink size={13} color="#eab308" style={menuIconStyle} /> It does have a match on the other drawing
           </button>
           <button
             data-testid={`correction-paired-wrong-${rowId}`}
             style={menuItemStyle}
             onClick={() => submit("mispaired_wrong_match", "Wrong pair", { human_comment: noteInput.trim() || undefined })}
           >
-            <X size={13} color="#ef4444" /> These two are not the same thing
+            <X size={13} color="#ef4444" style={menuIconStyle} /> These two are not the same thing
           </button>
           <input
             data-testid={`correction-paired-note-${rowId}`}
@@ -323,6 +338,11 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
               padding: "5px",
               fontSize: "0.7rem",
               color: "var(--text-primary)",
+              // An <input> carries an intrinsic width of ~20 characters, which overflows this
+              // panel unless it is explicitly allowed to shrink.
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
             }}
           />
         </div>
@@ -345,6 +365,9 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
               padding: "5px",
               fontSize: "0.72rem",
               color: "var(--text-primary)",
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
             }}
           >
             <option value="" disabled>Choose category…</option>
@@ -370,6 +393,9 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
               fontSize: "0.72rem",
               color: "var(--text-primary)",
               fontFamily: "'JetBrains Mono', monospace",
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
             }}
             placeholder="e.g. ø25"
           />

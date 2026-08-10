@@ -4,9 +4,11 @@ type: adr
 tags: [adr, architecture, deployment, licensing, security, packaging, pre-prod]
 status: proposed
 date: 2026-08-06
+amended: 2026-08-07 (egress claim narrowed for knowledge sync — see the amendment section)
 supersedes: none
 amends: none
-related: [ADR-004 Deterministic-Only Scope, System Overview]
+amended-by: ADR-008 The Second Brain — Retrieval-Only Local Knowledge
+related: [ADR-004 Deterministic-Only Scope, ADR-008 The Second Brain — Retrieval-Only Local Knowledge, System Overview]
 ---
 
 # ADR-005 — All processing local; the cloud does licensing and nothing else
@@ -67,6 +69,14 @@ Concretely:
 - Exactly one service is permitted to make outbound calls: the **licensing client**, and it
   transmits only entitlement data (license key, machine fingerprint, timestamps, product
   version). Never customer content, never filenames, never drawing identifiers.
+
+> [!IMPORTANT] Amended 2026-08-07 — see the amendment section below
+> The clause *"no … derived metadata leaves"* is **narrowed**. It could not survive contact with
+> [[ADR-008 The Second Brain — Retrieval-Only Local Knowledge]], because a learned dismissal
+> pattern is derived metadata by any reading, and a knowledge flywheel requires it to move. The
+> original text is kept above rather than rewritten, because the change of mind is the fact worth
+> keeping. **Nothing has changed yet in code** — this ADR remains `proposed`, and knowledge sync
+> is deferred to production.
 
 ---
 
@@ -405,6 +415,91 @@ so it is not "phase 2 polish" despite appearing late in build order.
   demonstrated air-gap requirement (see consequence 3).
 - **Grace window length** and whether it varies by customer tier.
 - **The updater**, per stage 9.
+- ~~**Where the Second Brain lives in production** — vendor cloud (per-client isolated) or
+  installer-bundles-only. Deferred deliberately; see the amendment below.~~ **Moot as of
+  2026-08-10** — [[ADR-009 Retiring the Standards Knowledge Track]]. The knowledge track (renamed
+  from "Second Brain" to avoid colliding with the vault) was retired at R2 because its corpus is
+  empty, so there is nothing to host and this fork never has to be resolved. **The egress amendment
+  below still stands** — it narrowed a claim this ADR makes about *all* derived metadata, and that
+  narrowing is correct independently of whether sync is ever built. Left struck through rather than
+  deleted so a reader does not re-open it as an unanswered question.
+
+---
+
+> [!DANGER] **A second amendment is owed, and is not yet written — 2026-08-10**
+> [[ADR-010 Grounded LLM Summarization of Comparison Results]] permits sending **finding text**
+> (verbatim drawing text) to Gemini, opt-in and off by default. More importantly it surfaced a
+> disclosure this ADR has never covered: **`execute_title_block_ocr` already sends image crops of
+> the customer's title block to Gemini** on a cache miss (`orchestrator.py:553`), with no flag, and
+> has done since before this ADR was written.
+>
+> So the amendment below narrows the egress claim for **knowledge sync — a feature since retired by
+> [[ADR-009 Retiring the Standards Knowledge Track]] and never built** — while the ADR stays silent
+> about the egress that actually ships. That is the wrong way round and must be fixed before this
+> ADR moves from `proposed` to `accepted`. Recorded here rather than quietly corrected, because the
+> gap is the point.
+
+## Amendment, 2026-08-07 — narrowing the egress claim for knowledge sync
+
+Prompted by [[ADR-008 The Second Brain — Retrieval-Only Local Knowledge]]. This ADR is still
+`status: proposed`, so the amendment is made **in place** rather than as a separate ADR — there is
+no ratified decision record to preserve. The original Decision text is left intact above.
+
+### Why the original clause could not stand
+
+*"No … derived metadata leaves the customer's machine or LAN"* is unambiguous, and a learned
+dismissal pattern is derived metadata under any reading. Under the original wording, **any**
+knowledge flywheel is forbidden — not merely a cloud one. That is a stronger claim than the
+commercial argument in "Why local-only is the right shape here" actually requires. That argument
+is about **drawings** — geometry, tolerances, materials, supplier part numbers — not about every
+byte that could be traced to a drawing.
+
+### The narrowed claim
+
+**No CAD file, rendered image, geometry, coordinate, filename or drawing identifier leaves the
+customer's network, ever.** A machine with no internet access completes a full audit, unchanged.
+
+**Two** outbound services are permitted, not one:
+
+| Service | May transmit | Never transmits |
+| :--- | :--- | :--- |
+| **Licensing client** | entitlement data — key, fingerprint, timestamps, product version | customer content, filenames, drawing identifiers |
+| **Knowledge sync** *(deferred to prod)* | `(pattern, category, count, client_id)` | drawings, geometry, coordinates, filenames, session ids, free-text comments, `finding_snapshot` |
+
+### What is deliberately given up, stated plainly
+
+The sellable sentence weakens from *"your drawings never leave your network"* to *"no drawing,
+image, geometry or coordinate ever leaves your network; only anonymised text patterns your own
+auditors have already dismissed."* The second is still strong and still unusual in this market —
+but it is **not the same claim**, and the residual is real: **a dismissal pattern is verbatim
+drawing text, so a part number can travel.** Minimization reduces the exposure by an order of
+magnitude; it does not eliminate it.
+
+### Encryption was considered and does not substitute for this
+
+Recorded in full in [[ADR-008 The Second Brain — Retrieval-Only Local Knowledge]]. The short
+version: this ADR's argument is about **custody**, not interception. TLS and at-rest encryption
+leave the vendor holding the keys and processing plaintext — *"we promise not to look"*, not
+*"we cannot look"*. True zero-knowledge is mutually exclusive with a central Second Brain,
+because thresholding requires reading. **Minimization is the lever; encryption is table stakes
+on top of it.**
+
+### Gap 2's acceptance criterion survives, narrowed
+
+The no-egress test in "2. Egress must become impossible, not merely unused" is **not** weakened
+into uselessness. It becomes:
+
+> An automated test must assert that a full audit run opens **no socket to any host other than
+> the licence endpoint and, when enabled, the knowledge-sync endpoint** — and that the
+> knowledge-sync payload contains no field outside the permitted set.
+
+The second clause is new and is the more important half: it makes minimization **enforceable by
+test** rather than by convention. That is the difference between this narrowing and simply giving
+up the claim.
+
+**Nothing in code changes today.** Knowledge sync is deferred to production; dev builds remain
+fully local, so the *original* strict claim is still literally true of everything that currently
+ships.
 
 ## Consequences
 

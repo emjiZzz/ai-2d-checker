@@ -329,6 +329,7 @@ export const AuditConsole: React.FC = () => {
                     Drawing Infraction Feed ({filteredViolations.length})
                   </h3>
 
+
                   <div className="filter-group">
                     <Filter size={14} className="text-purple" />
                     <span className="filter-label">Filter Severity:</span>
@@ -459,6 +460,7 @@ export const AuditConsole: React.FC = () => {
                               </div>
                             )}
                           </div>
+
                         </div>
                       );
                     })}

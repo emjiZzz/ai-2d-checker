@@ -9,6 +9,8 @@ from ...core.security import validate_sandboxed_path
 from ...domain.models.standard_chunk import StandardChunk
 from ...domain.models.standard_document import StandardDocument
 from ...logger import logger
+from ..retrieval.encoder import EncoderError
+from ..retrieval.service import rebuild_standards_index
 from .standards_parser import StandardsParser
 
 
@@ -129,17 +131,33 @@ class StandardsLoader:
         if db_chunks:
             await StandardChunk.insert_many(db_chunks)
 
-        # Delegate semantic vector indexing to dedicated vector indexer service, off-thread
-        # (embedding generation + LanceDB write are CPU/IO-bound and would otherwise block
-        # the event loop, same as the file-hash/parse calls above).
-        from ..ai.vectorstore.standards_indexer import StandardsVectorIndexer
-        await asyncio.to_thread(
-            StandardsVectorIndexer.index_standard_chunks,
-            doc_id=str(doc.id),
-            standard_hash=standard_hash,
-            name=name,
-            chunks=chunks
-        )
+        # R1 (ADR-008): rebuild the lexical retrieval index over the new corpus.
+        #
+        # Whole-corpus rebuild, not an append: TF-IDF's idf is a property of the corpus, so
+        # adding chunks changes the weighting of every n-gram they contain. Appending would
+        # leave new and old chunks ranked under different weights — an error that produces
+        # plausible orderings and no symptom.
+        #
+        # Off-thread because fitting a vocabulary is genuinely CPU-bound. The step this
+        # replaces was called inline and got away with it only because its "embedding" was a
+        # random number generator (R0 deleted it). Guarded by test_standards_loader_async.py.
+        #
+        # A failed rebuild must not fail the upload: the chunks are already committed to Mongo
+        # above, which is the source of truth, and the index is a derived artifact that startup
+        # or the next upload will rebuild. `query()` reports MISSING rather than pretending to
+        # have searched, so a missing index is visible instead of silent.
+        try:
+            result = await rebuild_standards_index()
+            logger.info(
+                f"[retrieval] standards index: {result.n_records} record(s), "
+                f"built={result.built}{f' ({result.reason})' if result.reason else ''}"
+            )
+        except (OSError, ValueError, EncoderError) as index_err:
+            logger.error(
+                f"[retrieval] Failed to rebuild the standards index after ingesting "
+                f"'{name}': {index_err}. The chunks are saved; the index is stale until the "
+                f"next rebuild."
+            )
 
         logger.info(f"Ingested standard standard document '{name}' with {len(db_chunks)} parsed chunks successfully.")
         return doc, False

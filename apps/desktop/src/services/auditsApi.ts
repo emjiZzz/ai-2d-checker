@@ -103,6 +103,91 @@ export async function retractAuditFeedback(feedbackId: string): Promise<void> {
   }
 }
 
+/** The three states a finding can be in. `null` is "no supervisor has looked at this yet" and is
+ *  NOT the same as REJECTED — `is_resolved` alone cannot tell them apart, which is why the
+ *  backend response carries `resolution_type` separately. Mirrors
+ *  domain.models.audit_violation.RESOLUTION_APPROVED / RESOLUTION_REJECTED. */
+export type ViolationResolution = 'APPROVED' | 'REJECTED' | null;
+
+export interface ViolationReviewResult {
+  id: string;
+  resolution_type: ViolationResolution;
+  is_resolved: boolean;
+  checker_remarks: string | null;
+  resolved_at: string | null;
+}
+
+/** PATCH /api/v1/audits/violations/{id}/review — record a supervisor verdict on a finding.
+ *
+ * This is the write that fills the `lessons` retrieval collection: the backend re-derives the
+ * index from confirmed violations after each review. Until this endpoint had a caller, all 1,322
+ * violations in the database were unreviewed and `lessons` was permanently empty — the index was
+ * being queried by a read path that no writer could ever populate.
+ *
+ * `isValid: false` (REJECTED) is a real signal, not a no-op: it records that the engine raised
+ * something a human judged wrong. It deliberately does NOT feed the lessons index — a false
+ * positive fed back as a lesson teaches the opposite of the intended thing.
+ */
+export async function reviewViolation(
+  violationId: string,
+  isValid: boolean,
+  remarks = ''
+): Promise<ViolationReviewResult> {
+  const response = await fetchWithAuth(
+    `/api/v1/audits/violations/${encodeURIComponent(violationId)}/review`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_valid: isValid, remarks }),
+    }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to record violation review (${response.status}): ${errorText}`);
+  }
+  const json = await response.json();
+  return json.data;
+}
+
+/** ADR-010. `ok` is the only status carrying a generated summary; every other value means the
+ *  client should render `fallback_text`, which is always populated and always true. */
+export type SummaryStatus = 'ok' | 'withheld' | 'unavailable' | 'disabled' | 'not_applicable';
+
+export interface SummaryClaim {
+  text: string;
+  finding_ids: string[];
+}
+
+export interface ComparisonSummary {
+  status: SummaryStatus;
+  headline: string | null;
+  claims: SummaryClaim[];
+  /** Deterministic template. Present on every path, including `ok`. */
+  fallback_text: string;
+  withheld_reasons: string[];
+  withheld_detail: string;
+  finding_count: number;
+  model_used: string | null;
+  cached: boolean;
+}
+
+/** GET /api/v1/audits/sessions/{id}/summary — grounded summary of a session's findings.
+ *
+ * Never throws because a summary could not be produced: "no summary" is normal operation and
+ * arrives as a `status`, not an error. It throws only on transport/HTTP failure.
+ */
+export async function getComparisonSummary(sessionId: string): Promise<ComparisonSummary> {
+  const response = await fetchWithAuth(
+    `/api/v1/audits/sessions/${encodeURIComponent(sessionId)}/summary`
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to fetch comparison summary (${response.status}): ${errorText}`);
+  }
+  const json = await response.json();
+  return json.data;
+}
+
 /** GET /api/v1/audits/learning/status — learned-correction model readiness + metrics. */
 export async function getLearnedModelStatus(): Promise<LearnedModelStatus> {
   const response = await fetchWithAuth('/api/v1/audits/learning/status');

@@ -147,6 +147,11 @@ class AuditViolationResponse(BaseModel):
     entity_handle: str | None = None
     standard_reference: str | None = None
     pen_type: str
+    # `is_resolved` is a boolean and therefore cannot express "not reviewed yet": an unreviewed
+    # finding and a finding a supervisor explicitly REJECTED both read False. `resolution_type`
+    # is the three-state field (None | APPROVED | REJECTED) and is what a review queue must
+    # filter on -- without it a rejected finding reappears in the queue forever.
+    resolution_type: str | None = None
     is_resolved: bool
     resolved_at: datetime | None = None
     checker_remarks: str | None = None
@@ -438,6 +443,7 @@ class ComparisonDiagnostics(BaseModel):
     (a bare `dict` field breaks response_schema validation with a 400 INVALID_ARGUMENT
     for every request, not just when the field happens to be populated)."""
     model_used: Optional[str] = Field(default=None, description="Which model in the cascade actually produced this comparison (e.g. a Pro->Flash rate-limit fallback).")
+    audit_session_id: Optional[str] = Field(default=None, description="The AuditSession this comparison persisted its violations under. The client needs it to request the ADR-010 summary; without it the session id existed only in a log line.")
     zone_detection_warnings: list[str] = Field(default_factory=list, description="Zones where reference/revision bbox detection used different or low-confidence methods.")
     generator_a_candidates: int = Field(default=0, description="Hybrid only: candidate count produced by the deterministic generator before reconciliation.")
     generator_b_candidates: int = Field(default=0, description="Hybrid only: candidate count produced by the AI Vision generator before reconciliation.")
@@ -456,6 +462,31 @@ class PhysicalComparisonResponse(BaseModel):
     other_engineering_references: CategoryComparison
     canvas_markings: list[CanvasMarking] = Field(default_factory=list, description="Visual checklist coordinates mapping items.")
     diagnostics: Optional[ComparisonDiagnostics] = Field(default=None, description="Backend-populated confidence/fallback metadata, not part of the model's own judgment.")
+
+class SummaryClaimResponse(BaseModel):
+    """One grounded sentence plus the finding ids it rests on."""
+    text: str
+    finding_ids: list[str]
+
+
+class ComparisonSummaryResponse(BaseModel):
+    """ADR-010's outward shape. Deliberately NOT nested into PhysicalComparisonResponse — that
+    model is Gemini's `response_schema` and this one is only ever serialized to the desktop app,
+    so keeping them apart is what stops a future field here from tripping constraint 1.
+
+    `fallback_text` is always populated. A client that renders it whenever `status != "ok"` is
+    always showing something true, which is the point of ADR-010 decision 4: absence of a summary
+    is normal operation, not an error state to handle."""
+    status: str = Field(..., description="ok | withheld | unavailable | disabled | not_applicable")
+    headline: str | None = None
+    claims: list[SummaryClaimResponse] = Field(default_factory=list)
+    fallback_text: str = Field(..., description="Deterministic template summary. Always present.")
+    withheld_reasons: list[str] = Field(default_factory=list)
+    withheld_detail: str = ""
+    finding_count: int = 0
+    model_used: str | None = None
+    cached: bool = False
+
 
 class ViewSummary(BaseModel):
     summary: str = Field(..., description="A detailed summary paragraph for this specific view category.")

@@ -24,6 +24,8 @@ documentation *about* the system and must not steer it.
 
 import os
 import re
+import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Set, Any, Optional
 try:
@@ -34,6 +36,68 @@ except Exception:
     except Exception:
         import logging
         logger = logging.getLogger("vault_sync")
+
+# Patterns at or above this length may match after normalization; below it they must match the
+# raw normalized text exactly. Same reasoning, and the same number, as
+# `ComparisonParams.min_structured_value_length`: a short string carries no evidence that the
+# entity it matches is the one a human dismissed. This vault currently holds a learned pattern
+# that is the single digit `8`.
+LOOSE_MATCH_MIN_LENGTH = 3
+
+_EXACT = "exact"
+_NORMALIZED = "normalized"
+_PREFIX = "prefix"
+
+
+@dataclass(frozen=True)
+class LearnedDismissal:
+    """One pattern a human dismissed >= 3 times, with the scope it is allowed to act in.
+
+    Before this was structured, `get_learned_dismissals()` returned bare strings and the
+    orchestrator flattened every category into one set applied to the drawing_views pool. Two
+    consequences, both silent:
+
+    * a pattern learned in `title_block` filtered `drawing_views` content, and
+    * a pattern learned in `drawing_views` never reached the notes or isometric pools.
+
+    `category` is the scope, not a label. A dismissal is evidence about one category; applying
+    it elsewhere is an unaudited guess, and suppression is the one direction this system cannot
+    detect being wrong -- nothing measures its false-negative rate.
+    """
+
+    pattern: str
+    category: str
+    match_mode: str = _EXACT
+
+    @property
+    def normalized_pattern(self) -> str:
+        return _normalize_for_match(self.pattern)
+
+    def matches(self, text: str) -> bool:
+        """True when `text` should be suppressed by this rule."""
+        candidate = _normalize_for_match(text)
+        if not candidate or not self.normalized_pattern:
+            return False
+        if self.match_mode == _PREFIX:
+            return candidate.startswith(self.normalized_pattern)
+        # `exact` and `normalized` differ in how the pattern was AUTHORED, not in the
+        # comparison: both compare whole strings. The distinction is kept because it records
+        # whether the pattern was short enough to be collision-prone, which is what a future
+        # reader needs in order to decide whether widening it is safe.
+        return candidate == self.normalized_pattern
+
+
+def _normalize_for_match(text: str) -> str:
+    """NFKC + casefold + whitespace collapse. Mirrors `orchestrator._normalize_value_text` so a
+    pattern and the entity text it is compared against are folded by one definition."""
+    folded = unicodedata.normalize("NFKC", str(text or "")).strip().lower()
+    return re.sub(r"\s+", " ", folded)
+
+
+def _match_mode_for(pattern: str) -> str:
+    """`normalized` at >= LOOSE_MATCH_MIN_LENGTH, `exact` below."""
+    return _NORMALIZED if len(_normalize_for_match(pattern)) >= LOOSE_MATCH_MIN_LENGTH else _EXACT
+
 
 class VaultSyncManager:
     """Manages parsing and caching of live rules from the Obsidian Second Brain vault."""
@@ -219,3 +283,33 @@ class VaultSyncManager:
         if category is not None:
             return list(learned.get(category, []))
         return [p for patterns in learned.values() for p in patterns]
+
+    def get_learned_dismissal_rules(
+        self, category: Optional[str] = None
+    ) -> List[LearnedDismissal]:
+        """The structured form: each pattern carries the category it may act in.
+
+        Prefer this over `get_learned_dismissals`, which returns bare strings and therefore
+        cannot tell a caller which pool a pattern is evidence about. The string form is kept
+        because it is the shape the vault notes are parsed into and several tests pin it; it is
+        not deprecated, it is just narrower.
+
+        Omitting `category` returns every rule, each still carrying its own scope -- so a caller
+        that flattens the list is making that choice explicitly rather than by accident.
+        """
+        learned: Dict[str, List[str]] = self.load_live_rules().get("learned_dismissals", {}) or {}
+        rules: List[LearnedDismissal] = []
+        for cat, patterns in learned.items():
+            if category is not None and cat != category:
+                continue
+            for pattern in patterns:
+                if not pattern:
+                    continue
+                rules.append(
+                    LearnedDismissal(
+                        pattern=pattern,
+                        category=cat,
+                        match_mode=_match_mode_for(pattern),
+                    )
+                )
+        return rules

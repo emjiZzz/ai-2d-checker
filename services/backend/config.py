@@ -73,6 +73,19 @@ class Settings:
     GEMINI_MODEL_FLASH: str = os.getenv("GEMINI_MODEL_FLASH", "gemini-flash-latest")
     GEMINI_MODEL_FALLBACK: str = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-flash-latest")
 
+    # ADR-010: grounded LLM summarization of comparison findings. OFF BY DEFAULT, and the default
+    # is the safety-relevant half of the decision -- a summary request sends finding text, which is
+    # verbatim drawing text, off the customer's machine. ADR-005 argues local-only is a commercial
+    # feature here rather than a preference, so a customer who has not opted in must send nothing
+    # new. Making a default-off feature default-on later is free; the reverse costs a customer.
+    #
+    # ADR-010 specifies this opt-in as *per room*. This flag is global -- the default-off property
+    # is honoured, the granularity is not yet built. Recorded as a deviation in the ADR rather than
+    # left to be discovered.
+    ENABLE_LLM_SUMMARY: bool = (
+        os.getenv("ENABLE_LLM_SUMMARY", "").strip().lower() in {"1", "true", "yes", "on"}
+    )
+
     @property
     def GEMINI_MODEL_CASCADE(self) -> list[str]:
         """

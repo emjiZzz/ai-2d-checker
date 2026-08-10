@@ -25,7 +25,14 @@ from ...utils.text import (
     compare_values
 )
 from ..bom_analyzer import BOMAnalyzer
+from .params import DEFAULT_PARAMS
 from .revision_resolver import resolve_revisions
+
+# Shortest structured title-block/BOM value allowed to suppress its text-twins elsewhere on the
+# sheet. Module-level and bound into `params._BINDINGS` so `sweep_override` can rebind it; read
+# inside `generate_deterministic_candidates` at call time, never captured at import.
+# See the block above `_collect_structured_text_values` for why a floor is needed at all.
+MIN_STRUCTURED_VALUE_LENGTH = DEFAULT_PARAMS.min_structured_value_length
 from .hallucination_guardrails import (
     is_title_block_category,
     is_bom_category,
@@ -582,6 +589,22 @@ async def generate_deterministic_candidates(
     # double-represented under the wrong category: once correctly, by
     # inject_title_block_markings/inject_bom_markings, and once incorrectly, as a
     # generic finding with whatever category SpatialDiffer happens to tag it.
+    # ...but this net is keyed on TEXT ALONE and applied sheet-wide, so a value short enough
+    # to recur innocently suppresses every occurrence of that string in every zone, on BOTH
+    # sides -- which makes the suppressed content's deletion unreportable rather than merely
+    # unreported. Measured on the corpus: a BOM row numbered `1` deleted a standalone `１` from
+    # the notes zone, and renumbering that row to `999` made the missing REMOVED finding appear.
+    # A one-character value carries no evidence that the entity IS the structured source.
+    #
+    # This is the same reasoning `vault_sync.get_learned_dismissals` already applies to learned
+    # patterns -- "several are short (`1`, `2A0`); substring matching would silently suppress
+    # unrelated content, which is the one failure mode this system cannot detect". The floor is
+    # length-based rather than spatial because the whole point of this net is to catch values
+    # that sit OUTSIDE their zone's bbox, so a spatial test would defeat it.
+    #
+    # See docs/vault/06 - .../Gotcha - A Short Structured Value Suppresses Its Own Zone.
+    _min_structured_len = MIN_STRUCTURED_VALUE_LENGTH
+
     import unicodedata as _ud_vals
 
     def _normalize_value_text(t) -> str:
@@ -589,22 +612,30 @@ async def generate_deterministic_candidates(
 
     def _collect_structured_text_values(*sources) -> set:
         values: set = set()
+
+        def _add(val) -> None:
+            if not val or str(val).strip().upper() == "NONE":
+                return
+            normalized = _normalize_value_text(val)
+            # Too short to identify the entity it would suppress. Dropped from the net rather
+            # than from the drawing: the value is still reported by the structured extractor
+            # that produced it, so this only stops it silencing an unrelated twin elsewhere.
+            if len(normalized) < _min_structured_len:
+                return
+            values.add(normalized)
+
         for source in sources:
             if isinstance(source, dict):
                 # title-field-style: {field_key: {"value": ...} | str}
                 for obj in source.values():
-                    val = obj.get("value") if isinstance(obj, dict) else obj
-                    if val and str(val).strip().upper() != "NONE":
-                        values.add(_normalize_value_text(val))
+                    _add(obj.get("value") if isinstance(obj, dict) else obj)
             elif isinstance(source, list):
                 # BOM-row-style: [{col_key: {"value": ...} | str, ...}, ...]
                 for row in source:
                     if not isinstance(row, dict):
                         continue
                     for obj in row.values():
-                        val = obj.get("value") if isinstance(obj, dict) else obj
-                        if val and str(val).strip().upper() != "NONE":
-                            values.add(_normalize_value_text(val))
+                        _add(obj.get("value") if isinstance(obj, dict) else obj)
         return values
 
     def extract_title_ul_kv(entities: list, bbox) -> list:
@@ -761,9 +792,27 @@ async def generate_deterministic_candidates(
         area_fraction = (bw * bh) / (gw * gh)
         return area_fraction > max_fraction
 
-    def extract_zone_entities(entities: list, bbox: tuple | None, global_bounds: tuple | None, exclude_bboxes: list | None = None, exclude_values: set | None = None) -> list:
+    def _learned_rules_for(category: str) -> list:
+        """Learned dismissals a human confirmed *in this category*, and nowhere else.
+
+        Returns [] on any failure: a vault that cannot be read must not stop a comparison, and
+        the failure is already logged once by the drawing_views call site.
+        """
+        try:
+            from ...knowledge.vault_sync import VaultSyncManager
+            return VaultSyncManager.get_instance().get_learned_dismissal_rules(category=category)
+        except Exception:
+            return []
+
+    def extract_zone_entities(entities: list, bbox: tuple | None, global_bounds: tuple | None, exclude_bboxes: list | None = None, exclude_values: set | None = None, learned_category: str | None = None) -> list:
         if not bbox or _bbox_covers_too_much(bbox, global_bounds):
             return []
+
+        # Scoped learned dismissals. Before this the notes and isometric pools saw NO learned
+        # patterns at all — every one of them was applied to drawing_views regardless of the
+        # category a human dismissed it in — so the active-learning flywheel closed for exactly
+        # one of the three generic zones.
+        learned_rules = _learned_rules_for(learned_category) if learned_category else []
 
         result = []
         for e in entities:
@@ -777,6 +826,10 @@ async def generate_deterministic_candidates(
                 if not should_exclude and exclude_values:
                     text = str(e.properties.get("text") or e.properties.get("value") or "")
                     if _normalize_value_text(text) in exclude_values:
+                        should_exclude = True
+                if not should_exclude and learned_rules:
+                    text = str(e.properties.get("text") or e.properties.get("value") or "")
+                    if any(rule.matches(text) for rule in learned_rules):
                         should_exclude = True
                 if not should_exclude:
                     result.append(e)
@@ -871,31 +924,37 @@ async def generate_deterministic_candidates(
         # Matched EXACTLY, never as a substring. These are precise `entity_text` values and
         # several are short ("1", "2A0"); substring matching would silently suppress unrelated
         # content, and nothing in this system measures its own false-negative rate.
+        #
+        # SCOPED to drawing_views. This filter builds the drawing_views pool, so only patterns
+        # a human dismissed *in* drawing_views are evidence here. Previously every category's
+        # patterns were flattened into one set and applied here, which meant a `title_block`
+        # dismissal silently suppressed drawing geometry — a suppression nothing measures.
+        # The notes and isometric pools get the same treatment at their own extraction sites.
         try:
             from ...knowledge.vault_sync import VaultSyncManager
-            learned_patterns = {
-                _normalize_value_text(p)
-                for p in VaultSyncManager.get_instance().get_learned_dismissals()
-            }
-            learned_patterns.discard("")
+            learned_rules = VaultSyncManager.get_instance().get_learned_dismissal_rules(
+                category="drawing_views"
+            )
         except Exception as err:
             logger.warning(f"Learned dismissal rules unavailable, continuing without: {err}")
-            learned_patterns = set()
+            learned_rules = []
 
-        if learned_patterns:
+        if learned_rules:
             before_learned = len(result)
             result = [
                 e for e in result
-                if _normalize_value_text(
-                    e.properties.get("text") or e.properties.get("value") or ""
-                ) not in learned_patterns
+                if not any(
+                    rule.matches(e.properties.get("text") or e.properties.get("value") or "")
+                    for rule in learned_rules
+                )
             ]
             if len(result) != before_learned:
                 # Logged, not silent: this is the one filter driven by stored human decisions
                 # rather than by the drawing, so it must be visible when it fires.
                 logger.info(
                     f"Learned dismissal rules excluded {before_learned - len(result)} "
-                    f"entit(ies) from {len(learned_patterns)} human-confirmed pattern(s)."
+                    f"entit(ies) from {len(learned_rules)} human-confirmed drawing_views "
+                    f"pattern(s)."
                 )
 
         # Third safety net: exclude entities whose text exactly matches a value already
@@ -923,11 +982,13 @@ async def generate_deterministic_candidates(
         ref_entities, ref_notes_bbox_raw, ref_global_bounds,
         exclude_bboxes=[ref_tolerance_bbox_raw, ref_title_bbox_raw, ref_bom_bbox_raw],
         exclude_values=ref_structured_values,
+        learned_category="notes_section",
     )
     rev_notes_entities = extract_zone_entities(
         rev_entities, rev_notes_bbox_raw, rev_global_bounds,
         exclude_bboxes=[rev_tolerance_bbox_raw, rev_title_bbox_raw, rev_bom_bbox_raw],
         exclude_values=rev_structured_values,
+        learned_category="notes_section",
     )
 
     # Extract Isometric view entities specifically for isometric_view diffing
@@ -935,11 +996,13 @@ async def generate_deterministic_candidates(
         ref_entities, ref_iso_bbox_raw, ref_global_bounds,
         exclude_bboxes=[ref_tolerance_bbox_raw, ref_title_bbox_raw, ref_bom_bbox_raw],
         exclude_values=ref_structured_values,
+        learned_category="isometric_view",
     )
     rev_iso_entities = extract_zone_entities(
         rev_entities, rev_iso_bbox_raw, rev_global_bounds,
         exclude_bboxes=[rev_tolerance_bbox_raw, rev_title_bbox_raw, rev_bom_bbox_raw],
         exclude_values=rev_structured_values,
+        learned_category="isometric_view",
     )
 
     # drawing_views is scoped to the `views` zone box, not the residual of everything-minus-
@@ -1471,6 +1534,13 @@ async def perform_drawing_comparison(
 
         if violations_to_save:
             await AuditViolation.insert_many(violations_to_save)
+
+        # Hand the session id back to the client. It was previously created, used as a
+        # foreign key and then discarded into a log line, so nothing downstream could ask
+        # for this comparison's findings by id -- including the ADR-010 summary endpoint.
+        if comparison_response.diagnostics is None:
+            comparison_response.diagnostics = ComparisonDiagnostics()
+        comparison_response.diagnostics.audit_session_id = str(comparison_session.id)
 
         logger.info(
             f"Phase 1.4: Persisted {len(violations_to_save)} comparison violations "

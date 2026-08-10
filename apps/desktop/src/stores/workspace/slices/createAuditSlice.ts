@@ -33,6 +33,21 @@ export const createAuditSlice: StateCreator<WorkspaceState, [], [], AuditSlice> 
     });
     return { hiddenViolationIds: hidden };
   }),
+  // Fold a supervisor verdict the server has already accepted back into the loaded findings, so
+  // the card updates without refetching the session. Takes the values the server stored, never the
+  // ones the UI optimistically hoped for.
+  applyViolationReview: (violationId, resolution, remarks) => {
+    set((state) => ({
+      violations: state.violations.map((v) =>
+        v.id === violationId
+          ? { ...v, resolution_type: resolution, is_resolved: resolution === "APPROVED", checker_remarks: remarks }
+          : v
+      ),
+    }));
+  },
+
+  setActiveSessionId: (sessionId) => set({ activeSessionId: sessionId }),
+
   setViolations: (violations) => {
     set({ violations: violations });
   },

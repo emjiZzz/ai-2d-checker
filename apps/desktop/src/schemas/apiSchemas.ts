@@ -74,6 +74,9 @@ export const ViolationSchema = z.object({
   ref_coordinates: CoordinateSchema.optional(),
   standard_reference: z.string().optional(),
   pen_type: z.string().optional(),
+  // Three-state supervisor verdict. `null`/absent means nobody has reviewed it — which
+  // `is_resolved: false` cannot distinguish from an explicit REJECTED.
+  resolution_type: z.enum(["APPROVED", "REJECTED"]).nullable().optional(),
   is_resolved: z.boolean().optional(),
   resolved_at: z.string().nullable().optional(),
   original_value: z.string().optional(),

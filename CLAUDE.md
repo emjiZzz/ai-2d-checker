@@ -81,9 +81,12 @@ the command in bash.
 ## Known pre-existing test failures
 
 Not caused by current work; do not chase them unless that is the task:
-- `tests/test_vision_ocr_grounding.py` — 2 failures, `MockEntity` lacks a `layer` attribute
-- `apps/desktop/src/pages/workspace/RoomsView.test.tsx` — 1 failure, asserts a literal
-  background colour that is now a CSS variable
+- `tests/test_vision_ocr_grounding.py` — 2 failures. **The cause changed on 2026-08-07**: they
+  now fail with `orchestrator does not have the attribute 'execute_gemini_cascade'`, because
+  ADR-006 deleted it. The older note here said `MockEntity` lacks a `layer` attribute; that is
+  no longer the failure you will see. Verified against a clean tree.
+- ~~`apps/desktop/src/pages/workspace/RoomsView.test.tsx`~~ — **fixed.** ADR-006's rewrite around
+  the removed method picker retired the stale colour assertion. `npx vitest run` is 232/232.
 
 ## Local environment
 

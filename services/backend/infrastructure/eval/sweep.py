@@ -67,6 +67,11 @@ SWEEP_RANGES: dict[str, list[Any]] = {
     "ambiguity_margin": [0.0, 0.04, 0.08, 0.16, 0.32],
     "min_fuzzy_length": [1, 2, 3, 4, 6, 10],
     "max_normalized_move": [0.05, 0.15, 0.25, 0.5, 1.0],
+    # Structured-value suppression. 1 restores the pre-v43 behaviour, where a BOM row numbered
+    # `1` deleted a standalone `１` from the notes pool on both sides and made its removal
+    # unreportable. Swept upward too, because the ceiling is a real trade: raise it far enough
+    # and a genuine title-block value (`8.65`) stops being suppressed and gets double-reported.
+    "min_structured_value_length": [1, 2, 3, 4, 6],
     # Resolution / anchors.
     "label_proximity_tolerance_mm": [0.5, 1.5, 3.0, 6.0, 12.0],
     "char_width_ratio": [0.4, 0.5, 0.6, 0.7, 0.85],
@@ -198,8 +203,21 @@ async def _score(loaded: list[tuple[CorpusPair, tuple]]) -> Measurement | None:
     score = CorpusScore()
     emitted = 0
     for pair, (ref_drawing, rev_drawing, ref_entities, rev_entities) in loaded:
+        # The corpus's own hand-aligned zone boxes, exactly as `runner.py` passes them.
+        # Omitting this was a real defect for two days: the sweep predates the `zone_template`
+        # seam by one day, so it kept sending the engine back to a Mongo lookup that does not
+        # exist offline and silently degraded to plain detection. Every Stage 0.5b conclusion
+        # — including "13 of 14 constants are flat" — was therefore measured against detector
+        # boxes while `tools/eval.py` measured against the boxes users see. Symptom to
+        # recognise: a sweep baseline far below the published eval baseline, plus
+        # `[zone_template] Template lookup failed for '<signature>'` in the log.
+        # See [[Gotcha - Zone Templates Vanish in Offline Eval]].
         candidates, _rollups, _warnings = await generate_deterministic_candidates(
-            ref_drawing, rev_drawing, ref_entities, rev_entities
+            ref_drawing,
+            rev_drawing,
+            ref_entities,
+            rev_entities,
+            zone_templates=(pair.ref.zone_template, pair.rev.zone_template),
         )
         predictions = [
             Prediction.from_candidate(c)

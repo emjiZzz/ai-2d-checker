@@ -148,7 +148,9 @@ in the output, not in a comment.
 `generate_deterministic_candidates` **directly** — not `perform_drawing_comparison`, not the cache.
 
 ```bash
-services/backend/.venv/Scripts/python.exe tools/eval.py --corpus storage/eval --method rag --json out.json
+# NOTE (2026-08-07): as-planned, not as-built. There is no `--corpus` flag — the corpus location
+# is resolved, not passed — and `--method` defaults to `deterministic`. What actually runs:
+services/backend/.venv/Scripts/python.exe tools/eval.py --json out.json
 ```
 
 ### 0f. Cassette + trace capture
@@ -270,7 +272,17 @@ the dispatcher for one release.
 
 ---
 
-## Stage 1 — Real retrieval → rung 1
+## Stage 1 — Real retrieval → ~~rung 1~~ **rung 3**
+
+> [!IMPORTANT] Re-scoped 2026-08-07 — [[ADR-007 Re-scoping the Maturity Ladder]]
+> Rung 1 as written here required an LLM to retrieve *for*, and [[ADR-006 Removing the Three AI Comparison Methods]] deleted every one. Under the re-scoped ladder **rung 1 is "Measured"**
+> (per-category P/R/F1 over ≥8 human-labelled pairs) and this stage becomes **rung 3,
+> "Retrieval-augmented"** — retrieving *prior human decisions*, which is what **1a** always
+> was. **1b is dropped with the methods it fed.** The exit criterion below
+> (retrieval recall@5) is **retired for good**, not deferred.
+>
+> **1a landed 2026-08-07** and its measured effect was **zero** — the live vault holds two
+> learned patterns. Rung 3 is gated on label volume, like every other rung.
 
 *~1.5 weeks. Zero new dependencies under the lexical-first decision.*
 

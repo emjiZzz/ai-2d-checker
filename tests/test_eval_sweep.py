@@ -139,3 +139,36 @@ def test_there_is_no_apply_best_function():
 
     assert not hasattr(sweep, "apply_best")
     assert not hasattr(sweep, "apply_sweep")
+
+
+def test_the_sweep_passes_zone_templates_like_the_runner():
+    """The sweep and the eval runner must reproduce the engine the SAME way.
+
+    They did not for two days: `runner.py` passed `zone_templates=` (the 2026-08-06 seam that
+    moved precision 0.78 -> 1.00) and `sweep.py`, which landed a day earlier, called
+    `generate_deterministic_candidates` with four positional arguments and no templates. The
+    engine fell back to a Mongo lookup that does not exist offline and degraded to plain
+    detection, so the sweep's baseline read F1 0.68 against the eval's 0.92 on the same corpus
+    and the same commit.
+
+    Asserted on the source rather than by running a sweep, because the failure is an *omitted
+    keyword argument* -- there is no return value to check, and a behavioural test would need a
+    full corpus run to show a difference. See
+    docs/vault/06 - .../Gotcha - The Sweep Never Got the Zone Template Seam.
+    """
+    import inspect
+
+    from services.backend.infrastructure.eval import runner, sweep
+
+    runner_src = inspect.getsource(runner)
+    sweep_src = inspect.getsource(sweep)
+
+    assert "zone_templates=" in runner_src, (
+        "the runner stopped passing zone_templates -- if that is deliberate, this whole "
+        "assertion is obsolete and the gotcha needs rewriting, not deleting"
+    )
+    assert "zone_templates=" in sweep_src, (
+        "sweep.py calls generate_deterministic_candidates without zone_templates, so it scores "
+        "against detector boxes while tools/eval.py scores against the hand-aligned ones. Every "
+        "spread it reports would describe a zone regime the product does not use."
+    )

@@ -24,6 +24,8 @@ export interface ViolationItem {
   ref_coordinates?: [number, number];
   standard_reference?: string;
   pen_type?: string;
+  /** null/undefined = unreviewed; REJECTED is a verdict, not an absence. See ReviewControls. */
+  resolution_type?: "APPROVED" | "REJECTED" | null;
   is_resolved?: boolean;
   resolved_at?: string | null;
   original_value?: string;
@@ -189,7 +191,13 @@ export interface AuditSlice {
   selectViolation: (violation: ViolationItem | null) => void;
   toggleViolationVisibility: (violationId: string) => void;
   setViolationsVisibility: (violationIds: string[], hidden: boolean) => void;
+  setActiveSessionId: (sessionId: string | null) => void;
   setViolations: (violations: ViolationItem[]) => void;
+  applyViolationReview: (
+    violationId: string,
+    resolution: "APPROVED" | "REJECTED" | null,
+    remarks: string
+  ) => void;
   loadSessionIntoWorkspace: (
     sessionId: string,
     drawing: DrawingItem,

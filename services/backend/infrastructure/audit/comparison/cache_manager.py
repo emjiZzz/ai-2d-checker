@@ -255,7 +255,21 @@ class ComparisonCacheManager:
     # sheet whose template carries a reshaped zone therefore has a different drawing_views pool
     # than its v41 entry. Inert on templates of plain rectangles, which is every zone nobody has
     # reshaped. See bom/zone_geometry.py.
-    COMPARISON_CACHE_VERSION = "v42"
+    # v43: a BOM row that changed in several columns is ONE finding, not one per column. The
+    # builder collected a marking per cell, so a row where three cells moved together produced
+    # three checklist items where a checker — and the eval corpus's annotation guideline — sees
+    # one. MATCHED cells are untouched and still get a per-column verification row; only the
+    # non-MATCHED cells of a row collapse, anchored on the first changed column in bom_cols
+    # order. A single-changed-cell row is byte-identical to its v42 entry. See
+    # marking_builder.inject_bom_markings.
+    # v43 also: a structured title-block/BOM value shorter than
+    # ComparisonParams.min_structured_value_length (3) no longer suppresses its text-twins in
+    # the generic zone passes. That net is keyed on text alone and applied sheet-wide, so a BOM
+    # row numbered `1` was deleting a standalone `１` from the notes pool on BOTH sides and
+    # making its removal unreportable. Measured: recall 0.85 -> 0.87, notes_section recall
+    # 0.92 -> 1.00, no new false positives. A v42 entry silently under-reports those.
+    # See orchestrator._collect_structured_text_values.
+    COMPARISON_CACHE_VERSION = "v43"
 
     @staticmethod
     def _get_cache_path(

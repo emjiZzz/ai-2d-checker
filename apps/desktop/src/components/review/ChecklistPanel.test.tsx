@@ -26,6 +26,8 @@ function mockWorkspace(violations: any[]) {
     selectViolation: vi.fn(),
     toggleViolationVisibility: vi.fn(),
     setViolationsVisibility: vi.fn(),
+    applyViolationReview: vi.fn(),
+    activeSessionId: null,
   };
   (useWorkspaceStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (selector: (s: typeof state) => unknown) => selector(state)
@@ -47,10 +49,15 @@ function tableResult(rows: Array<{ field: string; original: string; kmti: string
 /** Reads the badge text ("MATCHED" or "CONFLICT") for the row whose field label matches `field`. */
 function badgeTextForRow(field: string): string {
   const fieldEl = screen.getByText(field);
-  // Card structure: outer row div > badge row div > [.., <span>STATUS</span>]
   const card = fieldEl.closest('div')!.parentElement!.parentElement as HTMLElement;
-  const badgeRow = card.querySelector('div > span')?.parentElement as HTMLElement;
-  return within(badgeRow).getByText(/MATCHED|CONFLICT|CHANGED|ADDED|REMOVED/).textContent!;
+  // Find the badge by its content rather than by position in the card. The original walked
+  // `card.querySelector('div > span')`, which broke the moment anything else in the card led with
+  // a span -- the ReviewControls verdict row did exactly that. Content is the stable handle.
+  return within(card)
+    .getByText((_content, el) =>
+      el?.tagName === 'SPAN' && /^(MATCHED|CONFLICT|CHANGED|ADDED|REMOVED)$/.test(el.textContent?.trim() ?? '')
+    )
+    .textContent!;
 }
 
 describe('ChecklistPanel row-to-violation text matching', () => {
@@ -188,5 +195,64 @@ describe('ChecklistPanel row-to-violation text matching', () => {
     );
     // 4 out of 5 rows are MATCHED -> 80% MATCHED
     expect(screen.getByText('80% MATCHED')).toBeInTheDocument();
+  });
+});
+
+describe('ChecklistPanel finding-card layout structure', () => {
+  /** Renders one linked finding and returns its card element. */
+  function renderLinkedFinding(): HTMLElement {
+    mockWorkspace([
+      {
+        id: 'v1',
+        description: 'B',
+        category: 'title_block',
+        pen_type: 'ai_conflict',
+        resolution_type: null,
+        checker_remarks: null,
+      },
+    ]);
+    // Field name deliberately not a taxonomy label ("Scale", "Title", ...) — those also render as
+    // feature-group headers, and getByText would find two elements.
+    render(<ChecklistPanel aiChecklistResults={{ title_block: tableResult([{ field: 'WidgetRef', original: 'A', kmti: 'B' }]) }} />);
+    return screen.getByText('WidgetRef').closest('div')!.parentElement!.parentElement as HTMLElement;
+  }
+
+  test('verdict controls are a child of the card, not of the Dismiss/Correct row', () => {
+    // The bug this pins: ReviewControls was appended as a fourth inline child of the badge row,
+    // which is a nowrap flex row. Its own `flex: 0 0 100%` could not wrap there, so it overflowed
+    // into the panel's overflow-x:hidden and "Approve" rendered as "Ap". Being a direct child of
+    // the card's COLUMN flex is what actually gives it a full-width line -- no CSS can rescue it
+    // from inside that row.
+    const card = renderLinkedFinding();
+    const controls = within(card).getByTestId('review-controls');
+
+    expect(controls.parentElement).toBe(card);
+
+    const dismissRow = within(card).getByText('Dismiss').closest('div')!.parentElement!;
+    expect(dismissRow.contains(controls)).toBe(false);
+  });
+
+  test('verdict controls render below the comparison values, not above them', () => {
+    // Evidence before verdict: a reviewer should see Original vs Revision before deciding.
+    const card = renderLinkedFinding();
+    const grid = card.querySelector('.cmp-grid-diff')!;
+    const controls = within(card).getByTestId('review-controls');
+
+    expect(grid.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('comparison values keep both columns in the DOM order a two-up grid needs', () => {
+    // The grid is deliberately never stacked -- two values you cannot see side by side are not a
+    // comparison. That makes source order load-bearing: header, header, value, value.
+    const card = renderLinkedFinding();
+    const grid = card.querySelector('.cmp-grid-diff')!;
+
+    expect([...grid.children].map((c) => c.className)).toEqual([
+      'cmp-title',
+      'cmp-h-ref',
+      'cmp-h-rev',
+      'cmp-v-ref',
+      'cmp-v-rev',
+    ]);
   });
 });

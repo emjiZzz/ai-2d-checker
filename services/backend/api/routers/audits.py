@@ -15,7 +15,11 @@ from google.genai import types
 from ...domain.models.annotation_document import AnnotationDocument
 from ...domain.models.comparison_method import DETERMINISTIC
 from ...domain.models.audit_session import AuditSession
-from ...domain.models.audit_violation import AuditViolation
+from ...domain.models.audit_violation import (
+    RESOLUTION_APPROVED,
+    RESOLUTION_REJECTED,
+    AuditViolation,
+)
 from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.extracted_entity import ExtractedEntity
 from ...domain.models.client import ClientDocument
@@ -26,6 +30,9 @@ from ...infrastructure.cad.redline_writer import RedlineWriter, build_findings
 from ...infrastructure.cad.viewport_transform import ViewportTransform
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...infrastructure.audit.report_generator import ReportGenerator
+from ...infrastructure.audit.summary import Finding, summarize
+from ...infrastructure.retrieval.encoder import EncoderError
+from ...infrastructure.retrieval.service import rebuild_lessons_index
 from ...infrastructure.utils.text import (
     safe_decode,
     strip_mtext,
@@ -50,6 +57,8 @@ from ..schemas import (
     AuditFeedbackResponse,
     CategoryComparison,
     CanvasMarking,
+    ComparisonSummaryResponse,
+    SummaryClaimResponse,
 )
 
 router = APIRouter()
@@ -118,6 +127,7 @@ async def launch_audit(
             reference_drawing_id=session.reference_drawing_id,
             standard_id=session.standard_id,
             client_name=session.client_name,
+            created_at=session.created_at,
             status=session.status,
             compliance_score=session.compliance_score,
             confidence_score=session.confidence_score,
@@ -156,6 +166,7 @@ async def list_audit_sessions(show_deleted: bool = False):
             reference_drawing_id=s.reference_drawing_id,
             standard_id=s.standard_id,
             client_name=s.client_name,
+            created_at=s.created_at,
             status=s.status,
             compliance_score=s.compliance_score,
             confidence_score=s.confidence_score,
@@ -192,6 +203,7 @@ async def list_trash_sessions():
             reference_drawing_id=s.reference_drawing_id,
             standard_id=s.standard_id,
             client_name=s.client_name,
+            created_at=s.created_at,
             status=s.status,
             compliance_score=s.compliance_score,
             confidence_score=s.confidence_score,
@@ -247,6 +259,7 @@ async def get_audit_session(id: str):
             reference_drawing_id=session.reference_drawing_id,
             standard_id=session.standard_id,
             client_name=session.client_name,
+            created_at=session.created_at,
             status=session.status,
             compliance_score=session.compliance_score,
             confidence_score=session.confidence_score,
@@ -331,6 +344,7 @@ async def get_session_violations(id: str):
             coordinates=v.coordinates,
             standard_reference=v.standard_reference,
             pen_type=v.pen_type,
+            resolution_type=v.resolution_type,
             is_resolved=v.is_resolved,
             resolved_at=v.resolved_at,
             checker_remarks=v.checker_remarks,
@@ -341,6 +355,59 @@ async def get_session_violations(id: str):
     return StandardResponse(success=True, data=res)
 
 
+@router.get(
+    "/audits/sessions/{id}/summary",
+    response_model=StandardResponse[ComparisonSummaryResponse],
+    summary="Grounded LLM summary of a session's findings (ADR-010)",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_session_summary(id: str):
+    """Summarise this session's findings, or say precisely why there is no summary.
+
+    ADR-010. The model receives the structured finding list and nothing else, and every generated
+    summary passes a deterministic verification gate — cited ids must resolve, every finding must
+    be cited by some claim, and the echoed count must match — before it can be returned. A summary
+    that fails is **withheld whole** and `fallback_text` carries the deterministic template.
+
+    This endpoint never fails because a summary could not be produced. `status` distinguishes the
+    reasons (`disabled` is the default, since ADR-010 ships this opt-in and off), and
+    `fallback_text` is populated on every path, so a client always has something true to render.
+    """
+    violations = await AuditViolation.find(AuditViolation.audit_session_id == id).to_list()
+
+    findings = [
+        Finding(
+            id=str(v.id),
+            category=v.category,
+            # The orchestrator writes descriptions as "[CHANGED] <details>"; the bracketed verb is
+            # the deterministic status and is worth handing over as a field rather than leaving the
+            # model to parse it back out of prose.
+            status=(v.description.split("]")[0].lstrip("[") if v.description.startswith("[") else v.severity),
+            description=v.description,
+        )
+        for v in violations
+    ]
+
+    outcome = await asyncio.to_thread(summarize, findings)
+
+    return StandardResponse(
+        success=True,
+        data=ComparisonSummaryResponse(
+            status=outcome.status.value,
+            headline=outcome.headline,
+            claims=[
+                SummaryClaimResponse(text=c.text, finding_ids=c.finding_ids) for c in outcome.claims
+            ],
+            fallback_text=outcome.fallback_text,
+            withheld_reasons=[f.value for f in outcome.withheld_reasons],
+            withheld_detail=outcome.withheld_detail,
+            finding_count=outcome.finding_count,
+            model_used=outcome.model_used,
+            cached=outcome.cached,
+        )
+    )
+
+
 class ViolationReviewRequest(BaseModel):
     is_valid: bool
     remarks: str = ""
@@ -349,50 +416,57 @@ class ViolationReviewRequest(BaseModel):
 @router.patch(
     "/audits/violations/{id}/review",
     response_model=StandardResponse[AuditViolationResponse],
-    summary="Record supervisor review of a violation, accumulating lessons learned in the vector store",
+    summary="Record supervisor review of a violation",
     dependencies=[Depends(get_auth_token)]
 )
 async def review_violation(id: str, request: ViolationReviewRequest):
     """
-    Supervisor reviewing a violation. Confirmed findings are embedded and automatically
-    written to the vector store (`lessons_learned`), updating AI memory for future audits.
+    Supervisor reviewing a violation. Records the verdict, remarks and resolution type, and
+    re-derives the `lessons` retrieval index so a confirmed finding informs later audits.
+
+    The violation document is the source of truth; the index is a derived artifact rebuilt
+    from it. That is deliberate — see the note below.
     """
     violation = await get_or_404(AuditViolation, id, "Audit violation not found.")
 
     violation.is_resolved = request.is_valid
     violation.resolved_at = datetime.now(timezone.utc)
     violation.checker_remarks = request.remarks
-    violation.resolution_type = "APPROVED" if request.is_valid else "REJECTED"
+    violation.resolution_type = (
+        RESOLUTION_APPROVED if request.is_valid else RESOLUTION_REJECTED
+    )
     await violation.save()
 
-    # Index into vector database
+    # R1 (ADR-008): re-derive the lessons index from the confirmed violations.
+    #
+    # What was here before never worked and could not have. It called
+    # `provider.embed_text(...)` — SINGULAR — against a provider defining only `embed_texts`,
+    # an AttributeError on the first line of a `try` whose `except Exception` logged a warning
+    # and returned success. The `lessons_learned` collection was **never written a single
+    # record** from the day the code was authored, and nothing noticed, because the read path
+    # queried that same empty index and "no relevant lessons" is what a healthy system returns
+    # for a new drawing. See docs/vault/06 - .../Gotcha - A Swallowed AttributeError Made a
+    # Write Path a Permanent No-Op.md.
+    #
+    # Two structural changes make that failure mode unavailable rather than merely fixed:
+    #
+    # 1. The index is DERIVED from AuditViolation documents, not written alongside them. There
+    #    is one source of truth, the violation itself, which is already saved above. A failed
+    #    rebuild loses nothing and is repaired by the next review or by startup.
+    # 2. The guard below catches what a rebuild can actually raise. It does NOT catch
+    #    `Exception`, because that is what converted a misspelled method name into a silent
+    #    permanent no-op — an AttributeError here must crash a test, loudly.
+    #
+    # Pinned by a test that performs the review and then reads the record back out of the
+    # index, rather than asserting the request returned 200.
     try:
-        from ...infrastructure.ai.vectorstore.embedding_provider import EmbeddingProvider
-        from ...infrastructure.ai.vectorstore.lancedb_manager import LanceDBManager
-
-        provider = EmbeddingProvider()
-        db_manager = LanceDBManager()
-
-        text_to_embed = f"Violation Category: {violation.category}\nDescription: {violation.description}\nSupervisor Remarks: {request.remarks}\nValid: {request.is_valid}"
-        vector = provider.embed_text(text_to_embed)
-
-        record = {
-            "vector": vector,
-            "text": text_to_embed,
-            "metadata": {
-                "violation_id": str(violation.id),
-                "audit_session_id": str(violation.audit_session_id),
-                "is_valid": request.is_valid,
-                "remarks": request.remarks,
-                "category": violation.category,
-                "severity": violation.severity,
-                "timestamp": datetime.now(timezone.utc).timestamp()
-            }
-        }
-        db_manager.write_embeddings("lessons_learned", [record])
-        logger.info(f"Phase 8.2: Violation {id} indexed as a lesson learned in vector index.")
-    except Exception as vec_err:
-        logger.warning(f"Failed to index reviewed violation into lessons_learned (non-fatal): {vec_err}")
+        await rebuild_lessons_index()
+    except (OSError, ValueError, EncoderError) as index_err:
+        logger.error(
+            f"[retrieval] Review of violation {id} saved, but the lessons index rebuild "
+            f"failed: {index_err}. The verdict is persisted; the index is stale until the "
+            f"next review or restart."
+        )
 
     return StandardResponse(
         success=True,
@@ -409,6 +483,7 @@ async def review_violation(id: str, request: ViolationReviewRequest):
             coordinates=violation.coordinates,
             standard_reference=violation.standard_reference,
             pen_type=violation.pen_type,
+            resolution_type=violation.resolution_type,
             is_resolved=violation.is_resolved,
             resolved_at=violation.resolved_at,
             checker_remarks=violation.checker_remarks,

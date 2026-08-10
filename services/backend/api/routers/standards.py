@@ -179,7 +179,7 @@ async def delete_standard(id: str):
             detail=f"Standard document not found for ID: {id}"
         )
 
-    # Remove all associated text chunks from the vector store
+    # Remove all associated text chunks (MongoDB; there is no vector index)
     chunks = await StandardChunk.find(StandardChunk.standard_id == id).to_list()
     for chunk in chunks:
         await chunk.delete()
@@ -199,62 +199,15 @@ async def delete_standard(id: str):
     )
 
 
-@router.post(
-    "/admin/standards/reindex",
-    response_model=StandardResponse[dict],
-    summary="Re-embed all existing standard chunks into the local semantic vector index",
-    dependencies=[Depends(get_auth_token)]
-)
-async def reindex_standards():
-    """
-    Iterates all StandardChunk records in MongoDB and writes their text embeddings
-    to the local LanceDB JSON vector index in batches.
-    """
-    from ...infrastructure.ai.vectorstore.embedding_provider import EmbeddingProvider
-    from ...infrastructure.ai.vectorstore.lancedb_manager import LanceDBManager
-
-    all_chunks = await StandardChunk.find_all().to_list()
-    if not all_chunks:
-        return StandardResponse(success=True, data={"reindexed": 0, "message": "No standard chunks found in database."})
-
-    provider = EmbeddingProvider()
-    db_manager = LanceDBManager()
-
-    batch_size = 50
-    total_written = 0
-    errors = 0
-
-    for i in range(0, len(all_chunks), batch_size):
-        batch = all_chunks[i:i + batch_size]
-        try:
-            texts = [c.content for c in batch]
-            vectors = provider.embed_texts(texts)
-            records = [
-                {
-                    "vector": v,
-                    "text": t,
-                    "metadata": {
-                        "standard_id": str(c.standard_id),
-                        "standard_hash": getattr(c, "standard_hash", ""),
-                        "section_header": c.section_header or "General",
-                        "chunk_index": c.chunk_index,
-                        "page_number": (c.metadata or {}).get("page_number", 1)
-                    }
-                }
-                for v, t, c in zip(vectors, texts, batch)
-            ]
-            db_manager.write_embeddings("standards_reference", records)
-            total_written += len(records)
-            logger.info(f"Reindex: wrote batch {i // batch_size + 1} ({len(records)} vectors).")
-        except Exception as batch_err:
-            logger.warning(f"Reindex batch {i // batch_size + 1} failed: {batch_err}")
-            errors += 1
-
-    return StandardResponse(
-        success=True,
-        data={
-            "reindexed": total_written,
-            "errors": errors,
-            "message": f"Successfully re-indexed {total_written} standard chunks into the semantic vector store."
-        }
-    )
+# R0 (ADR-008): the POST /admin/standards/reindex endpoint was deleted here.
+#
+# It re-embedded every StandardChunk into "the local semantic vector index" and reported
+# `Successfully re-indexed N standard chunks into the semantic vector store.` What it
+# actually wrote was `np.random.default_rng(sha256(text))` — hash-seeded Gaussian noise —
+# into a JSON file. It had **zero callers**: no frontend route, no test, no other backend
+# module ever invoked it, so it was an admin endpoint whose only possible effect was to fill
+# a fake index with noise and return a success message saying otherwise.
+#
+# R1 reintroduces indexing over real lexical retrieval, triggered from the ingest path
+# rather than an unreachable admin route. See docs/vault/01 - Architecture/Standards Knowledge
+# — Staged Plan.md (named "Second Brain — Staged Plan" until 2026-08-10).

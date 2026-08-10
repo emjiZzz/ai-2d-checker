@@ -206,6 +206,14 @@ export const usePhysicalComparison = () => {
           refBounds
         });
 
+        // The backend persists this comparison's findings under an AuditSession and now
+        // returns its id. Recording it is what lets the ADR-010 summary panel ask for a
+        // summary of THIS comparison -- previously the id existed only in a server log.
+        const comparisonSessionId = data.diagnostics?.audit_session_id ?? null;
+        if (comparisonSessionId) {
+          useWorkspaceStore.getState().setActiveSessionId(comparisonSessionId);
+        }
+
         // Use the newly added store action instead of setState
         setViolations(mappedMarkings);
         useReviewStore.setState({ showViolations: true, isPhysicalComparisonEnabled: true });

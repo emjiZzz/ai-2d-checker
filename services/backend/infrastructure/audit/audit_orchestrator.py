@@ -8,11 +8,11 @@ from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.standard_chunk import StandardChunk
 from ...domain.models.standard_document import StandardDocument
 from ...logger import logger
+from .. import retrieval
 from .ai_engine import AIEngine
 from .confidence import ConfidenceScorer
 from .rule_engine import RuleEngine
 from .violation_detector import ViolationDetector
-from ..ai.vectorstore.retrieval_engine import RetrievalEngine
 
 
 class AuditOrchestrator:
@@ -168,13 +168,25 @@ class AuditOrchestrator:
         top_k: int = 5
     ) -> list[StandardChunk]:
         """
-        Retrieves the most semantically-relevant StandardChunk snippets for this
-        drawing by performing keyword matching against the drawing's layer names,
-        entity types extracted from ``entity_counts``, and the file name stem.
+        Retrieves the StandardChunk clauses most relevant to this drawing, ranked by the local
+        lexical index (R1, ADR-008), from keywords taken from the drawing's layer names, the
+        entity types in ``entity_counts``, and the file name stem.
 
-        This is the MongoDB-backed RAG retrieval stage. It feeds historically-resolved
-        grounding chunks into the Gemini context window as "Lessons Learned",
-        reducing hallucination and improving compliance specificity.
+        Feeds the Gemini context window as "Lessons Learned", so this is *retrieval-augmented*
+        in the real sense — there is a generation step downstream. The retrieval itself is
+        **lexical, not semantic**: char n-gram TF-IDF cosine. It matches shared character
+        sequences, so it handles `ユニット No` against `ユニットNo.` and tolerates a typo, but
+        it cannot match a synonym or an English term against its Japanese equivalent.
+
+        Stating that precisely matters here more than usual. This docstring claimed
+        "semantically relevant" for months, and the vector stage that would have justified the
+        word turned out to be SHA-256-seeded noise searching an index file that never existed.
+        Dense embeddings stay behind `retrieval.Encoder` and must beat this on the R2 metric
+        before they ship.
+
+        Falls back to substring matching if the index is unbuilt — see
+        ``_retrieve_via_lexical_index`` for why an absent index must not look like an empty
+        result.
 
         Args:
             drawing:      The DrawingDocument being audited.
@@ -212,57 +224,102 @@ class AuditOrchestrator:
         unique_keywords = list(dict.fromkeys(keywords))[:20]
         logger.debug(f"RAG: Querying StandardChunks with keywords: {unique_keywords}")
 
-        # Build a MongoDB $or query: match chunks whose content contains any keyword
-        # This is a pragmatic full-text substring match. Once LanceDB is fully wired,
-        # this will be replaced with semantic vector similarity search.
-        keyword_regex_list = [{"content": {"$regex": kw, "$options": "i"}} for kw in unique_keywords]
+        try:
+            # R1 (ADR-008): rank with the local lexical index. Char n-gram TF-IDF, exact
+            # cosine, offline. This is the stage that R0 emptied — the version before it
+            # searched hash-seeded noise and logged "Retrieved N semantic match(es)".
+            ranked = await AuditOrchestrator._retrieve_via_lexical_index(
+                query_text=f"{drawing.file_name} " + " ".join(unique_keywords),
+                standard_ids=standard_ids,
+                top_k=top_k,
+            )
+            if ranked is not None:
+                return ranked
+
+            # The index could not answer — missing, empty or built by another encoder. Fall
+            # back to substring matching rather than returning nothing, because "no index" and
+            # "no relevant clauses" are different answers and only one of them should look
+            # like an empty result. `query()` has already logged which it was.
+            logger.warning(
+                "[retrieval] standards index unusable; falling back to MongoDB substring "
+                "matching for this audit. Results will be worse, not absent."
+            )
+            return await AuditOrchestrator._retrieve_via_substring(
+                unique_keywords, standard_ids, top_k
+            )
+        except Exception as rag_err:
+            # Non-fatal: if retrieval fails, the audit continues without lessons
+            logger.warning(f"RAG retrieval query failed (non-fatal, continuing audit): {rag_err}")
+            return []
+
+    @staticmethod
+    async def _retrieve_via_lexical_index(
+        query_text: str,
+        standard_ids: list[str],
+        top_k: int,
+    ) -> list[StandardChunk] | None:
+        """Rank via the lexical index. Returns None when the index cannot answer at all.
+
+        `None` and `[]` mean different things here and the distinction is the whole point of
+        R1's risk section: `[]` is "the index searched and nothing was relevant", `None` is
+        "there was no index to search". Only the second justifies a fallback.
+        """
+        # The index spans every standard; this audit is scoped to the active ones. Over-fetch
+        # so that filtering to `standard_ids` cannot empty the result set just because the
+        # global top-k happened to come from standards this audit does not use.
+        outcome = retrieval.query(
+            query_text,
+            collection=retrieval.STANDARDS,
+            top_k=max(top_k * 4, top_k),
+        )
+        if not outcome.answered:
+            return None
+
+        active = set(standard_ids)
+        ordered_ids = [
+            hit.record.id
+            for hit in outcome.hits
+            if not active or hit.record.metadata.get("standard_id") in active
+        ][:top_k]
+
+        if not ordered_ids:
+            logger.info("[retrieval] standards index answered with no in-scope clauses.")
+            return []
+
+        # Fetch the real documents rather than reconstructing them from index metadata. The
+        # deleted code built StandardChunk objects out of vector payloads and filled the gaps
+        # with placeholders like `id="vector_chunk"`; a retrieved chunk should be the chunk.
+        found = await StandardChunk.find({"_id": {"$in": ordered_ids}}).to_list()
+        by_id = {str(chunk.id): chunk for chunk in found}
+
+        # Mongo returns these in arbitrary order; restore the ranking retrieval produced.
+        ranked = [by_id[cid] for cid in ordered_ids if cid in by_id]
+        logger.info(
+            f"[retrieval] standards index: {len(ranked)} clause(s) ranked lexically "
+            f"(top score {outcome.hits[0].score:.3f})."
+        )
+        return ranked
+
+    @staticmethod
+    async def _retrieve_via_substring(
+        unique_keywords: list[str],
+        standard_ids: list[str],
+        top_k: int,
+    ) -> list[StandardChunk]:
+        """Case-insensitive `$regex` OR across keywords — the pre-R1 behaviour, kept as fallback.
+
+        Strictly worse than the lexical index: it cannot rank (Mongo returns whatever it finds
+        first), and a keyword either appears verbatim or does not. It is here so that an
+        unbuilt index degrades the audit instead of silently removing standards grounding.
+        """
         query_filter = {
             "standard_id": {"$in": standard_ids},
-            "$or": keyword_regex_list
+            "$or": [{"content": {"$regex": kw, "$options": "i"}} for kw in unique_keywords],
         }
-
         try:
-            matched: list[StandardChunk] = []
-
-            # 1. Fetch semantic matches from our Local Vector Index first! (Primary - Phase 6.1)
-            try:
-                engine = RetrievalEngine()
-                # Query vector database with drawing file name or top keywords
-                query_text = f"{drawing.file_name} " + " ".join(unique_keywords[:5])
-                vector_matches = engine.query(query_text, top_k=top_k, collection_name="standards_reference")
-                logger.info(f"RAG Vector Index: Retrieved {len(vector_matches)} semantic match(es).")
-
-                # Convert vector matches (dict) to StandardChunk models
-                for vm in vector_matches:
-                    meta = vm.get("metadata", {})
-                    matched.append(
-                        StandardChunk(
-                            id=meta.get("chunk_id", "vector_chunk"),
-                            standard_id=meta.get("standard_id", standard_ids[0]),
-                            section_header=meta.get("section_header", "Semantic Standard Clause"),
-                            content=vm["text"],
-                            page_number=meta.get("page_number", 1)
-                        )
-                    )
-            except Exception as vec_err:
-                logger.warning(f"RAG vector index query failed (non-fatal, continuing): {vec_err}")
-
-            # 2. MongoDB keyword query fallback (Secondary - Phase 6.1)
-            # If we got fewer than top_k semantic results, back-fill using keyword matches
-            if len(matched) < top_k:
-                remaining_k = top_k - len(matched)
-                try:
-                    fallback_chunks = await StandardChunk.find(query_filter).limit(remaining_k).to_list()
-                    logger.info(f"RAG MongoDB Fallback: Retrieved {len(fallback_chunks)} matching chunk(s).")
-                    for fc in fallback_chunks:
-                        # Prevent duplicate content
-                        if not any(c.content == fc.content for c in matched):
-                            matched.append(fc)
-                except Exception as mongo_err:
-                    logger.warning(f"MongoDB fallback chunk lookup failed: {mongo_err}")
-
+            matched = await StandardChunk.find(query_filter).limit(top_k).to_list()
+            logger.info(f"Standards substring fallback: {len(matched)} matching chunk(s).")
             return matched[:top_k]
-        except Exception as rag_err:
-            # Non-fatal: if RAG retrieval fails, the audit continues without lessons
-            logger.warning(f"RAG retrieval query failed (non-fatal, continuing audit): {rag_err}")
+        except Exception as mongo_err:
+            logger.warning(f"Standard chunk keyword lookup failed: {mongo_err}")
             return []

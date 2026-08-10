@@ -45,6 +45,8 @@ export interface AuditViolation {
   coordinates: number[][] | null;
   standard_reference: string | null;
   pen_type: string;
+  /** null = unreviewed. Distinct from REJECTED, which `is_resolved: false` also produces. */
+  resolution_type: "APPROVED" | "REJECTED" | null;
   is_resolved: boolean;
   resolved_at: string | null;
   checker_remarks: string | null;

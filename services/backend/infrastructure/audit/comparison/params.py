@@ -72,6 +72,11 @@ _BINDINGS: dict[str, tuple[str, str]] = {
     "ambiguity_margin": ("..comparison.marking_reconciler", "AMBIGUITY_MARGIN"),
     "min_fuzzy_length": ("..comparison.marking_reconciler", "MIN_FUZZY_LENGTH"),
     "max_normalized_move": ("..comparison.marking_reconciler", "MAX_NORMALIZED_MOVE"),
+    # orchestrator — the structured-value suppression net's collision floor
+    "min_structured_value_length": (
+        "..comparison.orchestrator",
+        "MIN_STRUCTURED_VALUE_LENGTH",
+    ),
     # zone_detector — the tier the plan warns about; see `ZONE_PARAMS`
     "cluster_radius": ("..bom.zone_detector", "CLUSTER_RADIUS"),
     "min_iso_ellipses": ("..bom.zone_detector", "MIN_ISO_ELLIPSES"),
@@ -131,6 +136,27 @@ class ComparisonParams:
     ambiguity_margin: float = 0.08
     min_fuzzy_length: int = 4
     max_normalized_move: float = 0.25
+
+    # --- structured-value suppression -------------------------------------
+    # Values captured by title-block/BOM extraction are excluded from the generic zone passes
+    # so they are not reported twice. That net is keyed on text alone and applied sheet-wide,
+    # so a value shorter than this floor -- a BOM row numbered `1`, a grid-ish `A` -- would
+    # suppress every innocent twin of that string in every zone, on both sides, making the
+    # twin's deletion unreportable. Measured: at 1 (net disabled for nothing) a `１` deleted
+    # from the notes zone went unreported because a BOM row was numbered `1`.
+    # **Swept 2026-08-07, and the shape is a step, not a curve.** F1 over the declared range:
+    # 1 -> 0.913, then 2 / 3 / 4 / 6 -> 0.923, identical. The only transition is 1 -> 2, which
+    # is the defect itself; above 2 this corpus cannot distinguish any value. So 3 is
+    # **conservative and arbitrary within [2, inf)** on current evidence, not a measured
+    # optimum, and this corpus cannot make it one.
+    #
+    # The upper bound is UNTESTED rather than shown safe. At 6 the corpus's own structured
+    # values `8.65` and `5.31` (4 chars) leave the net entirely and F1 still did not move —
+    # which says the spatial `exclude_bboxes` are doing nearly all the work here and the value
+    # net is close to redundant above length 1. On a sheet where a title value does sit outside
+    # its zone box (the case this net exists for) a high floor would double-report it. Do not
+    # read "flat above 2" as "safe to raise".
+    min_structured_value_length: int = 3
 
     # --- zone detection (sweep separately — see ZONE_PARAMS) --------------
     cluster_radius: float = 200.0

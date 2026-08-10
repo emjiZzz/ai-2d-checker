@@ -315,6 +315,21 @@ def inject_bom_markings(
                 ("REMARK", " / Remark")
             ]
 
+        # Non-MATCHED cells are collected here and emitted as ONE finding for the row.
+        # The annotation guideline is explicit -- "A BOM row edited => 1 CHANGED per row, not
+        # per cell" -- and the engine used to emit one per column, so a row where three cells
+        # moved together produced three findings where a checker (and a human label) sees one.
+        #
+        # MATCHED cells are deliberately NOT collapsed. They are verification items in the
+        # checklist, not findings; the guideline rule is about findings, and folding the
+        # unchanged columns away would delete the per-column evidence a checker signs off on.
+        #
+        # The guideline's escape hatch -- "unless two cells changed for unrelated reasons" --
+        # stays a HUMAN judgement. Do not try to detect it here: the engine has no way to tell
+        # one semantic edit from two coincident ones, and guessing would put an unauditable
+        # split back into the number this collapse exists to make honest.
+        changed_cells: list[dict] = []
+
         for col_key, display_label in bom_cols:
             rev_cell = rev_row.get(col_key, {"value": "NONE", "coordinates": None})
             orig_cell = ref_row.get(col_key, {"value": "NONE", "coordinates": None})
@@ -384,12 +399,60 @@ def inject_bom_markings(
                     marking_entry["coordinates"] = kmti_coords
                 if orig_coords is not None:
                     marking_entry["ref_coordinates"] = orig_coords
-                    
-                # Spatial boundary filter (Stray BOM marker over Title Block area)
+
+                # Spatial boundary filter (Stray BOM marker over Title Block area).
+                # Stays per-CELL and ahead of the collapse: it is a judgement about where one
+                # cell's glyph landed, so a stray cell must drop out before it can contribute
+                # its coordinates to a row-level finding.
                 if kmti_coords is not None and kmti_coords[1] < 60.0:
                     continue
-                    
-                clean_markings.append(marking_entry)
+
+                if status_val == "MATCHED":
+                    clean_markings.append(marking_entry)
+                else:
+                    marking_entry["_display_label"] = display_label
+                    marking_entry["_orig_val"] = orig_val
+                    marking_entry["_kmti_val"] = kmti_val
+                    changed_cells.append(marking_entry)
+
+        # One finding per row. Anchored on the FIRST changed cell in `bom_cols` order -- a
+        # deterministic anchor, matching the convention the guideline already uses for bulk
+        # findings, so the same edit always reports at the same place.
+        if changed_cells:
+            anchor = changed_cells[0]
+            statuses = {c["status"] for c in changed_cells}
+            # Uniform when the whole row moved one way (Safeguard 1 already forces ADDED/
+            # REMOVED to CHANGED whenever both rows exist, so a mix means the row genuinely
+            # both gained and lost content -- which is a change).
+            row_status = statuses.pop() if len(statuses) == 1 else "CHANGED"
+
+            if len(changed_cells) == 1:
+                # Single-cell rows keep today's exact wording, so the common case is
+                # byte-identical to the pre-collapse engine and the diff is auditable.
+                details_str = anchor["details"]
+            else:
+                parts = "; ".join(
+                    f"{c['_display_label']} {c['_orig_val']} vs {c['_kmti_val']}"
+                    for c in changed_cells
+                )
+                details_str = (
+                    f"BOM [{row_label}] {len(changed_cells)} columns changed: {parts}"
+                )
+
+            row_entry = {
+                "text_content": anchor["text_content"],
+                "status": row_status,
+                "details": details_str,
+                "category": "bill_of_materials",
+                "feature": anchor["feature"],
+                "original_value": anchor["original_value"] if row_status == "CHANGED" else None,
+            }
+            if "coordinates" in anchor:
+                row_entry["coordinates"] = anchor["coordinates"]
+            if "ref_coordinates" in anchor:
+                row_entry["ref_coordinates"] = anchor["ref_coordinates"]
+
+            clean_markings.append(row_entry)
 
 def _bom_item_numbers(bom_rows: list) -> set:
     nums = set()

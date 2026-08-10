@@ -5,6 +5,9 @@ import { useRoomStore } from "../../stores/roomStore";
 import { submitAuditFeedbackPayload } from "../../services/auditsApi";
 import { getTaxonomyWithOther, OTHER_FEATURE_KEY, DEFERRED_FEATURE_KEYS } from "../../utils/comparisonTaxonomy";
 import { CorrectionControls } from "./CorrectionControls";
+import { ReviewControls } from "./ReviewControls";
+import { SummaryPanel } from "./SummaryPanel";
+import { isPersistedViolationId } from "../../utils/violationIdentity";
 
 interface ChecklistPanelProps {
   aiChecklistResults: Record<string, any>;
@@ -66,6 +69,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
   const selectViolation = useWorkspaceStore((s) => s.selectViolation);
   const toggleViolationVisibility = useWorkspaceStore((s) => s.toggleViolationVisibility);
   const setViolationsVisibility = useWorkspaceStore((s) => s.setViolationsVisibility);
+  const applyViolationReview = useWorkspaceStore((s) => s.applyViolationReview);
+  const activeSessionId = useWorkspaceStore((s) => s.activeSessionId);
 
   const toggleChecklistPanel = (key: string) => {
     setExpandedChecklistPanels((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -138,12 +143,20 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           cursor: matchingViolation ? "pointer" : "default",
           opacity: isHidden || dismissedRowIds[rowId] ? 0.4 : 1,
           boxShadow: isSelected ? "0 6px 20px rgba(37,99,235,0.15)" : "0 1px 4px rgba(0,0,0,0.05)",
-          transition: "all 0.2s ease"
+          transition: "all 0.2s ease",
+          // The card is the query container for `.cmp-grid` below. This panel is a flexlayout
+          // tabset whose width the user drags, so a viewport media query would be measuring the
+          // wrong box entirely — at the 220px floor the card only has ~138px of content.
+          minWidth: 0,
+          containerType: "inline-size"
         }}
       >
-        {/* Badge Row */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        {/* Badge Row. Both this row and the cluster inside it must wrap: at the panel's minimum
+            width the eye + Dismiss + Correct + status pill do not fit on one line, and the panel
+            root is overflow-x-hidden, so anything that overflows is silently clipped rather than
+            scrollable. */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", minWidth: 0 }}>
+          <div style={{ display: "flex", gap: "10px", rowGap: "6px", alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
             <div
               onClick={(e) => {
                 if (matchingViolation) {
@@ -158,7 +171,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                 alignItems: "center"
               }}
             >
-              {matchingViolation && (
+              {matchingViolation && statusText !== "MATCHED" && isPersistedViolationId(matchingViolation.id) && (
                 isHidden ? <EyeOff size={14} /> : <Eye size={14} />
               )}
             </div>
@@ -276,43 +289,91 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           </span>
         </div>
 
-        {/* Comparison Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", textAlign: "center", background: "var(--sidebar-item-hover)", border: "1px solid var(--border-color)", padding: "12px", borderRadius: "10px" }}>
+        {/* Comparison Grid. Layout and type scale deliberately live in the .cmp-grid stylesheet
+            rather than here: inline styles outrank stylesheet rules, so the container query could
+            never override a value declared inline. Only status-dependent styling stays inline. */}
+        <div className="cmp-grid cmp-grid-diff" style={{ background: "var(--sidebar-item-hover)", border: "1px solid var(--border-color)", borderRadius: "10px" }}>
           {/* Field Title */}
-          <div style={{ gridColumn: "span 2", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "2px", textTransform: "uppercase", textAlign: "left", letterSpacing: "0.02em" }}>
+          <div className="cmp-title" style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "2px", textTransform: "uppercase", textAlign: "left", letterSpacing: "0.02em" }}>
             {row.field}
           </div>
 
           {/* Column Headers */}
-          <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          <div className="cmp-h-ref" style={{ fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
             Original
           </div>
-          <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--accent-cyan)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          <div className="cmp-h-rev" style={{ fontWeight: 700, color: "var(--accent-cyan)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
             Revision
           </div>
 
           {/* Values */}
-          <div style={{
-            fontSize: "0.8rem", color: "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace",
+          <div className="cmp-v-ref" style={{
+            color: "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace",
             textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
             wordBreak: "break-word"
           }}>
             {row.original || "-"}
           </div>
-          <div style={{
-            fontSize: "0.8rem", color: statusText.toUpperCase() === "MATCHED" ? "#059669" : "var(--text-primary)",
+          <div className="cmp-v-rev" style={{
+            color: statusText.toUpperCase() === "MATCHED" ? "#059669" : "var(--text-primary)",
             fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
             wordBreak: "break-word"
           }}>
             {row.kmti || "-"}
           </div>
         </div>
+
+        {/* Supervisor verdict, on findings only. A MATCHED row is the engine reporting no
+            change: there is nothing to approve, and the orchestrator never persists one as
+            an AuditViolation. This is the write that fills the `lessons` collection.
+
+            It sits here — a direct child of the card, below the values — rather than in the
+            badge row above. Two reasons: the reviewer should see the evidence before the
+            verdict, and as a card child it gets a full-width line from the card's own column
+            flex instead of fighting Dismiss/Correct for horizontal space. */}
+        {matchingViolation && (
+          <ReviewControls
+            violationId={matchingViolation.id}
+            resolution={matchingViolation.resolution_type}
+            remarks={matchingViolation.checker_remarks}
+            onReviewed={({ resolution, remarks }) =>
+              applyViolationReview(matchingViolation.id, resolution, remarks)
+            }
+          />
+        )}
       </div>
     );
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexGrow: 1, paddingBottom: "24px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexGrow: 1, paddingBottom: "24px", minWidth: 0 }}>
+      {/* Rendered once here, not inside renderDiffRowCard — that runs per finding and would emit
+          one duplicate <style> element per row. */}
+      <style>{`
+        .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+        .cmp-grid > * { min-width: 0; overflow-wrap: anywhere; }
+        .cmp-grid-diff { text-align: center; padding: 12px; }
+        .cmp-grid-diff > .cmp-title { grid-column: 1 / -1; }
+        .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.62rem; }
+        .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.8rem; }
+
+        /* These stay TWO COLUMNS at every width, on purpose. Stacking would fit the panel more
+           comfortably, but it destroys what the grid is for: you cannot compare two values that
+           are not beside each other. What the query buys back instead is horizontal room --
+           tighter padding, gap and type -- so the pair stays legible rather than becoming two
+           slivers. Overflow is not a risk either way: overflow-wrap above makes long values wrap.
+
+           The query container is the finding card for .cmp-grid-diff and the category body for
+           the plain two-up grid; both set container-type: inline-size. A viewport media query
+           would measure the wrong box -- this panel is a flexlayout tabset the user drags, so its
+           width has nothing to do with the window's. */
+        @container (max-width: 260px) {
+          .cmp-grid { gap: 6px; }
+          .cmp-grid-diff { padding: 8px; }
+          .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.55rem; letter-spacing: 0.02em; }
+          .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.72rem; }
+        }
+      `}</style>
       <div style={{
         background: "linear-gradient(135deg, var(--bg-sidebar) 0%, var(--bg-card) 100%)",
         border: "1px solid var(--border-color)",
@@ -327,7 +388,9 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
           INSPECTION SUMMARY REPORT
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+        {/* auto-fit rather than a hard 1fr 1fr: at the panel's minimum width two columns leave
+            ~92px per chip, not enough for "Drawing Views" plus its status. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "8px" }}>
           {[
             { key: "drawing_views", label: "Drawing Views" },
             { key: "notes_section", label: "Notes" },
@@ -540,11 +603,14 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                 padding: "12px 14px",
                 cursor: "pointer",
                 userSelect: "none",
+                flexWrap: "wrap",
+                gap: "8px",
+                minWidth: 0,
                 background: isExpanded ? "var(--sidebar-item-hover)" : "transparent",
                 borderBottom: isExpanded ? "1px solid var(--border-color)" : "none"
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: "1 1 auto" }}>
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
@@ -556,16 +622,17 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                     cursor: categoryViolationIds.length > 0 ? "pointer" : "default",
                     color: categoryViolationIds.length > 0 ? (allHidden ? "var(--text-muted)" : "var(--accent-cyan)") : "var(--border-color)",
                     display: "flex",
-                    alignItems: "center"
+                    alignItems: "center",
+                    flexShrink: 0
                   }}
                 >
                   {allHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                 </div>
-                <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "var(--text-primary)", letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "var(--text-primary)", letterSpacing: "0.03em", textTransform: "uppercase", minWidth: 0 }}>
                   {label}
                 </span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
                 <span style={{
                   display: "flex", alignItems: "center", gap: "5px",
                   fontSize: "0.72rem", fontWeight: 700, padding: "4px 11px", borderRadius: "999px",
@@ -584,7 +651,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             </div>
 
             {isExpanded && (
-              <div style={{ padding: "14px 16px", background: "var(--bg-dark)", display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ padding: "14px 16px", background: "var(--bg-dark)", display: "flex", flexDirection: "column", gap: "14px", minWidth: 0, containerType: "inline-size" }}>
 
                 {/* ── MATCHED: All-Clear confirmation block ── */}
                 {result.status === "MATCHED" && (
@@ -671,13 +738,14 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                                   style={{
                                     display: "flex", justifyContent: "space-between", alignItems: "center",
                                     padding: "8px 10px", cursor: hasRows ? "pointer" : "default", userSelect: "none",
+                                    gap: "8px", minWidth: 0,
                                     background: "var(--bg-card)"
                                   }}
                                 >
-                                  <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.02em" }}>
+                                  <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.02em", minWidth: 0 }}>
                                     {group.label}
                                   </span>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                                     {hasRows && (
                                       <span style={{
                                         fontSize: "0.62rem", fontWeight: 700, color: subBadgeColor,
@@ -713,7 +781,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ fontSize: "0.8rem", fontWeight: 650, color: "var(--accent-cyan)", marginBottom: "4px", letterSpacing: "0.05em" }}>COMPARATIVE CONTENTS</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                        <div className="cmp-grid">
                           <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "10px", borderRadius: "6px" }}>
                             <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: "6px" }}>Original Drawing</div>
                             <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "pre-wrap", maxHeight: "150px", overflowY: "auto", fontFamily: "monospace" }}>
@@ -831,6 +899,10 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           </div>
         );
       })}
+
+      {/* ADR-010: the summary renders BELOW the checklist. The findings are the product of
+          record; a summary above them invites a reader to stop there. */}
+      {activeSessionId && <SummaryPanel sessionId={activeSessionId} />}
     </div>
   );
 };
