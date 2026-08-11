@@ -1,6 +1,5 @@
 import pytest
 import uuid
-import json
 from unittest.mock import MagicMock, patch
 from pydantic import BaseModel, create_model
 from typing import Optional
@@ -39,8 +38,23 @@ def mock_beanie_docs(monkeypatch):
     AuditViolation.audit_session_id = MockField("audit_session_id")
 
 class MockEntity:
-    def __init__(self, entity_type, text, x, y, geometry=None):
+    """A stand-in for `ExtractedEntity`, kept attribute-compatible with it.
+
+    It previously carried only entity_type/properties/geometry, so any pipeline code reading a
+    field the real document defines — `extract_semantic_text_groups` reads `.layer` — blew up with
+    AttributeError inside the code under test. The defaults below mirror
+    `domain/models/extracted_entity.py` field-for-field; when that model gains a field, this
+    should gain it too, otherwise these tests drift back out of contact with production shape.
+    """
+
+    def __init__(self, entity_type, text, x, y, geometry=None, layer="0", handle=None,
+                 parent_handle=None, space="model", viewport_index=-1):
         self.entity_type = entity_type
+        self.layer = layer
+        self.handle = handle
+        self.parent_handle = parent_handle
+        self.space = space
+        self.viewport_index = viewport_index
         self.properties = {"text": text}
         self.geometry = geometry if geometry is not None else {"insert": [x, y, 0.0]}
 
@@ -194,28 +208,23 @@ def test_partial_cache_hits_ocr_trigger(mock_client_class):
         if cache_file.exists():
             cache_file.unlink()
 
-@patch("services.backend.infrastructure.audit.comparison.orchestrator.execute_gemini_cascade")
+# NOTE: these two tests used to also patch `orchestrator.execute_gemini_cascade` and feed it a
+# canned six-category comparison JSON. ADR-006 deleted the LLM comparison path, so the orchestrator
+# makes no cascade call at all and the patch target stopped existing — the tests failed at mock
+# setup with AttributeError, never reaching an assertion. The fix is deletion, not retargeting:
+# the mocked call is gone from the design. What both tests are actually about — title-block OCR
+# degrading to heuristics — is still live at orchestrator.py:553 and is what they now exercise.
 @patch("services.backend.infrastructure.audit.comparison.gemini_client.execute_title_block_ocr")
 @patch("services.backend.infrastructure.rendering.image_cropper.crop_title_block_image")
 @pytest.mark.asyncio
 async def test_orchestrator_falls_back_on_gemini_ocr_failure(
-    mock_crop, mock_ocr, mock_cascade, ref_drawing, rev_drawing, ref_entities, rev_entities, monkeypatch
+    mock_crop, mock_ocr, ref_drawing, rev_drawing, ref_entities, rev_entities, monkeypatch
 ):
     """Test 5: Verify that a transient Gemini failure falls back cleanly to heuristics in orchestrator."""
     monkeypatch.setenv("GEMINI_API_KEY", "mock_key")
 
     mock_crop.return_value = b"fake_png_bytes"  # both sides "crop" fine
     mock_ocr.side_effect = Exception("503 UNAVAILABLE")
-    
-    mock_cascade.return_value = json.dumps({
-        "drawing_views": {"status": "MATCHED", "difference_summary": "views OK"},
-        "notes_section": {"status": "MATCHED", "difference_summary": "notes OK"},
-        "bill_of_materials": {"status": "MATCHED", "difference_summary": "BOM OK"},
-        "title_block": {"status": "MATCHED", "difference_summary": "Title block OK"},
-        "isometric_view": {"status": "MATCHED", "difference_summary": "ISO OK"},
-        "other_engineering_references": {"status": "MATCHED", "difference_summary": "other OK"},
-        "canvas_markings": []
-    })
 
     from services.backend.infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
     request = MagicMock(reference_drawing_id=str(ref_drawing.id), drawing_id=str(rev_drawing.id))
@@ -223,31 +232,26 @@ async def test_orchestrator_falls_back_on_gemini_ocr_failure(
     # Should not raise — falls through to heuristic title_block_fields, comparison still completes
     result = await perform_drawing_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
     assert result.title_block is not None
+    # The fallback is only meaningful if OCR was actually attempted and threw. Without this the
+    # test would still pass if OCR were skipped entirely, which is a different code path.
+    assert mock_ocr.called
 
-@patch("services.backend.infrastructure.audit.comparison.orchestrator.execute_gemini_cascade")
+@patch("services.backend.infrastructure.audit.comparison.gemini_client.execute_title_block_ocr")
 @patch("services.backend.infrastructure.rendering.image_cropper.crop_title_block_image")
 @pytest.mark.asyncio
 async def test_orchestrator_skips_ocr_when_crop_returns_none(
-    mock_crop, mock_cascade, ref_drawing, rev_drawing, ref_entities, rev_entities, monkeypatch
+    mock_crop, mock_ocr, ref_drawing, rev_drawing, ref_entities, rev_entities, monkeypatch
 ):
     """Test 7: Verify that a None-crop skips OCR and falls back to heuristics for that drawing in orchestrator."""
     monkeypatch.setenv("GEMINI_API_KEY", "mock_key")
 
     mock_crop.return_value = None  # neither side has a usable rendering
-    
-    mock_cascade.return_value = json.dumps({
-        "drawing_views": {"status": "MATCHED", "difference_summary": "views OK"},
-        "notes_section": {"status": "MATCHED", "difference_summary": "notes OK"},
-        "bill_of_materials": {"status": "MATCHED", "difference_summary": "BOM OK"},
-        "title_block": {"status": "MATCHED", "difference_summary": "Title block OK"},
-        "isometric_view": {"status": "MATCHED", "difference_summary": "ISO OK"},
-        "other_engineering_references": {"status": "MATCHED", "difference_summary": "other OK"},
-        "canvas_markings": []
-    })
 
     from services.backend.infrastructure.audit.comparison.orchestrator import perform_drawing_comparison
     request = MagicMock(reference_drawing_id=str(ref_drawing.id), drawing_id=str(rev_drawing.id))
 
     result = await perform_drawing_comparison(request, ref_drawing, rev_drawing, ref_entities, rev_entities)
-    # missing_crops should end up empty -> execute_title_block_ocr never called -> both sides heuristic
     assert result.title_block is not None
+    # The point of the test: missing_crops ends up empty, so no image is sent to Gemini. This
+    # assertion is the test — previously it was only stated in a comment, so nothing checked it.
+    mock_ocr.assert_not_called()

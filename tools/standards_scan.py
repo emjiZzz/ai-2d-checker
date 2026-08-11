@@ -183,10 +183,13 @@ def render(rows: list[dict[str, Any]], per_sheet: bool) -> None:
     if empty:
         print(f"  {len(empty)} would be REFUSED at upload (no extractable text)")
     if images:
-        print(f"  {len(images)} are MOSTLY IMAGES — they ingest, but little of them is searchable")
+        print(f"  {len(images)} are MOSTLY IMAGES - they ingest, but little of them is searchable")
     cjk = sum(r["cjk"] for r in ok)
     markers = sum(r["severity_markers"] for r in ok)
-    print(f"  {cjk:,} CJK characters preserved · {markers:,} colour severity markers")
+    # ASCII separator, not U+00B7. That middle dot is the original subject of
+    # `Gotcha - Our Own Punctuation Broke on the cp932 Console` and it came back here, in a line
+    # that reports how well CJK text was preserved — which would crash before printing the number.
+    print(f"  {cjk:,} CJK characters preserved | {markers:,} colour severity markers")
 
     if per_sheet:
         for r in ok:

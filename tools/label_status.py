@@ -128,7 +128,13 @@ async def collect() -> dict[str, Any]:
 
 
 def render(s: dict[str, Any]) -> None:
-    print("Learned model — what the next training run will see\n")
+    # ASCII only in everything below. This function crashed with UnicodeEncodeError on the default
+    # Windows cp932 console — U+2014 EM DASH is not in cp932 — which took out the *whole* report,
+    # including the class-balance warning, on the platform this ships to. See
+    # `Gotcha - Our Own Punctuation Broke on the cp932 Console`: keep the punctuation we add to
+    # ASCII; drawing text is data and stays exempt. The docstrings above may keep their em dashes,
+    # since nothing encodes them to a terminal.
+    print("Learned model - what the next training run will see\n")
     print(f"  audit_feedback rows   {s['rows_total']}")
     print(f"    live                {s['rows_live']}")
     print(f"    retracted           {s['rows_retracted']}   (never train)")
@@ -140,10 +146,10 @@ def render(s: dict[str, Any]) -> None:
     total = s["verdict_labels"]
     zeros, ones = s["class_0"], s["class_1"]
     print(f"\n  verdict labels        {total} / {s['min_train']}", end="")
-    print(f"   (short by {s['short_by']})" if s["short_by"] else "   — threshold met")
+    print(f"   (short by {s['short_by']})" if s["short_by"] else "   - threshold met")
     print(f"    class 0             {zeros}")
     print(f"    class 1             {ones}")
-    print(f"    both classes        {'yes' if s['both_classes_present'] else 'NO — will not train'}")
+    print(f"    both classes        {'yes' if s['both_classes_present'] else 'NO - will not train'}")
 
     share = zeros / total if total else 0.0
     print(f"\n  negative share        {share:.0%}")
@@ -153,13 +159,13 @@ def render(s: dict[str, Any]) -> None:
             f"({s['low_thresh']}) on ordinary findings and flips\n"
             f"       CHANGED/ADDED/REMOVED -> MATCHED in "
             f"{', '.join(s['spatial_categories'])}.\n"
-            f"       Prefer class-1 corrections (confirmed_valid, verdict_changed) — "
+            f"       Prefer class-1 corrections (confirmed_valid, verdict_changed) - "
             f"honestly earned, not farmed."
         )
 
     if s["matcher_parked"]:
         print(
-            f"\n  matcher feedback      {s['matcher_parked']}   parked for Stage 3 — "
+            f"\n  matcher feedback      {s['matcher_parked']}   parked for Stage 3 - "
             f"trains nothing today"
         )
         if s["matcher_parked"] >= max(1, s["short_by"]):
@@ -183,7 +189,7 @@ def render(s: dict[str, Any]) -> None:
         stale = meta.get("n_verdict") != total
         if stale:
             print(
-                f"    ** bundle is behind the corpus ({meta.get('n_verdict')} vs {total}) — "
+                f"    ** bundle is behind the corpus ({meta.get('n_verdict')} vs {total}) - "
                 "it retrains on the next correction."
             )
     else:
