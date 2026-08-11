@@ -43,17 +43,28 @@ defect from scratch as a result.
    them from the MOC. Record negative results too — an idea that was measured and rejected is
    worth as much as one that worked, because otherwise it gets re-implemented.
 
-5. **Keep `docs/vault/00 - AI Maturity Status.md` current.** It is the single canonical answer to
-   "which rung is this system on" (currently **0 — pre-RAG**: the default `rag` method has no
-   retrieval and no LLM, the embeddings are SHA-256 noise, and no metric exists). Read it before
-   touching the comparison engines, retrieval, the learned model or the AI pipeline. After landing
-   anything: append a work-log entry, tick the stage board, rewrite "What's Next", and if a rung
-   boundary was crossed update `current_rung` **and** `rung_evidence` together.
+5. **Keep `docs/vault/00 - AI Maturity Status.md` current, and read it rather than this summary.**
+   It is the single canonical answer to "which rung is this system on" — currently **0**, under the
+   ADR-007 definition, because `rung_evidence: none` and the corpus is **0 of 8 human-labelled
+   pairs**. Rung 0 means *pre-measurement*, not "safely deterministic"; do not report it as a
+   feature. Read the ledger before touching the comparison engines, retrieval, the learned model or
+   the AI pipeline. After landing anything: append a work-log entry, tick the stage board, rewrite
+   "What's Next", and if a rung boundary was crossed update `current_rung` **and** `rung_evidence`
+   together.
    **A rung claim with no evidence link is a defect** — this file previously advertised "the four V2
    gaps", a phrase the gap analysis had to record as having *no source in the vault*. Don't create a
    second phantom.
+   ⚠ **This clause was itself a phantom until 2026-08-11**, which is the point of the warning above.
+   It read *"the default `rag` method has no retrieval and no LLM, the embeddings are SHA-256
+   noise"*. Both halves were stale: `rag` was renamed to `deterministic` in `f87684a`, and the
+   SHA-256 embeddings were **deleted** on 2026-08-07 by ADR-008's R0. `tests/test_maturity_ledger.py`
+   only asserts the fake model is gone once `current_rung >= 1`, so nothing catches drift here at
+   rung 0. Prefer the ledger over any restatement of it, including this one.
    Plan: `docs/vault/01 - Architecture/AI Maturity Ladder — Staged Plan.md`.
-   Decisions: `docs/vault/07 - .../ADR-003 AI Maturity Ladder.md`.
+   Decisions: `docs/vault/07 - .../ADR-003 AI Maturity Ladder.md`, and
+   `ADR-007 Re-scoping the Maturity Ladder.md` — which retired the old
+   *Basic RAG → Fine-Tuned RAG → Trainable → Agentic* rung names. Do not cite those; they are
+   ADR-003's, and ADR-007 replaced them.
    Guarded by `tests/test_maturity_ledger.py`.
 
 ## Verified commands
@@ -103,15 +114,33 @@ the command in bash.
 
 ## Known pre-existing test failures
 
-Not caused by current work; do not chase them unless that is the task:
-- `tests/test_vision_ocr_grounding.py` — 2 failures. **The cause changed on 2026-08-07**: they
-  now fail with `orchestrator does not have the attribute 'execute_gemini_cascade'`, because
-  ADR-006 deleted it. The older note here said `MockEntity` lacks a `layer` attribute; that is
-  no longer the failure you will see. Verified against a clean tree.
+**None. Both suites are green as of 2026-08-11 — treat any failure you see as yours.**
+
+That sentence is the point of this section now, so keep it accurate: a standing allowlist is a
+place for new breakage to hide, which is exactly what happened below.
+
+- ~~`tests/test_vision_ocr_grounding.py` — 2 failures~~ — **fixed 2026-08-11.** Both were
+  documented here for months as pre-existing, and **the note recorded two different causes as if
+  the older had been superseded. Both were real, stacked**: the tests patched
+  `orchestrator.execute_gemini_cascade`, deleted by ADR-006, so they died at mock setup — and
+  removing that obsolete patch revealed the *older* `MockEntity` lacks `layer` failure underneath,
+  still live. Fixed by deleting the patch (the orchestrator makes no cascade call; the mocked
+  call is gone from the design, so retargeting was wrong) and aligning `MockEntity` with
+  `domain/models/extracted_entity.py`. Both tests also gained the assertion they were only ever
+  making in a comment.
 - ~~`apps/desktop/src/pages/workspace/RoomsView.test.tsx`~~ — **fixed.** ADR-006's rewrite around
-  the removed method picker retired the stale colour assertion. `npx vitest run` is **304/304** as
-  of 2026-08-11 (the suite grows; this number is a floor, not a contract). `pytest` is 922 passed
-  / 2 failed, those 2 being the `test_vision_ocr_grounding.py` pair above.
+  the removed method picker retired the stale colour assertion.
+
+Current numbers, measured rather than quoted — **and the counts below are a floor, not a
+contract; the suites grow.** (Until 2026-08-11 `pyproject.toml`'s `addopts` carried `-q`, so the
+documented `pytest tests/ -q` resolved to `-qq` and printed **no totals line at all** — the one
+command the docs recommended was the one that could not report a result. `-q` has been removed
+from `addopts`; the command below now prints a count.)
+- `pytest` — **960 passed, 3 skipped, 0 failed.** The 3 skips are deliberate rung gates in
+  `tests/test_maturity_ledger.py`, not failures.
+- `npx vitest run` — **326 passed across 30 files.**
+- `npx tsc --noEmit` — **0 errors** (now also gated in CI; it previously ran only over the shared
+  types package, so `apps/desktop` was unenforced on merge).
 
 ## Local environment
 

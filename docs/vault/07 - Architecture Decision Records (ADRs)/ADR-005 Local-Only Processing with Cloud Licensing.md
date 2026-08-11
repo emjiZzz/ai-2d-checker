@@ -4,11 +4,11 @@ type: adr
 tags: [adr, architecture, deployment, licensing, security, packaging, pre-prod]
 status: proposed
 date: 2026-08-06
-amended: 2026-08-07 (egress claim narrowed for knowledge sync — see the amendment section)
+amended: 2026-08-11 (amendment 2 — the local-only claim does not describe the shipping code; four live Gemini paths). Previously 2026-08-07 (egress claim narrowed for knowledge sync).
 supersedes: none
 amends: none
-amended-by: ADR-008 The Second Brain — Retrieval-Only Local Knowledge
-related: [ADR-004 Deterministic-Only Scope, ADR-008 The Second Brain — Retrieval-Only Local Knowledge, System Overview]
+amended-by: ADR-008 The Second Brain — Retrieval-Only Local Knowledge, ADR-010 Grounded LLM Summarization of Comparison Results
+related: [ADR-004 Deterministic-Only Scope, ADR-008 The Second Brain — Retrieval-Only Local Knowledge, ADR-010 Grounded LLM Summarization of Comparison Results, System Overview]
 ---
 
 # ADR-005 — All processing local; the cloud does licensing and nothing else
@@ -500,6 +500,78 @@ up the claim.
 **Nothing in code changes today.** Knowledge sync is deferred to production; dev builds remain
 fully local, so the *original* strict claim is still literally true of everything that currently
 ships.
+
+> [!WARNING] The sentence immediately above is false, and was false when it was written.
+> See [[#Amendment 2, 2026-08-11 — the local-only claim does not describe the shipping code]].
+> Four live paths send drawing content to Google today. It is left in place rather than edited,
+> because a corrected sentence would hide that this document asserted the opposite for four days.
+
+---
+
+## Amendment 2, 2026-08-11 — the local-only claim does not describe the shipping code
+
+Prompted by a CTO review of the 2026-08-11 audit package, which certified *"Zero Default Cloud
+Data Egress — raw CAD vectors and drawing entities remain strictly on local storage"* on the
+strength of `ENABLE_LLM_SUMMARY` defaulting to `False`. That flag is real and it does gate the
+ADR-010 summary path. It is not the only path.
+
+**Direction taken: document, do not gate.** The decision was to make the record true rather than
+change runtime behaviour, so nothing below is a code change. That is a deliberate choice about
+sequencing, not a judgement that the exposure is acceptable — see "What must change" at the end.
+
+### The four paths, measured
+
+| Path | What it sends | Trigger | Gate |
+| :--- | :--- | :--- | :--- |
+| **Upload summarization** — `extraction_pipeline.py:232-237` → `summarization_queue` → `summarization_pipeline.py:53-66` | Full structured entity context **and a PNG rendering of the drawing** | **Every drawing upload**, unconditionally enqueued | API-key presence only (`summarization_pipeline.py:31-36`) |
+| **Title-block OCR** — `orchestrator.py:552-555` → `execute_title_block_ocr` | An **image crop of the title block** | Every comparison on an OCR cache miss | API-key presence only |
+| **Standards audit** — `ai_engine.py:81-82, 156-160` | CAD text and visual passes | During a standards audit run | API-key presence only (`_get_api_key`, `ai_engine.py:45-53`) |
+| **Copilot chat** — `streaming_engine.py:65-67, 84-90` | The user's question plus an injected `=== DRAWING CONTEXT ===` block | User sends a copilot message | API-key presence only |
+
+The first is the significant one and is documented nowhere else: it is automatic, it fires on the
+most ordinary action in the product, and a rendered PNG of the drawing is the single largest
+disclosure the system is capable of making. The second was already recorded honestly in
+[[ADR-010 Grounded LLM Summarization of Comparison Results]], which said this ADR *"needs a second
+amendment"* covering it. This is that amendment, a day late and covering three more paths than
+anticipated.
+
+### What is actually true today
+
+The narrowed claim in Amendment 1 — *"No CAD file, rendered image, geometry, coordinate, filename
+or drawing identifier leaves the customer's network, ever"* — is **not** true of the shipping code.
+Rendered images and geometry both leave, on upload, in every build. What *is* true:
+
+> **With no `GEMINI_API_KEY` configured, nothing leaves the machine.** Every path above degrades to
+> a logged skip or an offline-fallback message rather than an error, so a full audit completes
+> offline. With a key configured, drawing content goes to Google as a side effect of ordinary use,
+> and no flag in the product says so.
+
+That is a defensible property. It is a **different** property from the one this ADR claims and the
+one the audit package certified, and the difference is exactly the thing a customer procurement
+review would find.
+
+### Why the audit missed it, which is the more useful finding
+
+The reviewer read one flag and inferred a system property. Both facts needed to contradict that
+were already written down — this vault records the OCR egress in ADR-010, and the maturity ledger
+notes the eval harness *"is **not** network-free: title-block OCR calls Gemini on a cache miss."*
+The information was not missing; it was unread. Any egress claim in this repo should be evidenced
+by an enumeration of the Gemini/OpenAI call sites and their gates, not by a settings default.
+
+### What must change
+
+1. **Gap 2's acceptance test is now the load-bearing item, not a future nicety.** The no-socket
+   assertion specified in *"2. Egress must become impossible, not merely unused"* would have caught
+   all four of these on the day each landed. Until it exists, this section will go stale again.
+2. **Either gate the four paths behind the ADR-010 consent, or restate the product claim** in terms
+   of the API key. Both are legitimate; shipping the current marketing sentence alongside the
+   current code is not.
+3. **`ENABLE_LLM_SUMMARY` is not a privacy control** and should stop being described as one. It
+   governs one feature. A single global egress switch — off by default, covering every cloud call
+   site — is the control the claim actually needs.
+
+Recorded per `CLAUDE.md` constraint 4:
+[[Gotcha - A Privacy Claim Rested on One Flag and Four Paths Ignored It]].
 
 ## Consequences
 

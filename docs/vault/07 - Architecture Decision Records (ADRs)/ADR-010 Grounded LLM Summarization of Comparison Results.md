@@ -151,6 +151,18 @@ amendment narrowed the claim for knowledge sync — a feature now retired by
 one thing that never shipped while staying silent about the one that did. That is recorded here as
 an obligation, not silently inherited.
 
+> [!NOTE] Obligation discharged 2026-08-11 — and it was larger than this ADR knew.
+> ADR-005 amendment 2 is written. Enumerating the call sites to do it turned up **two more
+> unflagged paths beyond the OCR one named above**, and the largest was documented nowhere:
+> `extraction_pipeline.py:232-237` enqueues Phase 8 summarization on **every upload**, sending the
+> full entity context *and a PNG rendering of the drawing* to Gemini
+> (`summarization_pipeline.py:53-66`), gated only on API-key presence. Also `ai_engine.py`
+> (standards audit) and `streaming_engine.py` (copilot's injected drawing context).
+> **Four paths, one flag, and the flag governs only this ADR's feature.** The obligation was
+> recorded correctly; its scope was underestimated because it was written from the one call site
+> already known rather than from a grep.
+> See [[Gotcha - A Privacy Claim Rested on One Flag and Four Paths Ignored It]].
+
 ---
 
 ## Alternatives rejected
