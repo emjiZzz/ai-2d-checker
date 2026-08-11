@@ -10,31 +10,36 @@ tags: [learned-model, hitl]
 > folder; this note is the human-readable summary. Trained purely on human corrections —
 > no LLM involved.
 
-- **Last trained**: 2026-08-11T02:52:40.031702+00:00
-- **Total corrections**: 72
-- **Verdict labels**: 38  (threshold to activate model: 40)
+- **Last trained**: 2026-08-11T09:47:41.387275+00:00
+- **Total corrections**: 77
+- **Verdict labels**: 39  (thresholds to activate: 40 labels **and** ≥30.0% minority class)
 - **Category labels**: 6
-- **Verdict model**: ⏳ warming up (38/40)
-- **Exact-match overrides**: 18 matched, 4 changed, 6 reclassified
+- **Verdict model**: ⏳ warming up (39/40)
+- **Exact-match overrides**: 19 matched, 4 changed, 6 reclassified
 
 ## Metrics
 ```json
-{}
+{'verdict_class_balance': {'0': 29, '1': 10}, 'verdict_minority_share': 0.2564}
 ```
 
 ## Sample of learned "not a real change" patterns
 - `notes_section|4ロール:12(2x6台)`
-- `title_block|machinecode/unitcode`
-- `drawing_views|geometry:4line,1polyline`
-- `drawing_views|8`
-- `title_block|stockqty(stockqty)`
-- `title_block|field`
-- `drawing_views|l油溝詳細l`
-- `title_block|ブシュ`
-- `notes_section|none`
 - `drawing_views|総厚サ6mm`
+- `title_block|unitno(unitnumber)`
+- `drawing_views|geometry:4line,1polyline`
+- `drawing_views|geometry:24line,3polyline`
+- `title_block|jobno(jobnumber)`
+- `notes_section|none`
+- `title_block|scale(sheetscale)`
+- `drawing_views|none`
+- `title_block|field`
 
 ## Changelog
+- 2026-08-11T09:47:41.387275+00:00 — trained on 77 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
+- 2026-08-11T09:47:37.921118+00:00 — trained on 76 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
+- 2026-08-11T09:47:32.518090+00:00 — trained on 75 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
+- 2026-08-11T09:46:26.469406+00:00 — trained on 74 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
+- 2026-08-11T09:45:47.712569+00:00 — trained on 73 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
 - 2026-08-11T02:52:40.031702+00:00 — trained on 72 corrections (verdict labels: 38, category labels: 6); verdict model warming up.
 - 2026-08-11T02:52:37.499571+00:00 — trained on 71 corrections (verdict labels: 37, category labels: 6); verdict model warming up.
 - 2026-08-09T23:37:54.725166+00:00 — trained on 70 corrections (verdict labels: 36, category labels: 6); verdict model warming up.
@@ -71,8 +76,3 @@ tags: [learned-model, hitl]
 - 2026-08-05T08:09:48.086523+00:00 — trained on 41 corrections (verdict labels: 32, category labels: 1); verdict model warming up.
 - 2026-08-05T08:08:50.124366+00:00 — trained on 40 corrections (verdict labels: 31, category labels: 1); verdict model warming up.
 - 2026-08-05T08:08:47.002017+00:00 — trained on 39 corrections (verdict labels: 30, category labels: 1); verdict model warming up.
-- 2026-08-05T08:08:13.075940+00:00 — trained on 38 corrections (verdict labels: 30, category labels: 1); verdict model warming up.
-- 2026-08-05T08:08:01.477835+00:00 — trained on 37 corrections (verdict labels: 29, category labels: 1); verdict model warming up.
-- 2026-08-05T08:07:35.130894+00:00 — trained on 36 corrections (verdict labels: 29, category labels: 1); verdict model warming up.
-- 2026-08-05T08:07:19.019869+00:00 — trained on 35 corrections (verdict labels: 29, category labels: 1); verdict model warming up.
-- 2026-08-05T08:07:17.633904+00:00 — trained on 34 corrections (verdict labels: 28, category labels: 1); verdict model warming up.

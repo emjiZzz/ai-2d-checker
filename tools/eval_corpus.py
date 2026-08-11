@@ -33,7 +33,7 @@ import sys
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -770,6 +770,72 @@ def _addressable(ref_entities: list, rev_entities: list) -> set[str]:
     return known
 
 
+# Per the annotation guideline, "Safe zones are never compared" — a difference inside one is not
+# a finding, so a worksheet row landing there is guaranteed noise for the annotator.
+SAFE_ZONES = frozenset({"tolerance"})
+
+# Bucket names used by `triage_row`. 'review' is the only one an annotator must read line by line.
+BUCKET_REVIEW, BUCKET_SAFE, BUCKET_NO_ZONE = "review", "safe-zone", "no-zone"
+
+
+def anchor_of(entity: "EvalEntity") -> list[float]:
+    return entity.geometry.get("insert") or entity.geometry.get("location") or []
+
+
+def zones_containing(zone_boxes: dict, anchor: Sequence[float]) -> list[str]:
+    """Every template zone whose box contains `anchor`.
+
+    Returns a list, not a first match, because **hand-drawn zones overlap**: on the live corpus
+    `tolerance` ends at x=151.9 and `title` begins at x=151.8. A single-match version would
+    resolve that 0.1-unit sliver by dict order, which decides whether a row is excluded or
+    reviewed on nothing at all.
+
+    Boxes are compared with min/max per axis rather than assuming a corner order, because the two
+    sides of a pair resolve their fractions against different `render_bounds` and a reference
+    sheet may be stored in another coordinate space entirely — see
+    `Gotcha - Reference and Revision in Different Coordinate Spaces`.
+    """
+    if len(anchor) < 2:
+        return []
+    return [
+        zone_key
+        for zone_key, (x0, y0, x1, y1) in zone_boxes.items()
+        if min(x0, x1) <= anchor[0] <= max(x0, x1) and min(y0, y1) <= anchor[1] <= max(y0, y1)
+    ]
+
+
+def zone_containing(zone_boxes: dict, anchor: Sequence[float]) -> str | None:
+    """The zone to display for a row. A scored zone wins over a safe one where they overlap."""
+    hits = zones_containing(zone_boxes, anchor)
+    scored = [z for z in hits if z not in SAFE_ZONES]
+    return (scored or hits or [None])[0]
+
+
+def triage_row(zone_boxes: dict, anchor: Sequence[float]) -> tuple[str, str | None]:
+    """`(bucket, zone)` for one worksheet row.
+
+    The only rule that matters here: **this never excludes on uncertainty.** With no template,
+    or an entity carrying no usable coordinate, the row goes to `review`. Grouping a row as
+    "not a finding" is a claim that the guideline covers it, and a guess is not that claim —
+    a wrongly excluded row is a miss the annotator never sees, which is precisely the quantity
+    the whole corpus exists to measure.
+    """
+    if not zone_boxes:
+        return BUCKET_REVIEW, None
+    if len(anchor) < 2:
+        return BUCKET_REVIEW, None
+
+    hits = zones_containing(zone_boxes, anchor)
+    if not hits:
+        return BUCKET_NO_ZONE, None
+
+    scored = [z for z in hits if z not in SAFE_ZONES]
+    if scored:
+        # Overlapping a safe zone does not excuse a row that also sits in a scored one.
+        return BUCKET_REVIEW, scored[0]
+    return BUCKET_SAFE, hits[0]
+
+
 def cmd_worksheet(args: argparse.Namespace) -> int:
     """Emit a neutral annotation aid plus an empty label draft.
 
@@ -835,12 +901,55 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
         reverse=True,
     )
 
-    def describe(row: tuple[str, EvalEntity]) -> str:
+    # --- zone attribution -------------------------------------------------------------
+    #
+    # Which zone each row falls in, from the pair's **hand-aligned template** in the committed
+    # manifest — the same boxes the user drew and the runner scores against, resolved through the
+    # production `overrides_from_template_zones` so the Y-flip is exercised rather than
+    # reimplemented. That flip is the one conversion whose failure mode is a plausible-looking
+    # mirrored zone, and a mirrored zone here would tell the annotator to skip real findings.
+    #
+    # This is corpus data, not engine inference, so it does not violate the rule in this
+    # function's docstring: the annotator's own rulebook is being applied, not the engine's
+    # differ. Nothing is removed from the worksheet on the strength of it — rows are only
+    # grouped, and every group is printed.
+    from services.backend.infrastructure.audit.bom.zone_template_resolver import (
+        ZONE_POLYGONS_KEY,
+        overrides_from_template_zones,
+    )
+
+    zone_boxes = {}
+    for side, drawing, side_meta in (
+        ("REF", ref_drawing, pair.ref),
+        ("REV", rev_drawing, pair.rev),
+    ):
+        resolved = overrides_from_template_zones(
+            side_meta.zone_template, (drawing.metadata or {}).get("render_bounds")
+        )
+        zone_boxes[side] = {k: v for k, v in resolved.items() if k != ZONE_POLYGONS_KEY}
+
+    def zone_of(side: str, entity: EvalEntity) -> str | None:
+        return zone_containing(zone_boxes.get(side, {}), anchor_of(entity))
+
+    def triage(side: str, entity: EvalEntity) -> tuple[str, str | None]:
+        return triage_row(zone_boxes.get(side, {}), anchor_of(entity))
+
+    def describe(side: str, row: tuple[str, EvalEntity]) -> str:
         addr, entity = row
         display, _ = SpatialDiffer._comparison_value(entity)
         anchor = entity.geometry.get("insert") or entity.geometry.get("location") or []
         where = f"@({anchor[0]:.1f}, {anchor[1]:.1f})" if len(anchor) >= 2 else "@?"
-        return f"| `{addr}` | {entity.entity_type} | {entity.layer} | {where} | {display} |"
+        zone = zone_of(side, entity) or "—"
+        return (
+            f"| `{addr}` | {entity.entity_type} | {entity.layer} | {zone} | {where} | {display} |"
+        )
+
+    def bucketed(keys: list[str], index: dict, side: str) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {BUCKET_REVIEW: [], BUCKET_SAFE: [], BUCKET_NO_ZONE: []}
+        for key in keys:
+            for row in index[key]:
+                out[triage(side, row[1])[0]].append(describe(side, row))
+        return out
 
     handle_backed = sum(
         1 for e in ref_entities + rev_entities if e.handle and e.entity_type != "layer"
@@ -869,23 +978,85 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
         "used where no handle exists. Entities exploded out of a block never carry one, so",
         f"on this pair only {handle_backed} of {total_addressable} entities are",
         "handle-addressable — both forms are valid and the scorer resolves either.",
-        "",
-        f"## Reference-only text ({len(ref_only)})",
-        "",
-        "| address | type | layer | position | text |",
-        "| :--- | :--- | :--- | :--- | :--- |",
     ]
-    for key in ref_only:
-        lines.extend(describe(e) for e in ref_index[key])
+
+    ref_buckets = bucketed(ref_only, ref_index, "REF")
+    rev_buckets = bucketed(rev_only, rev_index, "REV")
+    header = [
+        "| address | type | layer | zone | position | text |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- |",
+    ]
+
+    n_review = len(ref_buckets["review"]) + len(rev_buckets["review"])
+    n_safe = len(ref_buckets["safe-zone"]) + len(rev_buckets["safe-zone"])
+    n_nozone = len(ref_buckets["no-zone"]) + len(rev_buckets["no-zone"])
+    n_all = n_review + n_safe + n_nozone
+
+    if n_safe or n_nozone:
+        lines += [
+            "",
+            "## How this worksheet is ordered",
+            "",
+            f"**{n_review} of {n_all} rows need your judgement.** The rest are grouped below "
+            "under the guideline rule that covers them, because two flat lists of every "
+            "unmatched string is mostly a list of things that can never be findings.",
+            "",
+            f"- **{n_review}** to review — the two sections immediately following.",
+            f"- **{n_safe}** in a safe zone ({', '.join(sorted(SAFE_ZONES))}) — *\"Safe zones are "
+            "never compared… a difference inside one is not a finding.\"*",
+            f"- **{n_nozone}** in no zone at all — *\"Anything outside the `views` box that "
+            "belongs to no zone\"* is out of scope, **and a real change sitting there is a "
+            "zone-detection bug to file, not a label.**",
+            "",
+            "> [!IMPORTANT] Grouped, never hidden. Every row is still printed below.",
+            "> The zones come from this pair's **hand-aligned template** in the committed "
+            "manifest — the boxes you drew, which the runner also scores against — not from "
+            "zone detection and not from the comparison engine. If a grouping looks wrong, the "
+            "template is wrong, and that is worth knowing before you label 507 rows against it.",
+        ]
+
     lines += [
         "",
-        f"## Revision-only text ({len(rev_only)})",
+        f"## Reference-only text — to review ({len(ref_buckets['review'])})",
         "",
-        "| address | type | layer | position | text |",
-        "| :--- | :--- | :--- | :--- | :--- |",
+        *header,
+        *ref_buckets["review"],
+        "",
+        f"## Revision-only text — to review ({len(rev_buckets['review'])})",
+        "",
+        *header,
+        *rev_buckets["review"],
     ]
-    for key in rev_only:
-        lines.extend(describe(e) for e in rev_index[key])
+
+    if n_safe:
+        lines += [
+            "",
+            f"## Safe-zone rows — not findings ({n_safe})",
+            "",
+            "Reference data that does not change between revisions. Listed so you can confirm "
+            "the grouping, not so you can label them. If something here *is* a real change, the "
+            "safe-zone rule or the template box is wrong — say so in the draft's `notes`.",
+            "",
+            *header,
+            *ref_buckets["safe-zone"],
+            *rev_buckets["safe-zone"],
+        ]
+
+    if n_nozone:
+        lines += [
+            "",
+            f"## Rows in no zone — out of scope ({n_nozone})",
+            "",
+            "Out of scope by the guideline. **If you believe a real change sits here, record it "
+            "in `notes` and file a zone-detection bug — do not label it as a comparison "
+            "finding.** This section is the one most worth skimming: it is where a mis-drawn "
+            "template hides a genuine miss.",
+            "",
+            *header,
+            *ref_buckets["no-zone"],
+            *rev_buckets["no-zone"],
+        ]
+
     lines += [
         "",
         f"## Same text, different count ({len(multiplicity)})",
@@ -936,6 +1107,12 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
         f"  {len(ref_only)} ref-only, {len(rev_only)} rev-only, {len(multiplicity)} count "
         f"deltas, {len(layer_delta)} layer/type deltas"
     )
+    if n_all:
+        pct = (n_all - n_review) * 100 // n_all
+        print(
+            f"  {n_review} of {n_all} unmatched rows need judgement "
+            f"({pct}% grouped as guideline-excluded: {n_safe} safe-zone, {n_nozone} no-zone)"
+        )
     print("\nFill the draft in, then: tools/eval_corpus.py label --pair-id "
           f"{pair.pair_id} --from {draft_path}")
     return 0

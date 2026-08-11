@@ -1,9 +1,15 @@
 {
   "schema": 1,
-  "trained_at": "2026-08-11T02:52:40.031702+00:00",
-  "n_total": 72,
-  "n_verdict": 38,
+  "trained_at": "2026-08-11T09:47:41.387275+00:00",
+  "n_total": 77,
+  "n_verdict": 39,
   "n_category": 6,
   "min_train": 40,
-  "metrics": {}
+  "metrics": {
+    "verdict_class_balance": {
+      "0": 29,
+      "1": 10
+    },
+    "verdict_minority_share": 0.2564
+  }
 }
