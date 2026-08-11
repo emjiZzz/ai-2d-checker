@@ -13,6 +13,69 @@ from .viewport_transform import NO_VIEWPORT, TRANSFORM_VERSION, ViewportTransfor
 # `bbox` is [[xmin, ymin], [xmax, ymax]].
 PROJECTED_PROPERTY_POINT_LISTS: tuple[str, ...] = ("bbox",)
 
+# Linetype names that mean "no pattern"; they carry no LTYPE elements and must render solid.
+SOLID_LINETYPE_NAMES = frozenset({"", "CONTINUOUS", "BYBLOCK", "BYLAYER", "SOLID"})
+
+# A DXF dot is a zero-length dash. Canvas `setLineDash` draws nothing for a 0 with the default
+# butt cap, so dots need a small positive length to survive. Drawing units (mm on this corpus).
+DOT_DASH_LENGTH = 0.1
+
+
+def _build_linetype_patterns(doc: Any) -> dict[str, list[float]]:
+    """Linetype name (upper-cased) -> signed dash elements, straight from the LTYPE table.
+
+    DXF group code 49 holds each element: positive is a dash, negative a gap, zero a dot. The
+    signs are what distinguish CENTER's long-dash-short-dash from HIDDEN's even dashes, and
+    `pattern_tags.compile()` drops them -- so the raw tags are read instead.
+    """
+    patterns: dict[str, list[float]] = {}
+    for ltype in doc.linetypes:
+        try:
+            elements = [t.value for t in ltype.pattern_tags.tags if t.code == 49]
+        except Exception:
+            continue
+        if elements:
+            patterns[str(ltype.dxf.name).upper()] = [float(v) for v in elements]
+    return patterns
+
+
+def resolve_dash_pattern(
+    linetype: str,
+    layer: str,
+    entity_ltscale: float,
+    patterns: dict[str, list[float]],
+    layer_linetypes: dict[str, str],
+    global_ltscale: float,
+) -> list[float] | None:
+    """Canvas-ready dash array in DRAWING UNITS, or None for a solid line.
+
+    Returned lengths alternate on/off and are already multiplied by `$LTSCALE` and the entity's
+    own `ltscale`, so the renderer can hand them to `setLineDash` under the world transform
+    without further conversion. That matters: dash lengths are a property of the drawing, not
+    of the zoom level, and dividing them by the view scale (as the renderer used to) pins the
+    pattern to screen space so it only looks right at one zoom.
+    """
+    name = str(linetype or "").upper()
+    if name in ("BYLAYER", ""):
+        name = str(layer_linetypes.get(layer, "") or "").upper()
+    if name in SOLID_LINETYPE_NAMES:
+        return None
+
+    elements = patterns.get(name)
+    if not elements:
+        return None
+
+    scale = (global_ltscale or 1.0) * (entity_ltscale if entity_ltscale and entity_ltscale > 0 else 1.0)
+    dashes = [
+        (DOT_DASH_LENGTH if abs(value) < 1e-9 else abs(value) * scale)
+        for value in elements
+    ]
+    # An odd-length array makes canvas repeat it with on/off swapped on alternate cycles, which
+    # inverts the pattern every other repeat. Duplicating it keeps the phase stable.
+    if len(dashes) % 2:
+        dashes = dashes + dashes
+    return dashes if any(d > 0 for d in dashes) else None
+
 
 def project_mapped_entity(
     mapped: dict[str, Any], transform: ViewportTransform
@@ -40,16 +103,39 @@ def project_mapped_entity(
         return NO_VIEWPORT, 1.0
 
     geometry = mapped.get("geometry") or {}
-    properties = mapped.get("properties") or {}
+    # NOT `or {}`. An empty properties dict is falsy, so `or {}` hands back a DETACHED dict
+    # and every write below is silently discarded -- both the clipped flag and the
+    # projected `PROJECTED_PROPERTY_POINT_LISTS`. Real entities always carry properties
+    # from `common_properties`, which is why this never surfaced.
+    properties = mapped.get("properties")
+    if not isinstance(properties, dict):
+        properties = {}
+        mapped["properties"] = properties
 
     state: dict[str, Any] = {"index": None, "scale": 1.0, "resolved": False}
 
     def project_point(point: Any) -> list[float]:
-        result = transform.project(float(point[0]), float(point[1]), state["index"])
+        mx, my = float(point[0]), float(point[1])
+        result = transform.project(mx, my, state["index"])
         if not state["resolved"]:
             state["index"] = result.viewport_index
             state["scale"] = result.scale
             state["resolved"] = True
+            # Record whether the entity's anchor actually fell inside a viewport window.
+            #
+            # `project` deliberately falls back to viewport 0 for model geometry outside
+            # every window, so the coordinate stays deterministic and invertible. But CAD
+            # CLIPS that geometry -- a viewport shows only its own window -- so anything
+            # relying on the fallback is invisible in the source application and in the
+            # ezdxf raster, while a renderer that trusts the projected coordinate draws it
+            # at a plausible-but-wrong spot. That is exactly how a stray section label
+            # ended up floating on the sheet in vector mode: it sits at model y=110.6 with
+            # its viewport window ending at y=91.9.
+            #
+            # Flagged rather than dropped: the coordinate is still the honest answer to
+            # "where would this be", and the comparison engines still want the entity.
+            # Only the renderer should skip it.
+            state["outside"] = not transform.covers_model_point(mx, my)
         return [result.x, result.y]
 
     def is_point(value: Any) -> bool:
@@ -77,6 +163,11 @@ def project_mapped_entity(
         value = properties.get(key)
         if isinstance(value, list) and value and all(is_point(p) for p in value):
             properties[key] = [project_point(p) for p in value]
+
+    # Only set when the entity actually resolved through a viewport, so entities with no
+    # geometry are not mislabelled as clipped.
+    if state.get("outside"):
+        properties["outside_viewport"] = True
 
     # Scale distances only once the viewport is known. If no coordinate resolved a
     # viewport (an entity with no geometry), leave sizes untouched.
@@ -190,6 +281,17 @@ class DXFParser:
         # projection. Identity when the drawing has no paper-space viewports.
         transform = ViewportTransform.from_document(doc)
 
+        # Resolve every linetype's real dash pattern here, where the document is still in
+        # scope. `GeometrySerializer` previously emitted a hard-coded [5, 5] for anything whose
+        # linetype name looked dashed, so a CENTER line (long-dash / gap / short-dash / gap)
+        # rendered as even dashes indistinguishable from HIDDEN. This drawing's CENTER is
+        # [31.75, -6.35, 6.35, -6.35] before scaling -- nothing like [5, 5].
+        ltscale = float(doc.header.get("$LTSCALE", 1.0) or 1.0)
+        linetype_patterns = _build_linetype_patterns(doc)
+        layer_linetypes = {
+            lyr["layer"]: str(lyr["properties"].get("linetype") or "") for lyr in layers
+        }
+
         def process_entity(entity, layout_name, depth=0, is_dimension=False, parent_handle=None):
             if depth > 10:
                 logger.warning(f"Recursive block/dimension explosion depth limit reached at entity: {entity.dxftype()}")
@@ -216,6 +318,20 @@ class DXFParser:
                 props["layout_space"] = layout_name
                 if parent_handle:
                     props["parent_handle"] = parent_handle
+
+                # Resolve BYLAYER linetypes against the layer table and expand the LTYPE
+                # pattern into drawing-unit dash lengths. Done here rather than in the
+                # serializer because this is the last point where the LTYPE table exists.
+                dash = resolve_dash_pattern(
+                    props.get("linetype", "BYLAYER"),
+                    mapped.get("layer", ""),
+                    float(props.get("ltscale") or 1.0),
+                    linetype_patterns,
+                    layer_linetypes,
+                    ltscale,
+                )
+                if dash:
+                    props["linetype_pattern"] = dash
 
                 # Project model-space geometry (and dimensions rendered through a
                 # paper-space viewport) into paper coordinates. Paper-space entities
@@ -267,6 +383,18 @@ class DXFParser:
             "measurement": doc.header.get("$MEASUREMENT", -1), # 0 = Inch, 1 = Metric
             "extmin": list(doc.header.get("$EXTMIN", [0, 0, 0])),
             "extmax": list(doc.header.get("$EXTMAX", [0, 0, 0])),
+            # $LWDISPLAY: does this drawing want its lineweights DRAWN at all?
+            #
+            # An entity can record 1.00mm and still be meant to display as a hairline -- the
+            # weight is a plotting instruction, and this header is the switch that says whether
+            # the viewer honours it on screen. It is 0 on both M745221N01 files, which is why
+            # iCAD SX draws them with uniform thin linework despite the FSRS2 sheet recording
+            # 1.00mm on 136 entities and 0.50mm on 331.
+            #
+            # Missing this is what made one pane look right and the other wrong: the REFERENCE
+            # drawing happens to be a uniform 0.25mm, so ignoring the flag was invisible there
+            # and glaring on its neighbour.
+            "lineweight_display": bool(int(doc.header.get("$LWDISPLAY", 0) or 0)),
             # The model<->paper projection applied to the geometry above. Persisted
             # so a stored coordinate can be mapped back into the source file's model
             # space -- the prerequisite for writing redlines into CAD.

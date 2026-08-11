@@ -1,5 +1,6 @@
 from bson.errors import InvalidId
 from fastapi import Depends, Header, HTTPException, status
+from pydantic import ValidationError
 
 from ..core.security import verify_api_token
 
@@ -37,15 +38,34 @@ def resolve_username(x_session_token: str | None) -> str | None:
 
 async def get_or_404(model, id: str, detail: str):
     """
-    Shared Document.get() wrapper. Beanie raises InvalidId (not a clean
-    404-able None) when `id` isn't a well-formed ObjectId, which previously
-    surfaced as an unhandled 500 on every router that took a raw path-param
-    id straight into `Model.get(id)`. Use this instead of calling
-    `Model.get(id)` directly in route handlers.
+    Shared Document.get() wrapper. A malformed id must be a clean 404, not an
+    unhandled 500. Use this instead of calling `Model.get(id)` directly in
+    route handlers.
+
+    **Catch both exception types, and do not "tidy" either away.** Which one
+    fires depends on the Beanie version, and this guard has already gone inert
+    once because of that:
+
+    - Older Beanie called into bson directly and raised `bson.errors.InvalidId`.
+    - Beanie 2.x (2.1.0 here) validates the id through a Pydantic `TypeAdapter`
+      first (`documents.py::get` -> `parse_object_as`), so it raises
+      `pydantic.ValidationError` and **never reaches the bson path at all**.
+
+    So on this version the original `except InvalidId` caught an exception that
+    could no longer occur, and every one of the ~24 call sites — annotations,
+    audits, drawings — returned 500 for any non-ObjectId path param. It surfaced
+    as a supervisor clicking Approve on a client-side canvas marker
+    (`phys_chk_restored_1_1786329084013`) and getting INTERNAL_SERVER_ERROR
+    instead of "not found".
+
+    The lesson generalises past the version bump: **a guard clause naming a
+    concrete exception type is a dependency on that library's internals**, and
+    nothing fails when the library stops raising it — the code keeps compiling,
+    the tests keep passing, and the guard silently stops guarding.
     """
     try:
         doc = await model.get(id)
-    except InvalidId:
+    except (InvalidId, ValidationError):
         doc = None
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)

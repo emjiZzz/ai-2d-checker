@@ -199,16 +199,21 @@ describe('ChecklistPanel row-to-violation text matching', () => {
 });
 
 describe('ChecklistPanel finding-card layout structure', () => {
+  /** A 24-hex Mongo ObjectId. `isPersistedViolationId` gates the verdict controls on this shape,
+   *  so a placeholder like 'v1' would silently render a card with no verdict block. */
+  const PERSISTED_ID = '507f1f77bcf86cd799439011';
+
   /** Renders one linked finding and returns its card element. */
-  function renderLinkedFinding(): HTMLElement {
+  function renderLinkedFinding(violationOverrides: Record<string, unknown> = {}): HTMLElement {
     mockWorkspace([
       {
-        id: 'v1',
+        id: PERSISTED_ID,
         description: 'B',
         category: 'title_block',
         pen_type: 'ai_conflict',
         resolution_type: null,
         checker_remarks: null,
+        ...violationOverrides,
       },
     ]);
     // Field name deliberately not a taxonomy label ("Scale", "Title", ...) — those also render as
@@ -254,5 +259,62 @@ describe('ChecklistPanel finding-card layout structure', () => {
       'cmp-v-ref',
       'cmp-v-rev',
     ]);
+  });
+});
+
+describe('ChecklistPanel offers a verdict only where one can be recorded', () => {
+  /* These pin a live 500. The verdict block was gated on `matchingViolation` alone, so it
+     appeared on rows the server cannot accept a review for, and clicking Approve produced
+     `PATCH /audits/violations/phys_chk_restored_1_1786329084013/review -> 500`.
+
+     The backend now answers 404 for a malformed id (tests/test_malformed_id_is_404.py), but a
+     404 rendered in red still tells a reviewer their verdict failed to save on a row that was
+     never reviewable. The control must not be offered in the first place. */
+
+  const PERSISTED_ID = '507f1f77bcf86cd799439011';
+
+  function renderWith(violation: Record<string, unknown>) {
+    mockWorkspace([{ category: 'title_block', description: 'B', ...violation }]);
+    render(
+      <ChecklistPanel
+        aiChecklistResults={{ title_block: tableResult([{ field: 'WidgetRef', original: 'A', kmti: 'B' }]) }}
+      />
+    );
+  }
+
+  test('a client-side canvas marker gets no verdict controls', () => {
+    // The exact id from the production traceback. Synthesised in markerGenerator.ts; there is no
+    // AuditViolation document behind it, so no review can be recorded against it.
+    renderWith({ id: 'phys_chk_restored_1_1786329084013', pen_type: 'ai_conflict' });
+
+    expect(screen.queryByTestId('review-controls')).toBeNull();
+  });
+
+  test('a MATCHED row gets no verdict controls', () => {
+    // The engine reporting no change. There is nothing to approve, and the orchestrator never
+    // persists one as an AuditViolation — so even a well-formed id would have nothing behind it.
+    renderWith({ id: PERSISTED_ID, pen_type: 'resolved_green' });
+
+    expect(screen.queryByTestId('review-controls')).toBeNull();
+  });
+
+  test('a persisted, non-MATCHED finding still gets them', () => {
+    // The guard must not be so broad that it removes the feature it is protecting.
+    renderWith({ id: PERSISTED_ID, pen_type: 'ai_conflict' });
+
+    expect(screen.getByTestId('review-controls')).toBeTruthy();
+  });
+
+  test('a synthetic marker joined to a persisted violation becomes reviewable', () => {
+    // The actual production shape: the canvas id is always synthetic, and `reconcilePersistedIds`
+    // attaches `persisted_id` from GET /audits/sessions/{id}/violations. This is what puts the
+    // verdict back on real findings rather than removing it everywhere.
+    renderWith({
+      id: 'phys_chk_restored_1_1786329084013',
+      persisted_id: PERSISTED_ID,
+      pen_type: 'ai_conflict',
+    });
+
+    expect(screen.getByTestId('review-controls')).toBeTruthy();
   });
 });

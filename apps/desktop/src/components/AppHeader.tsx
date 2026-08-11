@@ -26,10 +26,10 @@ const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, ac
     aria-controls={`${navKey}-panel`}
     tabIndex={0}
     onClick={() => onSelect(navKey)}
-    className={`flex items-center gap-2 h-full px-3.5 py-1 rounded-full text-xs md:text-sm font-semibold transition-all duration-200 shrink-0 ${
+    className={`flex items-center gap-1.5 h-full px-2.5 py-0.5 rounded-sm text-xs font-semibold transition-all duration-150 shrink-0 ${
       isActive
-        ? "text-text-primary font-bold"
-        : "text-text-muted hover:text-text-primary"
+        ? "text-text-primary font-bold bg-bg-card shadow-xs border border-border-color"
+        : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
     }`}
   >
     <Icon size={15} className={`transition-transform duration-200 shrink-0 ${isActive ? `${activeColor} scale-110` : ""}`} />
@@ -83,15 +83,15 @@ export const AppHeader: React.FC = () => {
   return (
     <div
       data-tauri-drag-region
-      className="flex justify-between items-center h-14 bg-bg-topbar border-b border-border-color select-none relative z-[9999] px-3"
+      className="flex justify-between items-center h-10 bg-bg-topbar border-b border-border-color select-none relative z-[9999] px-2.5"
     >
       {/* LEFT: Branding */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-3 px-3 h-full cursor-default"
+        className="flex items-center gap-2 px-2 h-full cursor-default"
       >
-        <img src={kmtiLogo} alt="KMTI Logo" className="h-9 w-auto object-contain shrink-0" />
-        <span className="text-sm font-black tracking-wider uppercase text-text-primary">
+        <img src={kmtiLogo} alt="KMTI Logo" className="h-6 w-auto object-contain shrink-0" />
+        <span className="text-xs font-black tracking-wider uppercase text-text-primary">
           KMTI Checker
         </span>
       </div>
@@ -105,7 +105,7 @@ export const AppHeader: React.FC = () => {
           <div
             role="tablist"
             aria-label="Workspace Navigation"
-            className="flex items-center gap-[6px] h-[40px] px-2"
+            className="flex items-center gap-[4px] h-[28px] px-1"
           >
             <NavTab navKey="workspace" label="2D Workspace" icon={Compass} activeColor="text-accent-cyan" isActive={currentNav === "workspace"} onSelect={setCurrentNav} />
             <NavTab navKey="3d-workspace" label="3D Workspace" icon={Box} activeColor="text-violet-400" isActive={currentNav === "3d-workspace"} onSelect={setCurrentNav} />

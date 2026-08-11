@@ -9,6 +9,7 @@ import { useJobPolling } from "../../hooks/useJobPolling";
 import { useAuditPolling } from "../../hooks/useAuditPolling";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
+import { cleanCadText } from "./renderEntities";
 
 interface TwoDRightPanelProps {
   currentNav: string;
@@ -45,9 +46,9 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
   const lowCount = violations.filter((v) => v.severity === "low").length;
 
   const getViolationCardClass = (v: any, isSelected: boolean) => {
-    const base = "bg-bg-dark border border-border-color rounded-xl p-3.5 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-l-accent-cyan";
+    const base = "bg-bg-card border border-border-color rounded-sm p-2.5 cursor-pointer transition-all duration-150 hover:border-l-accent-cyan";
     const selectedClass = isSelected
-      ? "border-accent-cyan border-l-accent-cyan shadow-[0_0_10px_rgba(37,99,235,0.18)] data-[theme=hc-dark]:shadow-[0_0_12px_rgba(0,229,255,0.2)]"
+      ? "border-accent-cyan border-l-accent-cyan shadow-xs"
       : "border-l-transparent";
     
     let borderLeftColor = "border-l-[3px]";
@@ -205,11 +206,11 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
                 <span className="text-sm font-mono text-text-muted">{v.standard_reference || "General"}</span>
               </div>
 
-              <h5 className="text-sm font-bold text-text-primary mb-1.5">{v.category}</h5>
-              <p className="text-sm text-text-muted mb-2.5 leading-relaxed">{v.description}</p>
+              <h5 className="text-sm font-bold text-text-primary mb-1.5">{cleanCadText(v.category)}</h5>
+              <p className="text-sm text-text-muted mb-2.5 leading-relaxed">{cleanCadText(v.description)}</p>
 
               <div className="bg-bg-dark border border-border-color p-2 rounded text-sm text-text-primary leading-relaxed mb-2.5">
-                <strong>AI Fix Chip:</strong> {v.recommendation}
+                <strong>AI Fix Chip:</strong> {cleanCadText(v.recommendation)}
               </div>
 
               <div className="flex justify-between items-center text-sm">

@@ -70,34 +70,34 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={cn(
-          "w-full bg-bg-card border border-border-color rounded-3xl shadow-2xl shadow-black/20 animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
+          "w-full bg-bg-card border border-border-color rounded-sm shadow-xl animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
           maxWidthClassName,
           className
         )}
       >
         {(title || !disableDismiss) && (
-          <div className="flex items-start gap-4 px-7 py-6 border-b border-border-color shrink-0">
+          <div className="flex items-start gap-3 px-4 py-3 border-b border-border-color shrink-0 bg-bg-sidebar">
             {icon && <div className="shrink-0 mt-0.5">{icon}</div>}
             <div className="flex-1 min-w-0">
               {title && (
                 <h2
                   id="modal-title"
-                  className="text-xl font-bold text-text-primary tracking-tight leading-tight"
+                  className="text-base font-bold text-text-primary tracking-tight leading-tight"
                 >
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-text-muted mt-1">{description}</p>
+                <p className="text-xs text-text-muted mt-0.5">{description}</p>
               )}
             </div>
             {!disableDismiss && (
               <button
                 onClick={onClose}
-                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-lg p-1.5 transition-all duration-150 shrink-0 active:scale-95"
+                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-sm p-1 transition-all duration-150 shrink-0"
                 aria-label="Close"
               >
-                <X size={16} />
+                <X size={14} />
               </button>
             )}
           </div>

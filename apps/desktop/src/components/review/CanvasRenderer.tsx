@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { DEFAULT_CUSTOM_REGIONS } from '../../utils/zoneFractions';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
@@ -17,8 +17,8 @@ interface CanvasRendererProps {
   hoveredMarkerId: string | null;
   hoveredAnnotationId?: string | null;
   isNeonCAD: boolean;
-  bgImage: HTMLImageElement | null;
-  lightBgImage: HTMLImageElement | null;
+  bgImage: any;
+  lightBgImage: any;
   setRenderDiagnostics: (stats: { entityCount: number, drawCount: number, renderTimeMs: number }) => void;
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
   redrawTrigger: number;
@@ -93,7 +93,43 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const allPinnedZoneKeys = useReviewStore((s) => s.pinnedZoneKeys);
   const selectedComparisonRegion = useReviewStore((s) => s.selectedComparisonRegion);
   const theme = useThemeStore((s) => s.theme);
-  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  // devicePixelRatio, tracked live rather than read once. `drawCanvas` reads a fresh value from
+  // `window` on every frame, so if this one goes stale — dragging the window to a monitor with
+  // different OS scaling is the way that happens — the render transform and the backing store
+  // disagree and the canvas goes blurry until some unrelated state change forces a re-render.
+  // matchMedia is the only DPR-change signal browsers expose, and the query is resolution-
+  // specific rather than a standing subscription, so it has to be re-armed after each fire.
+  const [dpr, setDpr] = useState(() => (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1));
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let mql: MediaQueryList | null = null;
+    let cancelled = false;
+    const arm = () => {
+      if (cancelled) return;
+      const next = window.devicePixelRatio || 1;
+      setDpr(next);
+      mql = window.matchMedia(`(resolution: ${next}dppx)`);
+      mql.addEventListener('change', arm, { once: true });
+    };
+    arm();
+    return () => {
+      cancelled = true;
+      mql?.removeEventListener('change', arm);
+    };
+  }, []);
+
+  // Backing store and CSS size are both derived from ONE rounded device-pixel figure, so that
+  // `cssPx * dpr === backingPx` holds exactly and the bitmap maps 1:1 onto physical pixels.
+  //
+  // This is the difference between a crisp canvas and a blurry one, and it is easy to get
+  // wrong: `width`/`height` arrive from a ResizeObserver's `contentRect`, which reports
+  // FRACTIONAL sizes (a flex column happily produces 689.6px). Sizing the element with
+  // `width: 100%` while the backing store was `Math.round(689.6 * dpr)` left the browser
+  // rescaling a 690px bitmap into a 689.6px box — a non-integer resample applied to every
+  // pixel on the canvas, which reads as a uniform softness at every zoom level and survives
+  // any amount of work on the renderer itself.
+  const backingW = Math.round(width * dpr);
+  const backingH = Math.round(height * dpr);
 
   const visibleViolations = useMemo(() => {
     return violations.filter(v => !hiddenViolationIds[v.id]);
@@ -147,7 +183,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     if (isExport) {
       ctx.fillStyle = '#ffffff';
     } else {
-      ctx.fillStyle = theme === 'hc-light' ? '#ebebeb' : '#262b36';
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-canvas').trim() || '#262b36';
     }
     ctx.fillRect(0, 0, renderWidth, renderHeight);
 
@@ -219,14 +255,9 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     ctx.translate(transX, transY);
     ctx.scale(scale, scale);
 
-    let currentFilter = "none";
     const isDragging = isDraggingRef?.current ?? false;
     const isNeonModeActive = isNeonCAD && !isDragging;
-
-    if (isNeonModeActive && !isExport) {
-      currentFilter = "contrast(1.25) brightness(1.15) saturate(1.35) hue-rotate(2deg)";
-    }
-    ctx.filter = currentFilter;
+    ctx.filter = "none";
 
     // 4. Viewport bounds in world coordinates
     const minX = -transX / scale;
@@ -412,14 +443,17 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   return (
     <canvas
       ref={canvasRef}
-      width={width * dpr}
-      height={height * dpr}
+      width={backingW}
+      height={backingH}
       {...domHandlers}
       style={{
         cursor: cursorStyle,
         display: 'block',
-        width: '100%',
-        height: '100%'
+        // Explicit px, NOT '100%' — see the backingW/backingH note above. The parent wrapper
+        // is overflow:hidden, so the sub-pixel remainder between this and the container is
+        // clipped rather than scrolled.
+        width: `${backingW / dpr}px`,
+        height: `${backingH / dpr}px`
       }}
     />
   );

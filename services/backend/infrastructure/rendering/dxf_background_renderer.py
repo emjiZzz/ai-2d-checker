@@ -7,150 +7,38 @@ def render_dxf_background(dxf_path: Path, drawing_id: str, metadata: dict[str, A
     try:
         import matplotlib
         matplotlib.use('Agg') # Headless background thread safe execution
-        import ezdxf
         import matplotlib.pyplot as plt
         from ezdxf.addons.drawing import Frontend, RenderContext
         from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
-        
+
+        from .dxf_render_setup import (
+            configure_cad_fonts,
+            load_and_transcode,
+            select_render_layout,
+        )
+
         logger.info(f"Generating high-fidelity CAD layout background for drawing {drawing_id}...")
 
         # --- Step 1: Configure ezdxf font manager (MUST happen before readfile) ---
-        import matplotlib.font_manager as mpl_fm
-        from ezdxf.fonts import fonts as ezdxf_fonts
+        # Shared with tools/render_audit.py, which measures text placement against this exact
+        # configuration -- see dxf_render_setup for why each step is load-bearing.
+        jp_font_filename = configure_cad_fonts(configure_matplotlib=True)
 
-        JAPANESE_FONT_CANDIDATES = [
-            r"C:\Windows\Fonts\msgothic.ttc",   # MS Gothic - best AutoCAD compatibility
-            r"C:\Windows\Fonts\YuGothR.ttc",    # Yu Gothic Regular
-            r"C:\Windows\Fonts\meiryo.ttc",     # Meiryo
-            r"C:\Windows\Fonts\MSMINCHO.TTF",   # MS Mincho
-        ]
+        # --- Steps 2 & 3: Load with byte-preserving encoding, recover CJK text, and repoint
+        # every SHX text style at the TTF. Shared with the render-fidelity harness.
+        doc = load_and_transcode(dxf_path, jp_font_filename)
 
-        jp_font_path = None
-        for candidate in JAPANESE_FONT_CANDIDATES:
-            if Path(candidate).exists():
-                jp_font_path = candidate
-                logger.info(f"Japanese font found: {candidate}")
-                break
+        # --- Step 4: Select best layout to render (Paper Space preferred over Model Space,
+        # but ONLY if it contains a viewport) ---
+        layout_to_render = select_render_layout(doc)
 
-        if jp_font_path:
-            # Scan Windows Fonts so ezdxf's font manager can locate TTF/TTC files
-            ezdxf_fm = ezdxf_fonts.font_manager
-            ezdxf_fm.scan_folder(Path(r"C:\Windows\Fonts"))
-            jp_font_filename = Path(jp_font_path).name
-            ezdxf_fm._fallback_font_name = jp_font_filename
-
-            # Override SHX font mappings: Japanese CAD files use txt.shx + bigfont (extfont2/gothicj)
-            # ezdxf cannot render BigFont SHX glyphs — substitute with MS Gothic TTF instead
-            for shx_name in ["TXT", "TXT.SHX", "EXTFONT2", "EXTFONT2.SHX",
-                              "GOTHICJ", "GOTHICJ.SHX", "ROMANS", "ROMANS.SHX",
-                              "SIMPLEX", "SIMPLEX.SHX", "CHINESET", "CHINESET.SHX"]:
-                ezdxf_fonts.SHX_FONTS[shx_name] = jp_font_filename
-
-            # Also configure matplotlib to use the same Japanese font
-            mpl_fm.fontManager.addfont(jp_font_path)
-            prop = mpl_fm.FontProperties(fname=jp_font_path)
-            jp_font_name = prop.get_name()
-            matplotlib.rcParams['font.sans-serif'] = [jp_font_name, 'DejaVu Sans', 'sans-serif']
-            matplotlib.rcParams['font.family'] = 'sans-serif'
-            logger.info(f"Japanese font '{jp_font_name}' registered for ezdxf + matplotlib rendering.")
-        else:
-            logger.warning("No Japanese font found. CJK characters may render as boxes.")
-
-        matplotlib.rcParams['axes.unicode_minus'] = False
-
-        # --- Step 2: Load DXF with byte-preserving encoding and CJK transcoding ---
-        doc = None
-        try:
-            doc = ezdxf.readfile(str(dxf_path), encoding="latin-1")
-            logger.info(f"DXF loaded for background rendering with latin-1. Header codepage: {doc.header.get('$DWGCODEPAGE')}")
-        except Exception as read_err:
-            logger.warning(f"Latin-1 rendering load failed: {str(read_err)}")
-            try:
-                doc = ezdxf.readfile(str(dxf_path))
-            except Exception as e:
-                raise ValueError(f"Unable to read DXF file for rendering: {str(e)}")
-
-        # Deep CJK transcoding of entities inside doc before rendering
-        doc_encoding = getattr(doc, "encoding", "cp932") or "cp932"
-        if doc_encoding.lower() in ("ansi_932", "cp932", "ms932", "shift_jis", "sjis"):
-            doc_encoding = "cp932"
-            
-        def transcode_str(s: str) -> str:
-            if not s:
-                return ""
-            decoded = s
-            try:
-                b = s.encode('latin1')
-                for enc in (doc_encoding, 'cp932', 'utf-8', 'latin-1'):
-                    if not enc:
-                        continue
-                    try:
-                        decoded = b.decode(enc)
-                        break
-                    except Exception:
-                        continue
-            except Exception:
-                pass
-            
-            # Replace all CP932 decoded multiplication signs with standard x
-            decoded = decoded.replace('\uff97', 'x')
-            decoded = decoded.replace('\u30e9', 'x')
-            decoded = decoded.replace('×', 'x')
-            decoded = decoded.replace('ラ', 'x')
-            return decoded
-            
-        # Transcode all layouts (Model & Paper Space)
-        for layout in doc.layouts:
-            for entity in layout:
-                dxftype = entity.dxftype()
-                if dxftype in ("TEXT", "MTEXT"):
-                    if hasattr(entity, "text"):
-                        entity.text = transcode_str(entity.text)
-                    if hasattr(entity.dxf, "text"):
-                        entity.dxf.text = transcode_str(entity.dxf.text)
-                elif dxftype == "DIMENSION":
-                    if hasattr(entity.dxf, "text"):
-                        entity.dxf.text = transcode_str(entity.dxf.text)
-                elif dxftype == "INSERT":
-                    if hasattr(entity.dxf, "name"):
-                        entity.dxf.name = transcode_str(entity.dxf.name)
-
-        # Transcode all blocks definitions
-        for block in doc.blocks:
-            for entity in block:
-                dxftype = entity.dxftype()
-                if dxftype in ("TEXT", "MTEXT"):
-                    if hasattr(entity, "text"):
-                        entity.text = transcode_str(entity.text)
-                    if hasattr(entity.dxf, "text"):
-                        entity.dxf.text = transcode_str(entity.dxf.text)
-
-        # --- Step 3: Override text styles in the document to use MS Gothic TTF ---
-        # This forces ezdxf to render text using the TTF font instead of the missing SHX bigfont files
-        if jp_font_path:
-            for style in doc.styles:
-                font = style.dxf.get('font', '')
-                bigfont = style.dxf.get('bigfont', '')
-                if font.upper().endswith('.SHX') or bigfont:
-                    style.dxf.font = jp_font_filename
-                    style.dxf.bigfont = ''
-                    logger.info(f"Overriding DXF style '{style.dxf.get('name', '?')}': {font!r}+{bigfont!r} -> {jp_font_filename}")
-
-        
-        # --- Step 4: Select best layout to render (Paper Space preferred over Model Space, but ONLY if it contains a viewport) ---
-        paperspace_layouts = [l for l in doc.layouts if l.name.lower() != 'model' and len(l) > 0]
-        layout_to_render = None
-        for pl in paperspace_layouts:
-            # Check if this paper space layout actually contains a viewport that looks into model space
-            # Ignore viewport id=1 as it's the paper space background itself
-            if any(e.dxftype() == "VIEWPORT" and e.dxf.id != 1 for e in pl):
-                layout_to_render = pl
-                logger.info(f"Rendering Paper Space layout (contains viewport): {layout_to_render.name}")
-                break
-        
-        if not layout_to_render:
-            layout_to_render = doc.modelspace()
-            logger.info("No valid Paper Space layouts with viewports found. Defaulting to Model Space rendering.")
+        # Record WHICH layout this raster depicts. The extractor walks every layout in the
+        # file and stores them all, so without this the vector renderer has no way to show the
+        # same sheet: it drew 'ICADSX Layout' (426 entities) and 'Model' (86) superimposed,
+        # which put a second copy of the section labels and other model-space annotation on
+        # top of the real drawing, projected to plausible-but-wrong positions. The raster and
+        # the vectors have to agree on what "the drawing" is, and this is that agreement.
+        metadata["render_layout"] = layout_to_render.name
 
         # --- Brighten dark colors for visibility on dark UI background ---
         # AutoCAD Color 5 (Blue) and Color 8 (Dark Gray) are nearly invisible on a dark canvas.

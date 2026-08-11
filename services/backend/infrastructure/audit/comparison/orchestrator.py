@@ -1453,9 +1453,27 @@ async def perform_drawing_comparison(
                 canvas_markings=[CanvasMarking(**item) for item in cached_payload.get("canvas_markings", [])],
                 diagnostics=cached_payload.get("diagnostics"),
             )
-            # Apply the learned model to the cached deterministic result at serve time, so a
-            # correction takes effect on already-cached pairs without invalidating the cache.
-            return apply_learned_adjustments(cached_response, ref_entities, rev_entities)
+            # An entry whose diagnostics carry no `audit_session_id` is served without one ever
+            # being created: the AuditSession + AuditViolation writes below sit on the cache-MISS
+            # path only, so a hit returns findings that exist nowhere in Mongo.
+            #
+            # The desktop checklist joins its markers to those documents by that id
+            # (apps/desktop/src/utils/persistedViolations.ts) to get an id it can PATCH. Without
+            # it every finding is unreviewable -- no supervisor verdict, no visibility toggle --
+            # and re-testing cannot fix it, because the re-test hits this same entry.
+            #
+            # So fall through to a full comparison, which persists the findings, stamps the id and
+            # rewrites this entry. Costs one slow run per stale entry, once. If persistence itself
+            # is failing the id stays unset and the pair stops caching until that is repaired --
+            # deliberate: a finding nobody can sign off on is worse than a slow one.
+            if cached_response.diagnostics and cached_response.diagnostics.audit_session_id:
+                # Apply the learned model to the cached deterministic result at serve time, so a
+                # correction takes effect on already-cached pairs without invalidating the cache.
+                return apply_learned_adjustments(cached_response, ref_entities, rev_entities)
+            logger.info(
+                "Cached comparison carries no audit_session_id (entry predates the field, or its "
+                "persistence failed); re-running so this pair's findings are reviewable."
+            )
         except Exception as cache_err:
             logger.warning(f"Failed to parse cached drawing comparison, performing full comparison: {cache_err}")
 

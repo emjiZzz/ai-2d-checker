@@ -102,3 +102,66 @@ def test_compare_values_scale_mismatch():
     assert m["status"] == "CHANGED"
     assert "Standardized based on Standard context provided" in m["details"]
 
+
+class _FellThrough(Exception):
+    """Sentinel: the cache-hit fast path was declined and a full comparison began."""
+
+
+def _cached_payload(diagnostics: dict) -> dict:
+    category = {"status": "MATCHED", "difference_summary": "No changes"}
+    return {
+        "drawing_views": category,
+        "notes_section": category,
+        "bill_of_materials": category,
+        "title_block": category,
+        "isometric_view": category,
+        "other_engineering_references": category,
+        "canvas_markings": [],
+        "diagnostics": diagnostics,
+    }
+
+
+async def _serve_cached(monkeypatch, diagnostics: dict):
+    from types import SimpleNamespace
+
+    from services.backend.infrastructure.audit.comparison import orchestrator
+
+    monkeypatch.setattr(
+        orchestrator.ComparisonCacheManager,
+        "get_cached_comparison",
+        staticmethod(lambda **_: _cached_payload(diagnostics)),
+    )
+    monkeypatch.setattr(orchestrator, "apply_learned_adjustments", lambda resp, _a, _b: resp)
+
+    async def _full_run(*_args, **_kwargs):
+        raise _FellThrough()
+
+    monkeypatch.setattr(orchestrator, "generate_deterministic_candidates", _full_run)
+
+    drawing = SimpleNamespace(id="dwg", file_hash="hash")
+    return await orchestrator.perform_drawing_comparison(
+        SimpleNamespace(), drawing, drawing, [], []
+    )
+
+
+async def test_cache_hit_without_audit_session_id_reruns():
+    """A cached entry carrying no `audit_session_id` must NOT be served.
+
+    The AuditSession/AuditViolation writes live on the cache-MISS path only, so serving such
+    an entry returns findings that exist nowhere in Mongo. The desktop checklist joins its
+    markers to those documents to get a reviewable id (persistedViolations.ts), so the whole
+    supervisor verdict control silently disappears — and re-testing cannot fix it, because the
+    re-test hits the same entry. Every v43 entry on disk before 2026-08-10 was in this state.
+    """
+    with pytest.MonkeyPatch.context() as mp:
+        with pytest.raises(_FellThrough):
+            await _serve_cached(mp, {"zone_detection_warnings": []})
+
+
+async def test_cache_hit_with_audit_session_id_is_served():
+    """The fast path still exists — the guard above must not disable caching outright."""
+    with pytest.MonkeyPatch.context() as mp:
+        response = await _serve_cached(mp, {"audit_session_id": "6a7444aa62659080a5944ef5"})
+
+    assert response.diagnostics.audit_session_id == "6a7444aa62659080a5944ef5"
+

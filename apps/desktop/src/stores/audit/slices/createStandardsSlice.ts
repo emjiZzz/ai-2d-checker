@@ -39,8 +39,15 @@ export const createStandardsSlice: StateCreator<AuditState, [], [], StandardsSli
     if (clientName && scope === "client_specific") formData.append("client_name", clientName);
 
     try {
+      // `/api/v1/standards/upload`, not `/api/v1/standards`. The latter exists but is
+      // **GET-only** (`standards.py::list_standards`), so posting to it returned
+      // `405 Method Not Allowed` — surfaced in the dialog as "Ingestion Fault: Method Not
+      // Allowed" — and no standard could ever be ingested through the UI. That is why
+      // `standard_documents` and `standard_chunks` were both 0, which
+      // [[ADR-009 Retiring the Standards Knowledge Track]] read as "nobody has uploaded a
+      // standard" when the truth was "nobody could".
       await uploadFile<any>(
-        "/api/v1/standards",
+        "/api/v1/standards/upload",
         formData,
         (percent) => set({ uploadProgress: percent })
       );

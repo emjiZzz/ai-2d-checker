@@ -19,6 +19,11 @@ reportlab>=4.0.0
 
 # Excel report generation + standards parsing
 openpyxl>=3.1.0
+# Legacy .xls (BIFF/OLE2) standards. openpyxl reads OOXML only — its own SUPPORTED_FORMATS is
+# ('.xlsx', '.xlsm', '.xltx', '.xltm') — and xlrd >=2.0 reads .xls only, so the two are exactly
+# complementary rather than overlapping. Pure Python, no compiled extensions, ~100 KB, which
+# matters because this sidecar ships inside a Tauri bundle.
+xlrd>=2.0.1
 
 # High-fidelity PDF rendering (optional, degrades gracefully if missing)
 pymupdf>=1.24.0

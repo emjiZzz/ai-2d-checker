@@ -129,16 +129,16 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
 
   return (
     <div className="flex flex-grow h-full overflow-hidden min-w-0">
-      <main className="flex-grow h-full min-h-0 min-w-0 flex flex-col p-5 overflow-hidden border-r border-border-color box-border" style={{ display: "flex", flexDirection: "column", position: "relative" }}>
-        <div className="bg-bg-card border border-border-color rounded-xl p-3 backdrop-blur-md shadow-sm mb-3 z-10">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "16px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <h3 className="text-base font-extrabold tracking-tight flex items-center border-l-[3px] border-accent-cyan pl-2.5 text-text-primary m-0">
+      <main className="flex-grow h-full min-h-0 min-w-0 flex flex-col p-2.5 overflow-hidden border-r border-border-color box-border" style={{ display: "flex", flexDirection: "column", position: "relative" }}>
+        <div className="bg-bg-card border border-border-color rounded-sm p-2 shadow-xs mb-2 z-10">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: "12px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <h3 className="text-xs font-bold tracking-tight flex items-center border-l-[3px] border-accent-cyan pl-2 text-text-primary uppercase m-0">
                 Stage 1: 3D Model Checking Ingestion
               </h3>
               
               {activeDrawing && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-purple-500/15 border border-purple-500/30 text-purple-400 text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-purple-500/15 border border-purple-500/30 text-purple-400 text-[11px] font-mono">
                   ACTIVE 3D: {activeDrawing.file_name}
                 </span>
               )}
@@ -146,7 +146,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
           </div>
         </div>
 
-        <div className="flex-grow bg-bg-sidebar border border-border-color rounded-xl flex flex-col overflow-hidden min-h-[500px] relative shadow-sm">
+        <div className="flex-grow bg-bg-sidebar border border-border-color rounded-sm flex flex-col overflow-hidden min-h-[450px] relative">
           <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 1 }} ref={containerRef}>
             <ThreeDViewer
               drawing={activeDrawing}
@@ -157,9 +157,9 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
 
           {(!activeDrawing || !["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(activeDrawing?.format?.toLowerCase() || "")) && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-bg-dark/80 backdrop-blur-md">
-              <div className="w-[420px] bg-bg-card p-[30px] rounded-[16px] border border-border-color shadow-2xl">
-                <h2 className="text-center text-text-primary text-2xl font-extrabold tracking-tight mb-1.5">3D Model Ingestion</h2>
-                <p className="text-center text-text-muted text-sm mb-5 leading-relaxed">Upload your 3D model file to begin compliance checking</p>
+              <div className="w-[400px] bg-bg-card p-5 rounded-sm border border-border-color shadow-xl">
+                <h2 className="text-center text-text-primary text-lg font-bold tracking-tight mb-1">3D Model Ingestion</h2>
+                <p className="text-center text-text-muted text-xs mb-4 leading-relaxed">Upload your 3D model file to begin compliance checking</p>
                 <UploadZone
                   side="new"
                   uploadState={uploadState}
@@ -173,7 +173,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
                   currentNav={currentNav}
                 />
                 
-                <div style={{ marginTop: "20px", display: "flex", justifyContent: "center" }}>
+                <div style={{ marginTop: "16px", display: "flex", justifyContent: "center" }}>
                   <button
                     onClick={() => {
                       _setDrawing({
@@ -187,9 +187,9 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
                       });
                       _setUploadStatus("completed", 100);
                     }}
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 text-xs font-bold rounded-xl cursor-pointer transition-all bg-purple-500/10 border border-dashed border-purple-500/40 text-purple-400 hover:bg-purple-500/20 w-full"
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-bold rounded-sm cursor-pointer transition-all bg-purple-500/10 border border-dashed border-purple-500/40 text-purple-400 hover:bg-purple-500/20 w-full"
                   >
-                    <RotateCcw size={14} />
+                    <RotateCcw size={12} />
                     Load 3D STEP Demo
                   </button>
                 </div>

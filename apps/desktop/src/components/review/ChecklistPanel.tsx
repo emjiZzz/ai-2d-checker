@@ -7,7 +7,9 @@ import { getTaxonomyWithOther, OTHER_FEATURE_KEY, DEFERRED_FEATURE_KEYS } from "
 import { CorrectionControls } from "./CorrectionControls";
 import { ReviewControls } from "./ReviewControls";
 import { SummaryPanel } from "./SummaryPanel";
-import { isPersistedViolationId } from "../../utils/violationIdentity";
+import { isPersistedViolationId, reviewableViolationId } from "../../utils/violationIdentity";
+import { cleanCadText } from "./renderEntities";
+import { useThemeStore } from "../../stores/themeStore";
 
 interface ChecklistPanelProps {
   aiChecklistResults: Record<string, any>;
@@ -61,6 +63,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
   const activeRoom = useRoomStore((s) => s.activeRoom);
   const newDrawing = useWorkspaceStore((s) => s.newDrawing);
+  const theme = useThemeStore((s) => s.theme);
   const [dismissedRowIds, setDismissedRowIds] = useState<Record<string, boolean>>({});
 
   const violations = useWorkspaceStore((s) => s.violations);
@@ -82,25 +85,28 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
   // feature-grouped list below and (if ever needed) any other caller can reuse the
   // exact same JSX instead of duplicating it.
   const renderDiffRowCard = (row: any, matchingViolation: any, rowId: string, categoryKey: string = "drawing_views") => {
-    const statusUp = (row.status || "").toUpperCase(); let cellBadgeColor = "#10b981"; // green = MATCHED default
-    let cellBadgeBg = "rgba(16, 185, 129, 0.14)";
+    if (!row) return null;
+    const isLight = theme === 'hc-light';
+    const statusUp = (row.status || "").toUpperCase();
+    let cellBadgeColor = isLight ? "#047857" : "#10b981"; // green = MATCHED default
+    let cellBadgeBg = isLight ? "rgba(4, 120, 87, 0.12)" : "rgba(16, 185, 129, 0.14)";
     let statusText = row.status || "MATCHED";
 
     if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) {
-      cellBadgeColor = "#f97316"; cellBadgeBg = "rgba(249, 115, 22, 0.14)"; statusText = "CHANGED";
+      cellBadgeColor = isLight ? "#c2410c" : "#f97316"; cellBadgeBg = isLight ? "rgba(194, 65, 12, 0.12)" : "rgba(249, 115, 22, 0.14)"; statusText = "CHANGED";
     } else if (statusUp.includes("ADD")) {
-      cellBadgeColor = "#3b82f6"; cellBadgeBg = "rgba(59, 130, 246, 0.14)"; statusText = "ADDED";
+      cellBadgeColor = isLight ? "#1d4ed8" : "#3b82f6"; cellBadgeBg = isLight ? "rgba(29, 78, 216, 0.12)" : "rgba(59, 130, 246, 0.14)"; statusText = "ADDED";
     } else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) {
-      cellBadgeColor = "#ef4444"; cellBadgeBg = "rgba(239, 68, 68, 0.14)"; statusText = "REMOVED";
+      cellBadgeColor = isLight ? "#b91c1c" : "#ef4444"; cellBadgeBg = isLight ? "rgba(185, 28, 28, 0.12)" : "rgba(239, 68, 68, 0.14)"; statusText = "REMOVED";
     }
 
     if (matchingViolation) {
       const pt = matchingViolation.pen_type || "";
-      if (pt === "ai_orange") { cellBadgeColor = "#f97316"; statusText = "CHANGED"; cellBadgeBg = "rgba(249, 115, 22, 0.14)"; }
-      else if (pt === "checker_blue") { cellBadgeColor = "#3b82f6"; statusText = "ADDED"; cellBadgeBg = "rgba(59, 130, 246, 0.14)"; }
-      else if (pt === "ai_red") { cellBadgeColor = "#ef4444"; statusText = "REMOVED"; cellBadgeBg = "rgba(239, 68, 68, 0.14)"; }
-      else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = "#10b981"; statusText = "MATCHED"; cellBadgeBg = "rgba(16, 185, 129, 0.14)"; }
-      else if (pt === "ai_conflict") { cellBadgeColor = "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = "rgba(168, 85, 247, 0.14)"; }
+      if (pt === "ai_orange") { cellBadgeColor = isLight ? "#c2410c" : "#f97316"; statusText = "CHANGED"; cellBadgeBg = isLight ? "rgba(194, 65, 12, 0.12)" : "rgba(249, 115, 22, 0.14)"; }
+      else if (pt === "checker_blue") { cellBadgeColor = isLight ? "#1d4ed8" : "#3b82f6"; statusText = "ADDED"; cellBadgeBg = isLight ? "rgba(29, 78, 216, 0.12)" : "rgba(59, 130, 246, 0.14)"; }
+      else if (pt === "ai_red") { cellBadgeColor = isLight ? "#b91c1c" : "#ef4444"; statusText = "REMOVED"; cellBadgeBg = isLight ? "rgba(185, 28, 28, 0.12)" : "rgba(239, 68, 68, 0.14)"; }
+      else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = isLight ? "#047857" : "#10b981"; statusText = "MATCHED"; cellBadgeBg = isLight ? "rgba(4, 120, 87, 0.12)" : "rgba(16, 185, 129, 0.14)"; }
+      else if (pt === "ai_conflict") { cellBadgeColor = isLight ? "#7e22ce" : "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = isLight ? "rgba(126, 34, 206, 0.12)" : "rgba(168, 85, 247, 0.14)"; }
     }
 
     // Feature snapshot attached to every correction so the backend model can rebuild this
@@ -119,6 +125,13 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
       match_distance: null,
       is_numericish: null,
     };
+
+    // The id to review with, or null when this row has no `AuditViolation` behind it. A MATCHED
+    // row never does — the backend persists only non-MATCHED findings — and neither does a
+    // marker whose join to the persisted document failed. Both cases mean "offer no verdict",
+    // which is better than offering one that PATCHes a document that does not exist.
+    const reviewableId =
+      statusText === "MATCHED" ? null : reviewableViolationId(matchingViolation);
 
     const isSelected = !!(selectedViolation && matchingViolation && selectedViolation.id === matchingViolation.id &&
       ((selectedViolation as any)._rowId === rowId || !(selectedViolation as any)._rowId));
@@ -280,11 +293,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           </div>
           <span style={{
             display: "inline-flex", alignItems: "center", gap: "5px",
-            fontSize: "0.62rem", fontWeight: 700, padding: "3px 10px", borderRadius: "999px",
+            fontSize: "0.62rem", fontWeight: 700, padding: "2px 6px", borderRadius: "2px",
             color: cellBadgeColor, background: cellBadgeBg,
             textTransform: "uppercase", letterSpacing: "0.04em"
           }}>
-            <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: cellBadgeColor, flexShrink: 0 }} />
+            <span style={{ width: "4px", height: "4px", borderRadius: "1px", background: cellBadgeColor, flexShrink: 0 }} />
             {statusText}
           </span>
         </div>
@@ -292,14 +305,14 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         {/* Comparison Grid. Layout and type scale deliberately live in the .cmp-grid stylesheet
             rather than here: inline styles outrank stylesheet rules, so the container query could
             never override a value declared inline. Only status-dependent styling stays inline. */}
-        <div className="cmp-grid cmp-grid-diff" style={{ background: "var(--sidebar-item-hover)", border: "1px solid var(--border-color)", borderRadius: "10px" }}>
+        <div className="cmp-grid cmp-grid-diff" style={{ background: theme === 'hc-light' ? "#f1f5f9" : "var(--sidebar-item-hover)", border: "1px solid var(--border-color)", borderRadius: "2px" }}>
           {/* Field Title */}
           <div className="cmp-title" style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "2px", textTransform: "uppercase", textAlign: "left", letterSpacing: "0.02em" }}>
-            {row.field}
+            {cleanCadText(row.field)}
           </div>
 
           {/* Column Headers */}
-          <div className="cmp-h-ref" style={{ fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          <div className="cmp-h-ref" style={{ fontWeight: 700, color: "var(--text-secondary)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
             Original
           </div>
           <div className="cmp-h-rev" style={{ fontWeight: 700, color: "var(--accent-cyan)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -308,32 +321,37 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
           {/* Values */}
           <div className="cmp-v-ref" style={{
-            color: "var(--text-muted)", fontFamily: "'JetBrains Mono', monospace",
+            color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace",
             textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
             wordBreak: "break-word"
           }}>
-            {row.original || "-"}
+            {cleanCadText(row.original) || "-"}
           </div>
           <div className="cmp-v-rev" style={{
-            color: statusText.toUpperCase() === "MATCHED" ? "#059669" : "var(--text-primary)",
+            color: statusText.toUpperCase() === "MATCHED" ? (theme === 'hc-light' ? "#047857" : "#10b981") : "var(--text-primary)",
             fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
             wordBreak: "break-word"
           }}>
-            {row.kmti || "-"}
+            {cleanCadText(row.kmti) || "-"}
           </div>
         </div>
 
-        {/* Supervisor verdict, on findings only. A MATCHED row is the engine reporting no
-            change: there is nothing to approve, and the orchestrator never persists one as
-            an AuditViolation. This is the write that fills the `lessons` collection.
+        {/* Supervisor verdict, on findings only. This is the write that fills the `lessons`
+            collection.
 
             It sits here — a direct child of the card, below the values — rather than in the
             badge row above. Two reasons: the reviewer should see the evidence before the
             verdict, and as a card child it gets a full-width line from the card's own column
-            flex instead of fighting Dismiss/Correct for horizontal space. */}
-        {matchingViolation && (
+            flex instead of fighting Dismiss/Correct for horizontal space.
+
+            Gated on `reviewableId`, which is null unless this row maps to a real
+            `AuditViolation`. It previously tested `matchingViolation` alone, which contradicted
+            the comment sitting over it and shipped a live 500: a MATCHED row carrying a
+            client-side marker offered Approve, and PATCHing
+            `/audits/violations/phys_chk_restored_1_1786329084013/review` blew up server-side. */}
+        {reviewableId && (
           <ReviewControls
-            violationId={matchingViolation.id}
+            violationId={reviewableId}
             resolution={matchingViolation.resolution_type}
             remarks={matchingViolation.checker_remarks}
             onReviewed={({ resolution, remarks }) =>

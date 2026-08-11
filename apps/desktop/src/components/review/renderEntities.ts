@@ -14,7 +14,7 @@ import {
 } from '../../utils/zoneFractions';
 
 
-// Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags
+// Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags and convert escape codes
 export const cleanCadText = (text: string): string => {
   if (!text) return "";
   let clean = text;
@@ -22,11 +22,16 @@ export const cleanCadText = (text: string): string => {
   clean = clean.replace(/[{}]/g, "");
   clean = clean.replace(/\\[A-Za-z][^;]*;/g, "");
   clean = clean.replace(/\\P/g, " ");
+  // Convert legacy AutoCAD control escape codes to standard engineering symbols
+  clean = clean.replace(/%%c/gi, "⌀");
+  clean = clean.replace(/%%d/gi, "°");
+  clean = clean.replace(/%%p/gi, "±");
+  clean = clean.replace(/%%[uo]/gi, "");
   return clean.trim();
 };
 
 export const getPrintColor = (color: string): string => {
-  if (!color) return '#18181b';
+  if (!color) return '#0f172a';
   const cleanColor = color.trim().toLowerCase();
 
   if (cleanColor.startsWith('#')) {
@@ -40,7 +45,7 @@ export const getPrintColor = (color: string): string => {
     const b = parseInt(hex.slice(5, 7), 16);
 
     if (r > 220 && g > 220 && b > 220) {
-      return '#18181b';
+      return '#0f172a';
     }
 
     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
@@ -49,7 +54,7 @@ export const getPrintColor = (color: string): string => {
         return '#b45309';
       }
       if (r < 100 && g > 180 && b > 180) {
-        return '#0369a1';
+        return '#0284c7';
       }
       if (g > 180 && r < 120 && b < 120) {
         return '#15803d';
@@ -64,18 +69,344 @@ export const getPrintColor = (color: string): string => {
   }
 
   const nameMap: Record<string, string> = {
-    'white': '#18181b',
+    'white': '#0f172a',
     'yellow': '#b45309',
-    'cyan': '#0369a1',
+    'cyan': '#0284c7',
     'green': '#15803d',
     'lime': '#166534',
     'magenta': '#701a75',
     'pink': '#be185d',
-    'lightgray': '#52525b',
-    'gray': '#71717a'
+    'lightgray': '#475569',
+    'gray': '#64748b'
   };
 
   return nameMap[cleanColor] || color;
+};
+
+// ─── CAD text metrics and placement ───────────────────────────────────────────
+//
+// Everything below exists because a DXF describes text in CAD terms and a canvas draws it in
+// CSS terms, and the two disagree on three separate axes: where the anchor is, how wide a
+// glyph is, and what "height" means. All three were wrong at once, which is why the sheet
+// could not be fixed by eye — narrowing the text and enlarging it move the same measurement in
+// opposite directions. `tools/render_audit.py` measures each independently against the
+// backend's own ezdxf raster; the numbers quoted here are from M745221N01.
+
+/**
+ * Font stack for CAD text.
+ *
+ * Mirrors the SHX→TTF substitution the raster path makes (`SHX_NAMES_TO_OVERRIDE` in
+ * `dxf_render_setup.py`, which points `txt`/`extfont2` at MS Gothic). Both render modes have to
+ * resolve to the same glyphs or every width measurement disagrees between them.
+ */
+const CAD_FONT_STACK =
+  '"MS Gothic", "Yu Gothic UI", "Meiryo", "JetBrains Mono", monospace, sans-serif';
+
+/**
+ * Cap-height/em fallback, used when the canvas cannot measure — jsdom's canvas mock returns 0
+ * for every TextMetrics field. 0.7617 is MS Gothic's measured value.
+ */
+const DEFAULT_CAP_HEIGHT_RATIO = 0.7617;
+
+/**
+ * CSS pixels per millimetre of lineweight, at any zoom.
+ *
+ * Only reached when the drawing asks for lineweights to be displayed — see `$LWDISPLAY` below.
+ *
+ * Lineweight is a *plotting* property — how thick the pen is on paper — not a dimension of the
+ * geometry, so CAD viewers display it at a constant screen thickness and iCAD SX is no
+ * exception. 96/25.4 is the CSS reference (1 inch = 96 px).
+ *
+ * ⚠ This deliberately diverges from the ezdxf raster at high zoom. ezdxf's default
+ * `LineweightPolicy.ABSOLUTE` bakes the weights into the PNG proportionally to the sheet, so
+ * zooming the bitmap scales them; drawing vectors that way was tried and turns a 1.00mm frame
+ * line into a ~15px slab once you zoom into the title block. Matching the live CAD viewer beats
+ * matching the bitmap here, because the bitmap is only a stand-in for it.
+ */
+const LINEWEIGHT_DISPLAY_PX_PER_MM = 96 / 25.4;
+
+/** Nothing on a drawing needs to be thicker than this on screen. */
+const MAX_LINEWEIGHT_DISPLAY_PX = 6;
+
+/** MTEXT line advance as a multiple of char height, measured against ezdxf's own renderer. */
+//
+// AutoCAD documents the MTEXT default as 1.667x char height between baselines, but ezdxf --
+// which produces the raster this canvas is matched against -- lays the wrapped title-block
+// headers out at 1.0x (measured: 3.010 and 2.890 for a char height of 3.0). Matching ezdxf is
+// the right call while the raster is the ground truth; revisit this constant first if wrapped
+// text ever looks too tight or too loose.
+const MTEXT_LINE_ADVANCE = 1.0;
+
+const capHeightRatioCache = new Map<string, number>();
+
+/**
+ * Cap height as a fraction of the em square, for a given font size + stack.
+ *
+ * DXF text `height` is the **cap** height. CSS `font-size` sets the **em** size. ezdxf, and
+ * every CAD viewer, scales glyphs so the cap height lands exactly on the DXF height — so
+ * `font: ${height}px` draws every string at roughly 76% of its correct size. Measured against
+ * the ezdxf raster before this fix, `height_ratio` was a flat 0.7617 across all 221 comparable
+ * strings on the sheet: not a scattering of small errors, one systematic factor.
+ *
+ * Measured once per font stack and cached; `measureText` is transform-independent, so the
+ * caller's transform does not matter.
+ */
+const getCapHeightRatio = (ctx: CanvasRenderingContext2D, fontStack: string): number => {
+  const cached = capHeightRatioCache.get(fontStack);
+  if (cached !== undefined) return cached;
+
+  let ratio = DEFAULT_CAP_HEIGHT_RATIO;
+  const previousFont = ctx.font;
+  try {
+    const PROBE_PX = 100;
+    ctx.font = `${PROBE_PX}px ${fontStack}`;
+    const ascent = ctx.measureText('H').actualBoundingBoxAscent;
+    const measured = ascent / PROBE_PX;
+    // Reject nonsense rather than propagate it: a stub canvas reports 0, and a ratio outside
+    // this band would mean the probe resolved a font with no cap height at all.
+    if (Number.isFinite(measured) && measured > 0.4 && measured < 1.0) {
+      ratio = measured;
+    }
+  } catch {
+    // Non-measuring canvas (test mock). Keep the fallback.
+  } finally {
+    ctx.font = previousFont;
+  }
+
+  capHeightRatioCache.set(fontStack, ratio);
+  return ratio;
+};
+
+/** Where the insert point sits vertically relative to the text. */
+type VerticalAnchor = 'top' | 'middle' | 'bottom';
+
+/** MTEXT attachment points 1-9, row-major from top-left. */
+const MTEXT_H_ALIGN: CanvasTextAlign[] = ['left', 'center', 'right'];
+const MTEXT_V_ALIGN: VerticalAnchor[] = ['top', 'middle', 'bottom'];
+
+/**
+ * Distance from the insert point down to the first line's BASELINE, in CSS pixels.
+ *
+ * The canvas is always drawn with `textBaseline: 'alphabetic'` and this offset applied by hand,
+ * rather than letting `textBaseline` do the work. That is deliberate, and it fixes a defect that
+ * touched 215 of 247 strings on M745221N01:
+ *
+ *   `textBaseline: 'bottom'` aligns the bottom of the font's EM BOX to the anchor. A DXF bottom
+ *   attachment aligns the BASELINE. The gap between them is the font's descender — 0.18 of the
+ *   cap height for MS Gothic — so every bottom-anchored string was drawn that much too HIGH:
+ *   0.39 drawing units at char height 2.2, 1.44 at char height 8.0. In a title-block cell around
+ *   5 units tall that is enough for the text to ride up into the rule above it, which is exactly
+ *   how it was reported.
+ *
+ *   The measurement oracle could not catch it either, because it compares where the *insert
+ *   point* lands against ezdxf's ink box and never models what the canvas does with
+ *   `textBaseline`. Deriving the offset from the DXF cap height removes the browser's
+ *   ascent/descent metrics from the calculation entirely, so the two can no longer disagree.
+ *
+ * Screen Y grows downward, so a positive result moves the baseline down the page.
+ */
+const baselineOffsetPx = (
+  anchor: VerticalAnchor,
+  capHeightPx: number,
+  lineCount: number,
+  lineAdvancePx: number,
+): number => {
+  switch (anchor) {
+    case 'top':
+      // The first line's cap top sits on the anchor.
+      return capHeightPx;
+    case 'middle':
+      // The block's vertical centre sits on the anchor.
+      return (capHeightPx - (lineCount - 1) * lineAdvancePx) / 2;
+    default:
+      // 'bottom' — the LAST line's baseline sits on the anchor.
+      return -(lineCount - 1) * lineAdvancePx;
+  }
+};
+
+/**
+ * Canvas anchor for an MTEXT attachment point.
+ *
+ * The renderer used to draw every string left-aligned on the alphabetic baseline, which is
+ * correct only for attachment point 7 (bottom-left). On M745221N01 that is 122 of 228 strings;
+ * the other 106 — the centred and right-aligned title-block and tolerance-table cells — were
+ * displaced by up to a full string width (measured max dx: 33.3 drawing units).
+ *
+ * Only applied to MTEXT. A plain TEXT entity with a non-default `halign`/`valign` stores its
+ * real anchor in the DXF `align_point` (group 11) rather than `insert` (group 10), and the
+ * mapper does not extract that — so applying alignment to TEXT would centre it on the wrong
+ * point and make things worse. This corpus has exactly one TEXT entity; see the note in
+ * `drawCadText`.
+ */
+const attachmentAnchor = (
+  attachmentPoint: unknown,
+): { align: CanvasTextAlign; vAlign: VerticalAnchor } => {
+  const index = (Number(attachmentPoint) || 0) - 1;
+  // Out of range covers both a missing value and the invalid 0 one entity on this sheet
+  // carries. Bottom-left is the DXF-neutral reading and the one ezdxf's ink agrees with.
+  if (index < 0 || index > 8) {
+    return { align: 'left', vAlign: 'bottom' };
+  }
+  return {
+    align: MTEXT_H_ALIGN[index % 3],
+    vAlign: MTEXT_V_ALIGN[Math.floor(index / 3)],
+  };
+};
+
+/**
+ * How far a string must exceed its MTEXT column width before the canvas breaks it.
+ *
+ * Not a style choice — it is the size of a measurement error we cannot remove. The browser
+ * measures with its own MS Gothic; ezdxf measures with fontTools; the two disagree by a couple
+ * of percent, and a canvas `measureText` returns the ADVANCE width while a column width was
+ * authored against the ink.
+ *
+ * Measured on M745221N01: of 247 MTEXT entities carrying a column width, **99 would wrap at
+ * zero tolerance and every one of them is over by less than 6%** — most by exactly 3.0%, which
+ * is the signature of an exporter that set each column to its own text's natural width. None of
+ * those breaks is intended. Honouring them put a lone `）` on a line of its own in
+ * `４ロール：２４（４×６台）` and split single characters off title-block headers.
+ *
+ * 1.15 sits clear of that noise band. The cost is that a genuine knife-edge wrap — ezdxf breaks
+ * `材 質` at ~4% over — renders on one line instead of two. That is the right trade: a slightly
+ * wide string reads correctly, a one-character orphan reads as a broken drawing.
+ */
+const MTEXT_WRAP_TOLERANCE = 1.15;
+
+/**
+ * Greedy wrap against an MTEXT column width, with an orphan guard.
+ *
+ * Breaks on spaces where possible and mid-string otherwise, because CJK has no spaces and a
+ * two-character header still has to wrap somewhere.
+ *
+ * Refuses to produce a final line of one character. That is the specific damage reported on
+ * this sheet — a closing parenthesis, or a single digit, dropped onto its own line — and it is
+ * never what a title block intends. When the only available break would orphan a character, the
+ * string is left long and allowed to overflow its cell instead.
+ */
+const wrapCadText = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] => {
+  if (!(maxWidth > 0)) return [text];
+  if (ctx.measureText(text).width <= maxWidth * MTEXT_WRAP_TOLERANCE) return [text];
+
+  const lines: string[] = [];
+  let current = '';
+  let lastBreak = -1;
+
+  for (const char of text) {
+    const candidate = current + char;
+    if (current && ctx.measureText(candidate).width > maxWidth) {
+      if (lastBreak > 0) {
+        lines.push(current.slice(0, lastBreak).trimEnd());
+        current = current.slice(lastBreak).trimStart() + char;
+      } else {
+        lines.push(current);
+        current = char;
+      }
+      lastBreak = -1;
+    } else {
+      current = candidate;
+      if (char === ' ') lastBreak = current.length;
+    }
+  }
+  if (current) lines.push(current);
+
+  if (lines.length < 2) return [text];
+  // Orphan guard. A trailing single character is worse than an overlong line.
+  if ([...lines[lines.length - 1]].length <= 1) return [text];
+  return lines;
+};
+
+interface CadTextOptions {
+  /** Screen-space anchor, in CSS pixels. */
+  x: number;
+  y: number;
+  text: string;
+  /** DXF text height (cap height) already converted to CSS pixels. */
+  capHeightPx: number;
+  color: string;
+  /** Degrees counter-clockwise in DXF space. */
+  rotation?: number;
+  /** MTEXT attachment point 1-9, or undefined for baseline-left. */
+  attachmentPoint?: unknown;
+  /** Inline `\W` horizontal glyph scaling. */
+  widthFactor?: number;
+  /** MTEXT column wrap width in CSS pixels; 0 or undefined disables wrapping. */
+  columnWidthPx?: number;
+  /** Force a specific anchor, overriding `attachmentPoint` (dimension text is centred). */
+  align?: CanvasTextAlign;
+  vAlign?: VerticalAnchor;
+}
+
+/**
+ * The single place CAD text reaches the canvas.
+ *
+ * Shared by the TEXT branch and the DIMENSION measurement branch, which previously had two
+ * near-identical copies of the placement maths that had already drifted apart (different font
+ * stacks, different LOD floors). Every correction — cap height, attachment point, width factor,
+ * tracking, wrapping — has to apply to both or dimension values sit differently from the text
+ * beside them.
+ *
+ * Assumes the caller has already reset the transform to device pixels.
+ */
+const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void => {
+  const {
+    x, y, text, capHeightPx, color, rotation = 0,
+    attachmentPoint, widthFactor, columnWidthPx = 0,
+  } = opts;
+  if (!text || capHeightPx <= 0) return;
+
+  // Convert the DXF cap height into the em size the canvas actually wants.
+  const emPx = capHeightPx / getCapHeightRatio(ctx, CAD_FONT_STACK);
+
+  const anchor = attachmentAnchor(attachmentPoint);
+  const align = opts.align ?? anchor.align;
+  const vAlign = opts.vAlign ?? anchor.vAlign;
+
+  // `\W` scales the glyphs horizontally. It was extracted as `width_factor` and never applied,
+  // so every string rendered at its natural width — on this sheet 248 of 249 MTEXT entities
+  // carry a `\W` between 0.60 and 0.91, i.e. essentially the whole drawing was 10-40% too wide.
+  //
+  // ⛔ `\T` (tracking) is deliberately NOT applied, and this is a measured decision rather than
+  // an omission. Folding it into the same scale was tried first and made every string too
+  // narrow by exactly the tracking factor: across the 81 comparable strings that carry a `\T`,
+  // `width_ratio` came out equal to `tracking` to within 0.019. ezdxf — which draws the raster
+  // this canvas is matched against, and which the iCAD SX comparison accepts — applies `\W`
+  // only. Applying tracking here would put the two render modes back out of agreement.
+  // `properties.tracking` is still extracted; it is just not a glyph scale.
+  const wf = Number(widthFactor);
+  const horizontalScale = Number.isFinite(wf) && wf > 0 ? wf : 1;
+
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = `${emPx}px ${CAD_FONT_STACK}`;
+  ctx.textAlign = align;
+  // Always 'alphabetic'. The vertical anchor is applied by hand below, from the DXF cap height
+  // rather than from the font's ascent/descent — see `baselineOffsetPx`.
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.translate(x, y);
+  // DXF rotation is degrees counter-clockwise; screen Y is already flipped by the caller, so
+  // the canvas rotation is the negation.
+  if (rotation) ctx.rotate((-rotation * Math.PI) / 180);
+  if (horizontalScale !== 1) ctx.scale(horizontalScale, 1);
+
+  // Wrapping is measured in the post-scale space, which is where the column width lives.
+  const lines =
+    columnWidthPx > 0
+      ? wrapCadText(ctx, text, columnWidthPx / (horizontalScale || 1))
+      : [text];
+
+  // MTEXT grows downward from its attachment row: a bottom-anchored block has its LAST line on
+  // the anchor, a top-anchored block its first, and a middle-anchored block is centred.
+  const advance = capHeightPx * MTEXT_LINE_ADVANCE;
+  const firstBaseline = baselineOffsetPx(vAlign, capHeightPx, lines.length, advance);
+  lines.forEach((line, i) => ctx.fillText(line, 0, firstBaseline + i * advance));
+
+  ctx.restore();
 };
 
 export interface RenderFrame {
@@ -105,21 +436,50 @@ export interface RenderEntitiesParams {
   layers: Record<string, any[]>;
   activeLayers: Record<string, boolean>;
   theme: string;
-  bgImage: HTMLImageElement | null;
-  lightBgImage: HTMLImageElement | null;
+  bgImage: any;
+  lightBgImage: any;
   drawing?: any;
+}
+
+export function selectOptimalMipmap(
+  rawImage: any,
+  scale: number,
+  drawingBounds: number[]
+): any {
+  if (!rawImage) return null;
+  if (!Array.isArray(rawImage)) return rawImage;
+  if (rawImage.length <= 1) return rawImage[0] || null;
+
+  const [xmin, _ymin, xmax, _ymax] = drawingBounds;
+  const worldW = Math.max(1, xmax - xmin);
+  const targetPxW = worldW * scale;
+
+  let best = rawImage[0];
+  for (let i = 0; i < rawImage.length; i++) {
+    const lvl = rawImage[i];
+    if (lvl.width >= targetPxW || i === rawImage.length - 1) {
+      best = lvl;
+    } else {
+      break;
+    }
+  }
+  return best;
 }
 
 export const renderEntities = ({
   frame,
   layers,
   activeLayers,
-  theme,
+  theme: _theme,
   bgImage,
   lightBgImage,
   drawing
 }: RenderEntitiesParams): { totalEntities: number; drawnEntities: number } => {
-  const { ctx, isExport, renderWidth, renderHeight, scale, transX, transY, minX, minY, maxX, maxY, resolutionMultiplier } = frame;
+  const { ctx, isExport, renderWidth, renderHeight, scale, transX, transY, minX, minY, maxX, maxY, resolutionMultiplier, norm } = frame;
+
+  const flipY = (y: number) => (norm.hasBounds ? norm.ymax + norm.ymin - y : y);
+
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
   let totalEntities = 0;
   let drawnEntities = 0;
@@ -128,17 +488,32 @@ export const renderEntities = ({
   // lightBgImage is computed asynchronously (see DrawingCanvas.tsx) and can briefly be null right
   const renderMode = useReviewStore.getState().renderMode || 'hybrid';
 
-  // after a theme switch or on first load — fall back to the raw dark-tuned bgImage rather than
-  // drawing nothing, so the canvas isn't blank while the light variant finishes processing.
-  const targetImage = (isExport || theme === 'hc-light') ? (lightBgImage || bgImage) : bgImage;
+  const rawTarget = isExport ? (lightBgImage || bgImage) : bgImage;
+  // Mipmap choice has to be made in DEVICE pixels. `scale` is CSS-px-per-world-unit — drawCanvas
+  // installs the dpr transform before this runs — so selecting on it alone picks a level sized for
+  // the CSS box and the GPU then upscales that back up to the backing store. On the 125% and 150%
+  // display scaling that Windows ships as default on many panels, that is a guaranteed 1.25–1.5x
+  // upscale of an already-minified mipmap, on top of the minification blur. Export renders at an
+  // explicit pixel size with no dpr transform applied, so it must not be multiplied.
+  const deviceScale = isExport
+    ? scale
+    : scale * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+  const targetImage = drawing?.metadata?.render_bounds
+    ? selectOptimalMipmap(rawTarget, deviceScale, drawing.metadata.render_bounds)
+    : (Array.isArray(rawTarget) ? rawTarget[0] : rawTarget);
   const hasBg = !!(targetImage && drawing?.metadata?.render_bounds);
 
   if (hasBg && renderMode !== 'vector') {
     const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(targetImage, xmin, ymin, xmax - xmin, ymax - ymin);
   }
 
-  const pathBatches: Record<string, { stroke: string, width: number, path: Path2D }> = {};
+  const pathBatches: Record<string, { stroke: string, width: number, dash: number[] | null, dashUnits: string, path: Path2D }> = {};
+  // Filled polygons, kept separate from the stroked batches because they need `fill()`
+  // rather than `stroke()`. In practice these are dimension arrowheads.
+  const fillBatches: Record<string, { color: string, path: Path2D }> = {};
 
   // Skip vector entity loop if renderMode is raster, or hybrid with a loaded background image
   const skipEntities = renderMode === 'raster' || (renderMode === 'hybrid' && hasBg);
@@ -156,22 +531,47 @@ export const renderEntities = ({
       const geo = ent.geometry;
       if (!geo) return;
 
+      // Model-space geometry that fell outside every paper-space viewport window. The
+      // projector still gives it a coordinate (deterministic and invertible, by design),
+      // but a viewport shows only its own window, so CAD clips this and the ezdxf raster
+      // never draws it. Rendering it anyway put a phantom section label on the sheet at a
+      // plausible-but-wrong position — present in vector mode, absent in raster and in
+      // iCAD SX. Skipped only for drawing; the entity stays in the comparison set.
+      if (ent.properties?.outside_viewport) return;
+
       let strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
-      if (isExport || theme === 'hc-light') {
+      if (isExport) {
         strokeColor = getPrintColor(strokeColor);
       }
       const strokeWidth = ent.style?.strokeWidth || ent.properties?.strokeWidth || 1;
-      const batchKey = `${strokeColor}_${strokeWidth}`;
+      // Dash pattern joins the batch key: batching purely on colour+width merged hidden
+      // and centre lines into the solid batch, so a mechanical drawing rendered every
+      // construction line as continuous. That is a semantic error, not a cosmetic one.
+      const dashPattern: number[] | null = Array.isArray(ent.style?.dash) ? ent.style.dash : null;
+      // 'world' = real LTYPE elements in drawing units; 'screen' = the legacy fixed [5,5] in
+      // CSS pixels, kept for payloads ingested before the pattern was extracted. The two need
+      // different conversions, so the unit space has to travel with the array — and it joins
+      // the batch key, or a stale entity's screen-space dashes would be applied to a
+      // world-space batch.
+      const dashUnits: string = dashPattern ? (ent.style?.dashUnits || 'screen') : 'none';
+      const batchKey = `${strokeColor}_${strokeWidth}_${dashPattern ? dashPattern.join(',') : 'solid'}_${dashUnits}`;
 
       if (ent.type === 'text' && (geo.location || geo.insert)) {
-        const [tx, ty] = geo.location || geo.insert;
+        const [tx, tyRaw] = geo.location || geo.insert;
+        const ty = flipY(tyRaw);
 
         const screenX = tx * scale + transX;
         const screenY = ty * scale + transY;
         const baseHeight = ent.properties?.height || ent.style?.fontSize || 12;
         const screenHeight = baseHeight * scale * 1.0;
 
-        if (screenHeight < (isExport ? 1 : 4)) return;
+        // LOD floor for text. Dropped from 4px to 2px: at fit-to-screen zoom a 4px floor
+        // culled the entire general-tolerance table and most of the title block, so the
+        // vector render showed those tables as empty grids. 2px is still a smear, but a
+        // reviewer can see that content EXISTS there and zoom in; absent content reads as
+        // a drawing that does not have it, which in a checking tool is the dangerous
+        // failure. Below 2px the glyphs carry no information at all, so the cull stays.
+        if (screenHeight < (isExport ? 1 : 2)) return;
         if (!isExport && (screenX < -500 || screenX > renderWidth + 500 || screenY < -500 || screenY > renderHeight + 500)) return;
 
         drawnEntities++;
@@ -181,30 +581,51 @@ export const renderEntities = ({
         ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
 
         let textColor = ent.style?.stroke || ent.style?.fill || '#ffffff';
-        if (isExport || theme === 'hc-light') {
+        if (isExport) {
           textColor = getPrintColor(textColor);
         }
-        ctx.fillStyle = textColor;
-        ctx.font = `${screenHeight}px "Yu Gothic", "MS Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
 
         const rawText = geo.text || geo.content || ent.properties?.text || '';
         const textVal = cleanCadText(rawText);
 
         if (textVal) {
-          ctx.fillText(textVal, screenX, screenY);
+          // Regular weight, not bold. The `bold` here was compensating for the raster path's
+          // washed-out downsampled glyphs; applied to text actually rasterised at screen size
+          // it just thickens every stroke into its neighbours, which on 4-6px CJK title-block
+          // text is the difference between legible and a smudge. CAD text is not bold.
+          //
+          // Alignment is applied for MTEXT only. A plain TEXT entity with a non-default
+          // halign/valign anchors on the DXF `align_point` (group 11), which `map_text` does
+          // not extract — so honouring its alignment against the `insert` point would move it
+          // to the wrong place. Passing `undefined` keeps the old baseline-left behaviour,
+          // which is correct for default-aligned TEXT. This corpus has one TEXT entity in 250.
+          const isMText = ent.properties?.is_multiline === true;
+          drawCadText(ctx, {
+            x: screenX,
+            y: screenY,
+            text: textVal,
+            capHeightPx: screenHeight,
+            color: textColor,
+            rotation: Number(ent.properties?.rotation) || 0,
+            attachmentPoint: isMText ? ent.properties?.attachment_point : undefined,
+            widthFactor: ent.properties?.width_factor,
+            columnWidthPx: isMText ? (Number(ent.properties?.column_width) || 0) * scale : 0,
+          });
         }
         ctx.restore();
         return;
       }
 
       if (!pathBatches[batchKey]) {
-        pathBatches[batchKey] = { stroke: strokeColor, width: strokeWidth as number, path: new Path2D() };
+        pathBatches[batchKey] = { stroke: strokeColor, width: strokeWidth as number, dash: dashPattern, dashUnits, path: new Path2D() };
       }
       const p2d = pathBatches[batchKey].path;
 
       if (ent.type === 'line' && geo.start && geo.end) {
-        const [x1, y1] = geo.start;
-        const [x2, y2] = geo.end;
+        const [x1, y1Raw] = geo.start;
+        const [x2, y2Raw] = geo.end;
+        const y1 = flipY(y1Raw);
+        const y2 = flipY(y2Raw);
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
         const top = Math.min(y1, y2);
@@ -215,7 +636,8 @@ export const renderEntities = ({
         p2d.lineTo(x2, y2);
       }
       else if (ent.type === 'circle' && (geo.center || geo.location)) {
-        const [cx, cy] = geo.center || geo.location;
+        const [cx, cyRaw] = geo.center || geo.location;
+        const cy = flipY(cyRaw);
         const r = geo.radius || ent.properties?.radius || 1;
         if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
         drawnEntities++;
@@ -223,26 +645,126 @@ export const renderEntities = ({
         p2d.arc(cx, cy, r, 0, 2 * Math.PI);
       }
       else if (ent.type === 'arc' && (geo.center || geo.location)) {
-        const [cx, cy] = geo.center || geo.location;
+        const [cx, cyRaw] = geo.center || geo.location;
+        const cy = flipY(cyRaw);
         const r = geo.radius || ent.properties?.radius || 1;
-        const startAngle = ((ent.properties?.start_angle ?? 0) * Math.PI) / 180;
-        const endAngle = ((ent.properties?.end_angle ?? 0) * Math.PI) / 180;
+        const rawStart = (ent.properties?.start_angle ?? 0);
+        const rawEnd = (ent.properties?.end_angle ?? 0);
+        const startAngle = norm.hasBounds ? ((-rawEnd) * Math.PI) / 180 : (rawStart * Math.PI) / 180;
+        const endAngle = norm.hasBounds ? ((-rawStart) * Math.PI) / 180 : (rawEnd * Math.PI) / 180;
         if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
         drawnEntities++;
         p2d.moveTo(cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
         p2d.arc(cx, cy, r, startAngle, endAngle, false);
       }
-      // `ellipse` and `spline` render through the same point-sequence path as a
-      // polyline: the backend mapper stores a tessellated outline in `geometry.points`
-      // precisely so consumers do not each have to re-derive the curve. The native
-      // parameters (major_axis/ratio, control_points) are kept alongside for anything
-      // that needs the exact curve, but drawing wants the samples.
+      else if (ent.type === 'dimension') {
+        // A DIMENSION carries no drawable geometry of its own — only anchors, a
+        // `measurement` and a dimstyle. `render_paths` / `render_fills` are the flattened
+        // contents of its anonymous geometry block, produced server-side by
+        // `EntityMapper._dimension_render_geometry`. Without this branch every dimension on
+        // the sheet renders as nothing at all, which is exactly what sank the first attempt
+        // to switch `renderMode` to 'vector'.
+        const renderPaths: number[][][] = Array.isArray(geo.render_paths) ? geo.render_paths : [];
+        const renderFills: number[][][] = Array.isArray(geo.render_fills) ? geo.render_fills : [];
+        // `render_text` is the string the dimension's anonymous block ACTUALLY draws, harvested
+        // at extraction by `_dimension_render_geometry`. Preferred over `properties.text`,
+        // which `map_dimension` rebuilds from `actual_measurement` and which therefore loses
+        // every prefix, suffix and tolerance stack the dimstyle bakes in. On this sheet
+        // `dimpost` is empty and the override text is a bare '<>', so the ⌀ on three of the
+        // four dimensions exists only here — the canvas showed "145" where iCAD shows "φ145".
+        // `cleanCadText` converts the surviving `%%c` into the real symbol.
+        //
+        // '<>' is the DXF placeholder meaning "substitute the measurement here". When a file
+        // omits `actual_measurement` the placeholder survives, and painting it literally would
+        // stamp "<>" onto the drawing exactly where a reviewer expects the measured value.
+        const rawDimText = String(ent.properties?.render_text ?? ent.properties?.text ?? '');
+        const dimText = rawDimText.includes('<>') ? '' : cleanCadText(rawDimText);
+        if (!renderPaths.length && !renderFills.length && !dimText) return;
+
+        // Cull once against the union of every point rather than per sub-path.
+        let dMinX = Infinity, dMaxX = -Infinity, dMinY = Infinity, dMaxY = -Infinity;
+        const scan = (groups: number[][][]) => groups.forEach((pts) => pts.forEach((pt) => {
+          const px = pt[0];
+          const py = flipY(pt[1]);
+          if (px < dMinX) dMinX = px;
+          if (px > dMaxX) dMaxX = px;
+          if (py < dMinY) dMinY = py;
+          if (py > dMaxY) dMaxY = py;
+        }));
+        scan(renderPaths);
+        scan(renderFills);
+        if (dMinX !== Infinity && (dMaxX < minX || dMinX > maxX || dMaxY < minY || dMinY > maxY)) return;
+        drawnEntities++;
+
+        renderPaths.forEach((pts) => {
+          if (pts.length < 2) return;
+          p2d.moveTo(pts[0][0], flipY(pts[0][1]));
+          for (let i = 1; i < pts.length; i++) p2d.lineTo(pts[i][0], flipY(pts[i][1]));
+        });
+
+        if (renderFills.length) {
+          if (!fillBatches[strokeColor]) {
+            fillBatches[strokeColor] = { color: strokeColor, path: new Path2D() };
+          }
+          const fp = fillBatches[strokeColor].path;
+          renderFills.forEach((pts) => {
+            if (pts.length < 3) return;
+            fp.moveTo(pts[0][0], flipY(pts[0][1]));
+            for (let i = 1; i < pts.length; i++) fp.lineTo(pts[i][0], flipY(pts[i][1]));
+            fp.closePath();
+          });
+        }
+
+        // The measurement string. `text_point` is the DXF text MIDPOINT, so it is drawn
+        // centred on both axes rather than from a baseline-left origin like TEXT entities.
+        const tp = geo.text_point || geo.def_point;
+        if (dimText && tp) {
+          const baseHeight = ent.properties?.text_height || ent.properties?.height || 2.5;
+          const screenTextHeight = baseHeight * scale;
+          if (screenTextHeight >= (isExport ? 1 : 4)) {
+            const tx = tp[0] * scale + transX;
+            const ty = flipY(tp[1]) * scale + transY;
+            ctx.save();
+            const localDpr = isExport ? 1 : dpr;
+            ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
+            // The measurement string uses the colour of the text INSIDE the dimension block,
+            // not the dimension's own stroke. They differ by design — green dimension lines
+            // with yellow measurement text is the norm on this corpus — so falling back to
+            // `stroke` painted every measurement green.
+            let dimColor = ent.style?.textStroke || ent.style?.stroke || '#ffffff';
+            if (isExport) dimColor = getPrintColor(dimColor);
+            // `text_point` is the DXF text MIDPOINT, so the anchor is centred on both axes
+            // rather than derived from an attachment point. The width factor and tracking come
+            // from the block's MTEXT (all four dimensions here carry \W0.8;\T0.875;), which
+            // the DIMENSION entity itself never records.
+            drawCadText(ctx, {
+              x: tx,
+              y: ty,
+              text: dimText,
+              capHeightPx: screenTextHeight,
+              color: dimColor,
+              rotation: Number(ent.properties?.text_rotation ?? ent.properties?.rotation) || 0,
+              widthFactor: ent.properties?.width_factor,
+              align: 'center',
+              vAlign: 'middle',
+            });
+            ctx.restore();
+          }
+        }
+      }
       else if (
-        (ent.type === 'polyline' || ent.type === 'ellipse' || ent.type === 'spline') &&
+        // LEADER and MULTILEADER join this branch rather than getting their own: both are
+        // just vertex chains, already extracted with `vertices` and already covered by
+        // GEOMETRY_SCHEMA's projection. They had no branch at all, so every leader line on
+        // the sheet rendered as nothing — the pointer strokes on callouts like `6-9キリ`
+        // vanished while their text stayed, leaving annotations floating unattached.
+        (ent.type === 'polyline' || ent.type === 'ellipse' || ent.type === 'spline' ||
+          ent.type === 'leader' || ent.type === 'multileader') &&
         (geo.vertices || geo.points)
       ) {
-        const vertices = geo.vertices || geo.points;
-        if (vertices.length < 2) return;
+        const rawVertices = geo.vertices || geo.points;
+        if (rawVertices.length < 2) return;
+        const vertices = rawVertices.map(([vx, vy]: [number, number]) => [vx, flipY(vy)]);
         let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
         vertices.forEach(([vx, vy]: [number, number]) => {
           if (vx < pMinX) pMinX = vx;
@@ -256,21 +778,68 @@ export const renderEntities = ({
         for (let i = 1; i < vertices.length; i++) {
           p2d.lineTo(vertices[i][0], vertices[i][1]);
         }
+        // A closed ellipse or polyline was stroked as an open chain, leaving a visible gap
+        // where the outline should meet. On an isometric view — which is mostly closed
+        // ellipses, and is why ellipses are extracted at all — that reads as broken geometry.
+        if (ent.properties?.is_closed || ent.properties?.closed) {
+          p2d.closePath();
+        }
       }
     });
   });
 
+  // One device pixel. This is the floor for every stroke, and it is the whole point of
+  // rendering vectors: 1.5 CSS px cannot land on the pixel grid, so it straddles two device
+  // pixels and antialiases into a pair of greys — the same soft edge the raster path produces.
+  // `1 / dpr` CSS px is exactly 1 device pixel, which is what a CAD viewer draws a hairline as
+  // at every zoom level.
+  const hairlinePx = isExport ? 1.0 : 1 / dpr;
+
+  // `$LWDISPLAY` — does this drawing want its lineweights drawn at all?
+  //
+  // An entity can record 1.00mm and still be meant to display as a hairline: the weight is a
+  // plotting instruction, and this header is the switch deciding whether the viewer honours it
+  // on screen. It is **0 on both M745221N01 files**, which is exactly why iCAD SX shows uniform
+  // thin linework on a sheet carrying 1.00mm on 136 entities and 0.50mm on 331.
+  //
+  // Defaults to OFF when absent, which covers both the DXF default and any drawing ingested
+  // before this was extracted. That is also the conservative direction: too-thin linework looks
+  // like the old behaviour, too-thick looks broken.
+  const showLineweights = drawing?.metadata?.lineweight_display === true;
+
   Object.values(pathBatches).forEach(batch => {
-    ctx.beginPath();
     ctx.strokeStyle = batch.stroke;
 
-    // Use the true absolute context scale (`scale` from frame) to ensure constant screen-space thickness.
-    // Enforce a minimum of 1.5px on screen for better visibility, 1.0px for exports.
-    const baseThickness = isExport ? 1.0 : 1.5;
-    const effectiveWidth = Math.max(baseThickness, batch.width);
-    ctx.lineWidth = (effectiveWidth / scale) * resolutionMultiplier;
+    // `strokeWidth` is MILLIMETRES OF PAPER (the DXF lineweight enum / 100) and has to be
+    // converted before use — it used to be read as though it were already CSS pixels, so 0.25,
+    // 0.50 and 1.00 all fell under the one-pixel floor and collapsed to a single hairline.
+    //
+    // Converted at a fixed px-per-mm and NOT scaled by the view, because lineweight is a
+    // plotting property rather than a dimension of the geometry. See
+    // LINEWEIGHT_DISPLAY_PX_PER_MM for why that beats matching the raster bitmap.
+    const widthPx = showLineweights
+      ? Math.min(MAX_LINEWEIGHT_DISPLAY_PX, batch.width * LINEWEIGHT_DISPLAY_PX_PER_MM)
+      : 0;
+    ctx.lineWidth = (Math.max(hairlinePx, widthPx) / scale) * resolutionMultiplier;
 
+    if (batch.dash) {
+      // World-space dashes are already in the transform's units and pass through untouched —
+      // a dash length is a property of the drawing, not of the zoom. The legacy screen-space
+      // fallback still needs converting, since [5, 5] means CSS pixels and nothing else.
+      ctx.setLineDash(
+        batch.dashUnits === 'world'
+          ? batch.dash
+          : batch.dash.map((d) => (d / scale) * resolutionMultiplier)
+      );
+    }
     ctx.stroke(batch.path);
+    if (batch.dash) ctx.setLineDash([]);
+  });
+
+  // Filled polygons last so arrowheads sit on top of the dimension lines they terminate.
+  Object.values(fillBatches).forEach(batch => {
+    ctx.fillStyle = batch.color;
+    ctx.fill(batch.path);
   });
 
   return { totalEntities, drawnEntities };
@@ -373,7 +942,8 @@ export const renderViolationReticles = ({
 
     const SHOW_MARKER_TARGETS = (showMarkerLabels && !lodSkipCard) || isHoveredOrSelected;
     if (SHOW_MARKER_TARGETS) {
-      const displayVal = (isOldDrawing && v.original_value) ? v.original_value : (v.description || "");
+      const rawVal = (isOldDrawing && v.original_value) ? v.original_value : (v.description || "");
+      const displayVal = cleanCadText(rawVal);
       const displayCat = (v.category || "Physical Checklist").replace('_', ' ');
       const displayStat = `Stat: ${statusLabel}`;
 
@@ -385,7 +955,7 @@ export const renderViolationReticles = ({
       // human look," so surfacing that here is the highest-value single addition,
       // without touching the card's pixel-layout math for a third text line.
       const subValueText = markerType === 'CHANGED'
-        ? (isOldDrawing ? `Revised Drawing: ${v.description}` : (v.original_value ? `Original Drawing: ${v.original_value}` : null))
+        ? (isOldDrawing ? `Revised Drawing: ${cleanCadText(v.description)}` : (v.original_value ? `Original Drawing: ${cleanCadText(v.original_value)}` : null))
         : markerType === 'CONFLICT'
           ? '⚠ Generators disagreed — needs manual review'
           : null;

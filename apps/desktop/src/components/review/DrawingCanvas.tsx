@@ -39,9 +39,35 @@ export interface DrawingCanvasRef {
 
 // Module-level cache to prevent refetching the background image on tab switches
 const renderingCache = new Map<string, {
-  bgImage: HTMLImageElement;
-  lightBgImage: HTMLImageElement | null;
+  bgImage: any;
+  lightBgImage: any;
 }>();
+
+function buildMipmapLevels(source: HTMLCanvasElement | HTMLImageElement): (HTMLCanvasElement | HTMLImageElement)[] {
+  const levels: (HTMLCanvasElement | HTMLImageElement)[] = [source];
+  let curW = source.width;
+  let curH = source.height;
+  let prev: HTMLCanvasElement | HTMLImageElement = source;
+
+  while (curW > 1200 && curH > 1200) {
+    const nextW = Math.floor(curW / 2);
+    const nextH = Math.floor(curH / 2);
+    const c = document.createElement('canvas');
+    c.width = nextW;
+    c.height = nextH;
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(prev, 0, 0, curW, curH, 0, 0, nextW, nextH);
+    }
+    levels.push(c);
+    prev = c;
+    curW = nextW;
+    curH = nextH;
+  }
+  return levels;
+}
 
 export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
   ({ layers, width, height, drawing }, ref) => {
@@ -72,11 +98,21 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       content: string;
     } | null>(null);
 
-    const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
-    const [lightBgImage, setLightBgImage] = useState<HTMLImageElement | null>(null);
+    const [bgImage, setBgImage] = useState<any>(null);
+    const [lightBgImage, setLightBgImage] = useState<any>(null);
     const [isFetchingBg, setIsFetchingBg] = useState(false);
+    const renderMode = useReviewStore((s) => s.renderMode);
 
-    // Zod validation for incoming layers to catch malformed structures early
+    // Zod validation for incoming layers to catch malformed structures early.
+    //
+    // NOTE — do NOT filter these by `layout_space`. It looks like the obvious fix for
+    // model-space annotation appearing on the sheet, and it is wrong: on a paper-space
+    // drawing the PART lives in model space and only the sheet border, title block and
+    // tables live in the paper layout. Measured on M745221N01, filtering to the paper
+    // layout removes 86 entities including all 33 ellipses (the entire isometric view)
+    // and all 4 dimensions. Model-space geometry is projected into paper space at
+    // extraction and is supposed to be drawn; the raster gets the same content because
+    // ezdxf renders the paper layout's VIEWPORT, which pulls model space through it.
     const validatedLayers = React.useMemo(() => {
       const result: Record<string, EntityPayload[]> = {};
       Object.keys(layers).forEach((layerName) => {
@@ -125,6 +161,18 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         return;
       }
 
+      // Vector mode never draws the raster — neither on screen nor into exports — so fetching
+      // it buys nothing and costs a multi-megabyte download, a mipmap chain over an ~8400px
+      // image, and a chunked per-pixel pass to build the light-theme variant. The visible cost
+      // is worse than the wasted work: `isFetchingBg` covers the canvas with a spinner while it
+      // runs, so the user would sit staring at "Ingesting CAD Geometry…" waiting on an image
+      // that is never drawn, when the vectors were ready to render immediately.
+      if (renderMode === 'vector') {
+        setBgImage(null);
+        setLightBgImage(null);
+        return;
+      }
+
       const cached = renderingCache.get(drawing.id);
       if (cached) {
         setBgImage(cached.bgImage);
@@ -158,42 +206,28 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           img.onload = () => {
             if (!active) return;
 
-            // The raster rendering has thin, anti-aliased CAD linework that loses most of its
-            // pixel coverage when the browser downsamples it at low zoom — lines fade or vanish
-            // instead of just looking smaller. Thicken every line by ~1px before it's ever used,
-            // so it survives minification. Cheap GPU-accelerated approximation of morphological
-            // dilation: composite the same image at a few 1px offsets — any pixel that was line
-            // content in ANY of those offset copies ends up opaque in the result, growing every
-            // stroke outward by ~1px in each direction. Much faster than a manual per-pixel loop
-            // over an ~8000px-wide image.
-            const thickenCanvas = document.createElement('canvas');
-            thickenCanvas.width = img.width;
-            thickenCanvas.height = img.height;
-            const thickenCtx = thickenCanvas.getContext('2d');
-            if (thickenCtx) {
-              const offsets: [number, number][] = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
-              offsets.forEach(([dx, dy]) => thickenCtx.drawImage(img, dx, dy));
-            }
-            const thickenedImg = new Image();
-            thickenedImg.onload = () => {
-              if (!active) return;
-              proceedWithImage(thickenedImg);
-            };
-            thickenedImg.onerror = () => {
-              // Fall back to the untouched raster if thickening somehow fails to encode.
-              if (active) proceedWithImage(img);
-            };
-            thickenedImg.src = thickenCtx ? thickenCanvas.toDataURL() : img.src;
-          };
+            // No pre-thickening pass here, deliberately. There used to be one: five source-over
+            // composites of the same image at 1px offsets, a plus-shaped dilation. It was added
+            // when this path downsampled the ~8400px rendering straight to screen size in a
+            // single drawImage, where the browser's sparse sampling made hairlines fade out
+            // entirely rather than just look smaller.
+            //
+            // `buildMipmapLevels` replaced that single jump with a successive-halving chain.
+            // Each halving averages 4 pixels, so a hairline survives as reduced alpha instead of
+            // being missed by the sampler — which is the problem the dilation existed to solve.
+            // That made it redundant, and "redundant" is generous: source-over is not a max, so
+            // it accumulates alpha. A transparent pixel next to a 0.6-alpha antialiased edge came
+            // out 0.6 opaque, growing every stroke ~1px outward with a soft fringe, which the
+            // mipmap chain then smeared across the entire reduction. It is a blur kernel, and it
+            // was the bulk of why this canvas read as blurry next to a real CAD viewer.
+            const mipmaps = buildMipmapLevels(img);
 
-          const proceedWithImage = (img: HTMLImageElement) => {
             if (!active) return;
-
-            setBgImage(img);
+            setBgImage(mipmaps);
             setRedrawTrigger((prev) => prev + 1);
 
             // Save to cache immediately so tab switches don't trigger another fetch
-            renderingCache.set(drawing.id, { bgImage: img, lightBgImage: null });
+            renderingCache.set(drawing.id, { bgImage: mipmaps, lightBgImage: null });
 
             const canvas = document.createElement('canvas');
             canvas.width = img.width;
@@ -223,17 +257,17 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                   if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
                     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
                     if (brightness < 70) {
-                      data[i] = 235;
-                      data[i + 1] = 235;
-                      data[i + 2] = 235;
+                      data[i] = 255;
+                      data[i + 1] = 255;
+                      data[i + 2] = 255;
                     } else {
                       const invR = 255 - r;
                       const invG = 255 - g;
                       const invB = 255 - b;
                       if (invR > 215 && invG > 215 && invB > 215) {
-                        data[i] = 235;
-                        data[i + 1] = 235;
-                        data[i + 2] = 235;
+                        data[i] = 255;
+                        data[i + 1] = 255;
+                        data[i + 2] = 255;
                       } else {
                         data[i] = invR;
                         data[i + 1] = invG;
@@ -292,10 +326,21 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       return () => {
         active = false;
       };
-    }, [drawing?.id]);
+    }, [drawing?.id, renderMode]);
 
     return (
-      <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+      <div 
+        className="drawing-canvas-viewport-container" 
+        style={{ 
+          position: 'relative', 
+          width: '100%', 
+          height: '100%', 
+          overflow: 'hidden',
+          border: '1px solid var(--border-color)',
+          borderRadius: '2px',
+          boxShadow: theme === 'hc-light' ? 'inset 0 1px 3px rgba(15,23,42,0.06)' : 'none'
+        }}
+      >
         <ErrorBoundary
           fallbackRender={({ error, resetErrorBoundary }) => (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-dark text-text-primary z-50">
@@ -329,7 +374,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             isHoveringMarkerState={isHoveringMarkerState}
             hoveredMarkerId={hoveredMarkerId}
             hoveredAnnotationId={hoveredAnnotationId}
-            isNeonCAD={false}
+            isNeonCAD={true}
             bgImage={bgImage}
             lightBgImage={lightBgImage}
             setRenderDiagnostics={setRenderDiagnostics}
@@ -428,7 +473,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
         {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
         {useReviewStore(s => s.showCanvasStats) && (
           <div
-            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md pointer-events-none font-mono text-xs shadow-xl ${theme === 'hc-light'
+            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1 rounded-sm border backdrop-blur-md pointer-events-none font-mono text-xs shadow-md ${theme === 'hc-light'
                 ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
                 : 'bg-zinc-950/80 border-white/10 text-zinc-400'
               }`}
@@ -449,6 +494,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
  * Zoom percentage display — imperative DOM update, no React re-render on zoom.
  */
 const ZoomDisplay = () => {
+  const theme = useThemeStore((s) => s.theme);
   const spanRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const unsub = useReviewStore.subscribe((state) => {
@@ -457,7 +503,7 @@ const ZoomDisplay = () => {
     return unsub;
   }, []);
   const initScale = useReviewStore.getState().viewport.scale;
-  return <div>ZOOM: <span ref={spanRef} style={{ color: '#00e5ff', fontWeight: 600 }}>{(initScale * 100).toFixed(0)}%</span></div>;
+  return <div>ZOOM: <span ref={spanRef} style={{ color: theme === 'hc-light' ? '#0284c7' : '#00e5ff', fontWeight: 600 }}>{(initScale * 100).toFixed(0)}%</span></div>;
 };
 
 const SEVERITY_ORDER: AnnotationSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];

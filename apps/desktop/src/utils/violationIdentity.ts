@@ -13,3 +13,21 @@
 export function isPersistedViolationId(id: string | undefined | null): boolean {
   return typeof id === "string" && /^[a-f0-9]{24}$/i.test(id);
 }
+
+/** The id to send to `PATCH /audits/violations/{id}/review`, or `null` if there isn't one.
+ *
+ * Checklist markers carry a synthetic `id` for canvas bookkeeping and, once
+ * `reconcilePersistedIds` has run, a `persisted_id` pointing at the real `AuditViolation`
+ * document. Reviews must use the latter; the synthetic id references nothing, which is what
+ * produced `PATCH /audits/violations/phys_chk_restored_1_.../review -> 500`.
+ *
+ * Returning `null` rather than a boolean is deliberate: it makes "can this be reviewed" and
+ * "what do I send" the same question with one answer, so a caller cannot check one id and then
+ * submit a different one.
+ */
+export function reviewableViolationId(violation: unknown): string | null {
+  const v = violation as { persisted_id?: unknown; id?: unknown } | null | undefined;
+  if (!v) return null;
+  const candidate = typeof v.persisted_id === "string" ? v.persisted_id : v.id;
+  return isPersistedViolationId(candidate as string) ? (candidate as string) : null;
+}

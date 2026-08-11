@@ -84,49 +84,46 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
         }
       `}</style>
 
-      {/* Premium Header */}
-      <div className="tlp-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-y-2 gap-x-3 p-5 border-b border-border-color bg-bg-sidebar/90 backdrop-blur-sm">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="relative flex items-center justify-center w-8 h-8 shrink-0 rounded-lg bg-accent-cyan/10 border border-accent-cyan/20">
-            <Sparkles size={18} className="text-accent-cyan" />
+      {/* Premium Desktop Header */}
+      <div className="tlp-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2 p-2.5 border-b border-border-color bg-bg-sidebar select-none">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="relative flex items-center justify-center w-6 h-6 shrink-0 rounded-sm bg-accent-cyan/10 border border-accent-cyan/20">
+            <Sparkles size={14} className="text-accent-cyan" />
           </div>
-          <span className="tlp-title text-sm font-bold tracking-widest text-text-primary uppercase truncate">
+          <span className="tlp-title text-xs font-bold tracking-wider text-text-primary uppercase truncate">
             AI Comparison
           </span>
         </div>
 
-        {/* Re-test Action Buttons. shrink-0 so they wrap to a second line intact rather than
-            compressing into unreadable stubs when the panel is narrow. */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Re-test Action Buttons */}
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             disabled={isScanning}
-            className="h-8 px-3 text-xs font-semibold text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/10 hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none gap-1.5 rounded-lg transition-all"
+            className="h-6 px-2 text-[11px] font-semibold text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/10 hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none gap-1 rounded-sm transition-all"
             onClick={() => {
               resetComparison();
               runPhysicalComparisonAI(true);
             }}
             title="Re-run the comparison fresh (bypasses the cached result). Reuses the cached title-block OCR."
           >
-            <RotateCw size={13} className={isScanning ? "animate-spin" : ""} />
+            <RotateCw size={11} className={isScanning ? "animate-spin" : ""} />
             <span>Re-test</span>
           </Button>
-          {/* Deep variant: also re-reads the title-block crop with Gemini. Separate from
-              Re-test because OCR is a paid per-drawing call and should not fire every time. */}
           <Button
             variant="ghost"
             size="sm"
             disabled={isScanning}
-            className="h-8 w-8 p-0 justify-center text-text-muted border border-border-color hover:text-accent-cyan hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none rounded-lg transition-all"
+            className="h-6 w-6 p-0 justify-center text-text-muted border border-border-color hover:text-accent-cyan hover:border-accent-cyan/60 disabled:opacity-50 disabled:pointer-events-none rounded-sm transition-all"
             onClick={() => {
               resetComparison();
               runPhysicalComparisonAI(true, true);
             }}
-            title="Re-test AND re-read the title block with OCR (slower — one Gemini call per drawing). Use when the title-block reading looks stale, not just the comparison."
+            title="Re-test AND re-read the title block with OCR"
             aria-label="Re-test and re-scan title-block OCR"
           >
-            <ScanText size={13} className={isScanning ? "animate-pulse" : ""} />
+            <ScanText size={11} className={isScanning ? "animate-pulse" : ""} />
           </Button>
         </div>
       </div>

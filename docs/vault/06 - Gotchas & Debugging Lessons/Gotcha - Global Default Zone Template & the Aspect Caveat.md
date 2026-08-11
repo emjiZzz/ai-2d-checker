@@ -42,6 +42,32 @@ shape. For this corpus (A-series, all ≈1.414) every sheet shares the aspect, s
 but the Saved Templates modal and this note say so out loud, because a plausible-looking misplaced
 box is exactly the kind of silent wrong answer this vault exists to prevent.
 
+### The eval manifest hides this behind what looks like coverage (confirmed 2026-08-10)
+
+"Every sheet shares the aspect" above is **no longer true of the eval corpus**: `M745203N01`'s
+reference side is `aspect-1.361` against a `1.414` revision. `tests/fixtures/eval/manifest.json`
+duly lists **both** signatures under `zone_templates`, seven zones each — which reads as *both sheet
+shapes are covered*.
+
+They are not. The two blocks are **byte-identical**:
+
+```
+zone_template signatures captured: ['aspect-1.361', 'aspect-1.414']
+identical fractions: True        # all 7 zones: bom, iso, notes, title, title_upper_left, tolerance, views
+```
+
+`capture-zones` mirrors the app's lookup order — signature-specific, *then* global default — and
+stores whatever comes back under the signature it asked for. So a signature with no pinned template
+is recorded holding the default's fractions, and **presence in the map cannot be distinguished from
+alignment.** The manifest was deliberately keyed this way so that presence *is* the capture state
+(one flag, not two, which cannot fall out of step) — the cost is that it can no longer say *why* a
+signature is present.
+
+**Consequence for annotation:** `M745203N01`'s reference side is scored against the other aspect's
+boxes, and the reference side is where **REMOVED** findings anchor. Check the overlay on that pair
+before trusting a category. The check is one line — compare the two blocks for equality — and it is
+worth running whenever a new sheet signature joins the corpus.
+
 No new coordinate maths: the fallback reuses `fractions_to_absolute_bbox` with the *current* sheet's
 `render_bounds`, so the Y-DOWN→Y-UP flip stays in its one existing place. See
 [[Gotcha - Reference and Revision in Different Coordinate Spaces]] for why that flip is load-bearing.

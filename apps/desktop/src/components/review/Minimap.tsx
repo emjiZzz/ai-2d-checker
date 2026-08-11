@@ -52,17 +52,17 @@ function buildLightVariant(img: HTMLImageElement): Promise<HTMLImageElement> {
         if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
           const brightness = (r * 299 + g * 587 + b * 114) / 1000;
           if (brightness < 70) {
-            data[i] = 235;
-            data[i + 1] = 235;
-            data[i + 2] = 235;
+            data[i] = 255;
+            data[i + 1] = 255;
+            data[i + 2] = 255;
           } else {
             const invR = 255 - r;
             const invG = 255 - g;
             const invB = 255 - b;
             if (invR > 215 && invG > 215 && invB > 215) {
-              data[i] = 235;
-              data[i + 1] = 235;
-              data[i + 2] = 235;
+              data[i] = 255;
+              data[i + 1] = 255;
+              data[i + 2] = 255;
             } else {
               data[i] = invR;
               data[i + 1] = invG;
@@ -329,10 +329,10 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
         left: '8px',
         width: `${MINIMAP_WIDTH}px`,
         height: `${MINIMAP_HEIGHT}px`,
-        background: 'var(--bg-sidebar)',
+        background: theme === 'hc-light' ? '#ffffff' : 'var(--bg-sidebar)',
         border: '1px solid var(--border-color)',
-        borderRadius: '6px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+        borderRadius: '2px',
+        boxShadow: theme === 'hc-light' ? '0 4px 16px rgba(15,23,42,0.1)' : '0 4px 16px rgba(0,0,0,0.6)',
         zIndex: 50,
         overflow: 'hidden',
         backdropFilter: 'blur(6px)',
@@ -409,10 +409,10 @@ export const Minimap: React.FC<MinimapProps> = ({ drawing, canvasWidth, canvasHe
           top: `${box.top}px`,
           width: `${box.width}px`,
           height: `${box.height}px`,
-          border: '2px solid #ef4444',
-          borderRadius: '4px',
-          boxShadow: '0 0 6px rgba(239,68,68,0.6)',
-          background: 'transparent',
+          border: theme === 'hc-light' ? '2px solid #0284c7' : '2px solid #ef4444',
+          borderRadius: '2px',
+          boxShadow: theme === 'hc-light' ? '0 0 6px rgba(2,132,199,0.35)' : '0 0 6px rgba(239,68,68,0.6)',
+          background: theme === 'hc-light' ? 'rgba(2,132,199,0.08)' : 'transparent',
           pointerEvents: 'none',
           zIndex: 3,
         }}

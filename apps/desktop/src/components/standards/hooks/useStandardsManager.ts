@@ -110,11 +110,15 @@ export const useStandardsManager = () => {
     if (files && files.length > 0) {
       const file = files[0];
       const ext = file.name.split(".").pop()?.toLowerCase();
+      // `.xls` is read by a second backend parser (xlrd), not by converting it — see
+      // `standards_parser._read_xls_rows`. Both Excel formats reach the same chunker, so a
+      // legacy workbook keeps its bold and its colour-coded severity markers rather than
+      // degrading to plain text.
       if (ext && ["pdf", "txt", "md", "xlsx", "xls"].includes(ext)) {
         setSelectedFile(file);
         if (!name) setName(file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ").toUpperCase());
       } else {
-        alert("Unsupported file format! Please upload PDF, TXT, Excel or Markdown.");
+        alert("Unsupported file format! Please upload PDF, TXT, Excel (.xlsx/.xls) or Markdown.");
       }
     }
   };

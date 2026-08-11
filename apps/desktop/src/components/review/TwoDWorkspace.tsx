@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, Map, MoreVertical, Check, Activity, Grid, Move, LayoutTemplate } from "lucide-react";
+import { Maximize, Download, Map, MoreVertical, Check, Activity, Grid, Move, LayoutTemplate, PenTool } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -97,14 +97,17 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
   useEffect(() => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
-        const newW = entry.contentRect.width;
-        const newH = entry.contentRect.height;
-        setSize((prev) => {
-          if (Math.abs(prev.width - newW) > 2 || Math.abs(prev.height - newH) > 2) {
-            return { width: newW, height: newH };
-          }
-          return prev;
-        });
+        // Rounded to whole CSS pixels and compared exactly, rather than through a tolerance.
+        // `contentRect` reports FRACTIONAL sizes, and the old ±2px deadband additionally let
+        // this value sit up to 2px away from the container's true size. Both put the canvas
+        // backing store out of step with its CSS box, which makes the browser rescale the whole
+        // bitmap. CanvasRenderer now pins its own CSS size to its backing store so it can no
+        // longer be stretched; integers here keep it flush with the container as well as crisp.
+        // No thrash risk: the canvas is absolutely positioned inside a 100%-sized wrapper, so
+        // its size never feeds back into the element being observed.
+        const newW = Math.round(entry.contentRect.width);
+        const newH = Math.round(entry.contentRect.height);
+        setSize((prev) => (prev.width !== newW || prev.height !== newH ? { width: newW, height: newH } : prev));
       }
     });
     if (containerRef.current) resizeObserver.observe(containerRef.current);
@@ -168,14 +171,17 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
   useEffect(() => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
-        const newW = entry.contentRect.width;
-        const newH = entry.contentRect.height;
-        setSize((prev) => {
-          if (Math.abs(prev.width - newW) > 2 || Math.abs(prev.height - newH) > 2) {
-            return { width: newW, height: newH };
-          }
-          return prev;
-        });
+        // Rounded to whole CSS pixels and compared exactly, rather than through a tolerance.
+        // `contentRect` reports FRACTIONAL sizes, and the old ±2px deadband additionally let
+        // this value sit up to 2px away from the container's true size. Both put the canvas
+        // backing store out of step with its CSS box, which makes the browser rescale the whole
+        // bitmap. CanvasRenderer now pins its own CSS size to its backing store so it can no
+        // longer be stretched; integers here keep it flush with the container as well as crisp.
+        // No thrash risk: the canvas is absolutely positioned inside a 100%-sized wrapper, so
+        // its size never feeds back into the element being observed.
+        const newW = Math.round(entry.contentRect.width);
+        const newH = Math.round(entry.contentRect.height);
+        setSize((prev) => (prev.width !== newW || prev.height !== newH ? { width: newW, height: newH } : prev));
       }
     });
     if (containerRef.current) resizeObserver.observe(containerRef.current);
@@ -786,23 +792,23 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     <div className="flex flex-grow h-full overflow-hidden min-w-0 bg-bg-dark">
       {currentNav === "workspace" && (
         <div className="flex flex-grow h-full overflow-hidden min-w-0 flex-col">
-          <div className="flex items-center justify-between bg-bg-dark border-b border-border-color py-2 px-4 gap-3 shrink-0 w-full z-10 shadow-sm data-[theme=hc-dark]:shadow-md">
+          <div className="flex items-center justify-between bg-bg-topbar border-b border-border-color py-1 px-3 h-8 shrink-0 w-full z-10 select-none">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-text-primary">2D Review Workspace</span>
+              <span className="text-xs font-bold text-text-primary uppercase tracking-wide">2D Review Workspace</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Button 
                 variant="outline" 
                 size="icon" 
                 onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })} 
-                className="focus:outline-none focus-visible:outline-none focus-visible:ring-0 text-text-muted hover:text-text-primary" 
+                className="h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 text-text-muted hover:text-text-primary" 
                 title="Reset Viewport"
               >
-                <Maximize size={18} />
+                <Maximize size={14} />
               </Button>
               {newDrawing && (
-                <Button variant="outline" size="sm" onClick={exportToPDF} className="h-8 text-xs border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1.5" title="Export drawing pair as PDF">
-                  <Download size={14} /> PDF
+                <Button variant="outline" size="sm" onClick={exportToPDF} className="h-6 px-2 text-[11px] rounded-sm border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1" title="Export drawing pair as PDF">
+                  <Download size={12} /> PDF
                 </Button>
               )}
               {activeSession?.id && (
@@ -820,13 +826,13 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                     }
                   }} 
                   disabled={isExportingRedline}
-                  className="h-8 text-xs border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white gap-1.5" 
+                  className="h-6 px-2 text-[11px] rounded-sm border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white gap-1" 
                   title="Export CAD Redline layer as a DXF file"
                 >
                   {isExportingRedline ? (
-                    <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-2.5 h-2.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <Download size={14} />
+                    <Download size={12} />
                   )}
                   <span>Redline DXF</span>
                 </Button>
@@ -835,13 +841,13 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                 variant="outline"
                 size="sm"
                 onClick={() => setIsTemplatesModalOpen(true)}
-                className="h-8 text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/20 gap-1.5"
+                className="h-6 px-2 text-[11px] rounded-sm border-amber-500/40 text-amber-500 hover:bg-amber-500/20 gap-1"
                 title="Manage Saved Sheet Templates"
               >
-                <LayoutTemplate size={14} />
+                <LayoutTemplate size={12} />
                 <span>Templates</span>
               </Button>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 {/* 3-Dots View Controls Menu */}
                 <div ref={viewMenuRef} className="relative">
                   <Button 
@@ -849,13 +855,13 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                     size="icon" 
                     onClick={() => setIsViewMenuOpen(!isViewMenuOpen)} 
                     title="More Options"
-                    className={`focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors ${
+                    className={`h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors ${
                       isViewMenuOpen 
                         ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10" 
                         : "text-text-muted hover:text-text-primary border-transparent hover:bg-sidebar-item-hover"
                     }`}
                   >
-                    <MoreVertical size={18} />
+                    <MoreVertical size={14} />
                   </Button>
 
                   {isViewMenuOpen && (
@@ -890,6 +896,36 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         {showCanvasStats && <Check size={14} className="text-accent-cyan" />}
                       </button>
 
+                      {/* Vector vs raster. `setRenderMode` existed in the store with no caller
+                          at all, so the vector renderer could not be reached from the UI and
+                          had never been exercised — which is how it shipped unable to draw a
+                          DIMENSION. Kept as an explicit toggle rather than a changed default:
+                          vector is sharp at every zoom, raster is guaranteed complete because
+                          ezdxf renders it, and which one wins depends on whether a given
+                          drawing's extraction covered everything on the sheet. */}
+                      <button
+                        onClick={() => {
+                          setRenderMode(renderMode === 'vector' ? 'raster' : 'vector');
+                          setIsViewMenuOpen(false);
+                        }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                          renderMode === 'vector'
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
+                            : "text-text-primary hover:bg-sidebar-item-hover"
+                        }`}
+                        title={
+                          renderMode === 'vector'
+                            ? "Drawing entities are rendered as vectors — sharp at any zoom, but limited to the entity types the extractor captured."
+                            : "A server-rendered image is displayed — always complete, but softens as you zoom out."
+                        }
+                      >
+                        <div className="flex items-center gap-2">
+                          <PenTool size={16} />
+                          <span>{renderMode === 'vector' ? "Vector Rendering" : "Raster Rendering"}</span>
+                        </div>
+                        {renderMode === 'vector' && <Check size={14} className="text-accent-cyan" />}
+                      </button>
+
                       <button
                         onClick={() => { toggleGrid(); setIsViewMenuOpen(false); }}
                         className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
@@ -920,24 +956,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         </div>
                         {isRoiEditModeEnabled && <Check size={14} className="text-amber-400" />}
                       </button>
-
-                      <div className="h-px bg-border-color my-0.5"></div>
-                      <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">Canvas Engine Mode</div>
-                      <div className="flex items-center gap-1 px-1.5 py-1 bg-bg-dark rounded-lg border border-border-color">
-                        {(['hybrid', 'vector', 'raster'] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            onClick={() => { setRenderMode(mode); setIsViewMenuOpen(false); }}
-                            className={`flex-1 py-1 text-[10px] font-bold capitalize rounded transition-colors cursor-pointer ${
-                              renderMode === mode
-                                ? "bg-accent-cyan text-zinc-950 shadow-xs"
-                                : "text-text-muted hover:text-text-primary"
-                            }`}
-                          >
-                            {mode}
-                          </button>
-                        ))}
-                      </div>
 
                       <div className="h-px bg-border-color my-0.5"></div>
 

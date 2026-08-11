@@ -220,6 +220,19 @@ class ViewportTransform:
                 return vp
         return None
 
+    def covers_model_point(self, x: float, y: float) -> bool:
+        """Does any viewport window actually show this model point?
+
+        `project` falls back to viewport 0 for points outside every window so the result
+        stays deterministic and invertible, which means the returned coordinate cannot be
+        used to tell "visible here" from "clipped away". A viewport shows only its own
+        window, so geometry failing this check is invisible in the source CAD application
+        and in the ezdxf raster, however reasonable its projected coordinate looks.
+        """
+        if self.is_identity or not self.viewports:
+            return True
+        return any(vp.contains_model_point(x, y) for vp in self.viewports)
+
     def project(self, x: float, y: float, viewport_index: int | None = None) -> Projection:
         """Model space -> paper space."""
         if self.is_identity:

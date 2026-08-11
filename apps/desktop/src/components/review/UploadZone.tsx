@@ -104,7 +104,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
 
   const containerClass = `relative w-full h-full transition-all duration-250 ease-out flex flex-col items-center justify-center p-5 box-border overflow-hidden bg-transparent group ${borderHover}`;
 
-  const dropzoneBoxClass = `w-full flex flex-col items-center text-center gap-3 py-8 px-6 rounded-2xl border-2 border-dashed border-border-color transition-all duration-250 ease-out ${draggingStyles}`;
+  const dropzoneBoxClass = `w-full flex flex-col items-center text-center gap-2.5 py-6 px-4 rounded-sm border border-dashed border-border-color transition-all duration-150 ${draggingStyles}`;
 
   return (
     <div

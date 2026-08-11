@@ -95,7 +95,8 @@ export const StandardsModals: React.FC<StandardsModalsProps> = ({
                 <span className="upload-prompt" style={{ fontSize: "0.85rem" }}>
                   {selectedFile ? `Selected: ${selectedFile.name} (${formatBytes(selectedFile.size)})` : "Drag & Drop standard reference, or browse"}
                 </span>
-                <span className="upload-specs" style={{ fontSize: "0.7rem" }}>PDF, TXT, Excel or Markdown (No size limit)</span>
+                {/* "No size limit" was wrong: `StandardsLoader.ingest_standard` caps at 50 MB. */}
+                <span className="upload-specs" style={{ fontSize: "0.7rem" }}>PDF, TXT, Excel (.xlsx/.xls) or Markdown — max 50 MB</span>
               </div>
 
               <div className="form-group">

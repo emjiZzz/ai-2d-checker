@@ -269,7 +269,19 @@ class ComparisonCacheManager:
     # making its removal unreportable. Measured: recall 0.85 -> 0.87, notes_section recall
     # 0.92 -> 1.00, no new false positives. A v42 entry silently under-reports those.
     # See orchestrator._collect_structured_text_values.
-    COMPARISON_CACHE_VERSION = "v43"
+    # v44: elliptical arcs that wrap through 2pi were tessellated backwards. A DXF ellipse
+    # always sweeps counter-clockwise from start_param to end_param, so `end < start` means it
+    # crosses zero -- but `_tessellate_ellipse` took the raw difference and swept the short way
+    # round, placing the arc on the WRONG SIDE of its own ellipse. The wrap only appears after
+    # block explosion (definitions store (180, 360); the INSERT transform rewrites it to
+    # (180, 0)), so 9 of 33 arcs on a real isometric view were mirrored onto arcs already
+    # drawn, leaving the other half empty and the flange rendered as a broken crescent.
+    # This invalidates cached audits because `_detect_iso_zone` sizes the `iso` zone from
+    # `_largest_ellipse_cluster`, whose extent is computed from exactly these points -- a
+    # half-covered ring yields a smaller, offset iso box than a complete one.
+    # See EntityMapper._tessellate_ellipse and
+    # docs/vault/06 - .../Gotcha - A Blurry CAD Canvas and Its Four Causes.
+    COMPARISON_CACHE_VERSION = "v44"
 
     @staticmethod
     def _get_cache_path(

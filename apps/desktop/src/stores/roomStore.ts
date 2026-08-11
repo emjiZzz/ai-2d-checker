@@ -11,6 +11,8 @@ import { create } from "zustand";
 import { parseOrThrow, parseAndValidate, buildHeaders, baseUrl } from "../services/fetchUtils";
 import { RoomSchema, RoomListSchema } from "../schemas/apiSchemas";
 import { useWorkspaceStore, DrawingItem, saveWorkspaceState, loadWorkspaceState } from "./workspaceStore";
+import { reconcilePersistedIds } from "../utils/persistedViolations";
+import { fetchPersistedViolations } from "../utils/persistedViolationsApi";
 
 /**
  * The only comparison method. Renamed from `"rag"`, which named a technique it does not
@@ -188,10 +190,34 @@ export const useRoomStore = create<RoomState>((set, get) => ({
               origin: marking.origin,
               // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,
               // Phase 5) — pass-through only, undefined when the backend didn't set one.
-              feature: marking.feature
+              feature: marking.feature,
+              // Both were dropped here while the live path (markerGenerator.ts) kept them, so a
+              // restored room lost the two fields that identify a finding. `entity_handle` is
+              // what a human correction sends to the trainer, and both are the join key back to
+              // the persisted AuditViolation below.
+              entity_handle: marking.entity_id,
+              status: marking.status
             };
           });
-          useWorkspaceStore.setState({ violations: mappedMarkings });
+
+          // The comparison persisted an AuditViolation per non-MATCHED finding and stamped the
+          // owning session id into diagnostics *before* the payload was cached, so a restored
+          // room can still recover it even though this branch runs precisely when the room has
+          // no `active_audit_session_id` of its own. Without this join every restored marker
+          // keeps its synthetic `phys_chk_restored_*` id and cannot be reviewed.
+          const restoredSessionId =
+            roomData.physical_comparison_results.diagnostics?.audit_session_id ?? null;
+          if (restoredSessionId) {
+            useWorkspaceStore.getState().setActiveSessionId(restoredSessionId);
+          }
+          const reconciled = restoredSessionId
+            ? reconcilePersistedIds(
+                mappedMarkings,
+                await fetchPersistedViolations(restoredSessionId)
+              )
+            : mappedMarkings;
+
+          useWorkspaceStore.setState({ violations: reconciled });
         } else {
           useWorkspaceStore.setState({ violations: [] });
         }

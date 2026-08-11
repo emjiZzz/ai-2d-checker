@@ -2,9 +2,10 @@
 title: RAG Reference Architecture — Gap Analysis
 type: architecture
 tags: [architecture, rag, retrieval, embeddings, vectorstore, gap-analysis, ai-architecture]
-status: active
+status: active — body is a 2026-08-07 snapshot; see the re-verification block for what changed
 date: 2026-08-07
-verified-against: cache v43, baseline-v43.json, working tree at 2026-08-07
+updated: 2026-08-10
+verified-against: cache v43, baseline-v43.json, working tree at 2026-08-07; re-verified against the working tree and live Mongo on 2026-08-10
 related: [ADR-007 Re-scoping the Maturity Ladder, ADR-004 Deterministic-Only Scope, ADR-006 Removing the Three AI Comparison Methods]
 ---
 
@@ -22,6 +23,40 @@ Query/Runtime:  Query -> Embed(Q) -> SimSearch <- Context -> Re-rank -> Promptin
 
 Every claim below was checked against the working tree on 2026-08-07, not taken from other
 notes. Where a claim contradicts [[00 - AI Maturity Status]], the contradiction is stated.
+
+> [!IMPORTANT] Re-verified 2026-08-10 — **five rows below were true for three days and are now
+> wrong in the same direction.** The body is kept as written, because the diagnosis is what
+> justified the fixes; read it as of 2026-08-07 and this block as of today.
+>
+> | Node | This doc says (08-07) | Live today (08-10) |
+> | :--- | :--- | :--- |
+> | Embed(I) / Embed(Q) | ⚠️ SHA-256 noise | ✅ **real.** `local_embedding_model.py` **deleted**; `retrieval/lexical.py` is char n-gram TF-IDF — lexical, and it says so |
+> | VectorStore | ⚠️ a JSON file misnamed LanceDB | ✅ **real.** `lancedb_manager.py` **deleted**; `retrieval/store.py` is exact brute-force cosine over a scipy CSR matrix + JSONL sidecar + manifest |
+> | SimSearch | ⚠️ cosine over noise | ✅ **real**, 6–9 ms, offline |
+> | The `embed_text` singular bug | ❌ live; `lessons_learned` never written | ✅ **fixed** — no singular call site remains in our code |
+> | Retrieval evaluation — *"the real gap"* | ❌ absent | ✅ **built** (R2), and it answered: there is nothing to measure |
+>
+> **The bottom line has inverted, and that is the finding.** On 08-07 this was *"the skeleton of
+> the diagram with a placeholder where the semantics should be."* Today the semantics are real and
+> the **corpus is empty**: `standard_chunks` **0**, `standard_documents` **0**, `standards` **0**,
+> and no `lessons_learned` collection exists at all. We traded a retriever that worked on noise for
+> a working retriever with nothing to retrieve — which is strictly better, because the second
+> failure is visible and the first was not.
+>
+> **Why the corpus is empty is itself a correction.** Not disinterest — the desktop upload posted
+> to a GET-only route and returned **405** on every attempt, so no standard could be ingested at
+> all. Fixed 2026-08-10; see [[Gotcha - A Standard That Ingested Nothing Reported Success]]. Read
+> `standard_chunks = 0` as a statement about the code, not about demand.
+>
+> This doc's own closing question — *"is the standards pipeline a product we are building or a
+> prototype we are carrying?"* — was answered on 2026-08-10 by
+> [[ADR-009 Retiring the Standards Knowledge Track]]: **carrying, and now retired** (that ADR is
+> itself amended, on this same premise). R0–R2 stay in
+> the tree; R3 and R4 are retired, not deferred, and the reopening condition is about data, not
+> engineering. **Do not restart retrieval work from this document.**
+>
+> Unchanged and still the load-bearing point: **the comparison engine has no query.** See "the
+> deeper mismatch" below — nothing since has altered it, and ADR-007 remains the answer.
 
 ---
 

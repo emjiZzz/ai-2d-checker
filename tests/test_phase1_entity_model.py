@@ -132,6 +132,12 @@ ENTITY_GEOMETRY_SAMPLES = {
     "dimension": {
         "def_point": [1.0, 2.0, 0.0], "text_point": [3.0, 4.0, 0.0],
         "ext1_point": [5.0, 6.0, 0.0], "ext2_point": [7.0, 8.0, 0.0],
+        # The flattened contents of the dimension's anonymous geometry block. Present
+        # here so the existing projection guards below cover them: anchors that move to
+        # paper space while the arrowheads stay in model space would draw a dimension
+        # with its value in one place and its arrows in another.
+        "render_paths": [[[9.0, 10.0], [11.0, 12.0]]],
+        "render_fills": [[[13.0, 14.0], [15.0, 16.0], [17.0, 18.0]]],
     },
     "text": {"insert": [12.0, 13.0, 0.0]},
     "block": {"insert": [14.0, 15.0, 0.0]},
@@ -487,3 +493,191 @@ def test_paperspace_viewport_projection_end_to_end(tmp_path):
     assert math.isclose(start.y, 0.0, abs_tol=1e-6)
     assert math.isclose(end.x, 100.0, abs_tol=1e-6)
     assert math.isclose(end.y, 50.0, abs_tol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# DIMENSION rendered geometry
+#
+# A DIMENSION stores anchors, a `measurement` and a `dimstyle` -- nothing drawable.
+# The dimension line, extension lines and arrowheads live in an anonymous block.
+# Until that block was flattened, switching `renderMode` to 'vector' produced a sheet
+# with every dimension silently deleted (measured: VIRTUALIZED 356/518).
+# ---------------------------------------------------------------------------
+
+
+def _rendered_dim(msp, **override):
+    opts = {"dimtsz": 0, "dimblk": "", "dimasz": 2.5}
+    opts.update(override)
+    d = msp.add_linear_dim(base=(0, 12), p1=(0, 0), p2=(100, 0), override=opts)
+    d.render()
+    return d.dimension
+
+
+def test_dimension_yields_drawable_line_geometry():
+    doc = ezdxf.new()
+    mapped = EntityMapper.map_dimension(_rendered_dim(doc.modelspace()))
+    paths = mapped["geometry"].get("render_paths")
+
+    assert paths, "dimension produced no drawable geometry -- it would render as nothing"
+    # Extension lines + dimension line at minimum.
+    assert len(paths) >= 3
+    assert all(len(p) >= 2 for p in paths)
+    assert all(len(pt) == 2 for p in paths for pt in p)
+
+
+def test_closed_filled_arrowheads_become_fills_not_strokes():
+    """Arrowheads are SOLID entities. Stroking their outline instead of filling them
+    draws hollow triangles, which is not what a dimension looks like."""
+    doc = ezdxf.new()
+    mapped = EntityMapper.map_dimension(_rendered_dim(doc.modelspace()))
+    fills = mapped["geometry"].get("render_fills")
+
+    assert fills, "closed-filled arrowheads produced no fill polygons"
+    assert all(len(quad) >= 3 for quad in fills)
+
+
+def test_radial_dimension_tessellates_its_arc():
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    msp.add_circle((200, 0), radius=40)
+    rd = msp.add_radius_dim(
+        center=(200, 0), radius=40, angle=45,
+        override={"dimtsz": 0, "dimblk": "", "dimasz": 2.5},
+    )
+    rd.render()
+
+    mapped = EntityMapper.map_dimension(rd.dimension)
+    assert mapped["geometry"].get("render_paths"), "radial dimension produced no geometry"
+
+
+def test_dimension_text_height_is_harvested_from_the_rendered_block():
+    """The DIMENSION entity does not carry the resolved text height -- it lives on the
+    dimstyle. Without harvesting it the renderer has to guess, and guesses wrong."""
+    doc = ezdxf.new()
+    mapped = EntityMapper.map_dimension(_rendered_dim(doc.modelspace(), dimtxt=3.5))
+    assert mapped["properties"].get("text_height") == pytest.approx(3.5)
+
+
+def test_every_dimension_geometry_key_is_covered_by_the_projection_schema():
+    """Regression guard for the coordinate space, not the drawing.
+
+    `project_mapped_entity` is schema-driven: a geometry key absent from
+    GEOMETRY_SCHEMA is silently left in model space while its siblings move to paper
+    space. For a dimension that means anchors in one space and arrowheads in another.
+    """
+    doc = ezdxf.new()
+    mapped = EntityMapper.map_dimension(_rendered_dim(doc.modelspace()))
+
+    schema = GEOMETRY_SCHEMA["dimension"]
+    covered = {key for group in schema.values() for key in group}
+    uncovered = set(mapped["geometry"]) - covered
+
+    assert not uncovered, f"dimension geometry keys not covered by GEOMETRY_SCHEMA: {uncovered}"
+
+
+def test_real_dimension_geometry_is_projected_into_paper_space():
+    """End-to-end companion to the parametrized projection guards above, using geometry
+    that ezdxf actually produced rather than a hand-written sample."""
+    import copy
+
+    doc = ezdxf.new()
+    mapped = EntityMapper.map_dimension(_rendered_dim(doc.modelspace()))
+    before = copy.deepcopy(mapped["geometry"]["render_paths"])
+
+    transform = ViewportTransform("Layout1", [_viewport()])
+    viewport_index, scale = project_mapped_entity(mapped, transform)
+
+    assert viewport_index != NO_VIEWPORT
+    assert scale != 1.0
+    assert mapped["geometry"]["render_paths"] != before, (
+        "render_paths were left in model space while the anchors moved to paper space"
+    )
+
+
+def test_wrapping_elliptical_arc_sweeps_forward_through_zero():
+    """A DXF ellipse always sweeps counter-clockwise start_param -> end_param, so
+    `end < start` means it wraps through 2pi rather than running backwards.
+
+    Taking the raw difference swept the short way round and drew the arc on the
+    opposite side of its own ellipse. Measured on a real isometric view: 9 of 33 arcs
+    wrapped, so the flange rendered as a broken crescent while ezdxf drew closed rings
+    from the same entities.
+    """
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    # 180 deg -> 0 deg: the lower half, sweeping through 270.
+    ell = msp.add_ellipse(center=(0, 0), major_axis=(10, 0), ratio=0.5,
+                          start_param=math.pi, end_param=0.0)
+
+    pts = EntityMapper.map_ellipse(ell)["geometry"]["points"]
+
+    assert len(pts) >= 8
+    # Sweeping forward through 270 deg puts the arc BELOW the centre line.
+    ys = [p[1] for p in pts]
+    assert min(ys) < -1e-6, "wrapped arc was swept backwards, onto the upper half"
+    assert max(ys) <= 1e-6, "wrapped arc leaked into the half it does not cover"
+    # And it must actually reach the far side rather than stopping short.
+    assert pts[0][0] == pytest.approx(-10.0, abs=1e-6)
+    assert pts[-1][0] == pytest.approx(10.0, abs=1e-6)
+
+
+def test_full_ellipse_is_reported_closed_when_params_wrap():
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    ell = msp.add_ellipse(center=(0, 0), major_axis=(5, 0), ratio=0.5,
+                          start_param=0.0, end_param=math.tau)
+    assert EntityMapper.map_ellipse(ell)["properties"]["is_closed"] is True
+
+
+def test_dimension_text_rotation_comes_from_mtext_text_direction():
+    """MTEXT keeps its orientation in `text_direction`, not `rotation`.
+
+    Reading `dxf.rotation` off an MTEXT yields None -> 0.0, which drew every rotated
+    dimension's value horizontally. On a real sheet that stacked the vertical 145 and
+    100 on top of each other. Same family as the documented map_text MTEXT trap.
+    """
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    # A vertical (90 deg) linear dimension: its text runs vertically.
+    d = msp.add_linear_dim(base=(12, 0), p1=(0, 0), p2=(0, 100), angle=90,
+                           override={"dimtsz": 0, "dimblk": "", "dimasz": 2.5})
+    d.render()
+
+    rot = EntityMapper.map_dimension(d.dimension)["properties"].get("text_rotation")
+    assert rot is not None
+    assert abs(rot) > 1.0, f"vertical dimension text reported rotation {rot} (degraded to 0)"
+
+
+def test_geometry_outside_every_viewport_window_is_flagged_clipped():
+    """`project` falls back to viewport 0 for model points outside every window, so the
+    projected coordinate looks perfectly reasonable and cannot itself distinguish
+    "visible" from "clipped away".
+
+    A viewport shows only its own window, so such geometry is invisible in CAD and in the
+    ezdxf raster. Rendering it put a phantom section label on the sheet in vector mode.
+    """
+    vp = _viewport()  # model window centred on (50, 25), view_height 100 -> y in [-25, 75]
+    transform = ViewportTransform("Layout1", [vp])
+
+    assert transform.covers_model_point(50.0, 25.0) is True
+    assert transform.covers_model_point(50.0, 10_000.0) is False
+
+    inside = _build_mapped("text", {"insert": [50.0, 25.0, 0.0]})
+    project_mapped_entity(inside, transform)
+    assert "outside_viewport" not in inside["properties"]
+
+    outside = _build_mapped("text", {"insert": [50.0, 10_000.0, 0.0]})
+    project_mapped_entity(outside, transform)
+    assert outside["properties"].get("outside_viewport") is True
+    # Still projected, not dropped: the coordinate remains the honest answer and the
+    # comparison engines still receive the entity.
+    assert outside["geometry"]["insert"] != [50.0, 10_000.0, 0.0]
+
+
+def test_identity_transform_never_reports_clipping():
+    """A drawing with no paper-space viewports has nothing to clip against."""
+    t = ViewportTransform()
+    assert t.covers_model_point(1e9, -1e9) is True
+    mapped = _build_mapped("text", {"insert": [1e9, -1e9, 0.0]})
+    project_mapped_entity(mapped, t)
+    assert "outside_viewport" not in mapped["properties"]

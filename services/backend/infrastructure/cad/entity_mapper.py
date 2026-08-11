@@ -51,6 +51,11 @@ GEOMETRY_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
     "spline": {"point_lists": ("control_points", "fit_points", "points")},
     "dimension": {
         "points": ("def_point", "text_point", "ext1_point", "ext2_point"),
+        # The flattened contents of the dimension's anonymous geometry block. Listed here
+        # so the model->paper projection reaches them for free; a dimension whose anchors
+        # were projected but whose rendered lines were not would draw its measurement in
+        # one place and its arrows in another.
+        "point_list_groups": ("render_paths", "render_fills"),
     },
     "text": {"points": ("insert", "location", "text_point")},
     "block": {"points": ("insert",)},
@@ -64,6 +69,11 @@ GEOMETRY_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
 # `width_factor` and `tracking` are deliberately absent: they are dimensionless
 # multipliers, not lengths, and scaling them would compound with the geometry scale.
 SCALED_PROPERTY_KEYS: tuple[str, ...] = ("height", "radius", "text_height", "column_width")
+
+# Tessellation density for curved dimension geometry (radial, diameter and angular
+# dimensions render as arcs). A full circle at this density is well under a pixel of
+# chord error at any zoom the review canvas reaches.
+_DIM_ARC_SEGMENTS = 32
 
 
 def _dxf_get(dxf: Any, name: str, default: Any = None) -> Any:
@@ -241,9 +251,22 @@ class EntityMapper:
             # minor axis = major rotated +90 degrees, scaled by ratio
             nx, ny = -my * ratio, mx * ratio
 
+            # A DXF elliptical arc always sweeps COUNTER-CLOCKWISE from start_param to
+            # end_param, so `end < start` means it wraps through 2pi -- not that it runs
+            # backwards. Taking the raw difference sweeps the short way round instead,
+            # drawing the arc on the WRONG SIDE of its own ellipse: it lands on top of
+            # arcs that are already there and leaves the half it should have covered
+            # empty. On this corpus 9 of 33 isometric arcs wrap (`start=180 end=0`,
+            # `start=225 end=0`), which is why the flange rendered as a broken crescent
+            # while ezdxf's own renderer drew closed rings from the same entities.
+            #
+            # The wrap only appears AFTER block explosion -- the block definitions store
+            # (180, 360), and the INSERT transform is what rewrites it to (180, 0). So
+            # reading the source blocks looks fine and the defect only shows up in the
+            # exploded geometry that actually gets rendered.
             sweep = end_param - start_param
-            if abs(sweep) < 1e-12:
-                sweep = math.tau
+            if sweep <= 1e-12:
+                sweep += math.tau
 
             steps = max(8, ELLIPSE_TESSELLATION_SEGMENTS)
             points = []
@@ -282,7 +305,10 @@ class EntityMapper:
             "ratio": ratio,
             "start_param": start_param,
             "end_param": end_param,
-            "is_closed": abs((end_param - start_param) - math.tau) < 1e-9,
+            # Normalised the same way `_tessellate_ellipse` normalises its sweep, so a
+            # wrapped full ellipse (start == end, or end < start summing to a full turn)
+            # is not reported as an open arc.
+            "is_closed": abs(((end_param - start_param) % math.tau)) < 1e-9,
         })
 
         return {
@@ -376,6 +402,165 @@ class EntityMapper:
         }
 
     @staticmethod
+    def _dimension_render_geometry(entity: Any) -> dict[str, Any]:
+        """Flatten a DIMENSION's rendered block into drawable primitives.
+
+        A DIMENSION carries anchors (`defpoint`, `text_midpoint`, `defpoint2/3`), a
+        `measurement` and a `dimstyle` -- and nothing drawable. The dimension line,
+        the extension lines and the arrowheads live in an anonymous block that ezdxf
+        exposes via `virtual_entities()`. Without flattening it, a vector renderer draws
+        a dimension as literally nothing, which is what happened: switching `renderMode`
+        to 'vector' produced a sharp sheet with every dimension silently deleted.
+
+        Returned as geometry to attach to the DIMENSION itself rather than as sibling
+        entities, and that distinction is load-bearing. `context_builder` pools
+        `entity_type == 'text'` and `entity_type == 'dimension'` separately, so exploding
+        a dimension into real LINE/TEXT entities the way INSERT is exploded would make
+        every dimension appear *twice* in the audit -- once as a dimension carrying
+        `measurement`, once as text carrying the same string. Keeping the geometry
+        attached leaves the comparison entity set byte-identical.
+
+        TEXT/MTEXT children are deliberately not emitted: the measurement string is
+        already on the dimension. Their *height* and *rotation* are harvested, because
+        those are the values resolved through the dimstyle, which the DIMENSION entity
+        does not itself carry.
+        """
+        paths: list[list[list[float]]] = []
+        fills: list[list[list[float]]] = []
+        text_meta: dict[str, Any] = {}
+
+        def add_arc(cx: float, cy: float, r: float, a0: float, a1: float) -> None:
+            if r <= 0:
+                return
+            if a1 <= a0:
+                a1 += 360.0
+            sweep = a1 - a0
+            steps = max(4, min(_DIM_ARC_SEGMENTS, int(_DIM_ARC_SEGMENTS * sweep / 360.0) + 2))
+            paths.append([
+                [cx + r * math.cos(math.radians(a0 + sweep * i / steps)),
+                 cy + r * math.sin(math.radians(a0 + sweep * i / steps))]
+                for i in range(steps + 1)
+            ])
+
+        def flatten(src: Any, depth: int) -> None:
+            if depth > 4:
+                return
+            try:
+                children = list(src.virtual_entities())
+            except Exception:
+                return
+            for e in children:
+                try:
+                    t = e.dxftype()
+                    if t == "LINE":
+                        paths.append([_as_xy(e.dxf.start), _as_xy(e.dxf.end)])
+                    elif t == "LWPOLYLINE":
+                        pts = [[float(p[0]), float(p[1])] for p in e.get_points("xy")]
+                        if len(pts) >= 2:
+                            if getattr(e, "closed", False):
+                                pts.append(list(pts[0]))
+                            paths.append(pts)
+                    elif t == "POLYLINE":
+                        pts = [_as_xy(v.dxf.location) for v in e.vertices]
+                        if len(pts) >= 2:
+                            if getattr(e, "is_closed", False):
+                                pts.append(list(pts[0]))
+                            paths.append(pts)
+                    elif t == "ARC":
+                        c = _as_xy(e.dxf.center)
+                        add_arc(c[0], c[1], float(e.dxf.radius),
+                                float(_dxf_get(e.dxf, "start_angle", 0.0) or 0.0),
+                                float(_dxf_get(e.dxf, "end_angle", 0.0) or 0.0))
+                    elif t == "CIRCLE":
+                        c = _as_xy(e.dxf.center)
+                        add_arc(c[0], c[1], float(e.dxf.radius), 0.0, 360.0)
+                    elif t in ("SOLID", "TRACE"):
+                        # Arrowheads. The DXF quad order is vtx0, vtx1, vtx3, vtx2 --
+                        # reading them in numeric order draws a bowtie, not a triangle.
+                        fills.append([
+                            _as_xy(e.dxf.vtx0), _as_xy(e.dxf.vtx1),
+                            _as_xy(e.dxf.vtx3), _as_xy(e.dxf.vtx2),
+                        ])
+                    elif t == "HATCH":
+                        for p in getattr(e, "paths", []):
+                            pts = [[float(v[0]), float(v[1])] for v in getattr(p, "vertices", [])]
+                            if len(pts) >= 3:
+                                fills.append(pts)
+                    elif t == "INSERT":
+                        # Arrowheads are blocks under most dimstyles.
+                        flatten(e, depth + 1)
+                    elif t in ("TEXT", "MTEXT", "ATTRIB") and not text_meta:
+                        height = _dxf_get(e.dxf, "char_height", 0.0) or _dxf_get(e.dxf, "height", 0.0)
+                        if height:
+                            text_meta["text_height"] = float(height)
+
+                        # The string the block ACTUALLY renders, which is not the same as the
+                        # one `map_dimension` reconstructs from `actual_measurement`.
+                        #
+                        # On this corpus `dimpost` is empty and `dimension.dxf.text` is only
+                        # '\W0.8;\T0.875;<>' -- the diameter prefix lives here, in the rendered
+                        # block: '\W0.800000;\T0.875000;%%c145'. Rebuilding the text from the
+                        # measurement therefore drops it, and 3 of the 4 dimensions on
+                        # M745221N01 showed "145" where iCAD SX shows "φ145". The same applies
+                        # to any suffix, tolerance stack or unit formatting the dimstyle bakes
+                        # into the block.
+                        #
+                        # Stored as `render_text`, NOT by overwriting `properties["text"]`.
+                        # `context_builder` pools dimensions into the comparison entity set by
+                        # that field, so changing it would alter every cached audit and force a
+                        # COMPARISON_CACHE_VERSION bump. Same reasoning as attaching the
+                        # geometry here instead of exploding it into siblings.
+                        raw_render_text = e.text if hasattr(e, "text") else _dxf_get(e.dxf, "text", "")
+                        if raw_render_text:
+                            cleaned = EntityMapper._clean_mtext_content(raw_render_text)
+                            if cleaned:
+                                text_meta["render_text"] = cleaned
+                            # \W and \T live on the block's MTEXT, never on the DIMENSION, so
+                            # this is the only place a dimension's horizontal scaling can be
+                            # recovered.
+                            wf, tr = EntityMapper._parse_mtext_formatting(raw_render_text)
+                            text_meta["width_factor"] = wf
+                            text_meta["tracking"] = tr
+                        # MTEXT keeps its orientation in `text_direction` (a vector), not in
+                        # `rotation` -- which reads None here and silently degrades to 0, so
+                        # every rotated dimension drew its value horizontally. On this corpus
+                        # that put the vertical 145 and 100 on top of each other, 8.5 units
+                        # apart, because both are 90-degree dimensions whose text is meant to
+                        # run vertically. `get_rotation()` resolves the vector (and returns
+                        # the plain rotation when there is no direction vector).
+                        #
+                        # Same family as the documented `map_text` MTEXT trap: reading the
+                        # TEXT-shaped attribute off an MTEXT yields a wrong-but-plausible
+                        # default rather than an error.
+                        rotation = None
+                        if t == "MTEXT":
+                            try:
+                                rotation = float(e.get_rotation())
+                            except Exception:
+                                rotation = None
+                        if rotation is None:
+                            rotation = float(_dxf_get(e.dxf, "rotation", 0.0) or 0.0)
+                        text_meta["text_rotation"] = rotation
+
+                        # The rendered text carries its OWN colour, routinely different from
+                        # the dimension's: on this corpus every DIMENSION is ACI 3 (green) while
+                        # its measurement MTEXT is ACI 2 (yellow). Painting the text in the
+                        # dimension's stroke colour turns every measurement green, which is not
+                        # what the drawing says. Stored as the raw ACI index so the serializer
+                        # resolves BYLAYER/BYBLOCK through the same path as every other stroke.
+                        text_color = _dxf_get(e.dxf, "color", None)
+                        if text_color is not None:
+                            try:
+                                text_meta["text_color_index"] = int(text_color)
+                            except (TypeError, ValueError):
+                                pass
+                except Exception:
+                    continue
+
+        flatten(entity, 0)
+        return {"paths": paths, "fills": fills, "text": text_meta}
+
+    @staticmethod
     def map_dimension(entity: Any) -> dict[str, Any]:
         # Dimensions contain geometric definition points and overlay texts
         text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
@@ -419,6 +604,15 @@ class EntityMapper:
             geometry["ext1_point"] = _as_xyz(ext1)
         if ext2 is not None:
             geometry["ext2_point"] = _as_xyz(ext2)
+
+        # The drawable half. See `_dimension_render_geometry` for why this attaches to the
+        # dimension instead of being exploded into sibling entities.
+        rendered = EntityMapper._dimension_render_geometry(entity)
+        if rendered["paths"]:
+            geometry["render_paths"] = rendered["paths"]
+        if rendered["fills"]:
+            geometry["render_fills"] = rendered["fills"]
+        props.update(rendered["text"])
 
         return {
             "entity_type": "dimension",
@@ -525,7 +719,25 @@ class EntityMapper:
             height = _dxf_get(entity.dxf, "char_height", 0.0) or 2.5
         else:
             height = _dxf_get(entity.dxf, "height", 0.0) or 2.5
-        rotation = entity.dxf.rotation if hasattr(entity.dxf, "rotation") else 0.0
+        # MTEXT keeps its orientation in the `text_direction` VECTOR, not in `rotation` --
+        # `dxf.rotation` reads 0.0 for a string that is actually vertical, which is a
+        # wrong-but-plausible default rather than an error. Measured on M745221N01: the two
+        # vertical tolerance-table headers ("Standard", "Job No.") carry
+        # `text_direction=(0,1,0)` with `dxf.rotation=0`, so both drew horizontally and ran
+        # across the neighbouring cells.
+        #
+        # This is the same trap as the `char_height` case above, and the same one already
+        # fixed inside `_dimension_render_geometry` for dimension text -- reading the
+        # TEXT-shaped attribute off an MTEXT silently degrades. `get_rotation()` resolves the
+        # vector and falls back to the plain rotation when there is no direction vector.
+        rotation = 0.0
+        if dxftype == "MTEXT":
+            try:
+                rotation = float(entity.get_rotation())
+            except Exception:
+                rotation = float(_dxf_get(entity.dxf, "rotation", 0.0) or 0.0)
+        else:
+            rotation = float(_dxf_get(entity.dxf, "rotation", 0.0) or 0.0)
 
         # Inline MTEXT formatting the cleaner is about to strip. \W is a horizontal
         # width factor and \T is letter tracking -- between them they are how the file

@@ -124,3 +124,15 @@ describe('DrawingCanvas Component', () => {
     consoleSpy.mockRestore();
   });
 });
+
+import { cleanCadText } from './renderEntities';
+
+describe('cleanCadText AutoCAD control escape code conversion', () => {
+  test('transcodes %%c, %%d, %%p escape codes to ⌀, °, ±', () => {
+    expect(cleanCadText('%%c120')).toBe('⌀120');
+    expect(cleanCadText('SS400 28×%%c185')).toBe('SS400 28×⌀185');
+    expect(cleanCadText('12.5%%d')).toBe('12.5°');
+    expect(cleanCadText('22.7%%p0.02')).toBe('22.7±0.02');
+    expect(cleanCadText('%%C25')).toBe('⌀25');
+  });
+});

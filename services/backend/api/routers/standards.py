@@ -6,6 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from ...domain.models.standard_document import StandardDocument
 from ...domain.models.standard_chunk import StandardChunk
 from ...infrastructure.audit.standards_loader import StandardsLoader
+from ...infrastructure.audit.standards_parser import (
+    SUPPORTED_STANDARD_FORMATS,
+    StandardIngestError,
+)
+from ...infrastructure.retrieval.encoder import EncoderError
+from ...infrastructure.retrieval.service import rebuild_standards_index
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...core.security import validate_sandboxed_path
 from ...logger import logger, correlation_id_var
@@ -34,10 +40,11 @@ async def upload_standard(
     processes text sections, chunks contents, and persists data inside MongoDB Beanie collections.
     """
     ext = os.path.splitext(file.filename)[1].lower().lstrip(".")
-    if ext not in ("pdf", "txt", "md", "xlsx", "xls"):
+    if ext not in SUPPORTED_STANDARD_FORMATS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported format: Standards must be PDF, TXT, Excel, or Markdown (.md, .txt, .xlsx, .xls)."
+            detail=f"Unsupported format '.{ext}'. Standards must be one of: "
+                   f"{', '.join('.' + f for f in SUPPORTED_STANDARD_FORMATS)}."
         )
 
     # 1. Enforce sandbox boundary temp file writes
@@ -82,6 +89,13 @@ async def upload_standard(
             )
         )
 
+    except StandardIngestError as e:
+        # Surfaced verbatim. These are written for the person holding the file — "this is a
+        # scanned PDF", "re-save as .xlsx" — and are useless behind a correlation id. The
+        # opaque handler below is still right for everything else: an unexpected exception can
+        # carry a filesystem path or an internal detail that must not reach a client.
+        logger.info(f"Standard ingestion rejected: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         corr_id = correlation_id_var.get()
         logger.exception(f"[{corr_id}] Failed standard document ingestion: {str(e)}")
@@ -179,7 +193,10 @@ async def delete_standard(id: str):
             detail=f"Standard document not found for ID: {id}"
         )
 
-    # Remove all associated text chunks (MongoDB; there is no vector index)
+    # Remove all associated text chunks. The parenthetical here used to read "there is no vector
+    # index", which was true when R0 deleted the fake one and stopped being true when R1 built a
+    # real one — so anyone reading this had no reason to add the rebuild below, and deleting a
+    # standard left its text searchable indefinitely.
     chunks = await StandardChunk.find(StandardChunk.standard_id == id).to_list()
     for chunk in chunks:
         await chunk.delete()
@@ -193,6 +210,26 @@ async def delete_standard(id: str):
         logger.warning(f"Could not remove standard source file: {str(e)}")
 
     await doc.delete()
+
+    # Rebuild the lexical index over what REMAINS. Mongo is the source of truth and the index is
+    # a derived artifact, so this mirrors the ingest path exactly — whole-corpus rebuild, not a
+    # removal, because TF-IDF's idf is a property of the corpus and deleting records without
+    # refitting leaves the survivors weighted for a corpus that no longer exists.
+    #
+    # Non-fatal, also mirroring ingest: the document is already gone from Mongo, which is what
+    # the caller asked for. A failed rebuild leaves a stale index that startup or the next
+    # ingest will correct, and `query()` reports its status rather than silently pretending.
+    try:
+        result = await rebuild_standards_index()
+        logger.info(
+            f"[retrieval] standards index rebuilt after delete: {result.n_records} record(s)."
+        )
+    except (OSError, ValueError, EncoderError) as index_err:
+        logger.error(
+            f"[retrieval] Failed to rebuild the standards index after deleting '{doc.name}': "
+            f"{index_err}. The document is deleted; the index is stale until the next rebuild."
+        )
+
     return StandardResponse(
         success=True,
         data={"message": f"Standard '{doc.name}' and all its chunks have been permanently removed."}

@@ -75,6 +75,18 @@ npx tsc --noEmit
 npx vitest run
 ```
 
+Vector render fidelity — from the repo root. Reports the canvas HUD's `drawn/total` and a
+per-string placement delta against ezdxf's own rendering. Run it after touching
+`renderEntities.ts`, `entity_mapper.py` or `geometry_serializer.py`:
+
+```bash
+services/backend/.venv/Scripts/python.exe tools/render_audit.py storage/uploads/0029fc8cdf974f5e92fa7148a679255d.dxf
+```
+
+On that drawing the census must stay at **497/518** (518 minus 6 `layer` + 12 `block` containers
+minus 3 clipped model-space entities — nothing is missing at that number), and the text oracle's
+`|dx|` max must stay near 1 drawing unit. It was 33.3 before the placement fixes.
+
 Note: PowerShell 5.1 is the default shell here and **does not support `&&`**. Use `;`, or run
 the command in bash.
 

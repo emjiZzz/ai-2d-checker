@@ -30,6 +30,42 @@ Evidence: `tests/fixtures/retrieval/retrieval-baseline.json`
 
 ---
 
+> [!WARNING] **Amended 2026-08-10 — this ADR's central premise was false.**
+> The decision below rests on the census: `standards` = 0, and the reading that *"the standards
+> subsystem has simply never been used, by anyone, ever"* — therefore the track is **blocked on
+> data, not engineering**, therefore retiring it is *"a scoping call, not an engineering one."*
+>
+> **The corpus was empty because the upload could not succeed.** The desktop app posted to
+> `POST /api/v1/standards`, which is **GET-only**; the ingest endpoint is
+> `POST /api/v1/standards/upload`. Every attempt returned **405 Method Not Allowed**, surfaced in
+> the dialog as *"Ingestion Fault: Method Not Allowed."* Confirmed against the running server's
+> own route table, and fixed at `createStandardsSlice.ts` (pinned by
+> `createStandardsSlice.test.ts`, mutation-checked).
+>
+> So *"nobody has uploaded a standard"* was true, and *"nobody chose not to"* was the part nobody
+> checked. **A count of zero is evidence about the system, not about the users, until you have
+> shown the path works** — the same rule [[Gotcha - A Count You Could Not Take Is Not Evidence]]
+> states for dismissals, applied to a census instead of a query. This is the fourth defect of the
+> shape *"a working endpoint that nothing correctly reached"*; see
+> [[Gotcha - A Tested Endpoint That Nothing Ever Called]].
+>
+> **What this does and does not change.** R3/R4 are machinery for *distributing* rules between
+> machines, and that is still premature while the corpus is empty **today** — so the retirement
+> stands for now and nothing is un-retired by this amendment. What changes is the **reopening
+> condition**: it was written as a data question the business had implicitly already answered by
+> never uploading anything. That answer was never given. The condition is now live, and cheap to
+> test: with the upload fixed, ingest one real standard and see whether the corpus grows.
+>
+> Two ingest defects found while fixing this would have poisoned exactly that test, and are also
+> fixed: a parse yielding **zero chunks** silently substituted a chunk containing only the typed
+> title and returned 200 (so a scanned PDF ingested "successfully" and held nothing, permanently,
+> because re-upload hits the duplicate-hash bypass); and `.xls` was advertised by three separate
+> format lists and readable by none of them. See
+> [[Gotcha - A Standard That Ingested Nothing Reported Success]].
+>
+> **Do not cite this ADR's census as evidence about demand.** Cite it as of 2026-08-07, when the
+> only thing it could measure was a broken upload path.
+
 ## Context
 
 [[ADR-008 The Second Brain — Retrieval-Only Local Knowledge]] planned five stages over the

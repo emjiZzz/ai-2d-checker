@@ -60,14 +60,14 @@ export const Select: React.FC<SelectProps> = ({ value, onChange, options, placeh
         ref={triggerRef}
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-2 bg-bg-sidebar border border-border-color rounded-lg py-2.5 px-3.5 text-xs font-semibold text-text-primary hover:border-accent-cyan/50 focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_10px_rgba(0,229,255,0.15)] transition-all cursor-pointer"
+        className="w-full flex items-center justify-between gap-2 bg-bg-sidebar border border-border-color rounded-sm py-1.5 px-2.5 text-xs font-semibold text-text-primary hover:border-accent-cyan/50 focus:outline-none focus:border-accent-cyan transition-all cursor-pointer"
       >
         <span className={selected ? "text-text-primary" : "text-text-muted font-medium"}>
           {selected ? selected.label : placeholder}
         </span>
         <ChevronDown
           size={14}
-          className={`text-text-muted transition-transform duration-200 shrink-0 ${isOpen ? "rotate-180" : ""}`}
+          className={`text-text-muted transition-transform duration-150 shrink-0 ${isOpen ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -75,7 +75,7 @@ export const Select: React.FC<SelectProps> = ({ value, onChange, options, placeh
         <div
           ref={listRef}
           style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, zIndex: 9999 }}
-          className="bg-bg-card border border-border-color rounded-lg shadow-xl overflow-hidden"
+          className="bg-bg-card border border-border-color rounded-sm shadow-xl overflow-hidden"
         >
           <div className="max-h-60 overflow-y-auto py-1">
             {options.length === 0 && (

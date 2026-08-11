@@ -6,6 +6,8 @@ import { computeBounds } from "../utils/spatialBounds";
 import { generateComparisonMarkings } from "../utils/markerGenerator";
 import { getComparisonStages, getComparisonTimeoutMs } from "../utils/comparisonStages";
 import { buildHeaders, baseUrl, parseOrThrow, streamApi } from "../services/fetchUtils";
+import { fetchPersistedViolations } from "../utils/persistedViolationsApi";
+import { reconcilePersistedIds } from "../utils/persistedViolations";
 
 export const usePhysicalComparison = () => {
   const {
@@ -116,11 +118,15 @@ export const usePhysicalComparison = () => {
         const cleanCadText = (text: string): string => {
           if (!text) return "";
           let clean = text;
-          clean = clean.replace(/Ø/g, "x");
+          clean = clean.replace(/ラ/g, "x");
           clean = clean.replace(/[{}]/g, "");
           clean = clean.replace(/\\[A-Za-z0-9\-~|.]+;/g, "");
           clean = clean.replace(/\\P/g, " ");
           clean = clean.replace(/\\[LlOo]/g, "");
+          clean = clean.replace(/%%c/gi, "⌀");
+          clean = clean.replace(/%%d/gi, "°");
+          clean = clean.replace(/%%p/gi, "±");
+          clean = clean.replace(/%%[uo]/gi, "");
           return clean.trim();
         };
 
@@ -214,8 +220,20 @@ export const usePhysicalComparison = () => {
           useWorkspaceStore.getState().setActiveSessionId(comparisonSessionId);
         }
 
+        // Join the markers we just built against the AuditViolation documents the backend
+        // persisted for this same comparison. `canvas_markings` carries no id, so without this
+        // every marker holds a synthetic `phys_chk_*` id and a supervisor verdict PATCHes a
+        // document that does not exist. Non-MATCHED findings only — the backend persists no
+        // others — so a MATCHED row stays unreviewable, which is correct.
+        const reconciled = comparisonSessionId
+          ? reconcilePersistedIds(
+              mappedMarkings,
+              await fetchPersistedViolations(comparisonSessionId)
+            )
+          : mappedMarkings;
+
         // Use the newly added store action instead of setState
-        setViolations(mappedMarkings);
+        setViolations(reconciled);
         useReviewStore.setState({ showViolations: true, isPhysicalComparisonEnabled: true });
 
       } catch (err) {
