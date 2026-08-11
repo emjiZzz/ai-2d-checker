@@ -31,13 +31,16 @@ jobs:
         with:
           python-version: '3.12'
 
+      # No `if [ -f ... ]` guard. This step previously pointed at services/ai-auditor/, a path
+      # that has never existed in this layout, so the guard made the whole Python audit a silent
+      # no-op: it passed green every Sunday while scanning nothing. A dependency audit that
+      # cannot fail is worse than no audit, because it reports safety. If the requirements file
+      # moves again, this must break loudly.
       - name: Audit Python Packages
         run: |
           python -m pip install --upgrade pip
           pip install pip-audit
-          if [ -f services/ai-auditor/requirements.txt ]; then
-            pip-audit -r services/ai-auditor/requirements.txt
-          fi
+          pip-audit -r services/backend/requirements.txt
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

@@ -14,7 +14,13 @@ line-ending = "auto"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --tb=short"
+# No `-q` here on purpose. It used to be, and because `addopts` is *prepended* to the command
+# line, the documented verification command `pytest tests/ -q` resolved to `-qq` — which
+# suppresses the final "N passed / N failed" totals line entirely. The one command the docs told
+# people to run was the one command that could not report a result, and the 2026-08-11 audit
+# package's test numbers were wrong in exactly the way that predicts.
+# Callers who want quiet output pass `-q` themselves and still get a total.
+addopts = "-ra --tb=short"
 testpaths = [
     "tests"
 ]

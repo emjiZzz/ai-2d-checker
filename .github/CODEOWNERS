@@ -9,8 +9,12 @@
 /packages/ui/                           @frontend-team-lead
 
 # Backend (FastAPI Python sidecar)
-/services/ai-auditor/                  @backend-team-lead
-/services/ai-auditor/services/ai/      @ai-specialist
+# Both rules pointed at /services/ai-auditor/ until 2026-08-11 — a directory that has never
+# existed here — so every backend change fell through to the wildcard owner and neither the
+# backend lead nor the AI specialist was ever auto-requested.
+/services/backend/                     @backend-team-lead
+/services/backend/infrastructure/ai/   @ai-specialist
+/services/backend/infrastructure/audit/ @ai-specialist
 
 # Rust Shell (Tauri core)
 /apps/desktop/src-tauri/               @tauri-architect-lead
