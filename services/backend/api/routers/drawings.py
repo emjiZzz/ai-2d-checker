@@ -2,7 +2,7 @@ import os
 import hashlib
 import uuid
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from ...domain.models.drawing_document import DrawingDocument
@@ -341,17 +341,12 @@ async def get_drawing_zones(id: str):
     )
 
 
-@router.get(
-    "/drawings/{id}/rendering",
-    summary="Get high-fidelity PNG rendering of drawing background",
-    dependencies=[Depends(get_auth_token)]
-)
-async def get_drawing_rendering(id: str):
-    drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
-    rendering_path = get_storage_root() / "renderings" / f"{id}.png"
-    if not rendering_path.exists():
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    return FileResponse(str(rendering_path), media_type="image/png")
+# NOTE: `GET /drawings/{id}/rendering` was removed with the raster display path (ADR-011).
+# The canvas draws vectors and no longer fetches a background PNG, and it was this route's only
+# client. `storage/renderings/{id}.png` is still generated on upload and still read — but from
+# disk, in-process, by `image_cropper` (title-block OCR), `context_builder.load_drawing_png()`
+# and `pdf_exporter`. Do not reinstate this route to "restore" the raster: the display path is
+# gone on the client side too.
 
 
 @router.get(

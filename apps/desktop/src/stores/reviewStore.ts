@@ -36,16 +36,14 @@ interface ReviewState {
   toggleViolations: () => void;
   showMarkerLabels: boolean;
   toggleMarkerLabels: () => void;
-  showMinimap: boolean;
-  toggleMinimap: () => void;
   showAnnotations: boolean;
   toggleAnnotations: () => void;
   showCanvasStats: boolean;
   toggleCanvasStats: () => void;
   showGrid: boolean;
   toggleGrid: () => void;
-  renderMode: 'hybrid' | 'vector' | 'raster';
-  setRenderMode: (mode: 'hybrid' | 'vector' | 'raster') => void;
+  showViewOrigins: boolean;
+  toggleViewOrigins: () => void;
   selectedViolationId: string | null;
   setSelectedViolation: (id: string | null) => void;
 
@@ -253,39 +251,22 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
   showMarkerLabels: false,
   toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
-  showMinimap: true,
-  toggleMinimap: () => set((state) => ({ showMinimap: !state.showMinimap })),
   showAnnotations: false,
   toggleAnnotations: () => set((state) => ({ showAnnotations: !state.showAnnotations })),
   showCanvasStats: true,
   toggleCanvasStats: () => set((state) => ({ showCanvasStats: !state.showCanvasStats })),
   showGrid: false,
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
-  // Raster by default, but the vector path is now viable — switch via the 2D view-controls
-  // menu ("Vector Rendering") rather than by editing this line.
-  //
-  // Vector is the only thing that fixes the blur: the raster path shows an ~8400px PNG at ~8%
-  // scale at fit-to-screen zoom, where a 1px stroke lands on 0.66 of a device pixel and can
-  // only be drawn as two ~33% greys. No filter or mipmap policy recovers that.
-  //
-  // It was switched on once and reverted, because DIMENSION entities rendered as nothing at
-  // all — they carry only anchors, `measurement` and a `dimstyle`, and their drawable geometry
-  // lives in an anonymous block nothing was flattening. That produced a sharp sheet with every
-  // dimension silently deleted (`VIRTUALIZED: 356/518` on M745221N01 at 81%). Since fixed:
-  // `EntityMapper._dimension_render_geometry` emits `render_paths`/`render_fills`, the text LOD
-  // floor moved 4px → 2px, and closed paths now close.
-  //
-  // This stays 'raster' until the vector path has been confirmed against a real drawing —
-  // sharp-but-incomplete is worse than soft-but-complete in a tool built to catch what changed
-  // between two sheets. Known remaining gaps: hatch/solid have no branch, and text ignores
-  // halign/valign attachment points (correct for default-aligned text, drifts for centred).
-  //
-  // ⚠ Dimension geometry is produced at EXTRACTION time — drawings ingested before that change
-  // have no `render_paths` and must be re-uploaded before vector mode will show their dimensions.
-  //
-  // See docs/vault/06 - .../Gotcha - A Blurry CAD Canvas and Its Four Causes.
-  renderMode: 'raster',
-  setRenderMode: (mode) => set({ renderMode: mode }),
+  // The per-view ORIGIN markers iCAD SX shows — one per paper-space viewport, drawn at that
+  // view's own anchor. Off by default: it is a reference overlay, not part of the sheet, and
+  // a drawing with no paper-space viewports (the DWG-exported reference sheets) has none to
+  // show at all. See renderViewOrigins.
+  showViewOrigins: false,
+  toggleViewOrigins: () => set((state) => ({ showViewOrigins: !state.showViewOrigins })),
+  // There is no `renderMode` any more — the canvas draws vectors, always. The raster PNG was
+  // removed from the display path entirely; the backend still generates it, but only as the
+  // source of `render_bounds` and as an input to title-block OCR and the PDF report.
+  // See docs/vault/07 - .../ADR-011 Vector as the Only Render Path.
   selectedViolationId: null,
   setSelectedViolation: (id) => set({ selectedViolationId: id }),
 

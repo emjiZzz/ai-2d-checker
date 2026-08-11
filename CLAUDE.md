@@ -87,6 +87,17 @@ On that drawing the census must stay at **497/518** (518 minus 6 `layer` + 12 `b
 minus 3 clipped model-space entities — nothing is missing at that number), and the text oracle's
 `|dx|` max must stay near 1 drawing unit. It was 33.3 before the placement fixes.
 
+This harness is now the **only** way to tell whether a sheet's extraction is complete. There is no
+raster fallback in the app to eyeball against — `renderMode` was deleted and the PNG display path
+with it (`ADR-011 Vector as the Only Render Path`). The backend still generates the PNG, but only
+as the source of `render_bounds` and as an input to title-block OCR and the PDF report; do not
+reinstate it as a display source, and do not delete the generator — `render_bounds` is what every
+zone template's fractions and identity are stored against.
+
+⚠ `render_paths` (dimensions), MTEXT rotation and the elliptical-arc fix are computed at
+**extraction** time. A drawing ingested before those will render wrong, and there is no re-extract
+endpoint — only `upload_drawing`.
+
 Note: PowerShell 5.1 is the default shell here and **does not support `&&`**. Use `;`, or run
 the command in bash.
 
@@ -98,7 +109,9 @@ Not caused by current work; do not chase them unless that is the task:
   ADR-006 deleted it. The older note here said `MockEntity` lacks a `layer` attribute; that is
   no longer the failure you will see. Verified against a clean tree.
 - ~~`apps/desktop/src/pages/workspace/RoomsView.test.tsx`~~ — **fixed.** ADR-006's rewrite around
-  the removed method picker retired the stale colour assertion. `npx vitest run` is 232/232.
+  the removed method picker retired the stale colour assertion. `npx vitest run` is **304/304** as
+  of 2026-08-11 (the suite grows; this number is a floor, not a contract). `pytest` is 922 passed
+  / 2 failed, those 2 being the `test_vision_ocr_grounding.py` pair above.
 
 ## Local environment
 

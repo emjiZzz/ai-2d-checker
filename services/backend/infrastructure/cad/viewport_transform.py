@@ -47,8 +47,18 @@ class Viewport:
     paper_center_y: float
     paper_width: float
     paper_height: float
-    view_center_x: float
-    view_center_y: float
+    #: The MODEL point that lands at `paper_center` -- i.e. what this view is looking at.
+    #:
+    #: Named `anchor` and not `center` deliberately. `from_entity` fills it from the DXF
+    #: **`view_target_point`** whenever that is present and non-degenerate, and only falls
+    #: back to `view_center_point`. The two are different attributes with different values:
+    #: on M745221N01_FSRS2 the targets are (-31.1, 0), (-80.7, -351.5) and (69.4, -329.9)
+    #: while every `view_center_point` is (0,0,0). Computing a projection from the raw
+    #: `view_center_point` puts two of that sheet's three view origins ~250 units off the
+    #: printed sheet, and the wrongness is quiet -- the numbers stay finite and plausible.
+    #: The old name said "center" while holding the target, which is exactly that trap.
+    view_anchor_x: float
+    view_anchor_y: float
     view_height: float
     scale: float
 
@@ -62,8 +72,8 @@ class Viewport:
 
     def contains_model_point(self, x: float, y: float) -> bool:
         return (
-            self.view_center_x - self.model_half_width <= x <= self.view_center_x + self.model_half_width
-            and self.view_center_y - self.model_half_height <= y <= self.view_center_y + self.model_half_height
+            self.view_anchor_x - self.model_half_width <= x <= self.view_anchor_x + self.model_half_width
+            and self.view_anchor_y - self.model_half_height <= y <= self.view_anchor_y + self.model_half_height
         )
 
     def contains_paper_point(self, px: float, py: float) -> bool:
@@ -74,17 +84,28 @@ class Viewport:
 
     def to_paper(self, x: float, y: float) -> tuple[float, float]:
         return (
-            self.paper_center_x + (x - self.view_center_x) * self.scale,
-            self.paper_center_y + (y - self.view_center_y) * self.scale,
+            self.paper_center_x + (x - self.view_anchor_x) * self.scale,
+            self.paper_center_y + (y - self.view_anchor_y) * self.scale,
         )
 
     def to_model(self, px: float, py: float) -> tuple[float, float]:
         if not self.scale:
             return px, py
         return (
-            self.view_center_x + (px - self.paper_center_x) / self.scale,
-            self.view_center_y + (py - self.paper_center_y) / self.scale,
+            self.view_anchor_x + (px - self.paper_center_x) / self.scale,
+            self.view_anchor_y + (py - self.paper_center_y) / self.scale,
         )
+
+    @property
+    def origin_paper_point(self) -> tuple[float, float]:
+        """Where this view's own origin lands on the sheet.
+
+        Falls out of `to_paper(anchor) == paper_center`, but is named because it is a
+        question people ask: iCAD SX draws an ORIGIN marker per view, and this is it.
+        Distinct from the GLOBAL model origin, which is `to_paper(0, 0)` and on a
+        multi-view sheet usually lands outside most of the viewports.
+        """
+        return self.to_paper(self.view_anchor_x, self.view_anchor_y)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,7 +113,7 @@ class Viewport:
             "handle": self.handle,
             "paper_center": [self.paper_center_x, self.paper_center_y],
             "paper_size": [self.paper_width, self.paper_height],
-            "view_center": [self.view_center_x, self.view_center_y],
+            "view_anchor": [self.view_anchor_x, self.view_anchor_y],
             "view_height": self.view_height,
             "scale": self.scale,
         }
@@ -101,7 +122,13 @@ class Viewport:
     def from_dict(cls, data: dict[str, Any]) -> "Viewport":
         pc = data.get("paper_center") or [0.0, 0.0]
         ps = data.get("paper_size") or [0.0, 0.0]
-        vc = data.get("view_center") or [0.0, 0.0]
+        # `view_center` is the legacy key for the same value, written by every extraction
+        # before 2026-08-11. Read both: the rename is cosmetic, the persisted numbers are
+        # identical, and every drawing already in MongoDB carries the old spelling. Dropping
+        # the fallback would silently resolve the anchor to (0,0) rather than fail -- which
+        # is the projection being wrong by the anchor's magnitude on every stored drawing.
+        # That is also why TRANSFORM_VERSION does NOT move: old payloads stay readable.
+        va = data.get("view_anchor") or data.get("view_center") or [0.0, 0.0]
         return cls(
             index=int(data.get("index", NO_VIEWPORT)),
             handle=str(data.get("handle", "")),
@@ -109,8 +136,8 @@ class Viewport:
             paper_center_y=float(pc[1]),
             paper_width=float(ps[0]),
             paper_height=float(ps[1]),
-            view_center_x=float(vc[0]),
-            view_center_y=float(vc[1]),
+            view_anchor_x=float(va[0]),
+            view_anchor_y=float(va[1]),
             view_height=float(data.get("view_height", 0.0)),
             scale=float(data.get("scale", 1.0)),
         )
@@ -126,10 +153,15 @@ class Viewport:
             # A viewport's model-space look-at lives in view_target_point on most
             # files, but some CAD exporters only populate view_center_point. Prefer
             # the former and fall back when it is absent or a degenerate origin.
-            vc = vp.dxf.get("view_target_point")
-            if not vc or (vc.x == 0.0 and vc.y == 0.0):
-                vc = vp.dxf.get("view_center_point")
-            vc_x, vc_y = (float(vc.x), float(vc.y)) if vc else (0.0, 0.0)
+            #
+            # This is why the field is `view_anchor` and not `view_center`: what comes out
+            # of here is usually the TARGET. iCAD SX writes both, and they disagree --
+            # every view_center_point on M745221N01_FSRS2 is (0,0,0) while the targets
+            # carry the real per-view offsets.
+            anchor = vp.dxf.get("view_target_point")
+            if not anchor or (anchor.x == 0.0 and anchor.y == 0.0):
+                anchor = vp.dxf.get("view_center_point")
+            va_x, va_y = (float(anchor.x), float(anchor.y)) if anchor else (0.0, 0.0)
 
             view_height = float(vp.dxf.get("view_height") or 0.0)
             scale = height / view_height if view_height > 0 else 1.0
@@ -141,8 +173,8 @@ class Viewport:
                 paper_center_y=float(center.y),
                 paper_width=width,
                 paper_height=height,
-                view_center_x=vc_x,
-                view_center_y=vc_y,
+                view_anchor_x=va_x,
+                view_anchor_y=va_y,
                 view_height=view_height,
                 scale=scale,
             )

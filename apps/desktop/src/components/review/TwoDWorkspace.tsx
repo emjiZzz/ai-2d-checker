@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, Map, MoreVertical, Check, Activity, Grid, Move, LayoutTemplate, PenTool } from "lucide-react";
+import { Maximize, Download, MoreVertical, Check, Activity, Grid, Move, LayoutTemplate, Crosshair } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -30,7 +30,6 @@ import { useComplianceReportExport } from "../../hooks/useComplianceReportExport
 import { downloadRedlineDxf } from "../../services/reportsApi";
 import { DrawingCanvas } from "./DrawingCanvas";
 import { UploadZone } from "./UploadZone";
-import { Minimap } from "./Minimap";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
@@ -70,7 +69,7 @@ const STABLE_ZONES = ["title_upper_left", "bom", "title", "tolerance", "views"] 
  * was saved to a key nothing ever read and silently lost on reload. Bump this when the
  * layout schema changes in a way that makes stored models unreadable.
  */
-const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v11";
+const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v16";
 
 /** Width of the Comparison Results tabset, matching what the layout seed used to apply. */
 const LEFT_TABSET_WEIGHT = 15;
@@ -128,11 +127,6 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
               width={size.width}
               height={size.height}
               drawing={drawing}
-            />
-            <Minimap
-              drawing={drawing}
-              canvasWidth={size.width}
-              canvasHeight={size.height}
             />
           </div>
         ) : (
@@ -203,11 +197,6 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
               height={size.height}
               drawing={drawing}
             />
-            <Minimap
-              drawing={drawing}
-              canvasWidth={size.width}
-              canvasHeight={size.height}
-            />
           </div>
         ) : (
           <UploadZone
@@ -235,14 +224,12 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const violations = useWorkspaceStore(s => s.violations);
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
-  const showMinimap = useReviewStore(s => s.showMinimap);
-  const toggleMinimap = useReviewStore(s => s.toggleMinimap);
   const showCanvasStats = useReviewStore(s => s.showCanvasStats);
   const toggleCanvasStats = useReviewStore(s => s.toggleCanvasStats);
   const showGrid = useReviewStore(s => s.showGrid);
   const toggleGrid = useReviewStore(s => s.toggleGrid);
-  const renderMode = useReviewStore(s => s.renderMode);
-  const setRenderMode = useReviewStore(s => s.setRenderMode);
+  const showViewOrigins = useReviewStore(s => s.showViewOrigins);
+  const toggleViewOrigins = useReviewStore(s => s.toggleViewOrigins);
 
   // Zone bbox debug overlay. Lives on workspaceStore rather than reviewStore (where the
   // other view toggles are) because the cached boxes are keyed by drawing id and belong
@@ -582,7 +569,13 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   }, []);
 
   useEffect(() => {
-    // v11: Bumping layout version to set Comparison Results panel width to 15%
+    // Purge layouts saved under a superseded LAYOUT_STORAGE_PREFIX version.
+    Object.keys(localStorage).forEach((k) => {
+      if (k.startsWith("twod-workspace-layout-") && !k.startsWith(LAYOUT_STORAGE_PREFIX)) {
+        localStorage.removeItem(k);
+      }
+    });
+
     const savedLayout = localStorage.getItem(`${LAYOUT_STORAGE_PREFIX}-${activeLayoutPreset}`);
     if (savedLayout) {
       try {
@@ -600,7 +593,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       tabSetTabStripHeight: 32,
       enableEdgeDock: true,
       marginInsets: { top: 0, right: 0, bottom: 0, left: 0 },
-      splitterSize: 6,
+      // No splitterSize/splitterExtra here: flexlayout-react 0.9 ignores both and
+      // derives the size from CSS. See --splitter-size in index.css.
       tabEnableFloat: true,
       tabEnablePopout: true
     };
@@ -722,23 +716,23 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
   useEffect(() => {
     if (!model) return;
-    
+
     const node = model.getNodeById("rightPanelTab");
     const hasResults = complianceScore !== null;
 
     if (isInitialModelLoadRef.current) {
-       isInitialModelLoadRef.current = false;
-       if (!hasResults && node) {
-          model.doAction(Actions.deleteTab("rightPanelTab"));
-       }
+      isInitialModelLoadRef.current = false;
+      if (!hasResults && node) {
+        model.doAction(Actions.deleteTab("rightPanelTab"));
+      }
     } else {
-       const wasNull = prevScoreRef.current === null;
-       const isNull = !hasResults;
-       if (wasNull && !isNull && !node) {
-          model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
-       } else if (!wasNull && isNull && node) {
-          model.doAction(Actions.deleteTab("rightPanelTab"));
-       }
+      const wasNull = prevScoreRef.current === null;
+      const isNull = !hasResults;
+      if (wasNull && !isNull && !node) {
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+      } else if (!wasNull && isNull && node) {
+        model.doAction(Actions.deleteTab("rightPanelTab"));
+      }
     }
     prevScoreRef.current = complianceScore;
   }, [complianceScore, model]);
@@ -797,11 +791,11 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               <span className="text-xs font-bold text-text-primary uppercase tracking-wide">2D Review Workspace</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <Button 
-                variant="outline" 
-                size="icon" 
-                onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })} 
-                className="h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 text-text-muted hover:text-text-primary" 
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
+                className="h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 text-text-muted hover:text-text-primary"
                 title="Reset Viewport"
               >
                 <Maximize size={14} />
@@ -812,9 +806,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                 </Button>
               )}
               {activeSession?.id && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={async () => {
                     try {
                       setIsExportingRedline(true);
@@ -824,9 +818,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                     } finally {
                       setIsExportingRedline(false);
                     }
-                  }} 
+                  }}
                   disabled={isExportingRedline}
-                  className="h-6 px-2 text-[11px] rounded-sm border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white gap-1" 
+                  className="h-6 px-2 text-[11px] rounded-sm border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white gap-1"
                   title="Export CAD Redline layer as a DXF file"
                 >
                   {isExportingRedline ? (
@@ -850,44 +844,28 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               <div className="flex items-center gap-1">
                 {/* 3-Dots View Controls Menu */}
                 <div ref={viewMenuRef} className="relative">
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => setIsViewMenuOpen(!isViewMenuOpen)} 
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsViewMenuOpen(!isViewMenuOpen)}
                     title="More Options"
-                    className={`h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors ${
-                      isViewMenuOpen 
-                        ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10" 
+                    className={`h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors ${isViewMenuOpen
+                        ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10"
                         : "text-text-muted hover:text-text-primary border-transparent hover:bg-sidebar-item-hover"
-                    }`}
+                      }`}
                   >
                     <MoreVertical size={14} />
                   </Button>
 
                   {isViewMenuOpen && (
                     <div className="absolute right-0 top-full mt-2 w-60 glass-panel rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 border border-border-color bg-bg-card animate-fade-in">
-                      <button
-                        onClick={() => { toggleMinimap(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                          showMinimap 
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20" 
-                            : "text-text-primary hover:bg-sidebar-item-hover"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Map size={16} />
-                          <span>{showMinimap ? "Hide Interactive Minimap" : "Show Interactive Minimap"}</span>
-                        </div>
-                        {showMinimap && <Check size={14} className="text-accent-cyan" />}
-                      </button>
 
                       <button
                         onClick={() => { toggleCanvasStats(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                          showCanvasStats 
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20" 
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showCanvasStats
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
                             : "text-text-primary hover:bg-sidebar-item-hover"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <Activity size={16} />
@@ -896,43 +874,12 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         {showCanvasStats && <Check size={14} className="text-accent-cyan" />}
                       </button>
 
-                      {/* Vector vs raster. `setRenderMode` existed in the store with no caller
-                          at all, so the vector renderer could not be reached from the UI and
-                          had never been exercised — which is how it shipped unable to draw a
-                          DIMENSION. Kept as an explicit toggle rather than a changed default:
-                          vector is sharp at every zoom, raster is guaranteed complete because
-                          ezdxf renders it, and which one wins depends on whether a given
-                          drawing's extraction covered everything on the sheet. */}
-                      <button
-                        onClick={() => {
-                          setRenderMode(renderMode === 'vector' ? 'raster' : 'vector');
-                          setIsViewMenuOpen(false);
-                        }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                          renderMode === 'vector'
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
-                            : "text-text-primary hover:bg-sidebar-item-hover"
-                        }`}
-                        title={
-                          renderMode === 'vector'
-                            ? "Drawing entities are rendered as vectors — sharp at any zoom, but limited to the entity types the extractor captured."
-                            : "A server-rendered image is displayed — always complete, but softens as you zoom out."
-                        }
-                      >
-                        <div className="flex items-center gap-2">
-                          <PenTool size={16} />
-                          <span>{renderMode === 'vector' ? "Vector Rendering" : "Raster Rendering"}</span>
-                        </div>
-                        {renderMode === 'vector' && <Check size={14} className="text-accent-cyan" />}
-                      </button>
-
                       <button
                         onClick={() => { toggleGrid(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                          showGrid 
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20" 
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showGrid
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
                             : "text-text-primary hover:bg-sidebar-item-hover"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <Grid size={16} />
@@ -941,13 +888,31 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         {showGrid && <Check size={14} className="text-accent-cyan" />}
                       </button>
 
+                      {/* One marker per paper-space viewport, at that view's own origin —
+                          what iCAD SX shows as ORIGIN. Only appears on sheets that HAVE
+                          viewports: a drawing exported DWG->DXF keeps everything in model
+                          space with no viewports at all, so there is nothing to mark. */}
+                      <button
+                        onClick={() => { toggleViewOrigins(); setIsViewMenuOpen(false); }}
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showViewOrigins
+                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
+                            : "text-text-primary hover:bg-sidebar-item-hover"
+                          }`}
+                        title="Show each view's own origin, as iCAD SX does. Not the global model origin — on a multi-view sheet that usually falls outside most of the views."
+                      >
+                        <div className="flex items-center gap-2">
+                          <Crosshair size={16} />
+                          <span>{showViewOrigins ? "Hide View Origins" : "Show View Origins"}</span>
+                        </div>
+                        {showViewOrigins && <Check size={14} className="text-accent-cyan" />}
+                      </button>
+
                       <button
                         onClick={() => { toggleZoneEditing(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                          isRoiEditModeEnabled
+                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${isRoiEditModeEnabled
                             ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                             : "text-text-primary hover:bg-sidebar-item-hover"
-                        }`}
+                          }`}
                         title="Drag and resize the zone boxes to align them to this sheet"
                       >
                         <div className="flex items-center gap-2">
@@ -982,11 +947,10 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                 <button
                   key={key}
                   onClick={() => selectZone(key)}
-                  className={`px-2 py-1 text-[10px] font-bold uppercase rounded border transition-colors cursor-pointer ${
-                    selectedComparisonRegion === key
+                  className={`px-2 py-1 text-[10px] font-bold uppercase rounded border transition-colors cursor-pointer ${selectedComparisonRegion === key
                       ? "text-zinc-950 border-transparent"
                       : "text-text-muted border-border-color hover:text-text-primary"
-                  }`}
+                    }`}
                   style={
                     selectedComparisonRegion === key
                       ? { background: ZONE_UI_COLORS[key] }
@@ -1022,9 +986,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               <div className="ml-auto flex items-center gap-2">
                 {templateSaveState.message && (
                   <span
-                    className={`text-[10px] font-semibold ${
-                      templateSaveState.status === "error" ? "text-rose-400" : "text-emerald-400"
-                    }`}
+                    className={`text-[10px] font-semibold ${templateSaveState.status === "error" ? "text-rose-400" : "text-emerald-400"
+                      }`}
                   >
                     {templateSaveState.message}
                   </span>

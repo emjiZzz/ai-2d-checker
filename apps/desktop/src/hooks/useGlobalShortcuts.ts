@@ -5,7 +5,6 @@ import { useUndoRedo } from './useUndoRedo';
 
 export const useGlobalShortcuts = () => {
   const setViewport = useReviewStore(s => s.setViewport);
-  const toggleMinimap = useReviewStore(s => s.toggleMinimap);
   const { setCurrentNav } = useNavStore();
 
   // Ctrl+Z / Ctrl+Y. Lives here because this hook is mounted exactly once (App.tsx), which
@@ -46,11 +45,6 @@ export const useGlobalShortcuts = () => {
             e.preventDefault();
             setViewport({ x: 0, y: 0, scale: 1 });
             break;
-          case 'm':
-          case 'M':
-            e.preventDefault();
-            toggleMinimap();
-            break;
           // Navigation shortcuts
           case '1':
             e.preventDefault();
@@ -67,22 +61,11 @@ export const useGlobalShortcuts = () => {
           case '4':
             e.preventDefault();
             setCurrentNav('history');
-            break;
-        }
-      } else {
-        // Unmodified keys (not ctrl/meta)
-        switch (e.key) {
-          case 'm':
-          case 'M':
-            // You might want M to work without modifier too depending on preference
-            // e.preventDefault();
-            // toggleMinimap();
-            break;
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setViewport, setCurrentNav, toggleMinimap]);
+  }, [setViewport, setCurrentNav]);
 };

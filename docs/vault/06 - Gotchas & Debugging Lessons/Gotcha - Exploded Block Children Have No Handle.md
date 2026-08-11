@@ -1,9 +1,10 @@
 ---
-tags: [gotcha, extraction, entity-model, evaluation, ground-truth, addressing]
+tags: [gotcha, extraction, entity-model, evaluation, ground-truth, addressing, toolchain]
 status: measured — constraint, not yet a fix
 cache-version: n/a — no engine behaviour changed; this is a property of extraction as it stands
 date: 2026-08-05
-verified-against: 3615 entities across the 6 drawings of the first three eval pairs
+amended: 2026-08-11 — the cause is the export toolchain, not the reference/revision role
+verified-against: 3615 entities across the 6 drawings of the first three eval pairs; re-confirmed 2026-08-11 on the M745221N01 pair
 ---
 
 # Gotcha — Exploded Block Children Have No Handle
@@ -56,12 +57,38 @@ half of that sentence quietly does not hold.
 
 ## Why it bites the reference side hardest
 
-These are Copy-Trace pairs: an old drawing on the left, a re-traced revision on the right.
-The old sheets keep their frame, title block and notes inside blocks (`WAKU`); the
-re-traced ones are flat (`NoLayerName_001`). So handle coverage is ~90% on the revision
-side and ~1% on the reference side — and **REMOVED findings anchor on the reference side by
-definition.** The one status that can only be addressed from the reference drawing is the
-one with almost no addresses available.
+> [!WARNING] Amended 2026-08-11 — this section had the right correlation and the wrong variable.
+> It reads the split as a property of **re-tracing**: old sheet keeps its content in blocks,
+> re-traced sheet is flat. The observation is correct; the cause is one level down.
+>
+> **It is the export toolchain.** The user supplied the provenance the vault never recorded:
+> the reference is exported **DWG → DXF**, the revision **iCAD SX `.icd` → DXF**. DWG nests
+> text inside blocks; the iCAD exporter writes MTEXT straight into the paper layout. Measured
+> on the M745221N01 pair, which is not one of the six above:
+>
+> | file | route | own handle | parent_handle |
+> | :--- | :--- | ---: | ---: |
+> | `M745221N01_reference` | DWG → DXF | 6 / 144 — **4.2%** | 138 |
+> | `M745221N01_FSRS2_kmti` | iCAD `.icd` → DXF | 231 / 250 — **92.4%** | 19 |
+>
+> Same split, same perfect mutual exclusion, a different drawing pair — and the raw DXF shows
+> the mechanism directly: **6** top-level MTEXT on the DWG side against **231** on the iCAD side.
+>
+> **So handle coverage tracks the exporter, not the reference/revision role.** A reference
+> exported from iCAD would arrive at ~92%; a revision exported from DWG at ~4%. Anything
+> designed around *"reference drawings have no handles"* is keyed on the wrong variable and will
+> be wrong the first time a pair breaks the current convention. Key on the measurement, never on
+> the side.
+>
+> `NoLayerName_001` is likewise not a re-tracing artifact — it is the iCAD exporter inventing
+> layer names because `.icd` has no DXF-compatible layer table. See
+> [[Gotcha - The Two Sides of a Comparison Come From Different Exporters]].
+
+The consequence below is unchanged and is what still matters day to day:
+
+Handle coverage is ~90% on the revision side and ~1–4% on the reference side — and **REMOVED
+findings anchor on the reference side by definition.** The one status that can only be addressed
+from the reference drawing is the one with almost no addresses available.
 
 ## What was done about it
 
@@ -108,6 +135,8 @@ stood since Phase 1.
 
 ## See also
 
+- [[Gotcha - The Two Sides of a Comparison Come From Different Exporters]] — the root cause of
+  the split above, and the other asymmetries that travel with it
 - [[00 - AI Maturity Status]] — Stage 0b, where this surfaced
 - [[Eval Corpus Annotation Guideline]] — the annotation rules this amends
 - [[Gotcha - Zone Templates Vanish in Offline Eval]] — the other divergence the first

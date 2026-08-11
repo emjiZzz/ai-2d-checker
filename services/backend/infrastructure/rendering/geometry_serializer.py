@@ -101,6 +101,21 @@ class GeometrySerializer:
         return colors
 
     @staticmethod
+    def _build_by_handle(entities: list[ExtractedEntity]) -> dict[str, ExtractedEntity]:
+        """DXF handle -> entity, so a BYBLOCK child can find the INSERT that placed it.
+
+        Built from the same entity set the payload is serialized from, which is why the routes
+        must pass the block records along with the drawable entities -- the parent of a
+        BYBLOCK child is a `block` record, and it is not drawable itself.
+        """
+        out: dict[str, ExtractedEntity] = {}
+        for ent in entities:
+            handle = (ent.properties or {}).get("handle")
+            if handle:
+                out[str(handle)] = ent
+        return out
+
+    @staticmethod
     def _build_layer_lineweights(entities: list[ExtractedEntity]) -> dict[str, int]:
         """Layer name -> lineweight enum, from the `layer` records in the same entity set."""
         weights: dict[str, int] = {}
@@ -143,19 +158,19 @@ class GeometrySerializer:
         return round(raw / 100.0, 4)
 
     @classmethod
-    def _resolve_stroke(cls, ent: ExtractedEntity, layer_colors: dict[str, int]) -> str:
+    def _resolve_stroke(
+        cls,
+        ent: ExtractedEntity,
+        layer_colors: dict[str, int],
+        by_handle: dict[str, ExtractedEntity] | None = None,
+    ) -> str:
         """Final stroke colour for one entity.
 
         Precedence mirrors DXF: an explicit 24-bit `true_color` outranks the ACI index,
-        and the BYLAYER/BYBLOCK sentinels defer to the owning layer. The old code did
-        neither, so every BYLAYER entity -- the overwhelming majority on a real drawing --
-        resolved to flat white and the drawing lost all of its colour coding the moment
-        anything rendered vectors.
-
-        BYBLOCK properly resolves against the owning INSERT rather than the layer. The
-        parent is recoverable (`parent_handle`), but exploded children already carry the
-        layer they landed on, so deferring to the layer is both cheaper and right in the
-        common case where a block's contents are BYLAYER anyway.
+        and the BYLAYER/BYBLOCK sentinels defer -- BYLAYER to the owning layer, BYBLOCK to
+        the owning INSERT. The old code did neither, so every BYLAYER entity -- the
+        overwhelming majority on a real drawing -- resolved to flat white and the drawing
+        lost all of its colour coding the moment anything rendered vectors.
         """
         true_color = ent.properties.get("true_color")
         if true_color is not None:
@@ -170,14 +185,77 @@ class GeometrySerializer:
         except (TypeError, ValueError):
             index = ACI_BYLAYER
 
-        return cls._resolve_index(index, ent.layer, layer_colors)
+        return cls._resolve_index(index, ent.layer, layer_colors, ent, by_handle)
 
     @classmethod
-    def _resolve_index(cls, index: int, layer: str, layer_colors: dict[str, int]) -> str:
-        """Resolve one ACI index against a layer, honouring the BYLAYER/BYBLOCK sentinels."""
-        if index in (ACI_BYLAYER, ACI_BYBLOCK):
+    def _resolve_index(
+        cls,
+        index: int,
+        layer: str,
+        layer_colors: dict[str, int],
+        ent: ExtractedEntity | None = None,
+        by_handle: dict[str, ExtractedEntity] | None = None,
+    ) -> str:
+        """Resolve one ACI index, honouring the BYLAYER and BYBLOCK sentinels.
+
+        The two sentinels are NOT interchangeable and were treated as such until 2026-08-11.
+        BYLAYER looks at the layer table; **BYBLOCK looks at the INSERT that placed the
+        entity**, which is the whole point of the sentinel -- it exists so one block
+        definition can be drawn in a different colour at each insertion point.
+
+        Collapsing BYBLOCK onto the layer was documented as a deliberate shortcut, on the
+        reasoning that a block's contents are usually BYLAYER anyway. On M745221N01_FSRS2_KMTI
+        it produced a wrong colour on the one entity that actually used it: the surface-finish
+        symbol is a single BYBLOCK polyline on layer `0` (layer colour 7, white) inside an
+        INSERT with ACI 1, so a symbol the drawing paints **red** rendered white.
+        """
+        if index == ACI_BYBLOCK:
+            index = cls._inherited_from_insert(ent, layer, layer_colors, by_handle)
+        elif index == ACI_BYLAYER:
             index = layer_colors.get(layer, 7)
         return cls._aci_to_hex(index)
+
+    @classmethod
+    def _inherited_from_insert(
+        cls,
+        ent: ExtractedEntity | None,
+        layer: str,
+        layer_colors: dict[str, int],
+        by_handle: dict[str, ExtractedEntity] | None,
+        _max_depth: int = 8,
+    ) -> int:
+        """ACI index a BYBLOCK entity inherits from the INSERT chain above it.
+
+        Walks `parent_handle` upward because blocks nest and the parent may itself be BYBLOCK.
+        Depth-capped rather than cycle-tracked: a malformed file that points a block at its own
+        ancestor must not hang a render, and eight levels is far past anything a CAD package
+        emits. Falls back to the layer when the chain runs out -- an orphaned child with no
+        recoverable parent is exactly the case the old shortcut handled correctly.
+        """
+        if ent is None or not by_handle:
+            return layer_colors.get(layer, 7)
+
+        current = ent
+        for _ in range(_max_depth):
+            parent_handle = (current.properties or {}).get("parent_handle")
+            if not parent_handle:
+                break
+            parent = by_handle.get(str(parent_handle))
+            if parent is None:
+                break
+            try:
+                parent_index = int((parent.properties or {}).get("color", ACI_BYLAYER))
+            except (TypeError, ValueError):
+                parent_index = ACI_BYLAYER
+
+            if parent_index == ACI_BYLAYER:
+                # The INSERT itself defers to its own layer, not the child's.
+                return layer_colors.get(parent.layer, 7)
+            if parent_index != ACI_BYBLOCK:
+                return parent_index
+            current = parent  # nested BYBLOCK: keep climbing
+
+        return layer_colors.get(layer, 7)
 
     @staticmethod
     def _is_dashed(linetype: Any) -> bool:
@@ -223,11 +301,12 @@ class GeometrySerializer:
         layers_map: dict[str, list[dict[str, Any]]] = {}
         layer_colors = GeometrySerializer._build_layer_colors(entities)
         layer_lineweights = GeometrySerializer._build_layer_lineweights(entities)
+        by_handle = GeometrySerializer._build_by_handle(entities)
 
         for ent in entities:
             layer = ent.layer
 
-            hex_color = GeometrySerializer._resolve_stroke(ent, layer_colors)
+            hex_color = GeometrySerializer._resolve_stroke(ent, layer_colors, by_handle)
             stroke_width_mm = GeometrySerializer._resolve_lineweight(ent, layer_lineweights)
             dash, dash_units = GeometrySerializer._resolve_dash(ent)
 

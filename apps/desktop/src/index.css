@@ -325,9 +325,20 @@ body {
   --color-icon: var(--text-muted) !important;
   --color-overflow: var(--text-muted) !important;
   --color-splitter: var(--border-color) !important;
-  --color-splitter-drag: var(--accent-cyan) !important;
-  --color-drag1: rgba(0, 229, 255, 0.2) !important;
-  --color-drag2: rgba(0, 229, 255, 0.4) !important;
+  --color-splitter-drag: var(--border-color) !important;
+  --color-splitter-hover: var(--accent-cyan) !important;
+  --color-drag1: transparent !important;
+  --color-drag2: transparent !important;
+
+  /* flexlayout-react >= 0.9 sizes the splitter from CSS, not from the model.
+     Layout renders a hidden probe div (.flexlayout__splitter_horz) and feeds its
+     measured width back via model.setSplitterSize() — so `global.splitterSize` in
+     the layout JSON is parsed by nothing and `splitterExtra` no longer exists.
+     These two variables are the only knobs:
+       --splitter-size        visible bar thickness
+       --splitter-active-size invisible drag hit area (the ::before pseudo-element) */
+  --splitter-size: 1px !important;
+  --splitter-active-size: 9px !important;
 }
 
 .workspace-flexlayout-container .flexlayout__tab,
@@ -350,6 +361,23 @@ body {
 .flexlayout__tabset_tabbar_inner_tab_container {
   background-color: var(--bg-sidebar) !important;
   border-color: var(--border-color) !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset--selected,
+.flexlayout__tabset--selected,
+.workspace-flexlayout-container .flexlayout__tabset_header--selected,
+.flexlayout__tabset_header--selected,
+.workspace-flexlayout-container [class*="flexlayout__tabset--selected"],
+[class*="flexlayout__tabset--selected"] {
+  box-shadow: none !important;
+  border-color: var(--border-color) !important;
+  outline: none !important;
+}
+
+.workspace-flexlayout-container [class*="flexlayout__tabset"],
+[class*="flexlayout__tabset"] {
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .workspace-flexlayout-container .flexlayout__tabset_header,
@@ -400,10 +428,15 @@ body {
   box-shadow: inset 0 -2px 0 0 var(--accent-cyan) !important;
 }
 
+/* Thickness comes from --splitter-size above. Do not re-add width/height rules for
+   `_row`/`_column`/`_v`/`_h`/`_vertical`/`_horizontal` — 0.9.x only ever emits
+   `flexlayout__splitter_horz` and `flexlayout__splitter_vert`, so those selectors
+   match nothing and the theme's 8px default silently wins. */
 .workspace-flexlayout-container .flexlayout__splitter,
 .flexlayout__splitter {
   background-color: var(--border-color) !important;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.15s ease;
+  border-radius: 0 !important;
 }
 
 .workspace-flexlayout-container .flexlayout__splitter:hover,

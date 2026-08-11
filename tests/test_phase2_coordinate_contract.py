@@ -60,7 +60,7 @@ def _transform() -> ViewportTransform:
                 index=0, handle="VP0",
                 paper_center_x=200.0, paper_center_y=150.0,
                 paper_width=300.0, paper_height=200.0,
-                view_center_x=50.0, view_center_y=25.0,
+                view_anchor_x=50.0, view_anchor_y=25.0,
                 view_height=100.0, scale=2.0,
             )
         ],
@@ -264,3 +264,94 @@ def test_audit_violation_allows_no_coordinates():
         description="d", recommendation="r", source="rule_engine",
     )
     assert violation.coordinates is None
+
+
+# --------------------------------------------------------------------------------------
+# view_anchor: the rename, and the per-view origin it makes legible
+# --------------------------------------------------------------------------------------
+
+
+def test_a_stored_transform_using_the_legacy_view_center_key_still_loads():
+    """Every drawing extracted before 2026-08-11 persisted this value as `view_center`.
+
+    The rename is cosmetic and TRANSFORM_VERSION deliberately did not move, so `from_dict`
+    has to keep reading the old spelling. If it stopped, the anchor would resolve to (0,0)
+    rather than raise -- and the projection would be silently wrong by the anchor's
+    magnitude on every drawing already in MongoDB. On M745221N01_FSRS2 that is ~250 units,
+    which puts a view's origin clean off the printed sheet while every number involved
+    stays finite and plausible.
+    """
+    legacy = {
+        "index": 0, "handle": "VP0",
+        "paper_center": [200.0, 150.0],
+        "paper_size": [300.0, 200.0],
+        "view_center": [50.0, 25.0],      # <- the old key
+        "view_height": 100.0, "scale": 2.0,
+    }
+    vp = Viewport.from_dict(legacy)
+    assert (vp.view_anchor_x, vp.view_anchor_y) == (50.0, 25.0)
+    # and it projects identically to one built from the new key
+    modern = dict(legacy)
+    del modern["view_center"]
+    modern["view_anchor"] = [50.0, 25.0]
+    assert Viewport.from_dict(modern).to_paper(0.0, 0.0) == vp.to_paper(0.0, 0.0)
+
+
+def test_view_anchor_wins_when_both_keys_are_present():
+    vp = Viewport.from_dict({
+        "index": 0, "handle": "VP0",
+        "paper_center": [0.0, 0.0], "paper_size": [10.0, 10.0],
+        "view_anchor": [7.0, 8.0], "view_center": [1.0, 2.0],
+        "view_height": 10.0, "scale": 1.0,
+    })
+    assert (vp.view_anchor_x, vp.view_anchor_y) == (7.0, 8.0)
+
+
+def test_round_trip_through_to_dict_preserves_the_anchor():
+    original = _transform().viewports[0]
+    assert Viewport.from_dict(original.to_dict()) == original
+
+
+def test_a_views_own_origin_lands_at_its_paper_centre():
+    """iCAD SX draws one ORIGIN marker per view. This is where each one goes.
+
+    It falls out of the algebra -- to_paper(anchor) == paper_center -- but it is the
+    question the marker answers, so it is pinned rather than left implicit.
+    """
+    vp = _transform().viewports[0]
+    assert vp.origin_paper_point == (vp.paper_center_x, vp.paper_center_y)
+
+
+def test_the_global_origin_is_not_the_views_origin():
+    """A view's own origin and the global model origin are different points."""
+    vp = _transform().viewports[0]          # anchor (50, 25), scale 2, paper centre (200,150)
+    assert vp.origin_paper_point == (200.0, 150.0)
+    assert vp.to_paper(0.0, 0.0) == (100.0, 100.0)
+    assert vp.contains_paper_point(*vp.origin_paper_point)
+
+
+def test_a_real_sheets_global_origin_falls_outside_its_own_viewport():
+    """Measured, not invented: `M745221N01_FSRS2` viewport `2D2` (the sectA view).
+
+    This is the case that makes the anchor/centre distinction matter rather than being a
+    naming preference. The view's own origin sits at its paper centre and is visible; the
+    GLOBAL model origin projects ~250 units up the sheet and is clipped away entirely. Read
+    the anchor as if it were `view_center_point` -- which is (0,0,0) on all three of this
+    sheet's viewports -- and you get the second number while believing it is the first.
+    """
+    vp = Viewport(
+        index=1, handle="2D2",
+        paper_center_x=247.0576406882221, paper_center_y=145.5561857223511,
+        paper_width=48.37035012358122, paper_height=133.4632218360901,
+        view_anchor_x=-80.6906589897892, view_anchor_y=-351.47548122406,
+        view_height=186.8485105705261, scale=0.7142857142857145,
+    )
+
+    own = vp.origin_paper_point
+    assert own == (vp.paper_center_x, vp.paper_center_y)
+    assert vp.contains_paper_point(*own), "the view's own origin is visible in the view"
+
+    global_origin = vp.to_paper(0.0, 0.0)
+    assert math.isclose(global_origin[0], 304.694, abs_tol=1e-3)
+    assert math.isclose(global_origin[1], 396.610, abs_tol=1e-3)
+    assert not vp.contains_paper_point(*global_origin), "and the global one is clipped away"

@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
-import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor } from './renderEntities';
+import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor, renderViewOrigins } from './renderEntities';
 import { DrawingCanvasRef } from './DrawingCanvas';
 
 interface CanvasRendererProps {
@@ -17,8 +17,6 @@ interface CanvasRendererProps {
   hoveredMarkerId: string | null;
   hoveredAnnotationId?: string | null;
   isNeonCAD: boolean;
-  bgImage: any;
-  lightBgImage: any;
   setRenderDiagnostics: (stats: { entityCount: number, drawCount: number, renderTimeMs: number }) => void;
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
   redrawTrigger: number;
@@ -42,8 +40,6 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   hoveredMarkerId,
   hoveredAnnotationId,
   isNeonCAD,
-  bgImage,
-  lightBgImage,
   setRenderDiagnostics,
   markerPositionsRef,
   redrawTrigger,
@@ -72,6 +68,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
   const visibleMarkerTypes = useReviewStore(s => s.visibleMarkerTypes);
   const showGrid = useReviewStore(s => s.showGrid);
+  const showViewOrigins = useReviewStore(s => s.showViewOrigins);
 
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
   const violations = useWorkspaceStore((s) => s.violations);
@@ -151,7 +148,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       return canvas.toDataURL('image/png');
     },
     getCanvasElement: () => canvasRef.current
-  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, showGrid]);
+  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, showGrid, showViewOrigins]);
 
   // Subscribe to viewport changes without triggering React re-renders.
   // On every setViewport call (each mouse pixel during pan), we update the ref and schedule
@@ -294,10 +291,15 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       layers,
       activeLayers,
       theme,
-      bgImage,
-      lightBgImage,
       drawing
     });
+
+    // Per-view ORIGIN markers, above the geometry so they read as an overlay. Drawn during
+    // drag too: they are three tiny paths, and the point of a datum marker is that it tracks
+    // the geometry while you pan.
+    if (showViewOrigins) {
+      renderViewOrigins({ frame: frameData, drawing });
+    }
 
     // Only render violation reticles when not actively panning/zooming — they're static
     // during interaction and rendering them is expensive (O(violations) per frame).
@@ -356,7 +358,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, bgImage, drawing, isNeonCAD, theme, lightBgImage, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
+  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

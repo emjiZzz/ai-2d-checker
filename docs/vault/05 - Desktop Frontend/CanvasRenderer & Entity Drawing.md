@@ -1,12 +1,21 @@
 ---
 title: CanvasRenderer & Entity Drawing
 type: frontend
-tags: [frontend, canvas, react, tauri, viewport]
+tags: [frontend, canvas, react, tauri, viewport, vector]
+verified-against: 2026-08-11, post-ADR-011 (vector-only render path)
 ---
 
 # 🖥️ CanvasRenderer & Entity Drawing
 
 The **CanvasRenderer** (`CanvasRenderer.tsx` & `renderEntities.ts`) is the high-performance HTML5 Canvas rendering engine responsible for rendering 2D vector CAD drawings, annotations, and diagnostic zone overlays in the desktop app.
+
+> [!NOTE] Vector is the only path — there is no `renderMode`.
+> This note claimed "renders 2D vector CAD drawings" from 2026-07-28, but until 2026-08-11 the
+> canvas defaulted to raster and displayed a server-rendered PNG.
+> [[ADR-011 Vector as the Only Render Path]] removed `renderMode`, the PNG fetch, the mipmap
+> chain and the light-theme recolour. The backend still generates the PNG — as the source of `render_bounds` and an input
+> to title-block OCR — but nothing renders it to a user. Fidelity is measured by
+> `tools/render_audit.py`, not by eye.
 
 ---
 

@@ -165,10 +165,15 @@ Accounting for the original **356/518**:
 | **Expected total** | **500/518** | |
 
 The residual 18 are `layer` (6) and `block` (12) — layer-table records and INSERT containers
-whose children are exploded and drawn separately. **Both are correctly not drawn**, so the
-sheet is complete at 500. Note that `GeometrySerializer` puts them in the drawable payload, so
-the HUD's denominator counts 18 entities that can never be drawn; `VIRTUALIZED: 500/518` is the
-healthy ceiling, not a shortfall.
+whose children are exploded and drawn separately. **Both are correctly not drawn.** Note that
+`GeometrySerializer` puts them in the drawable payload, so the HUD's denominator counts 18
+entities that can never be drawn.
+
+> [!NOTE] The healthy ceiling is **497/518**, not the 500 this round predicted.
+> [[Gotcha - Clipped Model Geometry Still Gets a Coordinate]] landed after this section was
+> written and correctly skips 3 more entities — model geometry that falls outside every
+> paper-space viewport. 518 − 18 non-drawable − 3 clipped = **497**, which is what `CLAUDE.md`
+> and `tools/render_audit.py` both state today. See the census table further down.
 
 The dimensions on this drawing produced **0 fills** — its dimstyle uses open stroke arrowheads,
 not solid triangles (confirmed: 0 closed loops among the paths). The SOLID/TRACE fill branch is
@@ -229,6 +234,12 @@ attachment points (the insert point is used directly, which is correct for defau
 text and drifts for centred or right-aligned strings). Raster remains selectable and is still
 the better answer for a drawing whose extraction is incomplete, since the PNG comes from ezdxf
 and cannot be missing anything.
+
+> [!NOTE] Superseded 2026-08-11 — raster is no longer selectable.
+> MTEXT attachment points were fixed later the same day (defect 1 in the table below). Raster
+> was removed from the display path entirely by [[ADR-011 Vector as the Only Render Path]], so
+> the "keep it as the safe fallback" argument above no longer holds — `tools/render_audit.py`
+> carries that load instead. Hatch/solid still have no branch.
 
 ---
 
@@ -489,10 +500,51 @@ the target.
     *almost* the DXF meaning. Every one of them was wrong by a few percent to 20%, and every
     fix in this round was the same move: compute it from the DXF number instead.
 
+## Closed out — the flip finally landed, on the third attempt
+
+Ratified as [[ADR-011 Vector as the Only Render Path]] on 2026-08-11. `renderMode` was not set to
+`'vector'` — it was **deleted**, along with the raster display path, the mipmap chain, the
+per-pixel light-theme recolour, the loading overlay that covered the PNG download, the `PenTool`
+toggle, the declined `hybrid` mode, and `GET /drawings/{id}/rendering`.
+
+The third attempt differed from the two failed ones in exactly one respect, and it is the whole
+lesson of this note: **it was measured before it was shipped, by an instrument that exists outside
+the app.** The numbers it was justified on:
+
+```
+=== CENSUS =====  497/518 drawn
+|dx|  median=0.1148   p90=0.7216   max=1.4017
+width_ratio  median=1.0222        rotation lost: 0
+```
+
+### ⛔ NEGATIVE RESULT — the raster *generator* cannot be deleted
+
+The 2026-07-27 direction said "drop the PNG display path entirely", and the obvious next cleanup
+is to stop generating the PNG at all. **It is bounded, and not by rendering.**
+`metadata["render_bounds"]` comes from matplotlib's autoscale inside the very function that saves
+the PNG, and every zone template is stored as *fractions of it* — `zone_signature()` derives the
+template's identity from it, `SpatialDiffer` normalises its matching frame by it, and
+`coordinate_stamp` drift-checks against it. The entity-bbox fallback a few lines below produces
+different numbers, so it is not a substitute. Removing the generator is a template-invalidation
+event wearing a cleanup's clothes. Full reasoning in the ADR.
+
+### What now answers "is this sheet complete?"
+
+Nothing in the UI. That was raster's job and raster is gone. `tools/render_audit.py` answers it
+better and offline — but only if someone runs it, so **run it after any change to
+`renderEntities.ts`, `entity_mapper.py` or `geometry_serializer.py`**, per `CLAUDE.md`.
+
+One standing prerequisite survives the flip: `render_paths`, MTEXT rotation and the elliptical-arc
+fix are all computed at **extraction** time, so drawings already in MongoDB must be re-uploaded.
+There is no re-extract endpoint.
+
 ## Related
 
+- [[ADR-011 Vector as the Only Render Path]] — the decision this note's debugging produced.
 - [[Gotcha - Zone Detection Accuracy & Stability]] — the other place CSS-px vs CAD-space
   confusion yields a plausible-looking wrong result.
+- [[Gotcha - Clipped Model Geometry Still Gets a Coordinate]] — the 3 entities that moved the
+  healthy census from 500 to 497.
 - [[CanvasRenderer & Entity Drawing]] — the renderer this lives in.
-- [[ADR-006 Removing the Three AI Comparison Methods]] — documents `renderMode` as surviving
-  surface area.
+- [[ADR-006 Removing the Three AI Comparison Methods]] — documented `renderMode` as surviving
+  surface area; ADR-011 retires it.

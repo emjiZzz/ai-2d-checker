@@ -41,8 +41,8 @@ def _viewport(index=0, scale_num=200.0, view_height=100.0):
         paper_center_y=150.0,
         paper_width=300.0,
         paper_height=scale_num,
-        view_center_x=50.0,
-        view_center_y=25.0,
+        view_anchor_x=50.0,
+        view_anchor_y=25.0,
         view_height=view_height,
         scale=scale_num / view_height,
     )
@@ -80,7 +80,7 @@ def test_multi_viewport_round_trips_when_index_is_carried():
         index=1, handle="VP1",
         paper_center_x=600.0, paper_center_y=150.0,
         paper_width=300.0, paper_height=200.0,
-        view_center_x=50.0, view_center_y=25.0,
+        view_anchor_x=50.0, view_anchor_y=25.0,
         view_height=400.0, scale=0.5,
     )
     t = ViewportTransform("Layout1", [vp_a, vp_b])
@@ -209,7 +209,7 @@ def test_entity_is_pinned_to_one_viewport():
         index=1, handle="VP1",
         paper_center_x=900.0, paper_center_y=150.0,
         paper_width=300.0, paper_height=200.0,
-        view_center_x=5000.0, view_center_y=25.0,
+        view_anchor_x=5000.0, view_anchor_y=25.0,
         view_height=100.0, scale=2.0,
     )
     transform = ViewportTransform("Layout1", [vp_a, vp_b])

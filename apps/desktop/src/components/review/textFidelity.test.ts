@@ -21,7 +21,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getNormalization } from '../../utils/coordinateTransform';
 
-const mockReviewState = { renderMode: 'vector' as const };
+// `renderEntities` no longer reads the store at all — the raster/vector switch it used to
+// consult is gone (ADR-011). The module mock stays only to keep this suite from pulling the
+// real store in transitively.
+const mockReviewState = {};
 vi.mock('../../stores/reviewStore', () => {
   const mockFn: any = vi.fn(() => mockReviewState);
   mockFn.getState = () => mockReviewState;
@@ -137,8 +140,6 @@ function run(entities: any[], ctx: any, drawing?: any) {
     layers: { '0': entities },
     activeLayers: {},
     theme: 'hc-dark',
-    bgImage: null,
-    lightBgImage: null,
     drawing,
   });
 }
@@ -350,7 +351,7 @@ describe('stroke styling', () => {
       renderEntities({
         frame: { ...makeFrame(c.ctx), scale: viewScale },
         layers: { '0': [line({ stroke: '#fff', strokeWidth: 1.0 })] },
-        activeLayers: {}, theme: 'hc-dark', bgImage: null, lightBgImage: null, drawing: LW_ON,
+        activeLayers: {}, theme: 'hc-dark', drawing: LW_ON,
       } as any);
       return c.lineWidths[0] * viewScale;
     };

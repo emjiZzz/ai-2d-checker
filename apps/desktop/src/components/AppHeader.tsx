@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Moon, Sun, LogOut, Minus, Square, X, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
+import { LogOut, Minus, Square, X, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
 import kmtiLogo from "../assets/kmti_logo.png";
 import { useAuthStore } from "../stores/authStore";
-import { useThemeStore } from "../stores/themeStore";
 import { useNavStore } from "../stores/navStore";
 import { useReviewStore } from "../stores/reviewStore";
 import { useRoomStore } from "../stores/roomStore";
@@ -39,7 +38,6 @@ const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, ac
 
 export const AppHeader: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuthStore();
-  const { theme, toggleTheme } = useThemeStore();
   const { currentNav, setCurrentNav } = useNavStore();
   const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
   const setActiveLayoutPreset = useReviewStore(s => s.setActiveLayoutPreset);
@@ -122,14 +120,6 @@ export const AppHeader: React.FC = () => {
       <div className="flex items-center h-full">
         {isAuthenticated && (
           <div className="flex items-center gap-3 h-6 pr-4 mr-2 border-r border-border-color">
-            {/* User Profile Badge */}
-            <div className="flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-bg-card border border-border-color">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-medium text-text-secondary">
-                {user?.username || "Engineer"}
-              </span>
-            </div>
-
             {/* Layout Toggles (Only show in workspace when a room is active) */}
             {currentNav === "workspace" && activeRoom && (
               <div ref={layoutMenuRef} className="relative mr-1">
@@ -177,17 +167,6 @@ export const AppHeader: React.FC = () => {
             )}
 
             {/* Actions */}
-            <button
-              onClick={toggleTheme}
-              title="Toggle Theme"
-              className="flex p-1.5 rounded-md text-text-muted hover:bg-sidebar-item-hover transition-all duration-150 active:scale-95"
-            >
-              {theme === "hc-dark" ? (
-                <Moon size={15} className="text-purple-400 fill-purple-400/20" />
-              ) : (
-                <Sun size={15} className="text-amber-500 fill-amber-400/20" />
-              )}
-            </button>
             <button
               onClick={() => logout()}
               title="Logout Portal"

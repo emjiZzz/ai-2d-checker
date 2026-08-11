@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { AnnotationSeverity, getAnnotationBadgeMap } from '../../stores/workspace/types';
-import { fetchWithAuth } from '../../services/fetchUtils';
 import { useThemeStore } from '../../stores/themeStore';
 import { useCanvasInteraction } from './useCanvasInteraction';
 import { CanvasRenderer } from './CanvasRenderer';
@@ -11,7 +10,6 @@ import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
 import { AlertTriangle } from 'lucide-react';
-import { Skeleton } from '../ui/Skeleton';
 import './DrawingCanvas.css';
 
 import { z } from 'zod';
@@ -35,38 +33,6 @@ interface DrawingCanvasProps {
 
 export interface DrawingCanvasRef {
   exportImage: (exportWidth?: number, exportHeight?: number) => string;
-}
-
-// Module-level cache to prevent refetching the background image on tab switches
-const renderingCache = new Map<string, {
-  bgImage: any;
-  lightBgImage: any;
-}>();
-
-function buildMipmapLevels(source: HTMLCanvasElement | HTMLImageElement): (HTMLCanvasElement | HTMLImageElement)[] {
-  const levels: (HTMLCanvasElement | HTMLImageElement)[] = [source];
-  let curW = source.width;
-  let curH = source.height;
-  let prev: HTMLCanvasElement | HTMLImageElement = source;
-
-  while (curW > 1200 && curH > 1200) {
-    const nextW = Math.floor(curW / 2);
-    const nextH = Math.floor(curH / 2);
-    const c = document.createElement('canvas');
-    c.width = nextW;
-    c.height = nextH;
-    const ctx = c.getContext('2d');
-    if (ctx) {
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(prev, 0, 0, curW, curH, 0, 0, nextW, nextH);
-    }
-    levels.push(c);
-    prev = c;
-    curW = nextW;
-    curH = nextH;
-  }
-  return levels;
 }
 
 export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
@@ -97,11 +63,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       severity: AnnotationSeverity;
       content: string;
     } | null>(null);
-
-    const [bgImage, setBgImage] = useState<any>(null);
-    const [lightBgImage, setLightBgImage] = useState<any>(null);
-    const [isFetchingBg, setIsFetchingBg] = useState(false);
-    const renderMode = useReviewStore((s) => s.renderMode);
 
     // Zod validation for incoming layers to catch malformed structures early.
     //
@@ -154,180 +115,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       hoveredHandleId
     } = state;
 
-    useEffect(() => {
-      if (!drawing?.id) {
-        setBgImage(null);
-        setLightBgImage(null);
-        return;
-      }
-
-      // Vector mode never draws the raster — neither on screen nor into exports — so fetching
-      // it buys nothing and costs a multi-megabyte download, a mipmap chain over an ~8400px
-      // image, and a chunked per-pixel pass to build the light-theme variant. The visible cost
-      // is worse than the wasted work: `isFetchingBg` covers the canvas with a spinner while it
-      // runs, so the user would sit staring at "Ingesting CAD Geometry…" waiting on an image
-      // that is never drawn, when the vectors were ready to render immediately.
-      if (renderMode === 'vector') {
-        setBgImage(null);
-        setLightBgImage(null);
-        return;
-      }
-
-      const cached = renderingCache.get(drawing.id);
-      if (cached) {
-        setBgImage(cached.bgImage);
-        setLightBgImage(cached.lightBgImage);
-        return;
-      }
-
-      let active = true;
-      const loadBackground = async () => {
-        setIsFetchingBg(true);
-        try {
-          const res = await fetchWithAuth(`/api/v1/drawings/${drawing.id}/rendering`, {
-            headers: { "Accept": "image/png" }
-          });
-
-          if (!active) return;
-
-          if (res.status === 204) {
-            setBgImage(null);
-            setLightBgImage(null);
-            return;
-          }
-
-          if (!res.ok) {
-            throw new Error(`No rendering generated (HTTP ${res.status})`);
-          }
-
-          const blob = await res.blob();
-          const img = new Image();
-          img.src = URL.createObjectURL(blob);
-          img.onload = () => {
-            if (!active) return;
-
-            // No pre-thickening pass here, deliberately. There used to be one: five source-over
-            // composites of the same image at 1px offsets, a plus-shaped dilation. It was added
-            // when this path downsampled the ~8400px rendering straight to screen size in a
-            // single drawImage, where the browser's sparse sampling made hairlines fade out
-            // entirely rather than just look smaller.
-            //
-            // `buildMipmapLevels` replaced that single jump with a successive-halving chain.
-            // Each halving averages 4 pixels, so a hairline survives as reduced alpha instead of
-            // being missed by the sampler — which is the problem the dilation existed to solve.
-            // That made it redundant, and "redundant" is generous: source-over is not a max, so
-            // it accumulates alpha. A transparent pixel next to a 0.6-alpha antialiased edge came
-            // out 0.6 opaque, growing every stroke ~1px outward with a soft fringe, which the
-            // mipmap chain then smeared across the entire reduction. It is a blur kernel, and it
-            // was the bulk of why this canvas read as blurry next to a real CAD viewer.
-            const mipmaps = buildMipmapLevels(img);
-
-            if (!active) return;
-            setBgImage(mipmaps);
-            setRedrawTrigger((prev) => prev + 1);
-
-            // Save to cache immediately so tab switches don't trigger another fetch
-            renderingCache.set(drawing.id, { bgImage: mipmaps, lightBgImage: null });
-
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const context = canvas.getContext('2d');
-            if (context) {
-              context.drawImage(img, 0, 0);
-              const imgData = context.getImageData(0, 0, canvas.width, canvas.height);
-              const data = imgData.data;
-
-              // Chunked via setTimeout so a big rendering doesn't block the UI thread, but each
-              // setTimeout hop is throttled to a ~4ms floor by the browser — with too small a
-              // chunk size, that per-hop overhead dominates and the light-theme variant takes
-              // noticeably longer to finish than the processing itself needs, leaving the raw
-              // dark-tuned image (wrong colors for light theme) visible for a stretch. A larger
-              // chunk trades a slightly bigger per-chunk pause for far fewer hops overall.
-              const PIXELS_PER_CHUNK = 2000000;
-              const CHUNK_SIZE = PIXELS_PER_CHUNK * 4;
-              let offset = 0;
-
-              const processChunk = () => {
-                if (!active) return;
-                const end = Math.min(offset + CHUNK_SIZE, data.length);
-                for (let i = offset; i < end; i += 4) {
-                  if (data[i + 3] === 0) continue;
-                  const r = data[i], g = data[i + 1], b = data[i + 2];
-                  if (Math.max(r, g, b) - Math.min(r, g, b) < 30) {
-                    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                    if (brightness < 70) {
-                      data[i] = 255;
-                      data[i + 1] = 255;
-                      data[i + 2] = 255;
-                    } else {
-                      const invR = 255 - r;
-                      const invG = 255 - g;
-                      const invB = 255 - b;
-                      if (invR > 215 && invG > 215 && invB > 215) {
-                        data[i] = 255;
-                        data[i + 1] = 255;
-                        data[i + 2] = 255;
-                      } else {
-                        data[i] = invR;
-                        data[i + 1] = invG;
-                        data[i + 2] = invB;
-                      }
-                    }
-                  } else {
-                    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                    if (brightness > 150) {
-                      data[i] = Math.round(r * 0.45);
-                      data[i + 1] = Math.round(g * 0.45);
-                      data[i + 2] = Math.round(b * 0.45);
-                    }
-                  }
-                }
-                offset = end;
-
-                if (offset < data.length) {
-                  setTimeout(processChunk, 0);
-                } else {
-                  context.putImageData(imgData, 0, 0);
-                  const lightImg = new Image();
-                  lightImg.src = canvas.toDataURL();
-                  lightImg.onload = () => {
-                    // Update the cache with the light mode variant once ready
-                    const currentCache = renderingCache.get(drawing.id);
-                    if (currentCache) {
-                      currentCache.lightBgImage = lightImg;
-                    }
-
-                    if (active) {
-                      setLightBgImage(lightImg);
-                      setRedrawTrigger((prev) => prev + 1);
-                    }
-                  };
-                }
-              };
-
-              // Run the first chunk synchronously (no setTimeout hop) — only subsequent
-              // chunks need to yield back to the browser.
-              processChunk();
-            }
-          };
-        } catch (err) {
-          console.warn("Background rendering loading failed. Falling back to vector.", err);
-          if (active) {
-            setBgImage(null);
-            setLightBgImage(null);
-          }
-        } finally {
-          if (active) setIsFetchingBg(false);
-        }
-      };
-
-      loadBackground();
-      return () => {
-        active = false;
-      };
-    }, [drawing?.id, renderMode]);
-
     return (
       <div 
         className="drawing-canvas-viewport-container" 
@@ -336,7 +123,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           width: '100%', 
           height: '100%', 
           overflow: 'hidden',
-          border: '1px solid var(--border-color)',
+          border: 'none',
           borderRadius: '2px',
           boxShadow: theme === 'hc-light' ? 'inset 0 1px 3px rgba(15,23,42,0.06)' : 'none'
         }}
@@ -375,8 +162,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             hoveredMarkerId={hoveredMarkerId}
             hoveredAnnotationId={hoveredAnnotationId}
             isNeonCAD={true}
-            bgImage={bgImage}
-            lightBgImage={lightBgImage}
             setRenderDiagnostics={setRenderDiagnostics}
             markerPositionsRef={markerPositionsRef}
             redrawTrigger={redrawTrigger}
@@ -389,19 +174,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
 
         <AnnotationSummaryOverlay drawingId={drawing?.id} theme={theme} />
 
-
-
-        {isFetchingBg && (
-          <div className="absolute inset-0 flex items-center justify-center p-8 bg-bg-dark/50 backdrop-blur-[2px] z-40 transition-opacity">
-            <Skeleton className="w-full h-full rounded-2xl shadow-2xl border border-border-color/50 opacity-90" />
-            <div className="absolute flex flex-col items-center gap-4">
-              <div className="w-12 h-12 border-4 border-accent-cyan border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-accent-cyan font-bold tracking-widest uppercase text-sm drop-shadow-md">
-                Ingesting CAD Geometry...
-              </span>
-            </div>
-          </div>
-        )}
+        {/* No loading overlay here any more. It existed to cover the canvas while the ~8400px
+            background PNG downloaded and its light-theme variant was built pixel by pixel.
+            The vectors arrive with the layers payload and draw on the first frame, so there is
+            nothing left to wait for. */}
 
         {contextMenu && contextMenu.visible && (
           <CanvasContextMenu
@@ -524,7 +300,6 @@ const AnnotationSummaryOverlay: React.FC<{ drawingId?: string; theme: string }> 
   const selectAnnotation = useWorkspaceStore((s) => s.selectAnnotation);
   const toggleAnnotations = useReviewStore((s) => s.toggleAnnotations);
   const showAnnotations = useReviewStore((s) => s.showAnnotations);
-  const showMinimap = useReviewStore((s) => s.showMinimap);
 
   const openForDrawing = useMemo(
     () => (Array.isArray(annotations) ? annotations.filter((a) => a.drawing_id === drawingId && a.status !== 'resolved') : []),
@@ -556,9 +331,7 @@ const AnnotationSummaryOverlay: React.FC<{ drawingId?: string; theme: string }> 
         if (!showAnnotations) toggleAnnotations();
         if (jumpTarget) selectAnnotation(jumpTarget.id);
       }}
-      title="Click to jump to the highest-severity open annotation"
-      className={`absolute top-3 right-3 z-40 flex items-center gap-1.5 font-mono text-xs font-bold cursor-pointer transition-colors select-none drop-shadow-md ${showMinimap ? 'max-w-[calc(100%-224px)]' : 'max-w-[calc(100%-24px)]'
-        } ${theme === 'hc-light'
+      className={`absolute top-3 right-3 z-40 flex items-center gap-1.5 font-mono text-xs font-bold cursor-pointer transition-colors select-none drop-shadow-md max-w-[calc(100%-24px)] ${theme === 'hc-light'
           ? 'text-amber-700 hover:text-amber-600'
           : 'text-amber-300 hover:text-amber-200'
         }`}

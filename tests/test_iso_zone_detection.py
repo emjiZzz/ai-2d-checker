@@ -136,7 +136,7 @@ def test_major_axis_is_scaled_but_not_translated(doc):
             index=0, handle="A",
             paper_center_x=0.0, paper_center_y=0.0,
             paper_width=100.0, paper_height=100.0,
-            view_center_x=100.0, view_center_y=100.0,
+            view_anchor_x=100.0, view_anchor_y=100.0,
             view_height=50.0, scale=2.0,
         )],
     )

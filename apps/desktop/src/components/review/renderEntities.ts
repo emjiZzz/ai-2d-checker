@@ -1,5 +1,4 @@
 import { getNormalization, worldToScreen } from '../../utils/coordinateTransform';
-import { useReviewStore } from '../../stores/reviewStore';
 import {
   VIEWS_EXCLUDED_ZONES,
   ZONE_KEYS,
@@ -127,6 +126,49 @@ const LINEWEIGHT_DISPLAY_PX_PER_MM = 96 / 25.4;
 
 /** Nothing on a drawing needs to be thicker than this on screen. */
 const MAX_LINEWEIGHT_DISPLAY_PX = 6;
+
+/**
+ * Snaps a world coordinate so the stroke centred on it lands on the device pixel grid.
+ *
+ * A stroke of width `w` device px centred at device coordinate `c` covers `c ± w/2`. That fills
+ * whole pixels only when `c` is a half-integer for odd `w`, or an integer for even `w`. At any
+ * other phase the browser splits the ink across two columns — **measured**: a 1px hairline at
+ * phase 0 comes out as two columns at alpha 0.498 / 0.502. Total ink is conserved at exactly
+ * 1.0, so the line is not thicker; it is *spread*, which reads as roughly half a pixel of extra
+ * width per side against a CAD viewer that snaps (iCAD SX does).
+ *
+ * `transX`/`transY` derive from an arbitrary pan offset, so without this every axis-aligned rule
+ * on the sheet lands at a random phase.
+ *
+ * Only meaningful for axis-aligned geometry: snapping one end of a diagonal moves the line rather
+ * than sharpening it, so callers must check. See `snapPhaseFor`.
+ */
+export const snapWorldToDeviceGrid = (
+  world: number, viewScale: number, translate: number, dpr: number, phase: number
+): number => {
+  const device = dpr * (translate + viewScale * world);
+  const snapped = Math.round(device - phase) + phase;
+  return ((snapped / dpr) - translate) / viewScale;
+};
+
+/**
+ * Target sub-pixel phase for a stroke of `deviceWidth` device pixels: half-integer for odd
+ * widths (the hairline case, and the only one this corpus exercises since `$LWDISPLAY` is 0),
+ * integer for even. Non-integer widths cannot land cleanly at any phase; the nearest half still
+ * beats a random one, so they take the odd branch.
+ */
+export const snapPhaseFor = (deviceWidth: number): number =>
+  Math.round(deviceWidth) % 2 === 0 ? 0 : 0.5;
+
+/** True when every segment of the vertex chain runs exactly horizontal or vertical. */
+export const isAxisAlignedChain = (verts: number[][]): boolean => {
+  for (let i = 1; i < verts.length; i++) {
+    const dx = Math.abs(verts[i][0] - verts[i - 1][0]);
+    const dy = Math.abs(verts[i][1] - verts[i - 1][1]);
+    if (dx > 1e-9 && dy > 1e-9) return false;
+  }
+  return true;
+};
 
 /** MTEXT line advance as a multiple of char height, measured against ezdxf's own renderer. */
 //
@@ -436,34 +478,7 @@ export interface RenderEntitiesParams {
   layers: Record<string, any[]>;
   activeLayers: Record<string, boolean>;
   theme: string;
-  bgImage: any;
-  lightBgImage: any;
   drawing?: any;
-}
-
-export function selectOptimalMipmap(
-  rawImage: any,
-  scale: number,
-  drawingBounds: number[]
-): any {
-  if (!rawImage) return null;
-  if (!Array.isArray(rawImage)) return rawImage;
-  if (rawImage.length <= 1) return rawImage[0] || null;
-
-  const [xmin, _ymin, xmax, _ymax] = drawingBounds;
-  const worldW = Math.max(1, xmax - xmin);
-  const targetPxW = worldW * scale;
-
-  let best = rawImage[0];
-  for (let i = 0; i < rawImage.length; i++) {
-    const lvl = rawImage[i];
-    if (lvl.width >= targetPxW || i === rawImage.length - 1) {
-      best = lvl;
-    } else {
-      break;
-    }
-  }
-  return best;
 }
 
 export const renderEntities = ({
@@ -471,8 +486,6 @@ export const renderEntities = ({
   layers,
   activeLayers,
   theme: _theme,
-  bgImage,
-  lightBgImage,
   drawing
 }: RenderEntitiesParams): { totalEntities: number; drawnEntities: number } => {
   const { ctx, isExport, renderWidth, renderHeight, scale, transX, transY, minX, minY, maxX, maxY, resolutionMultiplier, norm } = frame;
@@ -484,49 +497,54 @@ export const renderEntities = ({
   let totalEntities = 0;
   let drawnEntities = 0;
 
-  // Draw high-fidelity raster CAD background image if loaded, aligned exactly to CAD coordinates bounds.
-  // lightBgImage is computed asynchronously (see DrawingCanvas.tsx) and can briefly be null right
-  const renderMode = useReviewStore.getState().renderMode || 'hybrid';
+  // One device pixel. This is the floor for every stroke, and it is the whole point of
+  // rendering vectors: 1.5 CSS px cannot land on the pixel grid, so it straddles two device
+  // pixels and antialiases into a pair of greys — the same soft edge the raster path produces.
+  // `1 / dpr` CSS px is exactly 1 device pixel, which is what a CAD viewer draws a hairline as
+  // at every zoom level.
+  const hairlinePx = isExport ? 1.0 : 1 / dpr;
 
-  const rawTarget = isExport ? (lightBgImage || bgImage) : bgImage;
-  // Mipmap choice has to be made in DEVICE pixels. `scale` is CSS-px-per-world-unit — drawCanvas
-  // installs the dpr transform before this runs — so selecting on it alone picks a level sized for
-  // the CSS box and the GPU then upscales that back up to the backing store. On the 125% and 150%
-  // display scaling that Windows ships as default on many panels, that is a guaranteed 1.25–1.5x
-  // upscale of an already-minified mipmap, on top of the minification blur. Export renders at an
-  // explicit pixel size with no dpr transform applied, so it must not be multiplied.
-  const deviceScale = isExport
-    ? scale
-    : scale * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
-  const targetImage = drawing?.metadata?.render_bounds
-    ? selectOptimalMipmap(rawTarget, deviceScale, drawing.metadata.render_bounds)
-    : (Array.isArray(rawTarget) ? rawTarget[0] : rawTarget);
-  const hasBg = !!(targetImage && drawing?.metadata?.render_bounds);
+  // `$LWDISPLAY` — does this drawing want its lineweights drawn at all?
+  //
+  // An entity can record 1.00mm and still be meant to display as a hairline: the weight is a
+  // plotting instruction, and this header is the switch deciding whether the viewer honours it
+  // on screen. It is **0 on both M745221N01 files**, which is exactly why iCAD SX shows uniform
+  // thin linework on a sheet carrying 1.00mm on 136 entities and 0.50mm on 331.
+  //
+  // Defaults to OFF when absent, which covers both the DXF default and any drawing ingested
+  // before this was extracted. That is also the conservative direction: too-thin linework looks
+  // like the old behaviour, too-thick looks broken.
+  const showLineweights = drawing?.metadata?.lineweight_display === true;
 
-  if (hasBg && renderMode !== 'vector') {
-    const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(targetImage, xmin, ymin, xmax - xmin, ymax - ymin);
-  }
+  /** Device-pixel width this entity's stroke will actually be painted at. */
+  const deviceWidthFor = (strokeWidthMm: number): number => {
+    const widthPx = showLineweights
+      ? Math.min(MAX_LINEWEIGHT_DISPLAY_PX, strokeWidthMm * LINEWEIGHT_DISPLAY_PX_PER_MM)
+      : 0;
+    return Math.max(hairlinePx, widthPx) * dpr;
+  };
+
+  // Pixel snapping is a screen-crispness fix and is skipped on export: that path renders at
+  // 7016px with its own transform and no dpr, where half a pixel is meaningless.
+  const snapEnabled = !isExport;
+  const snapX = (wx: number, phase: number) =>
+    snapEnabled ? snapWorldToDeviceGrid(wx, scale, transX, dpr, phase) : wx;
+  const snapY = (wy: number, phase: number) =>
+    snapEnabled ? snapWorldToDeviceGrid(wy, scale, transY, dpr, phase) : wy;
 
   const pathBatches: Record<string, { stroke: string, width: number, dash: number[] | null, dashUnits: string, path: Path2D }> = {};
   // Filled polygons, kept separate from the stroked batches because they need `fill()`
   // rather than `stroke()`. In practice these are dimension arrowheads.
   const fillBatches: Record<string, { color: string, path: Path2D }> = {};
 
-  // Skip vector entity loop if renderMode is raster, or hybrid with a loaded background image
-  const skipEntities = renderMode === 'raster' || (renderMode === 'hybrid' && hasBg);
-
   Object.entries(layers).forEach(([layerName, entities]) => {
     if (activeLayers[layerName] === false) return;
 
     entities.forEach((ent) => {
+      // Counted before any cull so the HUD denominator is every entity in the payload —
+      // including the `layer` and `block` records that can never be drawn. On M745221N01
+      // the healthy reading is 497/518, not 518/518. See ADR-011.
       totalEntities++;
-
-      if (skipEntities) {
-        return;
-      }
 
       const geo = ent.geometry;
       if (!geo) return;
@@ -624,16 +642,27 @@ export const renderEntities = ({
       if (ent.type === 'line' && geo.start && geo.end) {
         const [x1, y1Raw] = geo.start;
         const [x2, y2Raw] = geo.end;
-        const y1 = flipY(y1Raw);
-        const y2 = flipY(y2Raw);
+        let y1 = flipY(y1Raw);
+        let y2 = flipY(y2Raw);
+        let sx1 = x1, sx2 = x2;
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
         const top = Math.min(y1, y2);
         const bottom = Math.max(y1, y2);
         if (right < minX || left > maxX || bottom < minY || top > maxY) return;
         drawnEntities++;
-        p2d.moveTo(x1, y1);
-        p2d.lineTo(x2, y2);
+        // Snap only the constant axis of an axis-aligned line, so the stroke lands on whole
+        // device pixels instead of splitting across two. The varying axis is left alone —
+        // moving an endpoint would shorten the line rather than sharpen it. Diagonals are
+        // skipped entirely: there is no phase that makes a diagonal crisp.
+        const phase = snapPhaseFor(deviceWidthFor(strokeWidth as number));
+        if (Math.abs(y1 - y2) <= 1e-9) {
+          y1 = y2 = snapY(y1, phase);
+        } else if (Math.abs(x1 - x2) <= 1e-9) {
+          sx1 = sx2 = snapX(x1, phase);
+        }
+        p2d.moveTo(sx1, y1);
+        p2d.lineTo(sx2, y2);
       }
       else if (ent.type === 'circle' && (geo.center || geo.location)) {
         const [cx, cyRaw] = geo.center || geo.location;
@@ -663,7 +692,7 @@ export const renderEntities = ({
         // contents of its anonymous geometry block, produced server-side by
         // `EntityMapper._dimension_render_geometry`. Without this branch every dimension on
         // the sheet renders as nothing at all, which is exactly what sank the first attempt
-        // to switch `renderMode` to 'vector'.
+        // to make vectors the default.
         const renderPaths: number[][][] = Array.isArray(geo.render_paths) ? geo.render_paths : [];
         const renderFills: number[][][] = Array.isArray(geo.render_fills) ? geo.render_fills : [];
         // `render_text` is the string the dimension's anonymous block ACTUALLY draws, harvested
@@ -764,7 +793,19 @@ export const renderEntities = ({
       ) {
         const rawVertices = geo.vertices || geo.points;
         if (rawVertices.length < 2) return;
-        const vertices = rawVertices.map(([vx, vy]: [number, number]) => [vx, flipY(vy)]);
+        let vertices = rawVertices.map(([vx, vy]: [number, number]) => [vx, flipY(vy)]);
+        // Snap only when EVERY segment is axis-aligned — the frames, title-block cells and
+        // table rules, which is the bulk of the sheet (194 of 249 straight segments on
+        // M745221N01_FSRS2_KMTI). Snapping both axes of every vertex keeps such a chain closed,
+        // so rectangles stay rectangles. A mixed chain is left alone: snapping one segment of it
+        // detaches that segment from its diagonal neighbour and opens a visible kink.
+        if (snapEnabled && isAxisAlignedChain(vertices)) {
+          const phase = snapPhaseFor(deviceWidthFor(strokeWidth as number));
+          vertices = vertices.map(([vx, vy]: [number, number]) => [
+            snapX(vx, phase),
+            snapY(vy, phase),
+          ]);
+        }
         let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
         vertices.forEach(([vx, vy]: [number, number]) => {
           if (vx < pMinX) pMinX = vx;
@@ -787,25 +828,6 @@ export const renderEntities = ({
       }
     });
   });
-
-  // One device pixel. This is the floor for every stroke, and it is the whole point of
-  // rendering vectors: 1.5 CSS px cannot land on the pixel grid, so it straddles two device
-  // pixels and antialiases into a pair of greys — the same soft edge the raster path produces.
-  // `1 / dpr` CSS px is exactly 1 device pixel, which is what a CAD viewer draws a hairline as
-  // at every zoom level.
-  const hairlinePx = isExport ? 1.0 : 1 / dpr;
-
-  // `$LWDISPLAY` — does this drawing want its lineweights drawn at all?
-  //
-  // An entity can record 1.00mm and still be meant to display as a hairline: the weight is a
-  // plotting instruction, and this header is the switch deciding whether the viewer honours it
-  // on screen. It is **0 on both M745221N01 files**, which is exactly why iCAD SX shows uniform
-  // thin linework on a sheet carrying 1.00mm on 136 entities and 0.50mm on 331.
-  //
-  // Defaults to OFF when absent, which covers both the DXF default and any drawing ingested
-  // before this was extracted. That is also the conservative direction: too-thin linework looks
-  // like the old behaviour, too-thick looks broken.
-  const showLineweights = drawing?.metadata?.lineweight_display === true;
 
   Object.values(pathBatches).forEach(batch => {
     ctx.strokeStyle = batch.stroke;
@@ -1258,6 +1280,111 @@ export interface RenderZoneEditorParams {
    */
   pinnedKeys?: readonly string[];
 }
+
+/** One paper-space viewport, as persisted in `drawing.metadata.viewport_transform`. */
+interface ViewportPayload {
+  index: number;
+  handle: string;
+  paper_center: [number, number];
+  paper_size: [number, number];
+  /** MODEL point that lands at `paper_center`. `view_center` is the pre-2026-08-11 key. */
+  view_anchor?: [number, number];
+  view_center?: [number, number];
+  scale: number;
+}
+
+/**
+ * Where each view's own ORIGIN sits on the sheet, in paper coordinates.
+ *
+ * iCAD SX draws one ORIGIN marker per view — on `M745221N01_FSRS2` that is three, one each
+ * for 正面図, sectA and isome1. Each is the view's **anchor** (the DXF `view_target_point`),
+ * which by construction projects to its viewport's paper centre.
+ *
+ * NOT the global model origin. That is `(0,0)` projected through a viewport, and on this
+ * sheet it lands outside two of the three viewport rectangles entirely — visible only in the
+ * front view. Confusing the two is the trap the backend's `view_anchor` rename documents.
+ *
+ * Mirrors `Viewport.origin_paper_point` in `viewport_transform.py`; keep the two in step.
+ */
+export const viewOriginsFromTransform = (transform: any): { x: number; y: number; handle: string; scale: number }[] => {
+  const viewports: ViewportPayload[] = transform?.viewports;
+  if (!Array.isArray(viewports)) return [];
+  return viewports.flatMap((vp) => {
+    const pc = vp?.paper_center;
+    if (!Array.isArray(pc) || pc.length < 2) return [];
+    const [x, y] = pc;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+    return [{ x, y, handle: String(vp.handle ?? ''), scale: Number(vp.scale) || 1 }];
+  });
+};
+
+/**
+ * Draws the per-view ORIGIN markers: a right-pointing X arm and an up-pointing Y arm.
+ *
+ * Screen-constant, like lineweight and for the same reason — this is an annotation about the
+ * drawing, not a feature of it, so it must not grow when you zoom in. Skipped on export: it
+ * is a reference overlay, not part of the sheet.
+ */
+export const renderViewOrigins = ({
+  frame,
+  drawing,
+}: {
+  frame: RenderFrame;
+  drawing?: any;
+}): void => {
+  const { ctx, isExport, scale, resolutionMultiplier } = frame;
+  if (isExport) return;
+
+  const origins = viewOriginsFromTransform(drawing?.metadata?.viewport_transform);
+  if (!origins.length) return;
+
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  const ARM_PX = 26;
+  const HEAD_PX = 7;
+  const arm = (ARM_PX / scale) * resolutionMultiplier;
+  const head = (HEAD_PX / scale) * resolutionMultiplier;
+
+  ctx.save();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.fillStyle = '#22d3ee';
+  ctx.lineWidth = (Math.max(1 / dpr, 1.25 / dpr) / scale) * resolutionMultiplier;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  ctx.setLineDash([]);
+
+  origins.forEach(({ x, y }) => {
+    // Paper Y is CAD-up; the canvas transform already carries the flip, so the "up" arm is
+    // drawn toward +y here and lands upward on screen.
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + arm, y);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + arm);
+    ctx.stroke();
+
+    // Solid arrowheads, matching how iCAD draws them.
+    ctx.beginPath();
+    ctx.moveTo(x + arm, y);
+    ctx.lineTo(x + arm - head, y + head * 0.42);
+    ctx.lineTo(x + arm - head, y - head * 0.42);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x, y + arm);
+    ctx.lineTo(x + head * 0.42, y + arm - head);
+    ctx.lineTo(x - head * 0.42, y + arm - head);
+    ctx.closePath();
+    ctx.fill();
+
+    // A small open square at the corner reads as "this is a datum", and distinguishes the
+    // marker from a leader or a dimension witness line at a glance.
+    const box = head * 0.85;
+    ctx.strokeRect(x, y, box, box);
+  });
+
+  ctx.restore();
+};
 
 export const renderZoneEditor = ({
   frame,

@@ -5,6 +5,7 @@ tags: [agent-guide, codebase-grounding, architecture, system-specs, gap-analysis
 status: active
 date: 2026-07-29
 verified-against: 4-drawing corpus (M7452A0N01 + M7452A1N01 pairs), cache v17
+partially-reverified: 2026-08-11 — section 4 (canvas rendering) only; the rest is still at cache v17 and predates ADR-006 through ADR-011
 ---
 
 # 🧭 AI Agent Navigation & System Gap Analysis
@@ -167,6 +168,10 @@ graph TD
 ### 4. Desktop Client & Canvas Rendering
 - **Imperative HTML5 Canvas**: [`apps/desktop/src/components/review/DrawingCanvas.tsx`](file:///d:/RAYSAN/ai-2d-checker/apps/desktop/src/components/review/DrawingCanvas.tsx) & [`CanvasRenderer.tsx`](file:///d:/RAYSAN/ai-2d-checker/apps/desktop/src/components/review/CanvasRenderer.tsx)
   - Renders CAD vector entities, text annotations, and zone bounding box overlays.
+  - ⚠ **This line was false when written (2026-07-29) and is true only from 2026-08-11.** The
+    canvas defaulted to `renderMode: 'raster'` and displayed a server PNG; the HUD read
+    `VIRTUALIZED: 0/518`. [[ADR-011 Vector as the Only Render Path]] deleted `renderMode` and the
+    raster display path. Healthy HUD reading on M745221N01 is now **497/518**.
 - **Coordinate Transformations**: [`apps/desktop/src/utils/coordinateTransform.ts`](file:///d:/RAYSAN/ai-2d-checker/apps/desktop/src/utils/coordinateTransform.ts)
   - `worldToScreen()` handles CAD Y-axis coordinate inversion.
 - **Physical Comparison Hook**: [`apps/desktop/src/hooks/usePhysicalComparison.ts`](file:///d:/RAYSAN/ai-2d-checker/apps/desktop/src/hooks/usePhysicalComparison.ts)

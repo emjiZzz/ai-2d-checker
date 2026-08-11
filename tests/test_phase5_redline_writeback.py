@@ -239,7 +239,7 @@ def test_unproject_reports_sheet_native_points_honestly():
         index=0, handle="VP0",
         paper_center_x=200.0, paper_center_y=150.0,
         paper_width=300.0, paper_height=200.0,
-        view_center_x=50.0, view_center_y=25.0,
+        view_anchor_x=50.0, view_anchor_y=25.0,
         view_height=100.0, scale=2.0,
     )
     transform = ViewportTransform("Layout1", [vp])
