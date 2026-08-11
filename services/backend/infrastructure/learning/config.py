@@ -23,6 +23,27 @@ def _float(name: str, default: float) -> float:
 MIN_TRAIN = _int("LEARNING_MIN_TRAIN", 40)
 CATEGORY_MIN_TRAIN = _int("LEARNING_CATEGORY_MIN_TRAIN", 40)
 
+# Minimum share of the *minority* verdict class before the head is allowed to activate.
+# MIN_TRAIN alone is not a sufficient gate, and the corpus proved it: on 2026-08-11 it stood at
+# 38/40 verdict labels split 28 class-0 / 10 class-1 — 74% negative — two `dismissed` clicks from
+# switching itself on. `dismissed` is both the easiest correction to make and the most used, so
+# the cheap path to 40 is also the most skewed one.
+#
+# Why skew is the danger and not merely a quality issue: a head trained on a 74%-negative prior
+# centres its predictions near that prior, and `inference._decide` flips a deterministic
+# CHANGED/ADDED/REMOVED to MATCHED whenever `p_true < LOW_THRESH`. A base rate that sits at or
+# just above LOW_THRESH means ordinary findings cross the suppression gate on the prior alone —
+# i.e. the model starts silently deleting real findings. That is the false-negative direction, in
+# a system whose headline gap is that false negatives have never been measured.
+#
+# The default is tied to LOW_THRESH with margin (0.20 * 1.5): the minority class must be common
+# enough that a calibrated prior sits clearly *above* the suppression gate rather than on it.
+# Raise LOW_THRESH and this should move with it.
+#
+# Earn the balance with class-1 corrections (`confirmed_valid`, `verdict_changed`) rather than
+# farming `dismissed`. See docs/vault/00 - AI Maturity Status.md, the "Learned model" row.
+MIN_MINORITY_SHARE = _float("LEARNING_MIN_MINORITY_SHARE", 0.30)
+
 # Verdict gating. The verdict head predicts P(finding is a TRUE discrepancy).
 #   P < LOW_THRESH   -> a deterministic CHANGED/ADDED/REMOVED is flipped to MATCHED (suppress noise)
 #   P > HIGH_THRESH  -> a deterministic MATCHED is promoted to CHANGED (rarer, riskier; high bar)

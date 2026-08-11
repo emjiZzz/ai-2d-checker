@@ -133,10 +133,40 @@ def build_bundle(docs: list) -> dict:
 
     metrics: dict = {}
     verdict_clf = None
+    balance = {str(k): verdict_labels.count(k) for k in sorted(set(verdict_labels))}
+    minority_share = (min(balance.values()) / len(verdict_labels)) if verdict_labels else 0.0
+
     if len(verdict_labels) >= config.MIN_TRAIN and len(set(verdict_labels)) >= 2:
-        verdict_clf = FindingClassifier().fit(verdict_rows, verdict_labels)
-        metrics["verdict_cv_accuracy"] = _cv_accuracy(verdict_rows, verdict_labels)
-        metrics["verdict_class_balance"] = {str(k): verdict_labels.count(k) for k in sorted(set(verdict_labels))}
+        if minority_share >= config.MIN_MINORITY_SHARE:
+            verdict_clf = FindingClassifier().fit(verdict_rows, verdict_labels)
+            metrics["verdict_cv_accuracy"] = _cv_accuracy(verdict_rows, verdict_labels)
+        else:
+            # Count reached, balance did not. Abstain LOUDLY rather than activate a head whose
+            # prior sits on the LOW_THRESH suppression gate — see config.MIN_MINORITY_SHARE.
+            # This is recorded in the bundle (and so in the committed .meta.json and the model
+            # card) because an abstention nobody can see is the failure mode this codebase has
+            # already paid for once.
+            metrics["verdict_abstained"] = {
+                "reason": "class_imbalance",
+                "minority_share": round(minority_share, 4),
+                "required": config.MIN_MINORITY_SHARE,
+                "detail": (
+                    f"{len(verdict_labels)} labels meet MIN_TRAIN={config.MIN_TRAIN}, but the "
+                    f"minority class is {round(minority_share * 100, 1)}% of the corpus against a "
+                    f"{round(config.MIN_MINORITY_SHARE * 100, 1)}% floor. Add class-1 corrections "
+                    f"(confirmed_valid, verdict_changed); more 'dismissed' makes this worse."
+                ),
+            }
+            logger.warning(
+                "Verdict head NOT activated: %d labels clear MIN_TRAIN=%d but minority class share "
+                "%.3f is below MIN_MINORITY_SHARE=%.2f (balance=%s). Activating here would let the "
+                "prior alone cross LOW_THRESH=%.2f and suppress real findings.",
+                len(verdict_labels), config.MIN_TRAIN, minority_share,
+                config.MIN_MINORITY_SHARE, balance, config.LOW_THRESH,
+            )
+
+    metrics["verdict_class_balance"] = balance
+    metrics["verdict_minority_share"] = round(minority_share, 4)
 
     category_clf = None
     if len(cat_labels) >= config.CATEGORY_MIN_TRAIN and len(set(cat_labels)) >= 2:
@@ -173,6 +203,27 @@ def _write_model_card(bundle: dict) -> None:
         verdict_ready = bundle.get("verdict_clf") is not None and bundle.get("n_verdict", 0) >= config.MIN_TRAIN
         metrics = bundle.get("metrics", {})
 
+        # Two different reasons produce an inactive head and they need different words. "warming
+        # up (38/40)" reads as a counting problem the next click solves; a corpus that has met the
+        # count but failed the balance floor is a different situation and must not be reported as
+        # if one more `dismissed` would fix it — that click makes it worse.
+        abstained = metrics.get("verdict_abstained") or {}
+        n_verdict = bundle.get("n_verdict", 0)
+        if verdict_ready:
+            verdict_status = "✅ active"
+            changelog_status = "ACTIVE"
+        elif abstained:
+            share = abstained.get("minority_share", 0.0)
+            verdict_status = (
+                f"⛔ held — count met ({n_verdict}/{config.MIN_TRAIN}) but the minority class is "
+                f"{round(share * 100, 1)}% against a {round(config.MIN_MINORITY_SHARE * 100, 1)}% "
+                f"floor. Needs `confirmed_valid` / `verdict_changed`, not more `dismissed`."
+            )
+            changelog_status = f"HELD (class imbalance, minority {round(share * 100, 1)}%)"
+        else:
+            verdict_status = f"⏳ warming up ({n_verdict}/{config.MIN_TRAIN})"
+            changelog_status = "warming up"
+
         # Preserve any existing changelog lines; prepend a new dated one.
         prior_changelog: list[str] = []
         if card.exists():
@@ -186,7 +237,7 @@ def _write_model_card(bundle: dict) -> None:
         new_line = (
             f"- {trained_at} — trained on {bundle.get('n_total', 0)} corrections "
             f"(verdict labels: {bundle.get('n_verdict', 0)}, category labels: {bundle.get('n_category', 0)}); "
-            f"verdict model {'ACTIVE' if verdict_ready else 'warming up'}."
+            f"verdict model {changelog_status}."
         )
         changelog = "\n".join([new_line, *prior_changelog[:40]])
 
@@ -206,9 +257,9 @@ tags: [learned-model, hitl]
 
 - **Last trained**: {trained_at or "never"}
 - **Total corrections**: {bundle.get('n_total', 0)}
-- **Verdict labels**: {bundle.get('n_verdict', 0)}  (threshold to activate model: {config.MIN_TRAIN})
+- **Verdict labels**: {n_verdict}  (thresholds to activate: {config.MIN_TRAIN} labels **and** ≥{round(config.MIN_MINORITY_SHARE * 100, 1)}% minority class)
 - **Category labels**: {bundle.get('n_category', 0)}
-- **Verdict model**: {"✅ active" if verdict_ready else f"⏳ warming up ({bundle.get('n_verdict', 0)}/{config.MIN_TRAIN})"}
+- **Verdict model**: {verdict_status}
 - **Exact-match overrides**: {len(bundle.get('exact_matched', set()))} matched, {len(bundle.get('exact_changed', set()))} changed, {len(bundle.get('exact_category', {}))} reclassified
 
 ## Metrics

@@ -72,6 +72,55 @@ def test_build_bundle_abstains_below_min_train(monkeypatch):
     assert bundle["n_total"] == 2
 
 
+def _skewed_docs(n_zero, n_one):
+    return (
+        [_fake_doc("dismissed", f"LEGEND {i}") for i in range(n_zero)]
+        + [_fake_doc("confirmed_change", str(100 + i)) for i in range(n_one)]
+    )
+
+
+def test_build_bundle_holds_verdict_head_on_skewed_corpus(monkeypatch):
+    """Reaching MIN_TRAIN the cheap way must NOT switch the head on.
+
+    This pins the live 2026-08-11 corpus shape: 28 class-0 / 10 class-1, two `dismissed` clicks
+    short of MIN_TRAIN. Those two clicks land at 30/10 — count met, 25% minority — and a head
+    trained there centres its prior below LOW_THRESH, where `inference._decide` flips
+    CHANGED/ADDED/REMOVED to MATCHED. That is silent suppression of real findings.
+    """
+    monkeypatch.setattr(config, "MIN_TRAIN", 40)
+    monkeypatch.setattr(config, "MIN_MINORITY_SHARE", 0.30)
+
+    bundle = trainer.build_bundle(_skewed_docs(30, 10))
+
+    assert bundle["n_verdict"] == 40                      # the count gate is satisfied
+    assert bundle["verdict_clf"] is None                  # and the head still must not activate
+    abstained = bundle["metrics"]["verdict_abstained"]
+    assert abstained["reason"] == "class_imbalance"
+    assert abstained["minority_share"] == 0.25
+    # The abstention has to be legible, not just correct — an invisible one is the failure mode
+    # this codebase has already paid for once.
+    assert "confirmed_valid" in abstained["detail"]
+
+
+def test_build_bundle_activates_verdict_head_when_balanced(monkeypatch):
+    """The guard must not be a permanent off switch — an honestly balanced corpus still trains."""
+    monkeypatch.setattr(config, "MIN_TRAIN", 40)
+    monkeypatch.setattr(config, "MIN_MINORITY_SHARE", 0.30)
+
+    bundle = trainer.build_bundle(_skewed_docs(28, 12))    # 30% minority, exactly at the floor
+
+    assert bundle["n_verdict"] == 40
+    assert bundle["verdict_clf"] is not None
+    assert "verdict_abstained" not in bundle["metrics"]
+    assert bundle["metrics"]["verdict_minority_share"] == 0.30
+
+
+def test_minority_share_floor_sits_above_the_suppression_gate():
+    """The two constants are coupled: the balance floor exists to keep a calibrated prior clear of
+    LOW_THRESH. If someone raises LOW_THRESH without moving the floor, the guard stops guarding."""
+    assert config.MIN_MINORITY_SHARE > config.LOW_THRESH
+
+
 def test_bundle_save_load_roundtrip(tmp_path, monkeypatch):
     # Stage 0h moved the artifact out of the vault, so redirecting `vault_path` no longer
     # contains a write — `learned_model_dir()` reads LEARNED_MODEL_DIR and otherwise lands
