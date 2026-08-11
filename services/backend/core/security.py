@@ -9,6 +9,30 @@ from ..logger import logger
 # Secure Config & API Token Management
 TOKEN_FILE_NAME = ".api-token"
 
+def _restrict_token_file_permissions(token_file: Path) -> None:
+    """Narrow the token file to the owner, and be honest about where that holds.
+
+    This replaces a comment that read *"Restrict permissions on Windows/Unix where possible"* above
+    a plain `write_text` — i.e. a claimed control with no implementation, which is exactly the kind
+    of line a security audit reads as a verified fact.
+
+    **POSIX:** `0o600` is real — owner read/write, nothing for group or other.
+
+    **Windows, which is the primary platform here:** `chmod` maps only onto the read-only flag and
+    does **not** restrict other users; the file inherits its parent ACL. So on Windows this call is
+    close to a no-op and the file's protection is the user profile directory, not this line. Doing
+    it properly needs an ACL rewrite (`icacls` or pywin32) and is not attempted here rather than
+    being faked. The token is AES-GCM encrypted at rest, but see `core/encryption.py` — the key is
+    derived from machine and user name, so treat this file as obfuscated, not sealed.
+    """
+    try:
+        token_file.chmod(0o600)
+    except OSError as err:
+        # Never fatal: a token that cannot be permission-narrowed is still a working token, and
+        # failing startup over it would trade an availability outage for a marginal hardening.
+        logger.warning(f"Could not restrict permissions on the API token file: {err}")
+
+
 def initialize_local_api_token() -> str:
     """
     Returns the local security authentication token.
@@ -39,8 +63,8 @@ def initialize_local_api_token() -> str:
             try:
                 from .encryption import encryptor
                 encrypted_content = encryptor.encrypt(token)
-                # Restrict permissions on Windows/Unix where possible
                 token_file.write_text(encrypted_content, encoding="utf-8")
+                _restrict_token_file_permissions(token_file)
                 logger.info(f"Generated secure encrypted dynamic API Token saved to: {token_file}")
             except Exception as e:
                 logger.error(f"Failed to encrypt and persist dynamically generated API Token: {str(e)}")
@@ -98,11 +122,45 @@ def validate_sandboxed_path(user_path: str | Path) -> Path:
     from ..infrastructure.storage.path_resolver import get_storage_root
 
     storage_root = get_storage_root()
-    target_path = Path(user_path).resolve()
+    raw = str(user_path)
 
-    # 1. Traversal check: check target resolved absolute path starts strictly with storage_root
+    # 1. Reject a NUL byte before pathlib sees it. `Path.resolve()` raises a bare ValueError on
+    #    embedded NULs, and that used to escape this function uncaught — surfacing as a 500 from
+    #    the error middleware rather than the 400 this guard's contract promises. A rejected path
+    #    must look rejected, not look like a server fault.
+    if "\x00" in raw:
+        logger.error("Path Traversal Attempt Blocked: path contains a NUL byte.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Access Denied: Path contains illegal characters."
+        )
+
+    # 2. Block traversal *components*, before resolution.
+    #    This check used to run after `.resolve()` had already made traversal impossible, and it
+    #    tested `".." in str(path)` — a substring. So it caught nothing the resolution had not
+    #    already caught, while rejecting legitimate filenames that merely contain two dots, e.g.
+    #    `rev..2.dxf`. Checking parts instead means it rejects real traversal early, with a
+    #    precise message, and stops rejecting valid names.
+    if ".." in Path(raw).parts:
+        logger.error(f"Path Traversal Attempt Blocked: Path contains invalid traversal operators: {user_path}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Access Denied: Path contains illegal traversal operators."
+        )
+
     try:
-        # Check if target_path is inside storage_root
+        target_path = Path(raw).resolve()
+    except (ValueError, OSError) as err:
+        logger.error(f"Path Traversal Attempt Blocked: path could not be resolved: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Access Denied: Path could not be resolved."
+        ) from err
+
+    # 3. Containment check: the canonical path must sit inside the storage root. This is the
+    #    load-bearing layer — it defeats symlink escapes and absolute paths, since `.resolve()`
+    #    has already followed every link and normalised every segment.
+    try:
         target_path.relative_to(storage_root)
     except ValueError:
         logger.error(
@@ -114,24 +172,51 @@ def validate_sandboxed_path(user_path: str | Path) -> Path:
             detail="Access Denied: Path escapes the sandboxed workspace directory."
         )
 
-    # 2. Block direct traversal strings in path
-    if ".." in str(user_path):
-        logger.error(f"Path Traversal Attempt Blocked: Path contains invalid traversal operators: {user_path}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Access Denied: Path contains illegal traversal operators."
-        )
-
     return target_path
 
 
-# Secret Masking Utilities
-def mask_secret(value: str | None) -> str:
+def sandboxed_path(*parts: str | Path) -> Path:
+    """Join `parts` under the storage root and validate the result, in one call.
+
+    Prefer this over ``get_storage_root() / a / b`` at every file-serving site. Two reasons, both
+    of which were live defects:
+
+    **1. `/` silently discards the root when the right operand is absolute.**
+    ``get_storage_root() / drawing.file_path`` evaluates to ``drawing.file_path`` alone if that
+    DB value is ever absolute — the sandbox does not fail, it ceases to exist. Any part that is
+    absolute is rejected here rather than honoured.
+
+    **2. Validate-and-discard.** Most existing callers ran ``validate_sandboxed_path(p)`` for its
+    exception and then used ``p`` — so the canonical, checked path was computed and thrown away.
+    A helper that returns the only path you have no reason to discard removes the opportunity.
+
+    Raises ``HTTPException(400)`` for absolute parts, traversal components, NUL bytes, and any
+    join that lands outside the storage root.
     """
-    Mask sensitive secrets (e.g. Gemini key or local token) before writing to diagnostics logs.
-    """
-    if not value:
-        return "None"
-    if len(value) <= 8:
-        return "********"
-    return f"{value[:4]}...{value[-4:]}"
+    from ..infrastructure.storage.path_resolver import get_storage_root
+
+    candidate = get_storage_root()
+    for part in parts:
+        if Path(part).is_absolute() or (isinstance(part, str) and part.startswith(("/", "\\"))):
+            logger.error(
+                f"Path Traversal Attempt Blocked: absolute segment '{part}' "
+                f"would discard the storage root."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access Denied: Path segment must be relative to the storage root."
+            )
+        candidate = candidate / part
+
+    return validate_sandboxed_path(candidate)
+
+
+# `mask_secret()` was removed 2026-08-11. It masked a secret for logging and had **zero call
+# sites** from the day it was written — a repo-wide grep returned only its own definition. It was
+# deleted rather than kept because it was not neutral dead code: the 2026-08-11 audit package
+# cited it as a verified control ("automatically obfuscates API keys and bearer tokens prior to
+# writing diagnostic logs"), which was true of the function and false of the system.
+#
+# There is nothing to wire it into. No log site in this backend emits a secret *value* — the ones
+# that mention keys or tokens log the file path, or the fact that a key is absent. If that ever
+# changes, mask at the call site; a four-line helper is cheaper to rewrite than to keep honest.

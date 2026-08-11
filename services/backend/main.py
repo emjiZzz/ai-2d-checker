@@ -50,21 +50,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Middleware: Host verification to strictly enforce localhost-only binding
+# Middleware: Host verification to strictly enforce localhost-only binding.
+#
+# The hostname is matched EXACTLY. A previous version accepted any Host that merely *started
+# with* an allowed value, which let `localhost.attacker.com` through — precisely the DNS-rebinding
+# case this check exists to stop. Do not reintroduce a prefix/substring match here.
+ALLOWED_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _hostname_of(host_header: str) -> str:
+    """Reduce a Host header to its bare hostname, lowercased.
+
+    The port is deliberately not validated: it is the port we are already listening on, so it
+    carries no authorization meaning, and pinning it would break any run under a non-default
+    SIDECAR_PORT. The hostname is the part an attacker controls, so that is the part checked.
+    """
+    host = host_header.strip().lower()
+    if host.startswith("["):                       # bracketed IPv6, e.g. [::1]:8080
+        return host[1:].split("]", 1)[0]
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
 @app.middleware("http")
 async def verify_host(request: Request, call_next):
     host_header = request.headers.get("host", "")
-    
-    # Strictly permit loopback bindings only to block public network proxies
-    allowed_hosts = ["localhost", "127.0.0.1", f"localhost:{settings.PORT}", f"127.0.0.1:{settings.PORT}"]
-    
-    if host_header not in allowed_hosts and not any(host_header.startswith(h) for h in allowed_hosts):
+
+    if _hostname_of(host_header) not in ALLOWED_HOST_NAMES:
         logger.warning(f"Rejected request with unauthorized Host header: {host_header}")
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content={"detail": "Access Forbidden: Standalone backend only accepts localhost requests."}
         )
-        
+
     return await call_next(request)
 
 @app.on_event("startup")

@@ -37,6 +37,12 @@ services/storage/uploads/
 # came to be committed. That token is generated at startup by
 # core/security.py::initialize_local_api_token and regenerates if absent.
 #
+# Untracked 2026-08-11. The rule below arrived after the file was already in the index, and
+# gitignore does not apply to tracked files, so it sat there regardless. Worth knowing it was
+# never the live token: path_resolver.py derives STORAGE_ROOT from its own file location, so the
+# running app always reads <repo root>/storage/secure/.api-token and could not have read this
+# copy under any working directory. A stale artifact from before the two storage roots split.
+#
 # Written as `/*` rather than as a bare directory on purpose: git never descends into an
 # excluded *directory*, so `services/backend/storage/` would make every `!` rule below it
 # unreachable no matter what order they appear in. Excluding the contents instead keeps the

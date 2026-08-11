@@ -28,7 +28,7 @@ from ...domain.models.standard_chunk import StandardChunk
 from ...infrastructure.audit.audit_pipeline import audit_queue
 from ...infrastructure.cad.redline_writer import RedlineWriter, build_findings
 from ...infrastructure.cad.viewport_transform import ViewportTransform
-from ...infrastructure.storage.path_resolver import get_storage_root
+from ...core.security import sandboxed_path
 from ...infrastructure.audit.report_generator import ReportGenerator
 from ...infrastructure.audit.summary import Finding, summarize
 from ...infrastructure.retrieval.encoder import EncoderError
@@ -521,7 +521,9 @@ async def export_redline_dxf(session_id: str):
             ),
         )
 
-    source_path = get_storage_root() / drawing.file_path
+    # DB-sourced path: guard it rather than join it. See `sandboxed_path` on why `/` alone is
+    # not enough when the right operand can be absolute.
+    source_path = sandboxed_path(drawing.file_path)
     if not source_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -541,7 +543,7 @@ async def export_redline_dxf(session_id: str):
         )
 
     transform = ViewportTransform.from_dict((drawing.metadata or {}).get("viewport_transform"))
-    output_path = get_storage_root() / "redlines" / f"redline_{session_id}.dxf"
+    output_path = sandboxed_path("redlines", f"redline_{session_id}.dxf")
 
     try:
         writer = RedlineWriter(source_path, transform)
@@ -572,7 +574,7 @@ async def export_pdf_report(session_id: str):
     and returns a downloadable PDF artifact.
     """
     try:
-        target_path = get_storage_root() / "reports" / f"report_{session_id}.pdf"
+        target_path = sandboxed_path("reports", f"report_{session_id}.pdf")
         await ReportGenerator.compile_pdf_report(session_id, target_path)
         
         if not target_path.exists():
@@ -583,6 +585,11 @@ async def export_pdf_report(session_id: str):
             media_type="application/pdf",
             filename=f"AI-2D-Checker_Report_{session_id}.pdf"
         )
+    except HTTPException:
+        # Let a deliberate status through unchanged. Without this the generic handler below
+        # rewrites the sandbox guard's 400 into a 500 — reporting a traversal attempt as a server
+        # fault — and also discards this endpoint's own "failed to compile on disk" message.
+        raise
     except Exception as err:
         corr_id = correlation_id_var.get()
         logger.exception(f"[{corr_id}] Failed to compile report for session {session_id}: {str(err)}")
@@ -599,7 +606,7 @@ async def export_xlsx_report(session_id: str):
     Exports structured audit sheets with layered violation grids.
     """
     try:
-        target_path = get_storage_root() / "reports" / f"report_{session_id}.xlsx"
+        target_path = sandboxed_path("reports", f"report_{session_id}.xlsx")
         await ReportGenerator.compile_xlsx_report(session_id, target_path)
         
         if not target_path.exists():
@@ -610,6 +617,8 @@ async def export_xlsx_report(session_id: str):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             filename=f"AI-2D-Checker_Report_{session_id}.xlsx"
         )
+    except HTTPException:
+        raise  # see the PDF endpoint above — preserve deliberate statuses, including the 400 guard
     except Exception as err:
         corr_id = correlation_id_var.get()
         logger.exception(f"[{corr_id}] Failed to compile Excel report for session {session_id}: {str(err)}")

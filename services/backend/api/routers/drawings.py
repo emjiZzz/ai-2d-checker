@@ -11,7 +11,7 @@ from ...domain.models.extraction_job import ExtractionJob
 from ...infrastructure.cad.processing_queue import processing_queue
 from ...infrastructure.cad.diagnostics import CADDiagnostics
 from ...infrastructure.rendering.geometry_serializer import GeometrySerializer
-from ...infrastructure.storage.path_resolver import get_storage_root
+from ...core.security import sandboxed_path
 from ...logger import logger, correlation_id_var
 from ...config import settings
 from ..dependencies import get_auth_token, get_or_404
@@ -100,12 +100,24 @@ async def list_drawings():
     Filters out and purges orphaned drawing records whose backing files no longer exist on disk.
     """
     docs = await DrawingDocument.find_all(sort=[("created_at", -1)]).to_list()
-    storage_root = get_storage_root()
     valid_docs = []
     
     for d in docs:
         if d.file_path:
-            full_path = storage_root / d.file_path
+            # Guarded like the serving paths, but it must not raise: this loop decides whether to
+            # *delete* records, and one malformed row should not fail the whole listing. A path
+            # that cannot be validated is kept rather than pruned — declining to delete on a
+            # check we could not complete is the conservative direction.
+            try:
+                full_path = sandboxed_path(d.file_path)
+            except HTTPException:
+                logger.warning(
+                    f"DrawingDocument {d.id} ({d.file_name}) has a file_path outside the "
+                    f"storage root: {d.file_path!r}. Keeping the record; not pruning on an "
+                    f"unverifiable path."
+                )
+                valid_docs.append(d)
+                continue
             if not full_path.exists():
                 # Backing file on disk is gone - purge orphaned DB record
                 logger.info(f"Pruning orphaned DrawingDocument {d.id} ({d.file_name}) - file not found at {full_path}")
@@ -356,7 +368,10 @@ async def get_drawing_zones(id: str):
 )
 async def get_drawing_gltf(id: str):
     drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
-    gltf_path = get_storage_root() / "temp" / f"model_{id}.gltf"
+    # `id` reaches the filesystem as a filename fragment, so it goes through the guard rather
+    # than straight into a join — a path separator or traversal component in a route parameter
+    # is the classic way out of a directory that looks hardcoded.
+    gltf_path = sandboxed_path("temp", f"model_{id}.gltf")
     if not gltf_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -453,7 +468,9 @@ async def verify_drawing_signature(id: str):
         )
 
     try:
-        file_path = get_storage_root() / drawing.file_path
+        # `drawing.file_path` is a DB value, and `/` discards its left operand when the right side
+        # is absolute — so a plain join here would read whatever absolute path the record names.
+        file_path = sandboxed_path(drawing.file_path)
         if file_path.exists():
             content = file_path.read_bytes()
             if b"/Sig" in content and b"/ByteRange" in content:
@@ -464,6 +481,11 @@ async def verify_drawing_signature(id: str):
                         message="This PDF contains a digital signature field. This is a structural presence check only — it does not verify the certificate, trust chain, or signer identity."
                     )
                 )
+    except HTTPException:
+        # A rejected path is not "no signature found". Without this the guard's 400 would be
+        # swallowed into a success response saying the PDF is unsigned, which is a wrong answer
+        # to a question the caller asked, not a degraded one.
+        raise
     except Exception as e:
         logger.warning(f"Signature field check failed: {e}")
 
