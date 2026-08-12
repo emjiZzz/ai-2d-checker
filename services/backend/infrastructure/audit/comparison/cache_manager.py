@@ -289,6 +289,14 @@ class ComparisonCacheManager:
     # each finding's category all differ from their v44 entries. Measured over the eval corpus:
     # rows belonging to no zone 9 -> 1. See
     # docs/vault/06 - .../Gotcha - A Zone Template Gap Hid Half of a Real Change.
+    # v45 also: the `仕上げ` anchor is removed from `notes` zone detection. It matched `仕上げ記号`
+    # in the bottom-left tolerance block, dragging the detected notes box across the sheet so it
+    # covered neither that label nor the real notes. This invalidates cached audits only for
+    # sheets with NO pinned `notes` zone -- where a template pins it, detection is overridden and
+    # the change is inert (verified: eval byte-identical with the zone pinned). Folded into this
+    # bump rather than taking v46, because v45 has not shipped and a second invalidation would
+    # cost a re-run for no added safety. See zone_detector.ZONE_ANCHORS and
+    # tests/test_notes_zone_anchors.py.
     COMPARISON_CACHE_VERSION = "v45"
 
     @staticmethod

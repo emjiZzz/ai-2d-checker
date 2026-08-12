@@ -12,9 +12,11 @@
 > — and **nothing now stands between this project and its first human labels.** The corpus is
 > still **0 of 8**, which is the only thing keeping the system at rung 0.
 >
-> ⛔ **`notes` / `iso` placement is the agreed next item and must wait.** Both zones move between
-> drawings and the template pins one position; measured, neither pinning nor detection wins
-> consistently. Landing it mid-annotation changes what the engine scopes and means re-labelling.
+> ✅ **`notes` / `iso` placement was raised, measured and closed the same day — do not reopen it
+> on the original reasoning.** The defect was a false detection anchor (`仕上げ` matching
+> `仕上げ記号` in the tolerance block), not the pinning. *Unpinning* `notes` was measured and
+> **rejected**: detection scores F1 0.87 against the pinned box's 0.92. See the ledger's ⛔
+> Negative results for that and for why `ロール` is not the anchor to add.
 >
 > Delete this block when the priority changes, and move the new one here. If it is stale, the
 > ledger wins.
@@ -155,7 +157,7 @@ contract; the suites grow.** (Until 2026-08-11 `pyproject.toml`'s `addopts` carr
 documented `pytest tests/ -q` resolved to `-qq` and printed **no totals line at all** — the one
 command the docs recommended was the one that could not report a result. `-q` has been removed
 from `addopts`; the command below now prints a count.)
-- `pytest` — **987 passed, 3 skipped, 0 failed.** The 3 skips are deliberate rung gates in
+- `pytest` — **994 passed, 3 skipped, 0 failed.** The 3 skips are deliberate rung gates in
   `tests/test_maturity_ledger.py`, not failures.
 - `npx vitest run` — **333 passed across 30 files.**
 - `npx tsc --noEmit` — **0 errors** (now also gated in CI; it previously ran only over the shared
