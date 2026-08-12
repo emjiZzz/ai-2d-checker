@@ -62,6 +62,11 @@ from services.backend.infrastructure.eval.serialize import (  # noqa: E402
     read_text_stable,
     write_text_stable,
 )
+from services.backend.infrastructure.audit.bom.zone_geometry import (  # noqa: E402
+    ZONE_POLYGONS_KEY,
+    point_in_shape,
+    zone_polygons,
+)
 
 MONGO_URI_DEFAULT = "mongodb://127.0.0.1:27017"
 MONGO_DB_DEFAULT = "ai_2d_checker"
@@ -782,25 +787,45 @@ def anchor_of(entity: "EvalEntity") -> list[float]:
     return entity.geometry.get("insert") or entity.geometry.get("location") or []
 
 
+def _zone_contains(bbox: Any, polygon: Any, anchor: Sequence[float]) -> bool:
+    """Containment for one zone shape, tolerating an unordered bbox.
+
+    `point_in_shape` assumes `(xmin, ymin, xmax, ymax)`. The corner order here is not
+    guaranteed — the two sides of a pair resolve their fractions against different
+    `render_bounds` and a reference sheet may be stored in another coordinate space entirely
+    (see `Gotcha - Reference and Revision in Different Coordinate Spaces`) — so the box is
+    normalised per axis before the shared helper sees it.
+    """
+    if not bbox or len(bbox) != 4:
+        return False
+    x0, y0, x1, y1 = bbox
+    normalised = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+    return point_in_shape(anchor[0], anchor[1], normalised, polygon)
+
+
 def zones_containing(zone_boxes: dict, anchor: Sequence[float]) -> list[str]:
-    """Every template zone whose box contains `anchor`.
+    """Every template zone whose shape contains `anchor`.
 
     Returns a list, not a first match, because **hand-drawn zones overlap**: on the live corpus
     `tolerance` ends at x=151.9 and `title` begins at x=151.8. A single-match version would
     resolve that 0.1-unit sliver by dict order, which decides whether a row is excluded or
     reviewed on nothing at all.
 
-    Boxes are compared with min/max per axis rather than assuming a corner order, because the two
-    sides of a pair resolve their fractions against different `render_bounds` and a reference
-    sheet may be stored in another coordinate space entirely — see
-    `Gotcha - Reference and Revision in Different Coordinate Spaces`.
+    A **reshaped** zone is tested against its outline, not its bounding box. That distinction is
+    load-bearing: the engine gates content on the outline (`scope_entities_to_views`,
+    `views_exclusions`), so a worksheet reading only the bbox would tell the annotator a row sits
+    in a zone the runner actually excludes — the tool and the runner disagreeing about the same
+    L-shaped zone, which is precisely the divergence this worksheet exists to surface. The
+    outlines ride under the reserved `_zone_polygons` key, which is not itself a zone.
     """
     if len(anchor) < 2:
         return []
+    polygons = zone_polygons(zone_boxes)
     return [
         zone_key
-        for zone_key, (x0, y0, x1, y1) in zone_boxes.items()
-        if min(x0, x1) <= anchor[0] <= max(x0, x1) and min(y0, y1) <= anchor[1] <= max(y0, y1)
+        for zone_key, bbox in zone_boxes.items()
+        if zone_key != ZONE_POLYGONS_KEY
+        and _zone_contains(bbox, polygons.get(zone_key), anchor)
     ]
 
 
@@ -914,19 +939,22 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
     # differ. Nothing is removed from the worksheet on the strength of it — rows are only
     # grouped, and every group is printed.
     from services.backend.infrastructure.audit.bom.zone_template_resolver import (
-        ZONE_POLYGONS_KEY,
         overrides_from_template_zones,
     )
 
+    # The reserved `_zone_polygons` key is carried through rather than stripped. Dropping it
+    # flattened every reshaped zone to its bounding box here, so an L-shaped `notes` — the shape
+    # used to reach content in a column gap without swallowing the neighbouring zone — read as a
+    # full rectangle on the worksheet while the runner scored the L. `zones_containing` skips the
+    # key and consults it. See `Gotcha - A Zone Template Gap Hid Half of a Real Change`.
     zone_boxes = {}
     for side, drawing, side_meta in (
         ("REF", ref_drawing, pair.ref),
         ("REV", rev_drawing, pair.rev),
     ):
-        resolved = overrides_from_template_zones(
+        zone_boxes[side] = overrides_from_template_zones(
             side_meta.zone_template, (drawing.metadata or {}).get("render_bounds")
         )
-        zone_boxes[side] = {k: v for k, v in resolved.items() if k != ZONE_POLYGONS_KEY}
 
     def zone_of(side: str, entity: EvalEntity) -> str | None:
         return zone_containing(zone_boxes.get(side, {}), anchor_of(entity))

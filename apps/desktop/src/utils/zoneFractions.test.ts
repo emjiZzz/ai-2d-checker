@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   fractionsToScreenRect,
   fractionsToZoneBox,
+  mergeSidesForTemplate,
   normalizeFractions,
   zoneBoxToFractions,
   zonesToTemplatePayload,
@@ -178,6 +179,59 @@ describe("normalizeFractions", () => {
   it("leaves a valid box untouched", () => {
     const ok = { xMin: 0.1, xMax: 0.9, yMin: 0.2, yMax: 0.8 };
     expect(normalizeFractions(ok)).toEqual(ok);
+  });
+});
+
+describe("mergeSidesForTemplate — an edit on either pane must survive being saved", () => {
+  const REF_BOX = { xMin: 0.1, xMax: 0.4, yMin: 0.1, yMax: 0.2 };
+  const REV_BOX = { xMin: 0.1, xMax: 0.4, yMin: 0.1, yMax: 0.9 };
+
+  // Both panes always carry EVERY zone: `getRegionsFor` returns a drawing's complete set,
+  // seeded from detection and stamped from the template on each open. That is precisely why a
+  // bare `{...ref, ...rev}` was not a merge — there was never a missing key for the reference
+  // to supply, so the revision won unconditionally.
+  const ref = { bom: REF_BOX, notes: REF_BOX, views: REF_BOX };
+  const rev = { bom: REV_BOX, notes: REV_BOX, views: REV_BOX };
+
+  it("takes the reference's box for a zone the user aligned on the reference", () => {
+    // The reported bug: adjust `bom` on the reference pane, hit save, and it pops back.
+    expect(mergeSidesForTemplate(ref, rev, ["bom"], []).bom).toEqual(REF_BOX);
+  });
+
+  it("leaves every zone the user did not touch on the revision's box", () => {
+    // The pre-existing tie-break, unchanged — otherwise every saved template shifts.
+    const merged = mergeSidesForTemplate(ref, rev, ["bom"], []);
+    expect(merged.notes).toEqual(REV_BOX);
+    expect(merged.views).toEqual(REV_BOX);
+  });
+
+  it("keeps the revision's box when the user aligned the same zone on BOTH panes", () => {
+    // A genuine conflict, and the documented rule decides it rather than argument order.
+    expect(mergeSidesForTemplate(ref, rev, ["bom"], ["bom"]).bom).toEqual(REV_BOX);
+  });
+
+  it("is the revision's set when nothing was aligned", () => {
+    expect(mergeSidesForTemplate(ref, rev)).toEqual(rev);
+  });
+
+  it("carries a reshaped outline through from whichever side wins", () => {
+    // The reference's L-shape must not be flattened to the revision's rectangle on the way out.
+    const reshaped = { ...REF_BOX, points: [{ x: 0.1, y: 0.1 }, { x: 0.4, y: 0.1 }, { x: 0.1, y: 0.2 }] };
+    const merged = mergeSidesForTemplate({ ...ref, notes: reshaped }, rev, ["notes"], []);
+    expect(merged.notes).toEqual(reshaped);
+  });
+
+  it("ignores an aligned key with no box rather than writing undefined", () => {
+    // `userAlignedZoneKeys` and `customRegions` are separate records and can disagree after an
+    // undo; a zone present in one and absent from the other must not blank the merged entry.
+    const merged = mergeSidesForTemplate({ bom: undefined }, rev, ["bom"], []);
+    expect(merged.bom).toEqual(REV_BOX);
+  });
+
+  it("survives one pane being absent", () => {
+    // Single-drawing workspaces pass `{}` for the missing side.
+    expect(mergeSidesForTemplate({}, rev, [], []).bom).toEqual(REV_BOX);
+    expect(mergeSidesForTemplate(ref, {}, ["bom"], []).bom).toEqual(REF_BOX);
   });
 });
 

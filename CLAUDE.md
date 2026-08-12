@@ -1,5 +1,24 @@
 # AI-2D-Checker — Agent Instructions
 
+> [!IMPORTANT] 🔴 Current priority, set 2026-08-12 — **label. Start with `M7452A0N01`.**
+>
+> This is the next session's task. Read the **"🧭 What's next"** section of
+> `docs/vault/00 - AI Maturity Status.md` for it in full — that file is the authority and this is
+> only a pointer to it, deliberately. Do not act on the summary below without reading it; a
+> restatement that drifts from the ledger is the phantom constraint 5 exists to prevent.
+>
+> In one line: **the zone-template blocker is cleared** — rows in no zone fell 9 → 1 and
+> `baseline-v45.json` is metric-for-metric identical to v43, so the repair cost nothing measurable
+> — and **nothing now stands between this project and its first human labels.** The corpus is
+> still **0 of 8**, which is the only thing keeping the system at rung 0.
+>
+> ⛔ **`notes` / `iso` placement is the agreed next item and must wait.** Both zones move between
+> drawings and the template pins one position; measured, neither pinning nor detection wins
+> consistently. Landing it mid-annotation changes what the engine scopes and means re-labelling.
+>
+> Delete this block when the priority changes, and move the new one here. If it is stale, the
+> ledger wins.
+
 ## Read the vault before architectural work
 
 `docs/vault/` is an Obsidian knowledge base and the canonical record of *why* this system is
@@ -136,9 +155,9 @@ contract; the suites grow.** (Until 2026-08-11 `pyproject.toml`'s `addopts` carr
 documented `pytest tests/ -q` resolved to `-qq` and printed **no totals line at all** — the one
 command the docs recommended was the one that could not report a result. `-q` has been removed
 from `addopts`; the command below now prints a count.)
-- `pytest` — **960 passed, 3 skipped, 0 failed.** The 3 skips are deliberate rung gates in
+- `pytest` — **987 passed, 3 skipped, 0 failed.** The 3 skips are deliberate rung gates in
   `tests/test_maturity_ledger.py`, not failures.
-- `npx vitest run` — **326 passed across 30 files.**
+- `npx vitest run` — **333 passed across 30 files.**
 - `npx tsc --noEmit` — **0 errors** (now also gated in CI; it previously ran only over the shared
   types package, so `apps/desktop` was unenforced on merge).
 

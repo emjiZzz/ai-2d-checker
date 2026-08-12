@@ -360,6 +360,54 @@ export function pointInShape(frac: RegionFractions, x: number, y: number): boole
 }
 
 /**
+ * The one zone set to save, from the two panes' regions plus which zones the user aligned where.
+ *
+ * Pure, for the same reason as `zonesToTemplatePayload` below: the defect was invisible inside a
+ * component that cannot be mounted without flexlayout, a canvas and a ResizeObserver.
+ *
+ * **The defect this exists to prevent.** The call site was `{ ...oldReg, ...newReg }`, described
+ * as merging the two sides so "the REVISION's boxes win on any zone aligned differently on the
+ * two sides". That reads correctly only if the two arguments hold *edited* zones. They do not —
+ * `getRegionsFor` returns a drawing's COMPLETE zone set, seeded from detection and stamped from
+ * the template on every editor open, so both objects always carry all seven keys and the spread
+ * resolves to "the revision's boxes, always".
+ *
+ * The consequence was that **editing a zone on the reference pane and saving was a silent
+ * no-op**: the reference's box was dropped before the request was built, and `applyZoneTemplate`
+ * then wrote the revision-derived set back over both panes, so the edit visibly snapped back and
+ * `userAlignedZoneKeys` was cleared along with it. The user's report was "I adjusted it and
+ * clicked save, it just pops back there."
+ *
+ * The tie-break is unchanged where the user has expressed no preference — the revision still
+ * wins, which keeps every existing template stable. It is overridden only for a zone the user
+ * aligned on the reference and NOT on the revision, which is the only case where the old
+ * behaviour discarded information it had.
+ *
+ * This does not make one template fit two differently-laid-out sides; nothing here can. See
+ * `docs/vault/06 - .../Gotcha - One Zone Template Cannot Fit Two Sides.md`.
+ */
+export function mergeSidesForTemplate(
+  referenceRegions: Record<string, RegionFractions | undefined | null>,
+  revisionRegions: Record<string, RegionFractions | undefined | null>,
+  referenceAligned: readonly string[] = [],
+  revisionAligned: readonly string[] = [],
+): Record<string, RegionFractions> {
+  const merged: Record<string, RegionFractions> = {};
+  for (const [key, frac] of Object.entries({ ...referenceRegions, ...revisionRegions })) {
+    if (frac) merged[key] = frac;
+  }
+
+  const revisionOwns = new Set(revisionAligned);
+  for (const key of referenceAligned) {
+    // Aligned on BOTH sides is a genuine conflict, and the documented tie-break stands.
+    if (revisionOwns.has(key)) continue;
+    const frac = referenceRegions[key];
+    if (frac) merged[key] = frac;
+  }
+  return merged;
+}
+
+/**
  * Shapes a drawing's zone regions into the payload `saveZoneTemplate` sends.
  *
  * Pure, and extracted from `TwoDWorkspace` on purpose: the bug it fixes was invisible in a

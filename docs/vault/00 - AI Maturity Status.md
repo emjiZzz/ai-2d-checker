@@ -7,7 +7,7 @@ current_rung: 0
 rung_evidence: none
 rung_scale: ADR-007 (re-scoped 2026-08-07; rungs are no longer the ADR-003 LLM ladder)
 date: 2026-08-07
-verified-against: cache v43, baseline-v43.json (36 mutation pairs, 0 human labels)
+verified-against: cache v45, baseline-v45.json (36 mutation pairs, 0 human labels)
 ---
 
 # 📊 AI Maturity Status — the living ledger
@@ -218,7 +218,67 @@ Not everything is a gap, and the plan is built on these:
 > and the old rung 1's retrieval-recall@5 exit criterion is retired for good. No rung was
 > claimed — the corpus is still 0/8 labelled, which is the whole point.
 
-**Stage 0b's labels. Nothing else is the bottleneck any more.**
+**Label. Start with `M7452A0N01` — 2026-08-12.**
+
+> [!IMPORTANT] ✅ **The template blocker is cleared.** Rows in no zone: **9 → 1**, and
+> `baseline-v45.json` is metric-for-metric identical to v43, so the repair cost nothing measurable.
+> Nothing now stands between this project and its first human labels.
+>
+> The one remaining unzoned row, `M745203N01 REF-192` (`CS SW M6x16 2x2コ`), is **accepted as
+> genuinely out of zone** rather than enclosed — nothing else occupies that band and no honest box
+> reaches it. It is a named exemption in `tests/test_zone_template_residual.py`, which fails on any
+> *new* stranded row and separately fails if the exemption ever goes stale.
+>
+> **Start with `M7452A0N01`: 22 rows, no template defects, and a calibration pair before the large
+> ones.** Then `M745227N01` (27), `M745203N01` (24), `M745230A01` (68), and the two remaining
+> `M7452A*`. `tools/eval_corpus.py worksheet --pair-id <ID>` writes the sheet and an empty draft;
+> `validate` checks a filled draft without installing it; `label --from` installs it.
+>
+> **The rung rule has not moved and is worth restating before anyone claims otherwise:** rung 1
+> needs per-category P/R/F1 over **≥8 human pairs**. Mutation numbers cannot supply it, review
+> verdicts cannot supply it (they measure precision, never recall), and 987 green tests cannot
+> supply it. Only labels can. `current_rung` stays **0** and `rung_evidence` stays **none** until
+> they exist.
+
+**Then, and not before: NOTES / ISO placement — the zones that move.**
+
+> [!WARNING] Raised by the owner on 2026-08-12 and **measured, not speculative**: `notes` and `iso`
+> change position between drawings, and the template pins one position for the whole layout.
+>
+> Where the notes text actually falls, per side:
+>
+> | pair · side | notes rows | inside *detected* | inside *pinned* |
+> | :--- | ---: | ---: | ---: |
+> | M745203N01 REF | 2 | 0 | **2** |
+> | M745203N01 REV | 6 | 2 | 3 |
+> | M7452A0N01 REF | 3 | **0** | **0** |
+> | M7452A0N01 REV | 4 | **3** | 1 |
+>
+> **There is no consistent winner** — the pinned box is right on one side, detection is right on
+> another, and on M7452A0N01's reference *neither* contains any notes text. So "just unpin `notes`"
+> is not a fix: detection falls back to the percentage grid on three of six reference sides. `iso`
+> is comparatively healthy — where anchors fire, the pinned box is a tighter box nested inside the
+> detected one, which a coverage metric misreads as a misplacement.
+>
+> **Agreed direction (2026-08-12): fix the `notes` anchors until detection beats the pinned box on
+> the corpus, then leave `notes` out of the template** so it follows the content. An absent key
+> already means "keep detecting"; the mechanism exists and is simply overridden by pinning all
+> seven. `_zone_confidence` already records how each zone resolved and the audit already logs
+> *"not resolved via content anchors on both drawings"* — nothing acts on it yet.
+>
+> Do not start this before the labels. It changes what the engine scopes, and landing it mid-way
+> through annotation means re-labelling.
+
+**Stage 0b's labels — the bottleneck, now unobstructed.**
+
+> [!NOTE] Labelling got cheaper on 2026-08-11, which changes the estimate, not the order.
+> `tools/eval_corpus.py worksheet` now groups each row under the guideline rule that excludes it,
+> so the annotator reads **185 rows across six pairs instead of 507** — 136→24 on M745203N01,
+> 128→27, 177→68, and 22→22 on each `M7452A*` pair. The bulk removed is real: 107 of M745203N01's
+> 136 rows were surface-roughness reference data inside the `tolerance` safe zone, which the
+> guideline says is never compared. Nothing is hidden — every row is still printed, grouped.
+> **This produced no labels and moved no rung.** Start with `M7452A0N01` (22 rows, no template
+> defects) if you want a calibration pair before the large ones.
 
 > [!IMPORTANT] Updated 2026-08-10 — **the cheapest source of human judgment is now wired, and it is
 > not the worksheets.**
@@ -724,6 +784,8 @@ explicitly that it is unmeasured — **never omit it.**
 | 2026-08-10 | **The review queue was still inert on every cached pair, and the entry two rows above was premature.** [[Gotcha - The Cache Served Findings That Existed Nowhere]]. The verdict control shipped, was tested, and did not appear: `perform_drawing_comparison` returns on a cache hit **before** `AuditSession.save()`, `AuditViolation.insert_many()` and the line stamping `diagnostics.audit_session_id`, so **every write that gives a finding a reviewable identity sits on the cache-MISS path**. A hit returns markings the client cannot join to anything, and both the Approve control and the eye toggle disappear together — they gate on the same id. Confirmed against the entry actually on screen: same three Japanese notes, `has audit_session_id: False`, written 09:39 against a field added at 11:53 the same day. **Re-test could not fix it** — it hits the same entry, so backend and frontend both ran new code against old data with nothing on either side saying so. Fixed by treating a cached entry with no `audit_session_id` as a miss: one slow run per stale entry, self-healing. Guarding on the id's presence rather than a version number also catches a run whose persistence threw into its own non-fatal `except`. | — (rung-3 substrate: the `lessons` corpus) | **Unmeasured by the eval, and it cannot be** — `tools/eval.py` calls `generate_deterministic_candidates` directly and never touches the cache or the persistence block, so no corpus number can move; verified anyway, byte-identical. **What is corrected is a claim, not a number:** the 2026-08-10 review-UI row and the What's-next callout both said a supervisor now produces human judgments as a side effect of normal use. That was true only for pairs with no cache entry, i.e. **not the pairs anyone actually reviews** — every drawing already looked at is by definition cached. The judgment count that fix was supposed to start accumulating was **0 until today**, and remains 0 until a supervisor works the queue. No rung moves: verdicts measure precision, never recall ([[Eval Corpus Annotation Guideline]]), so rung 1 is still 0/8 labels. `tests/test_comparison_architecture.py` +2, both directions pinned. | — (**no bump**; the guard heals stale entries on read, so v43 stands) |
 | 2026-08-11 | **The canvas finally draws vectors — and `renderMode` is deleted, not flipped.** [[ADR-011 Vector as the Only Render Path]]. The 2026-07-27 direction (full vector rendering, PNG display path dropped, hybrid explicitly declined) had not landed in two and a half weeks because **two default-flips were shipped and reverted** — the second on a correct diagnosis with clean types and a green suite, and it still deleted every DIMENSION from the sheet. Removed: the `drawImage` composite and mipmap selector in `renderEntities.ts`; the `/drawings/{id}/rendering` fetch, the halving mipmap chain and the chunked per-pixel light-theme recolour in `DrawingCanvas.tsx` (~175 lines); the "Ingesting CAD Geometry…" overlay that existed only to cover that download; the `PenTool` toggle; the `hybrid` mode; and the route itself, whose only client was the canvas. **The backend PNG generator stays** — `render_bounds` is matplotlib-autoscale output and every zone template is stored as fractions of it, so deleting the generator is a template-invalidation event, not a cleanup (⛔ recorded as a negative result in the ADR). | — (rendering; no rung) | **Measured before it shipped, which is the entire difference from the two failed attempts.** `tools/render_audit.py` on M745221N01: census **497/518** (the healthy ceiling — 18 non-drawable + 3 clipped), `|dx|` median **0.1148** / p90 0.7216 / max **1.4017**, `width_ratio` median **1.0222**, rotation lost **0**, off-axis **0**. `tsc` clean; **vitest 304/304**; `pytest` **922 passed, 2 failed** — the same two known `test_vision_ocr_grounding` failures, no new breakage. **No eval number moved and none should have:** this is display-only, it touches neither spatial matching nor zone extraction. **What is emphatically not measured is the in-app appearance** — the workspace is behind a login the agent will not authenticate through, so the visual A/B on both sheets and the PDF-export check are stated as outstanding rather than claimed. **The cost accepted and recorded: the escape hatch is gone.** Raster was kept selectable because the ezdxf PNG cannot be missing anything; a drawing the extractor mishandles now renders wrong with no in-app way to see it, and `render_audit.py` carries that load only if someone runs it. **Re-ingestion is a prerequisite** — `render_paths`, MTEXT rotation and the elliptical-arc fix are extraction-time, and there is no re-extract endpoint. | — (no bump: display-only; v44 stands) |
 | 2026-08-11 | **Stage 0b annotation triaged by the guideline's own exclusion rules — the labelling cost, not the labelling decision.** `tools/eval_corpus.py worksheet` handed the annotator two flat lists of every unmatched string; it now groups each row under the rule that covers it, using the pair's **hand-aligned zone template from the committed manifest** (corpus data resolved through the production `overrides_from_template_zones`, so the Y-flip is exercised rather than reimplemented) — **not** zone detection and **not** the comparison engine, so the docstring rule that the worksheet may use the engine's *normaliser* but never its *differ* still holds. **Grouped, never hidden:** all three buckets are printed, and `triage_row` never excludes on uncertainty — no template or no usable coordinate both resolve to `review`, because a wrongly excluded row is a miss the annotator never sees, which is the exact quantity this corpus exists to measure. Overlap resolves the same way: the live `tolerance` box ends at x=151.9 and `title` begins at x=151.8, so a scored zone always beats a safe one rather than dict order deciding. 12 tests, pure-function because the payloads are gitignored and cannot run in CI. | Stage 0b (tooling only — **no labels produced, the rung is unmoved and the bottleneck is unchanged**) | **Measured, and it is a reading-volume result, not an accuracy one: 507 unmatched rows across the six loadable human pairs fall to 185 needing judgement — 64%.** Per pair: 136→24 (82% grouped), 128→27 (78%), 177→68 (61%), and 22→22 on each of the three `M7452A*` pairs, which carry no safe-zone content and were already tractable. The excluded bulk is real: on M745203N01 the `tolerance` zone holds surface-roughness reference data (`100S ～ 50S`, `6.3S ～ 1.6S`, `(例)`/`(Example)`, 必要な場合は、粗さ区分を記入のこと) — verified against the `title` box returning 共通番号/旧図面番号 to rule out a mirrored Y mapping, the failure mode that would have told a checker to skip real findings. **⚠ It immediately found a corpus defect, which is the argument for the no-zone bucket existing:** on M745203N01's **reference** template `views` ends at y=268.0 and `bom` begins at y=275.8, leaving a ~7.8-unit unzoned sliver, and a genuine dimensional change sits in it — `REF#321 4.5x40x48` @(241.1, 268.3) is unzoned while its counterpart `REV#405 4.5×40×52` @(238.5, 269.5) lands inside `bom`. Half a real CHANGED finding, invisible on one side. The templates are **not** edited here: re-drawing a hand-aligned box changes what the runner scores, so it is reported for the annotator to decide. See [[Gotcha - A Zone Template Gap Hid Half of a Real Change]]. | — (no bump: annotation tooling only; neither spatial matching nor zone extraction touched) |
+| 2026-08-12 | **Editing a zone on the reference pane and saving was a silent no-op.** `saveZonesAsTemplate` merged the panes with `{...oldReg, ...newReg}`, documented as "the revision's boxes win on any zone aligned differently on the two sides". That reads correctly only if the operands hold *edited* zones — `getRegionsFor` returns a drawing's **complete** set, seeded from detection and stamped from the template on every open, so both objects always carry all seven keys and the spread resolved to "the revision, always". `applyZoneTemplate` then wrote that set back over both panes **and deleted `userAlignedZoneKeys[drawingId]`**, so the edit visibly snapped back and the record of it was erased. Reported as *"I adjusted it and clicked save, it just pops back there"* — twice, before the cause was found. Fixed with `mergeSidesForTemplate` in `zoneFractions.ts` — pure, for the same reason `zonesToTemplatePayload` was extracted: the defect is invisible in a component that cannot be mounted without flexlayout, a canvas and a ResizeObserver. The revision-wins default is **unchanged** where the user expressed no preference, so no existing template shifts. | — (product defect; the zone-alignment path) | **Unmeasured by the eval, and it cannot be** — this is desktop editor state; `tools/eval.py` reads captured fractions from the manifest and never runs the save path. Established by test instead: 7 cases in `zoneFractions.test.ts` covering the reported bug, the unchanged default, the both-sides conflict, outline survival, and the `userAlignedZoneKeys`/`customRegions` disagreement an undo can produce. **Stated rather than claimed: the end-to-end behaviour in the running app was NOT verified by the agent** — the two edge corrections below were applied through the app's own `PUT /api/v1/zone-templates/{signature}` and read back from Mongo instead. | — (no comparison behaviour changed) |
+| 2026-08-12 | **The zone templates repaired — rows in no zone 9 → 1, with the baseline recovered exactly.** The owner re-drew the sheet template: `bom` and `title_upper_left` lost the bottom edges that cut through their own header rows, and `views` became a **12-vertex outline** with a riser up the column between `title_upper_left` and `bom`. `tools/eval_corpus.py` now carries `_zone_polygons` **into** triage instead of stripping it (`zones_containing` consults the outline through the shared `point_in_shape`), so a reshaped zone reads on the worksheet as the shape the runner actually scores — without it the L would have displayed as its bounding box. New `tests/test_zone_template_residual.py` asserts no unmatched row falls outside every zone, with `REF-192` as a **named exemption carrying its own staleness check**. See [[Gotcha - A Zone Template Gap Hid Half of a Real Change]] and [[Gotcha - One Zone Template Cannot Fit Two Sides]]. | Stage 0b (**unblocks** labelling; no labels produced, rung unmoved) | **Measured, and the target was equality: `baseline-v45.json` is metric-for-metric identical to v43** — P 0.9796 (48/49), R 0.8727 (48/55), F1 0.9231, macro 0.8815, attribution **1.00 (48/48)**, same status confusion, same match tiers — while **rows in no zone fall 9 → 1**. Getting there took two corrections that are the real content: the owner's first save scored **P 0.9783 / R 0.8182 / F1 0.8911 / attribution 0.8889**, because covering both sides with one template made `bom` 2.8× too tall (3 findings moved `views`→`bom` and stopped being compared) and `notes` too short (12 rows fell into `views`; `notes_section→drawing_views` ×5). Pulling those two edges back recovered everything **with the gap still closed**, so the compromise was never needed for the gap. **Both claims in the prior diagnosis were wrong**: the reference sliver was `bom`'s bottom edge, not `views` being short, and the revision rows sit in a **column** gap that no vertical adjustment reaches — closing the vertical band was measured at 15 rows rescued but only **2 of the 9**. Ten affected rows had never appeared on any worksheet, because it lists only *unmatched* rows and they match on both sides. `pytest` **987 passed, 3 skipped**; **vitest 333/333**; `tsc` clean. | **v44 → v45** |
 
 ---
 

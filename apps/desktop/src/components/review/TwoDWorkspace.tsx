@@ -15,7 +15,7 @@ import {
   zoneSignature,
   type ZoneTemplateFractions,
 } from "../../services/drawingsApi";
-import { zonesToTemplatePayload } from "../../utils/zoneFractions";
+import { mergeSidesForTemplate, zonesToTemplatePayload } from "../../utils/zoneFractions";
 import { useReviewStore, type RegionFractions } from "../../stores/reviewStore";
 import { recordHistoryGroup, type HistoryEntry } from "../../stores/historyStore";
 import { useRoomStore } from "../../stores/roomStore";
@@ -272,10 +272,17 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
    * has deliberately placed should stay where they put it, and `RESET` is the way back to
    * detection. The zone picker still marks the moving ones so the caveat is visible.
    *
-   * Regions are merged `{...reference, ...revision}`, so the REVISION's boxes win on any
-   * zone aligned differently on the two sides. That matters for `notes`, which can be laid
-   * out in two columns on one sheet and one on the other: the template will carry the
-   * revision's shape and impose it on both.
+   * The two panes are merged by `mergeSidesForTemplate`: the REVISION's boxes win on any zone
+   * aligned differently on the two sides, EXCEPT one the user aligned on the reference and not
+   * on the revision. That exception is the fix for a silent no-op — a plain
+   * `{...oldReg, ...newReg}` reads as a merge but is not one, because `getRegionsFor` returns a
+   * drawing's complete zone set rather than only its edits, so every key was always present on
+   * both sides and the revision won unconditionally. Editing on the reference pane and saving
+   * therefore did nothing and visibly snapped back. See that function's docstring.
+   *
+   * The revision-wins default still matters for `notes`, which can be laid out in two columns
+   * on one sheet and one on the other: absent a user preference the template carries the
+   * revision's shape and imposes it on both.
    */
   const saveZonesAsTemplate = async () => {
     const src = oldDrawingForZones ?? newDrawingForZones;
@@ -286,9 +293,15 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       return;
     }
 
-    const oldReg = oldDrawingForZones ? useReviewStore.getState().getRegionsFor(oldDrawingForZones.id) : {};
-    const newReg = newDrawingForZones ? useReviewStore.getState().getRegionsFor(newDrawingForZones.id) : {};
-    const regions = { ...oldReg, ...newReg };
+    const reviewState = useReviewStore.getState();
+    const oldReg = oldDrawingForZones ? reviewState.getRegionsFor(oldDrawingForZones.id) : {};
+    const newReg = newDrawingForZones ? reviewState.getRegionsFor(newDrawingForZones.id) : {};
+    const regions = mergeSidesForTemplate(
+      oldReg,
+      newReg,
+      oldDrawingForZones ? reviewState.userAlignedZoneKeys[oldDrawingForZones.id] ?? [] : [],
+      newDrawingForZones ? reviewState.userAlignedZoneKeys[newDrawingForZones.id] ?? [] : [],
+    );
     // Pure and tested in zoneFractions.test.ts. It carries the reshaped outline through —
     // this used to be an inline four-field literal that silently flattened every hand-drawn
     // polygon to its bounding box, and `applyZoneTemplate` below then wrote that flattened

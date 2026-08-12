@@ -15,6 +15,7 @@ Pure-function tests by design: the eval payloads are gitignored (see the `/stora
 """
 import pytest
 
+from services.backend.infrastructure.audit.bom.zone_geometry import ZONE_POLYGONS_KEY
 from tools.eval_corpus import (
     BUCKET_NO_ZONE,
     BUCKET_REVIEW,
@@ -106,6 +107,47 @@ def test_every_row_lands_in_exactly_one_bucket():
     seen = [triage_row(BOXES, a)[0] for a in anchors]
     assert all(b in buckets for b in seen)
     assert len(seen) == len(anchors)
+
+
+# An L-shaped `notes`: the full lower body, plus a riser that reaches up the column between
+# `title_upper_left` (ends x=103.9) and `bom` (starts x=199.7) to enclose the roll-count rows,
+# without extending left over `title_upper_left`. Modelled on the live REV template's real fix.
+L_NOTES = [
+    (33.8, 204.4), (166.1, 204.4), (166.1, 287.4),
+    (103.9, 287.4), (103.9, 261.4), (33.8, 261.4),
+]
+RESHAPED = {
+    "notes": (33.8, 204.4, 166.1, 287.4),  # the outline's bounding box, as the resolver stores it
+    "title_upper_left": (25.1, 265.8, 103.9, 287.4),
+    ZONE_POLYGONS_KEY: {"notes": L_NOTES},
+}
+
+
+def test_a_reshaped_zone_is_read_as_its_outline_not_its_bounding_box():
+    """The runner gates content on the outline, so the worksheet must too.
+
+    Reading the bbox instead put the annotator and the engine into disagreement about the same
+    L-shaped zone: a row in the notch reads as "in `notes`, go label it" while the runner has
+    excluded it. The bbox is still checked first as a cheap reject, so this can only ever narrow.
+    """
+    in_the_riser = [121.7, 271.2]  # a roll-count row: inside the L
+    in_the_notch = [60.0, 280.0]  # inside the bbox, outside the L, over `title_upper_left`
+
+    assert "notes" in zones_containing(RESHAPED, in_the_riser)
+    assert "notes" not in zones_containing(RESHAPED, in_the_notch)
+    assert zone_containing(RESHAPED, in_the_notch) == "title_upper_left"
+
+
+def test_the_polygon_key_is_never_reported_as_a_zone():
+    """`_zone_polygons` rides inside `regions` but is not itself a zone. Returning it would put a
+    reserved key in the worksheet's `zone` column and into `triage_row`'s bucket decision."""
+    assert ZONE_POLYGONS_KEY not in zones_containing(RESHAPED, [121.7, 271.2])
+    assert triage_row(RESHAPED, [121.7, 271.2]) == (BUCKET_REVIEW, "notes")
+
+
+def test_an_unreshaped_zone_is_unaffected_by_a_sibling_outline():
+    """Only the reshaped zone consults an outline; the rest stay plain rectangles."""
+    assert zone_containing(RESHAPED, [30.0, 270.0]) == "title_upper_left"
 
 
 def test_safe_zones_is_a_deliberate_allowlist():

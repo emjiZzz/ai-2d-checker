@@ -281,7 +281,15 @@ class ComparisonCacheManager:
     # half-covered ring yields a smaller, offset iso box than a complete one.
     # See EntityMapper._tessellate_ellipse and
     # docs/vault/06 - .../Gotcha - A Blurry CAD Canvas and Its Four Causes.
-    COMPARISON_CACHE_VERSION = "v44"
+    # v45: the hand-aligned sheet template was re-drawn. `bom` and `title_upper_left` had bottom
+    # edges that cut through their own header rows, and the column between `title_upper_left` and
+    # `bom` belonged to no zone at all -- so content there was silently unzoned, which the
+    # annotation guideline treats as out of scope rather than as a finding. Every zone box moved
+    # and `views` became a 12-vertex outline, so drawing_views' pool, the safe-zone exclusions and
+    # each finding's category all differ from their v44 entries. Measured over the eval corpus:
+    # rows belonging to no zone 9 -> 1. See
+    # docs/vault/06 - .../Gotcha - A Zone Template Gap Hid Half of a Real Change.
+    COMPARISON_CACHE_VERSION = "v45"
 
     @staticmethod
     def _get_cache_path(
