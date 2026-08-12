@@ -97,13 +97,26 @@ class Viewport:
         )
 
     @property
-    def origin_paper_point(self) -> tuple[float, float]:
-        """Where this view's own origin lands on the sheet.
+    def window_center_paper_point(self) -> tuple[float, float]:
+        """The centre of this viewport's window on the sheet.
 
-        Falls out of `to_paper(anchor) == paper_center`, but is named because it is a
-        question people ask: iCAD SX draws an ORIGIN marker per view, and this is it.
-        Distinct from the GLOBAL model origin, which is `to_paper(0, 0)` and on a
-        multi-view sheet usually lands outside most of the viewports.
+        `to_paper(anchor) == paper_center` identically -- the anchor IS the model point that
+        lands at the window centre -- so this returns `paper_center` and nothing more. It is
+        kept named because a tautology written inline reads like a computation.
+
+        ⚠ **This was `origin_paper_point`, documented as "iCAD SX draws an ORIGIN marker per
+        view, and this is it". That was measured false on 2026-08-12 and is why it was renamed.**
+        The desktop overlay built on that claim put markers 22.2 and ~11.8 units from the datum
+        two of `M745221N01_FSRS2`'s three views actually dimension from, and was reported as
+        wrong by the owner. The window centre is right only where the drafter happened to centre
+        the view in its window.
+
+        What the DXF does state is one origin per sheet: `ucs_origin` is `(0,0,0)` on all 34
+        viewports of all 12 viewport-bearing sheets in the corpus, and `to_paper(0, 0)` lands
+        inside **exactly one viewport per sheet** -- 12 sheets, 12 hits, never two. So a
+        per-view origin is not recoverable from these files; iCAD reads it off the 3D model.
+        See `docs/vault/06 - .../Gotcha - The View Origin Marker Marked the Middle of the
+        Window.md`.
         """
         return self.to_paper(self.view_anchor_x, self.view_anchor_y)
 

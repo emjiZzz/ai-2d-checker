@@ -72,6 +72,30 @@ CHANGED_SIMILARITY_FLOOR = DEFAULT_PARAMS.changed_similarity_floor
 _NUMERICISH_RE = re.compile(r"^[0-9.,\-/x×øφ°±r():~〜=]+$")
 
 
+# How much a cross-text pair's score can be improved by being a better textual match, in the
+# same units as `dist + 1000.0` below. Bounded well under the 1000 penalty so a cross-text pair
+# can never outrank an identical-text one however similar it looks — the widest match threshold
+# in play is 150 (absolute) / 0.15 (normalized), so 900 of clearance is never approached.
+#
+# It exists because `dist + 1000.0` orders every plausible cross-text pair by **proximity
+# alone**, and proximity crosses adjacent lines the moment a block moves. Reported by the owner
+# on M745227N01: the production-count block sits at normalized y 0.8285 / 0.8039 on the
+# reference and 0.8834 / 0.8581 on the revision — a shift of 0.055 against a row pitch of
+# 0.025 — so each line's nearest neighbour on the other side is its SIBLING. The engine then
+# reported `4 ロール：12 (2x6台)` -> `２ロール：　４（２×２台）`: not a missing finding but a
+# false one, and a frightening one, because it reads as a 4-roll spec becoming a 2-roll spec.
+# The two lines are near-identical to their own counterparts and merely similar to each other,
+# so similarity separates them where distance cannot.
+CROSS_TEXT_SIMILARITY_WEIGHT = 100.0
+
+
+def _edit_similarity(ref_clean: str, rev_clean: str) -> float:
+    """0..1 textual similarity of two normalized strings — the tie-break among plausible pairs."""
+    if not ref_clean or not rev_clean:
+        return 0.0
+    return SequenceMatcher(None, ref_clean, rev_clean).ratio()
+
+
 def _plausible_edit(ref_clean: str, rev_clean: str) -> bool:
     """True when two DIFFERENT normalized strings are similar enough to be one element edited
     in place, rather than two unrelated strings that merely sit close together on the sheet."""
@@ -399,7 +423,14 @@ class SpatialDiffer:
                             # place. Pairing these would report an unrelated string as CHANGED;
                             # leave both unmatched so they surface as REMOVED + ADDED instead.
                             continue
-                        score = dist if is_same_text else dist + 1000.0
+                        # Cross-text pairs are ordered by proximity AND similarity, not
+                        # proximity alone — see CROSS_TEXT_SIMILARITY_WEIGHT for the pairing
+                        # this crossed. Identical-text pairs keep scoring on distance only.
+                        if is_same_text:
+                            score = dist
+                        else:
+                            similarity = _edit_similarity(ref["clean_text"], rev["clean_text"])
+                            score = dist + 1000.0 - CROSS_TEXT_SIMILARITY_WEIGHT * similarity
                         potential_pairs.append((score, dist, rev, ref))
             
             potential_pairs.sort(key=lambda x: x[0])

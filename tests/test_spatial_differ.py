@@ -222,3 +222,47 @@ def test_dimension_display_text_resolves_the_diameter_escape():
     texts = {m["text_content"] for m in SpatialDiffer.diff_views(ref, rev)}
     assert "Ø125" in texts, texts
     assert "22.9±0.02" in texts, texts
+
+
+def test_a_shifted_block_does_not_cross_pair_its_adjacent_lines():
+    """Reported by the owner on M745227N01. Two production-count lines sit one row apart, and
+    the whole block MOVED between revisions by more than half that row pitch. Ordering plausible
+    cross-text pairs by proximity alone then makes each line's nearest neighbour its SIBLING, and
+    the engine reported `4 ロール：12 (2x6台)` -> `２ロール：　４（２×２台）` — a false finding that
+    reads as a 4-roll spec becoming a 2-roll spec. Each line is near-identical to its own
+    counterpart and merely similar to its sibling, so similarity separates what distance cannot.
+
+    Geometry mirrors the measured normalized positions: ref rows 24.6 apart, rev rows the same,
+    with the whole rev block shifted UP 55 units — so ref-4roll is closer to rev-2roll (30.4)
+    than to rev-4roll (55.0).
+    """
+    ref, rev = _twin_fillers()
+    ref.append(_text_entity("4 ロール：12 (2x6台)", 500.0, 828.5, handle="r4-ref"))
+    ref.append(_text_entity("2 ロール： 4 (2x2台)", 500.0, 803.9, handle="r2-ref"))
+    rev.append(_text_entity("４ロール：１２（２×６台）", 500.0, 883.5, handle="r4-rev"))
+    rev.append(_text_entity("２ロール：　４（２×２台）", 500.0, 858.9, handle="r2-rev"))
+
+    markings = SpatialDiffer.diff_views(ref, rev)
+    four = next(m for m in markings if m["text_content"] == "４ロール：１２（２×６台）")
+    two = next(m for m in markings if m["text_content"] == "２ロール：　４（２×２台）")
+
+    assert four["status"] == "CHANGED"
+    assert two["status"] == "CHANGED"
+    # The point of the test: each line pairs with ITS OWN counterpart, not its sibling.
+    assert four["original_value"] == "4 ロール：12 (2x6台)"
+    assert two["original_value"] == "2 ロール： 4 (2x2台)"
+
+
+def test_similarity_can_never_let_a_cross_text_pair_beat_an_identical_one():
+    """The similarity bonus is bounded far below the 1000 cross-text penalty. An identical-text
+    pair further away must still win over a similar-text pair that is nearer, or the tie-break
+    would have introduced a worse failure than the one it fixed."""
+    ref, rev = _twin_fillers()
+    ref.append(_text_entity("TORQUE 45NM", 500.0, 500.0, handle="same-ref"))
+    rev.append(_text_entity("TORQUE 45NM", 508.0, 500.0, handle="same-rev"))
+    rev.append(_text_entity("TORQUE 46NM", 501.0, 500.0, handle="near-rev"))
+
+    markings = SpatialDiffer.diff_views(ref, rev)
+    by_text = {m["text_content"]: m for m in markings if "TORQUE" in str(m["text_content"])}
+    assert by_text["TORQUE 45NM"]["status"] == "MATCHED"
+    assert by_text["TORQUE 46NM"]["status"] == "ADDED"

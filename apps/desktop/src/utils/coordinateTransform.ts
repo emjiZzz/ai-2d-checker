@@ -112,13 +112,32 @@ export function worldToScreen(
   viewport: Viewport,
 ): { x: number; y: number } {
   const effectiveScale = viewport.scale * norm.normScale;
-  // Y-flip: CAD Y increases upward, canvas Y increases downward.
-  // When hasBounds is false (no render_bounds), we skip the flip (passthrough).
-  const flippedY = norm.hasBounds ? norm.ymax + norm.ymin - wy : wy;
+  const flippedY = flipWorldY(wy, norm);
   return {
     x: (wx - norm.xmin) * effectiveScale + viewport.x,
     y: (flippedY - norm.ymin) * effectiveScale + viewport.y,
   };
+}
+
+/**
+ * The Y mirror alone: CAD Y-up into the canvas's Y-down world, with no scale or pan.
+ *
+ * Exists because the canvas transform does **not** carry the flip — `CanvasRenderer` sets
+ * `ctx.scale(scale, scale)` with no negative — so anything drawn in world space has to mirror
+ * its own coordinates first. `worldToScreen` above bakes that in for callers that want screen
+ * pixels; this is for the ones that stay in world space and let the ctx transform do the rest.
+ *
+ * Extracted after `renderViewOrigins` shipped with no flip at all, drawing every view-origin
+ * marker mirrored about the sheet's centreline. It went unnoticed because the error is
+ * proportional to distance from that line: two viewports near the middle of `M745221N01` were
+ * 18 and 6 units out, and only the isometric view — high on the sheet — was 152 units out. One
+ * definition, so the next call site cannot quietly omit it.
+ *
+ * `hasBounds: false` is a passthrough: with no `render_bounds` there is nothing to mirror
+ * about, and a guessed centreline is worse than an unmirrored point.
+ */
+export function flipWorldY(wy: number, norm: NormalizationResult): number {
+  return norm.hasBounds ? norm.ymax + norm.ymin - wy : wy;
 }
 
 /**

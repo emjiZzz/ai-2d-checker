@@ -119,6 +119,53 @@ describe('markerGenerator tests', () => {
     expect(result[0].ref_coordinates).toEqual([186, 685]);
   });
 
+  it('does NOT scatter an UNRESOLVED bom value across every same-valued cell on the sheet', () => {
+    // Regression, reported from a live review on M745227N01 and the failure path the test
+    // above never exercised: the guard it pins used to require `hasBackendCoord`, so it
+    // **failed open in exactly the case it was written for**. The backend could not place
+    // this BOM row (`Q'ty: 1 vs 1` arrives with `coordinates: null`,
+    // `resolution_method: "unresolved"`), the guard therefore did not apply, and the
+    // marking was text-matched against every entity reading "1" — one marker per match —
+    // painting MATCHED checkmarks down the 一組分個数 column of the シム表, a SAFE zone that
+    // is never compared.
+    //
+    // With no coordinate from the backend, a structured value gets NO marker. The value is
+    // still reported in the BOM table; what is dropped is an unsupportable claim about where.
+    const rawMarkings = [
+      {
+        text_content: '1',
+        details: "BOM [Item 1]  / Q'ty checked: 1 vs 1",
+        status: 'MATCHED',
+        category: 'bill_of_materials',
+        coordinates: null,
+        ref_coordinates: null,
+      },
+    ];
+    const bounds = { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
+    // The quantity column of the shim table: three cells all reading "1".
+    const shimQtyCells = [
+      { text: '1', x: 800, y: 500, height: 3 },
+      { text: '1', x: 800, y: 460, height: 3 },
+      { text: '1', x: 800, y: 420, height: 3 },
+    ] as any;
+
+    const result = generateComparisonMarkings({
+      rawMarkings,
+      textEntities: shimQtyCells,
+      refTextEntities: shimQtyCells,
+      drawing: { id: 'rev', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      oldDrawing: { id: 'base', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      bounds,
+      refBounds: bounds,
+    });
+
+    const placed = result.filter(
+      (r: any) => Array.isArray(r.coordinates) || Array.isArray(r.ref_coordinates)
+    );
+    expect(placed).toHaveLength(0);
+    expect(result.length).toBeLessThanOrEqual(1);
+  });
+
   it('passes `feature` through untouched, and leaves it undefined when the backend omits it', () => {
     const rawMarkings = [
       {

@@ -121,6 +121,16 @@ async def extract_dynamic_regions_async(
     """
     result = extract_dynamic_regions(entities)
 
+    # `tools/eval.py --no-templates`. Gated HERE rather than inside `resolve_zone_overrides`
+    # because this is the one point both template paths meet: the app arrives with
+    # `zone_template=None` and takes the Mongo lookup, while the offline eval runner arrives
+    # with the corpus's captured fractions already in hand and never touches that lookup.
+    # Gating the resolver alone leaves the eval path fully templated while every log line and
+    # baseline stamp claims detection — measured, and it is why the check sits here.
+    from .zone_template_resolver import templates_are_disabled
+    if templates_are_disabled():
+        return result
+
     if not render_bounds:
         return result
 

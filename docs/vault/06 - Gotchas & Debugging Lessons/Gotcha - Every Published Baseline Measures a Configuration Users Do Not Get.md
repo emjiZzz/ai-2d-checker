@@ -126,6 +126,16 @@ other edge sat within 3.5.
 (`title_block` is byte-identical detected vs templated), and the zone carrying 9 of the 10
 detection-only false positives is the one with no border to snap to.
 
+> [!WARNING] ⚠ **Correction, 2026-08-12 — that sentence over-reaches, and the exception is the
+> biggest remaining gap.** It holds for `notes`, `iso` and `title_block`. It does **not** hold for
+> `views`, which loses **R 0.93 → 0.68** under detection — nine findings — while scoring a **0.97**
+> mean IoU ceiling against real ruled segments, ≥0.85 on **11 of 12** sides. So half the F1 gap
+> *does* have a geometric answer that nothing reads yet. The `notes` half does not, and was closed
+> instead by classifying per entity: see
+> [[Gotcha - Adding a Note Destroys the Notes Zone]]. After that change the split is starker —
+> detection-only `notes_section` is **P 0.93 / R 1.00** while `drawing_views` is still
+> **P 1.00 / R 0.68**, so `views` recall is now essentially the whole remaining gap.
+
 `bom` is **inconclusive rather than negative** and is the one loose end: 0.71 on reference sides,
 0.07 on revisions. Diagnosed to the ruling level — on `M7452A0N01`'s revision the BOM band
 (y 258–287) has good horizontal rulings (`y=286.5` covers 100% of the table width, `y=265.5` covers

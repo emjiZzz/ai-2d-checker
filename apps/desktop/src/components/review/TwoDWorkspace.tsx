@@ -901,17 +901,20 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                         {showGrid && <Check size={14} className="text-accent-cyan" />}
                       </button>
 
-                      {/* One marker per paper-space viewport, at that view's own origin —
-                          what iCAD SX shows as ORIGIN. Only appears on sheets that HAVE
-                          viewports: a drawing exported DWG->DXF keeps everything in model
-                          space with no viewports at all, so there is nothing to mark. */}
+                      {/* One marker per view, at that view's own ORIGIN — computed by
+                          `viewDatums.ts`, not read off the viewport window (which is what this
+                          drew until 2026-08-12, 22.2 units from the front view's real datum).
+                          Solid = stated by the file; dashed = inferred from the view's own
+                          centrelines or concentric geometry, because the DXF carries only one
+                          origin per sheet. Only appears on sheets that HAVE viewports: a
+                          drawing exported DWG->DXF keeps everything in model space. */}
                       <button
                         onClick={() => { toggleViewOrigins(); setIsViewMenuOpen(false); }}
                         className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showViewOrigins
                             ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
                             : "text-text-primary hover:bg-sidebar-item-hover"
                           }`}
-                        title="Show each view's own origin, as iCAD SX does. Not the global model origin — on a multi-view sheet that usually falls outside most of the views."
+                        title="Each view's own origin, as iCAD SX shows it. SOLID = stated by the DXF (its UCS origin projected) — only one view per sheet gets that. DASHED = inferred from the view's own centrelines or concentric geometry, because the export drops per-view origins. A view with neither is left unmarked rather than guessed."
                       >
                         <div className="flex items-center gap-2">
                           <Crosshair size={16} />

@@ -15,6 +15,7 @@ import {
   screenToWorld,
   screenToWorldUnflipped,
   screenDeltaToWorldDelta,
+  flipWorldY,
   boundsMatch,
   cadPointToPair,
   cadPointToScreen,
@@ -149,6 +150,46 @@ describe('worldToScreen', () => {
     const world = screenToWorld(screen.x, screen.y, noNorm, VIEWPORT);
     expect(world.x).toBeCloseTo(wx, 10);
     expect(world.y).toBeCloseTo(wy, 10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flipWorldY()
+// The mirror on its own, for callers that stay in world space and let the canvas
+// ctx transform apply scale and pan. Extracted after renderViewOrigins shipped
+// without it — see the function's own note.
+// ---------------------------------------------------------------------------
+describe('flipWorldY', () => {
+  const norm = getNormalization(BOUNDS);
+
+  it('mirrors about the centreline of the bounds', () => {
+    // BOUNDS spans y 200..900, so the centreline is 550 and ymax+ymin = 1100.
+    expect(flipWorldY(200, norm)).toBe(900);
+    expect(flipWorldY(900, norm)).toBe(200);
+    expect(flipWorldY(550, norm)).toBe(550); // the fixed point
+  });
+
+  it('moves a point far from the centreline much further than a point near it', () => {
+    // Why the missing flip in renderViewOrigins looked plausible: the two central
+    // viewports moved a handful of units, the isometric one moved half the sheet.
+    expect(Math.abs(flipWorldY(560, norm) - 560)).toBe(20);
+    expect(Math.abs(flipWorldY(880, norm) - 880)).toBe(660);
+  });
+
+  it('is its own inverse', () => {
+    expect(flipWorldY(flipWorldY(742.5, norm), norm)).toBeCloseTo(742.5, 10);
+  });
+
+  it('passes through unchanged with no bounds — a guessed centreline is worse', () => {
+    expect(flipWorldY(742.5, getNormalization(null))).toBe(742.5);
+  });
+
+  it('agrees with the Y that worldToScreen bakes in', () => {
+    // The two must not drift apart: worldToScreen is the screen-space path, flipWorldY
+    // the world-space one, and they have to mirror about the same line.
+    const screen = worldToScreen(300, 880, norm, VIEWPORT);
+    const effectiveScale = VIEWPORT.scale * norm.normScale;
+    expect(screen.y).toBeCloseTo((flipWorldY(880, norm) - norm.ymin) * effectiveScale + VIEWPORT.y, 10);
   });
 });
 

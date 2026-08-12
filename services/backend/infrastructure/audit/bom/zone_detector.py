@@ -243,7 +243,19 @@ ZONE_MAX_LIMITS: dict[str, tuple] = {
     "title_upper_left": (0.40, 0.35),
     "notes": (0.45, 0.65),
     "iso": (0.45, 0.45),
-    "shim": (0.30, 0.35),             # a compact parts table, never large
+    # The height was 0.35 and that is **smaller than the table it caps**. Measured on
+    # M745227N01's reference: the drawn シム表 is 337.5 units tall on an 891-unit sheet
+    # (37.9%). The box came out 311.8 tall — its cap to the unit — with the bottom row
+    # `総厚サ 6mm` (y=311.1) finishing **35.8 units below the bottom edge of its own zone**,
+    # from where it fell through to the `drawing_views` pool and was compared and marked.
+    # A SAFE zone's content must never be compared. Raising the cap to 0.45 covers every row
+    # on both sides; the box then stops on its own content, not on the limit.
+    #
+    # The growth loop refuses any point that would push the cluster past the cap
+    # (`_expand_bbox`), so a cap below the table's own size does not shrink the box, it
+    # **excludes real rows from the zone that owns them** — silently, and in the direction
+    # that creates findings rather than suppressing them.
+    "shim": (0.30, 0.45),             # a compact parts table, but see above: 0.35 clipped it
 }
 
 # Zones that `views` must subtract.
@@ -258,7 +270,7 @@ VIEWS_EXCLUDED_ZONES: tuple = (
 )
 
 
-def views_exclusions(regions: dict) -> list:
+def views_exclusions(regions: dict, omit: tuple = ()) -> list:
     """Zone shapes that must be subtracted from `views` at the point of use.
 
     Returns `(bbox, outline)` pairs for the sibling zones present in `regions` — `outline` is
@@ -270,13 +282,20 @@ def views_exclusions(regions: dict) -> list:
     covers. Using its bounding box instead would over-exclude — content in the notch the user
     deliberately cut out of, say, the notes zone would be dropped from `views` as well, and
     land in no category at all. That is the silent false-negative direction.
+
+    `omit` drops a zone from the subtraction because the caller is subtracting that zone's
+    content **by entity identity** instead. `notes` is passed there by the comparison
+    orchestrator: its pool is now chosen per entity rather than per box, so subtracting the box
+    as well would be wrong in both directions — it would drop view geometry that merely sits
+    near the notes, and leave a note that fell outside the box in the `views` pool to be
+    reported twice. Identity keeps the two pools exactly complementary.
     """
     from .zone_geometry import polygon_for
 
     return [
         (bbox, polygon_for(regions, key))
         for key, bbox in (regions or {}).items()
-        if key in VIEWS_EXCLUDED_ZONES and bbox
+        if key in VIEWS_EXCLUDED_ZONES and key not in omit and bbox
     ]
 
 
@@ -879,7 +898,7 @@ def detect_zones_by_content(entities: list) -> dict:
             if bbox is not None:
                 bw = bbox[2] - bbox[0]
                 bh = bbox[3] - bbox[1]
-                
+
                 is_valid_size = False
                 if zone in ("title_upper_left", "notes"):
                     # Upper-left title and notes can be narrow or short, allow smaller size

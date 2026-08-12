@@ -6,6 +6,7 @@ import { useThemeStore } from '../../stores/themeStore';
 import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
 import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor, renderViewOrigins } from './renderEntities';
+import { entitiesFromLayers, viewDatumsFromTransform } from './viewDatums';
 import { DrawingCanvasRef } from './DrawingCanvas';
 
 interface CanvasRendererProps {
@@ -131,6 +132,15 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const visibleViolations = useMemo(() => {
     return violations.filter(v => !hiddenViolationIds[v.id]);
   }, [violations, hiddenViolationIds]);
+
+  // Each view's own origin. Memoized because finding it walks every entity on the sheet looking
+  // for centrelines and concentric curves, and `renderViewOrigins` runs on every pan frame. Only
+  // one of these per sheet comes from the file; the rest are inferred and drawn dashed. See
+  // `viewDatums.ts`.
+  const viewDatums = useMemo(
+    () => viewDatumsFromTransform(drawing?.metadata?.viewport_transform, entitiesFromLayers(layers)),
+    [drawing, layers],
+  );
 
   // Expose canvasRef for interaction layer
   useImperativeHandle(ref, () => ({
@@ -298,7 +308,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     // drag too: they are three tiny paths, and the point of a datum marker is that it tracks
     // the geometry while you pan.
     if (showViewOrigins) {
-      renderViewOrigins({ frame: frameData, drawing });
+      renderViewOrigins({ frame: frameData, datums: viewDatums });
     }
 
     // Only render violation reticles when not actively panning/zooming — they're static

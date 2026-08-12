@@ -312,32 +312,43 @@ def test_round_trip_through_to_dict_preserves_the_anchor():
     assert Viewport.from_dict(original.to_dict()) == original
 
 
-def test_a_views_own_origin_lands_at_its_paper_centre():
-    """iCAD SX draws one ORIGIN marker per view. This is where each one goes.
+def test_the_window_centre_is_a_tautology_and_is_named_as_one():
+    """`to_paper(anchor) == paper_center` identically, for every viewport.
 
-    It falls out of the algebra -- to_paper(anchor) == paper_center -- but it is the
-    question the marker answers, so it is pinned rather than left implicit.
+    This used to be `origin_paper_point`, asserted here as "where each iCAD ORIGIN marker
+    goes". The algebra was always right and the name was always wrong: the anchor is defined
+    as the model point at the window centre, so projecting it back cannot locate a datum.
+    Renamed 2026-08-12 after the overlay built on it was reported wrong on two of three views.
     """
     vp = _transform().viewports[0]
-    assert vp.origin_paper_point == (vp.paper_center_x, vp.paper_center_y)
+    assert vp.window_center_paper_point == (vp.paper_center_x, vp.paper_center_y)
+    assert not hasattr(vp, "origin_paper_point"), (
+        "the old name asserted a per-view origin this file cannot supply"
+    )
 
 
-def test_the_global_origin_is_not_the_views_origin():
-    """A view's own origin and the global model origin are different points."""
+def test_the_global_origin_is_not_the_window_centre():
+    """The window centre and the projected global model origin are different points."""
     vp = _transform().viewports[0]          # anchor (50, 25), scale 2, paper centre (200,150)
-    assert vp.origin_paper_point == (200.0, 150.0)
+    assert vp.window_center_paper_point == (200.0, 150.0)
     assert vp.to_paper(0.0, 0.0) == (100.0, 100.0)
-    assert vp.contains_paper_point(*vp.origin_paper_point)
+    assert vp.contains_paper_point(*vp.window_center_paper_point)
 
 
 def test_a_real_sheets_global_origin_falls_outside_its_own_viewport():
     """Measured, not invented: `M745221N01_FSRS2` viewport `2D2` (the sectA view).
 
     This is the case that makes the anchor/centre distinction matter rather than being a
-    naming preference. The view's own origin sits at its paper centre and is visible; the
-    GLOBAL model origin projects ~250 units up the sheet and is clipped away entirely. Read
-    the anchor as if it were `view_center_point` -- which is (0,0,0) on all three of this
-    sheet's viewports -- and you get the second number while believing it is the first.
+    naming preference. The window centre is inside the window by construction; the GLOBAL
+    model origin projects ~250 units up the sheet and is clipped away entirely. Read the
+    anchor as if it were `view_center_point` -- which is (0,0,0) on all three of this sheet's
+    viewports -- and you get the second number while believing it is the first.
+
+    Neither number is this view's datum. Measured 2026-08-12: sectA dimensions from the line
+    y=157.324 (bit-identical to the front view's axis, as projection alignment requires),
+    11.77 units above the window centre asserted below. `ucs_origin` is (0,0,0) on all 34
+    viewports in the corpus and lands inside exactly one viewport per sheet, so the per-view
+    datum is not in these files at all.
     """
     vp = Viewport(
         index=1, handle="2D2",
@@ -347,9 +358,9 @@ def test_a_real_sheets_global_origin_falls_outside_its_own_viewport():
         view_height=186.8485105705261, scale=0.7142857142857145,
     )
 
-    own = vp.origin_paper_point
+    own = vp.window_center_paper_point
     assert own == (vp.paper_center_x, vp.paper_center_y)
-    assert vp.contains_paper_point(*own), "the view's own origin is visible in the view"
+    assert vp.contains_paper_point(*own), "the window centre is inside its own window"
 
     global_origin = vp.to_paper(0.0, 0.0)
     assert math.isclose(global_origin[0], 304.694, abs_tol=1e-3)

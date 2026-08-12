@@ -9,6 +9,7 @@ See docs/zone-template-alignment-implementation-plan.md and
 docs/vault/06 - Gotchas & Debugging Lessons/Gotcha - Zone Detection Accuracy & Stability.md
 """
 
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from ....domain.models.zone_template import (
@@ -18,6 +19,50 @@ from ....domain.models.zone_template import (
 )
 from ....logger import logger
 from .zone_geometry import ZONE_POLYGONS_KEY
+
+# ---------------------------------------------------------------------------
+# Detection-only override
+# ---------------------------------------------------------------------------
+#: When true, every zone falls back to keyword detection. This is the configuration an end user
+#: without a hand-aligned template is in, and until 2026-08-12 there was **no committed way to
+#: run it** — `baseline-v45-detection.json` was published from a throwaway script that no longer
+#: exists, so the one baseline describing the shipping configuration could not be regenerated
+#: from the repo.
+#:
+#: ⚠ **The gate is NOT here** — it is in `table_extractor.extract_dynamic_regions_async`, which
+#: is the single funnel both template paths pass through. Gating this function alone was tried
+#: first and silently did nothing: the offline eval runner never calls it. It passes the
+#: corpus's captured fractions straight into `generate_deterministic_candidates` as
+#: `zone_templates=`, bypassing the Mongo lookup entirely — which is the whole point of that
+#: seam. A `--no-templates` run then printed "zones=DETECTED" above the fully templated numbers.
+#:
+#: A module-level flag rather than an env var on purpose: it shows up in a stack trace and in
+#: `dir()`. Set it through `templates_disabled()`, never by assignment, so it is always restored.
+#: See docs/vault/06 - .../Gotcha - Every Published Baseline Measures a Configuration Users Do Not Get.
+_TEMPLATES_DISABLED = False
+
+
+@contextmanager
+def templates_disabled(disabled: bool = True):
+    """Run a block with hand-aligned zone templates ignored (`tools/eval.py --no-templates`).
+
+    Restores the previous value on exit, so a nested or interrupted run cannot leave the
+    process in a state where every later comparison silently ignores its template.
+    """
+    global _TEMPLATES_DISABLED
+    previous = _TEMPLATES_DISABLED
+    _TEMPLATES_DISABLED = disabled
+    try:
+        yield
+    finally:
+        _TEMPLATES_DISABLED = previous
+
+
+def templates_are_disabled() -> bool:
+    """Whether zone templates are currently bypassed. Read by the eval runner to stamp the
+    configuration into a baseline — a number that does not say which configuration produced it
+    gets read as "the system's performance"."""
+    return _TEMPLATES_DISABLED
 
 
 def _as_fraction_dict(fractions: Any) -> Optional[dict]:

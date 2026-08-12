@@ -8,8 +8,12 @@ export interface RawViolation {
   details?: string;
   confidence?: number;
   original_value?: string;
-  coordinates?: [number, number];
-  ref_coordinates?: [number, number];
+  // `null`, not just absent, when the backend could not place the value —
+  // `resolution_method: "unresolved"`. The type said `[number, number] | undefined`, which is
+  // not what the payload carries, and that gap is part of why the unresolved case went
+  // unhandled below: a reader checking the type would conclude it could not arise.
+  coordinates?: [number, number] | null;
+  ref_coordinates?: [number, number] | null;
   status?: string;
   visual_bbox?: [number, number, number, number];
   ref_visual_bbox?: [number, number, number, number];
@@ -116,13 +120,25 @@ export const generateComparisonMarkings = ({
     // anchors it to a same-valued cell elsewhere on the sheet — e.g. a tolerance-grid cell —
     // so for these structured categories we trust the backend coordinate and skip text
     // grounding entirely. (drawing_views/notes still ground by text, where it is correct.)
+    //
+    // ⚠ This guard used to also require `hasBackendCoord`, and so **failed open in exactly the
+    // case it was written for**: when the backend resolves nothing the marking arrives with
+    // `coordinates: null` and `resolution_method: "unresolved"`, `hasBackendCoord` is false,
+    // and the whole thing fell through into fuzzy matching — with no coordinate to sanity-check
+    // the result against. Reported from a live review on M745227N01: one unresolved BOM row
+    // (`Q'ty: 1 vs 1`) text-matched every entity reading `1` on the sheet and, because the loop
+    // below emits one marker per match, painted MATCHED checkmarks down the 一組分個数 column of
+    // the シム表 — a SAFE zone that is never compared. One finding, several wrong markers, all
+    // labelled `bill_of_materials`.
+    //
+    // A structured value has no meaning outside the cell the backend read it from, so when the
+    // backend could not place it, it gets **no marker**. The value is still reported in the
+    // BOM / title-block table; what is dropped is a claim about *where* it is that nothing
+    // could support.
     const isStructuredCategory =
       marking.category === "title_block" || marking.category === "bill_of_materials";
-    const hasBackendCoord =
-      (Array.isArray(marking.coordinates) && marking.coordinates.length >= 2) ||
-      (Array.isArray(marking.ref_coordinates) && marking.ref_coordinates.length >= 2);
 
-    if (!usedDirectIdMapping && !(isStructuredCategory && hasBackendCoord)) {
+    if (!usedDirectIdMapping && !isStructuredCategory) {
       const isShortAnnotation = searchTerm && searchTerm.trim().length <= 6 && !searchTerm.includes('\n');
       const exactMatchFilter = (entities: typeof textEntities) =>
         entities.filter(e => e.text.trim().toLowerCase() === searchTerm.trim().toLowerCase());

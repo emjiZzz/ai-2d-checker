@@ -297,7 +297,105 @@ class ComparisonCacheManager:
     # bump rather than taking v46, because v45 has not shipped and a second invalidation would
     # cost a re-run for no added safety. See zone_detector.ZONE_ANCHORS and
     # tests/test_notes_zone_anchors.py.
-    COMPARISON_CACHE_VERSION = "v45"
+    # v46: `extract_title_ul_kv` no longer assumes the LOWEST band of the upper-left table is
+    # its values row. That is a positional assumption, and it holds only while the zone box
+    # stops at the bottom of the table -- on M745227N01 the default `aspect-1.374` template
+    # applied to a 1.414 sheet put the reference's box bottom at y=762.99 against a value row
+    # at y=822, so a note at y=767.5 was read as the values and the real values (45/227/16組/0)
+    # became headers. A band is now dropped only when it BOTH fails to fill the table's columns
+    # and sits at an outlying row gap. Measured over every stored sheet: the value band moves on
+    # M745227N01's reference and on nothing else, so cached audits for the other 11 pairs are
+    # invalidated for no behaviour change -- taken anyway rather than shipping a version whose
+    # meaning depends on which sheet you loaded. See orchestrator.ul_value_band_index,
+    # tests/test_title_ul_value_band.py, and
+    # docs/vault/06 - .../Gotcha - The Lowest Row Is Not the Values Row.
+    #
+    # v46 also, folded in because v46 has not shipped and each alone invalidates the same
+    # entries: `partition_ul_pairs` releases a value with no counterpart anywhere back to the
+    # zone that covers it, instead of reporting a one-sided change AND suppressing that text
+    # sheet-wide. Release is conditional on another zone actually covering the value, because
+    # `title_upper_left` is subtracted from the `views` pool and an uncaught release would be a
+    # silent false negative. See tests/test_title_ul_release.py.
+    #
+    # ⛔ A THIRD change was written under this bump and REVERTED the same day, before shipping:
+    # `extract_title_ul_kv` subtracting the sibling zones' shapes before banding. It measured
+    # well on three unlabelled sheets and was a regression on the corpus that scores --
+    # detection-only F1 0.7736 -> 0.7339, fp 10 -> 14, tp 41 -> 40, three new `title_block`
+    # false positives. **The templated eval could not see it**: all three v46 mechanisms are
+    # byte-identical at F1 0.9231 with zones pinned, because a pinned box does not over-reach so
+    # none of them ever fires. That is why `tools/eval.py --no-templates` now exists. Do not
+    # re-land the subtraction as a per-call-site exclusion list; see orchestrator's
+    # `extract_title_ul_kv` docstring and zone_ownership.py.
+    #
+    # v47: **the notes pool is chosen per ENTITY, not per box.** `extract_note_entities` +
+    # `notes_classifier.classify_notes` replace `extract_zone_entities(..., notes_bbox, ...)`,
+    # `views_exclusions` takes `omit=("notes",)` and the claimed notes are subtracted from the
+    # `views` pool by identity instead, and ownership between overlapping zones now comes from
+    # one arbitration (`zone_ownership.py`) rather than four ad-hoc exclusion lists.
+    #
+    # The zone this replaces has no drawn boundary on these sheets (ruled-border IoU ceiling
+    # 0.08) and is grown from text anchors, so it moves when the text moves — including when the
+    # change under test is itself an added note. On M7452A0N01-rev-mut005 the same four notes
+    # rows sit at IDENTICAL coordinates on both sides, inside the reference's detected box
+    # (38.0, 202.6, 60.0, 251.0) and outside the revision's (65.0, 202.6, 254.0, 231.8), and
+    # report as seven false REMOVEDs. A content predicate cannot disagree with itself.
+    #
+    # Every cached audit is invalidated because notes scoping changed on BOTH paths. Measured:
+    # detection-only F1 0.7736 -> 0.8367 (P 0.8039 -> 0.9535, R unchanged, fp 10 -> 2,
+    # notes_section P 0.59 -> 0.93 at R 1.00); templated F1 unchanged at 0.9231. See
+    # tests/test_notes_entity_classifier.py, tests/test_zone_ownership.py and
+    # docs/vault/06 - .../Gotcha - Adding a Note Destroys the Notes Zone.
+    #
+    # v47 also, folded in because v47 has not shipped and each change alone invalidates the same
+    # entries. Both come from one owner report on M745227N01 -- `４ロール：１２（２×６台）` ADDED
+    # with no REMOVED counterpart on a sheet carrying it on both sides:
+    #   * **`title_upper_left` subtracts from `views` only what it CLAIMED**, not its whole box.
+    #     The reference's copy sits 4.5 units inside that box (y=767.5 vs a bottom edge at
+    #     y=763.0) while its sibling 24 units lower falls outside and paired correctly -- and the
+    #     UL extractor had already cut that row as not-a-values-row. Claimed by the zone for
+    #     exclusion, unclaimed by it for comparison, compared by nobody: a silent false negative.
+    #     `extract_title_ul_kv` now returns its claimed entity ids alongside its pairs.
+    #     **The rule for any zone: only take content out of the shared pool if you will compare
+    #     it.** Everything else falls through to `views`.
+    #   * **cross-text pairs are ordered by proximity AND similarity** (`spatial_differ`,
+    #     `CROSS_TEXT_SIMILARITY_WEIGHT`). Proximity alone crossed the two production-count lines
+    #     once both were present -- the block moved 0.055 normalized against a 0.025 row pitch,
+    #     so each line's nearest neighbour was its sibling -- reporting `4 ロール：12 (2x6台)` ->
+    #     `２ロール：　４（２×２台）`, a false claim that reads as a 4-roll spec becoming 2-roll.
+    # Both verified on the reported pair; both leave BOTH baselines byte-identical, because
+    # M745227N01 is one of the six pairs the runner skips for having no labels.
+    #
+    # v48: **`ZONE_MAX_LIMITS["shim"]` was smaller than the table it caps** -- 0.35 of sheet
+    # height against a drawn シム表 of 337.5 units on an 891-unit sheet (37.9%). The box came
+    # out 311.8 tall, its cap to the unit, and the bottom row `総厚サ 6mm` (y=311.1) sat
+    # **35.8 units below the bottom edge of its own zone**, fell through to the `drawing_views`
+    # pool, and was compared and marked -- reported from a live review, where `shim` is a SAFE
+    # zone like `tolerance` and none of its rows may be compared at all. Height 0.35 -> 0.45.
+    # Now 0 rows uncovered on both sides, and the only thing inside the box but outside the
+    # drawn table is the table's own title, drawn above its top rule and part of it.
+    #
+    # ⚠ This was invisible to every published number and will stay invisible: `M745227N01` is
+    # the ONLY corpus pair carrying a shim table and it is one of the six the runner skips for
+    # having no labels. Both baselines are byte-identical across this change. Verified directly
+    # on the pair instead -- see tests/test_shim_safe_zone.py.
+    #
+    # ⛔ Not fixed by re-reading the drawn table. That was implemented on 2026-08-12 and
+    # reverted the same day on the owner's call; this is the minimal alternative and it touches
+    # no pairing code.
+    #
+    # v48 also, folded in because v48 is unshipped and it invalidates the same entries: a
+    # **SAFE-ZONE NET** in `orchestrator`, after `resolve_marking_coordinates`. `shim` and
+    # `tolerance` are never compared, but that invariant was being kept in three different
+    # places and three different ways -- `safe_filter` guards only the drawing_views pool, the
+    # BOM and title-block injections consult no zone at all, and coordinate resolution can move
+    # a marking after all of those decisions were taken. It was reported violated from live
+    # reviews twice in one day. Now enforced once, where every marking has final coordinates.
+    # Keyed on `zone_ownership.owner_of`, NOT on a bare box test: the revision's `tolerance`
+    # box over-reaches into the title block on M745227N01 and 7 real `title_block` findings sit
+    # inside it, which `title` correctly claims by precedence. Measured: drops 0 findings on
+    # that pair and leaves both baselines byte-identical. It is a net, not a fix -- anything it
+    # ever drops is a bug upstream of it, and it logs each drop so that bug is findable.
+    COMPARISON_CACHE_VERSION = "v48"
 
     @staticmethod
     def _get_cache_path(

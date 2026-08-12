@@ -34,6 +34,9 @@ from services.backend.infrastructure.eval.runner import (  # noqa: E402
     OFFLINE_METHODS,
     run_corpus,
 )
+from services.backend.infrastructure.audit.bom.zone_template_resolver import (  # noqa: E402
+    templates_disabled,
+)
 from services.backend.infrastructure.eval.scorer import format_report  # noqa: E402
 
 
@@ -46,12 +49,15 @@ async def _run(args: argparse.Namespace) -> int:
         print("No pairs in the corpus. Export some with tools/eval_corpus.py.")
         return 1
 
-    result = await run_corpus(
-        corpus,
-        method=args.method,
-        provenance=args.provenance,
-        enforce_offline=not args.allow_network,
-    )
+    # Wraps the whole run, not each pair: a template resolved mid-run would make the number
+    # describe two configurations at once, which is the defect this flag exists to end.
+    with templates_disabled(args.no_templates):
+        result = await run_corpus(
+            corpus,
+            method=args.method,
+            provenance=args.provenance,
+            enforce_offline=not args.allow_network,
+        )
 
     if args.explain:
         target = next(
@@ -66,6 +72,7 @@ async def _run(args: argparse.Namespace) -> int:
     print()
     print(
         f"  {result.pairs_run} pair(s) scored in {result.seconds:.2f}s, method={args.method}"
+        + (", zones=DETECTED (no templates)" if args.no_templates else ", zones=pinned")
         + ("" if args.allow_network else ", zero non-local sockets (enforced)")
     )
     if result.skipped:
@@ -95,6 +102,12 @@ async def _run(args: argparse.Namespace) -> int:
         payload = result.score.to_dict()
         payload["method"] = args.method
         payload["cache_version"] = ComparisonCacheManager.COMPARISON_CACHE_VERSION
+        # Which zone configuration produced this number. Every baseline from v42 to v45
+        # applied the captured templates and none of them said so, so the published figures
+        # described a configuration no end user is in — and the omission survived precisely
+        # because the number was good. `pinned` is the development aid; `detected` is what
+        # ships. See the gotcha named in --no-templates' help.
+        payload["zone_templates"] = "detected" if args.no_templates else "pinned"
         payload["scorer_note"] = (
             "Mutation pairs are drawn from the engine's own comparison pool, so they "
             "cannot reveal a scoping bug and their category attribution is not "
@@ -141,6 +154,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="disable the no-network guard. A number produced this way is not reproducible "
         "and must not be published as a baseline.",
+    )
+    parser.add_argument(
+        "--no-templates",
+        action="store_true",
+        help="ignore hand-aligned zone templates and detect every zone. THIS is the "
+        "configuration an end user without a template is in; the pinned numbers are a "
+        "development aid. Baselines are stamped with which one they measured.",
     )
     args = parser.parse_args(argv)
 

@@ -257,10 +257,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   toggleCanvasStats: () => set((state) => ({ showCanvasStats: !state.showCanvasStats })),
   showGrid: false,
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
-  // The per-view ORIGIN markers iCAD SX shows — one per paper-space viewport, drawn at that
-  // view's own anchor. Off by default: it is a reference overlay, not part of the sheet, and
-  // a drawing with no paper-space viewports (the DWG-exported reference sheets) has none to
-  // show at all. See renderViewOrigins.
+  // One marker per view, at that view's own origin. Off by default: it is a reference overlay,
+  // not part of the sheet, and a drawing with no paper-space viewports (the DWG-exported
+  // reference sheets) has none to show at all.
+  //
+  // Until 2026-08-12 this drew the viewport's WINDOW CENTRE and called it the origin — 22.2 and
+  // 11.8 units out on two of M745221N01_FSRS2's three views. The datums are now computed in
+  // `viewDatums.ts`, and the inferred ones are drawn dashed. See renderViewOrigins.
   showViewOrigins: false,
   toggleViewOrigins: () => set((state) => ({ showViewOrigins: !state.showViewOrigins })),
   // There is no `renderMode` any more — the canvas draws vectors, always. The raster PNG was

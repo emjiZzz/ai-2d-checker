@@ -47,7 +47,27 @@ flowchart TD
      arguments. Two sibling functions deliberately skip the Y-flip — see the header comment
      in `utils/coordinateTransform.ts` before using any of them.
 
-3. **Zone BBox Overlay Layer** (`renderZoneEditor` in `renderEntities.ts`):
+3. **`flipWorldY(wy, norm)`**:
+   - The Y mirror alone, with no scale or pan — for renderers that **stay in world space** and let
+     the `ctx` transform do the rest. `renderEntities` mirrors every entity through it.
+   - Needed because **the canvas transform does not carry the flip**: `CanvasRenderer` sets
+     `ctx.scale(scale, scale)` with no negative, so world space on this canvas is Y-DOWN and
+     anything drawn in it must mirror its own coordinates.
+   - **Which renderers owe the mirror is decided by whether they reset the transform.** The
+     reticle, pin and zone-box overlays call `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` and work in
+     screen pixels via `worldToScreen` / `fractionsToScreenRect`, which flip internally.
+     `renderViewOrigins` (one marker per view, at that view's own datum) is the only overlay
+     that stays in world space, and it shipped with no flip at all — see
+     [[Gotcha - A Missing Y Flip Is Invisible Near the Centreline]].
+   - Its datums come from `viewDatums.ts`, memoized in `CanvasRenderer` because finding them
+     walks every entity on the sheet. Ladder: `ucs_origin` projected (extracted, solid), else
+     the view's `CENTER` centreline crossing, else its largest concentric family, else a lone
+     centreline's midpoint — all **inferred, drawn dashed**, because the DXF carries only one
+     origin per sheet. A view matching none is left unmarked. It previously drew the viewport's
+     window CENTRE and called that the origin:
+     [[Gotcha - The View Origin Marker Marked the Middle of the Window]].
+
+4. **Zone BBox Overlay Layer** (`renderZoneEditor` in `renderEntities.ts`):
    - Renders 7-zone bounding boxes imperatively inside the `CanvasRenderer` pass to guarantee
      frame-perfect zoom & pan synchronization without SVG lag.
    - Drawn in **screen space after `ctx.restore()`**, converting corners itself, so stroke

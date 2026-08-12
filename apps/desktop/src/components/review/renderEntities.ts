@@ -1,4 +1,5 @@
-import { getNormalization, worldToScreen } from '../../utils/coordinateTransform';
+import { flipWorldY, getNormalization, worldToScreen } from '../../utils/coordinateTransform';
+import type { ViewDatum } from './viewDatums';
 import {
   VIEWS_EXCLUDED_ZONES,
   ZONE_KEYS,
@@ -490,7 +491,7 @@ export const renderEntities = ({
 }: RenderEntitiesParams): { totalEntities: number; drawnEntities: number } => {
   const { ctx, isExport, renderWidth, renderHeight, scale, transX, transY, minX, minY, maxX, maxY, resolutionMultiplier, norm } = frame;
 
-  const flipY = (y: number) => (norm.hasBounds ? norm.ymax + norm.ymin - y : y);
+  const flipY = (y: number) => flipWorldY(y, norm);
 
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
@@ -1281,68 +1282,69 @@ export interface RenderZoneEditorParams {
   pinnedKeys?: readonly string[];
 }
 
-/** One paper-space viewport, as persisted in `drawing.metadata.viewport_transform`. */
-interface ViewportPayload {
-  index: number;
-  handle: string;
-  paper_center: [number, number];
-  paper_size: [number, number];
-  /** MODEL point that lands at `paper_center`. `view_center` is the pre-2026-08-11 key. */
-  view_anchor?: [number, number];
-  view_center?: [number, number];
-  scale: number;
-}
-
 /**
- * Where each view's own ORIGIN sits on the sheet, in paper coordinates.
+ * Draws one marker at each view's own ORIGIN: a right-pointing X arm and an up-pointing Y arm.
  *
- * iCAD SX draws one ORIGIN marker per view — on `M745221N01_FSRS2` that is three, one each
- * for 正面図, sectA and isome1. Each is the view's **anchor** (the DXF `view_target_point`),
- * which by construction projects to its viewport's paper centre.
+ * Takes the datums already computed by `viewDatumsFromTransform` rather than deriving them
+ * here — that walk is over every entity on the sheet and belongs in a memo, not in a function
+ * that runs on every pan frame.
  *
- * NOT the global model origin. That is `(0,0)` projected through a viewport, and on this
- * sheet it lands outside two of the three viewport rectangles entirely — visible only in the
- * front view. Confusing the two is the trap the backend's `view_anchor` rename documents.
- *
- * Mirrors `Viewport.origin_paper_point` in `viewport_transform.py`; keep the two in step.
- */
-export const viewOriginsFromTransform = (transform: any): { x: number; y: number; handle: string; scale: number }[] => {
-  const viewports: ViewportPayload[] = transform?.viewports;
-  if (!Array.isArray(viewports)) return [];
-  return viewports.flatMap((vp) => {
-    const pc = vp?.paper_center;
-    if (!Array.isArray(pc) || pc.length < 2) return [];
-    const [x, y] = pc;
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
-    return [{ x, y, handle: String(vp.handle ?? ''), scale: Number(vp.scale) || 1 }];
-  });
-};
-
-/**
- * Draws the per-view ORIGIN markers: a right-pointing X arm and an up-pointing Y arm.
+ * **An inferred datum is drawn DASHED.** Only one view per sheet has its origin stated by the
+ * file (`ucs_origin` projected); the rest are read off the drawn geometry, and the overlay says
+ * which is which — the same idiom `renderZoneEditor` uses for a zone the detector never
+ * anchored, so a guess is never mistaken for a measurement. See `viewDatums.ts` for the ladder
+ * and for what shipped before it: a marker at the viewport's window CENTRE, which is what
+ * `to_paper(anchor)` returns identically, and which was 22.2 and 11.8 units from the real datum
+ * on two of this sheet's three views.
  *
  * Screen-constant, like lineweight and for the same reason — this is an annotation about the
  * drawing, not a feature of it, so it must not grow when you zoom in. Skipped on export: it
  * is a reference overlay, not part of the sheet.
+ *
+ * ## The Y flip belongs HERE, not in the canvas transform
+ *
+ * This function previously claimed *"the canvas transform already carries the flip, so the up
+ * arm is drawn toward +y here and lands upward on screen."* **That was false.**
+ * `CanvasRenderer` sets `ctx.scale(scale, scale)` — no negative — and every entity is mirrored
+ * at draw time instead, through `flipY(y) = ymax + ymin - y` against `render_bounds`. So world
+ * space on this canvas is **Y-DOWN**, and a marker drawn at a raw CAD `y` lands mirrored about
+ * the sheet's horizontal centreline while its "up" arm points down.
+ *
+ * It survived because the error is proportional to distance from that centreline. On
+ * `M745221N01` the two viewports near the middle were 18 and 6 units out — visually fine — and
+ * only the isometric view, high on the sheet at paper y 224.8 against a centreline of 148.5,
+ * was **152 units out**: drawn at the bottom of the sheet while the view it marks is at the top.
+ * The same "mirrored overlay that looks plausible" failure the zone-fraction conversion carries
+ * a warning about.
+ *
+ * This is the **only** overlay in this file that stays in world space. `renderViolationReticles`,
+ * `renderAnnotationPins` and `renderZoneEditor` all open with
+ * `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` and place things in screen pixels via `worldToScreen`
+ * / `fractionsToScreenRect`, which apply the flip themselves. So "does this renderer owe the
+ * mirror?" is answered by whether it resets the transform — and this one does not, because
+ * dividing its sizes by `scale` is how it stays screen-constant while tracking the geometry.
  */
 export const renderViewOrigins = ({
   frame,
-  drawing,
+  datums,
 }: {
   frame: RenderFrame;
-  drawing?: any;
+  datums?: readonly ViewDatum[];
 }): void => {
-  const { ctx, isExport, scale, resolutionMultiplier } = frame;
+  const { ctx, isExport, scale, resolutionMultiplier, norm } = frame;
   if (isExport) return;
+  if (!datums?.length) return;
 
-  const origins = viewOriginsFromTransform(drawing?.metadata?.viewport_transform);
-  if (!origins.length) return;
+  const flipY = (y: number) => flipWorldY(y, norm);
 
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   const ARM_PX = 26;
   const HEAD_PX = 7;
   const arm = (ARM_PX / scale) * resolutionMultiplier;
   const head = (HEAD_PX / scale) * resolutionMultiplier;
+  // Screen-space dash, like the arm lengths: a world-space pattern would dissolve when you
+  // zoom out and turn solid when you zoom in, which is the one thing this dash must not do.
+  const dash = [(5 / scale) * resolutionMultiplier, (3.5 / scale) * resolutionMultiplier];
 
   ctx.save();
   ctx.strokeStyle = '#22d3ee';
@@ -1350,17 +1352,24 @@ export const renderViewOrigins = ({
   ctx.lineWidth = (Math.max(1 / dpr, 1.25 / dpr) / scale) * resolutionMultiplier;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
-  ctx.setLineDash([]);
 
-  origins.forEach(({ x, y }) => {
-    // Paper Y is CAD-up; the canvas transform already carries the flip, so the "up" arm is
-    // drawn toward +y here and lands upward on screen.
+  datums.forEach(({ x, y: paperY, inferred }) => {
+    // Paper Y is CAD-up. World space here is Y-DOWN (see the flip note above), so the marker
+    // is mirrored into it and the "up" arm is drawn toward -y.
+    const y = flipY(paperY);
+
+    // Dashed ARMS only. The arrowheads and the corner box stay solid: they are filled and a
+    // small filled triangle with a dash pattern reads as a rendering fault, not as a caveat.
+    ctx.setLineDash(inferred ? dash : []);
+
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + arm, y);
     ctx.moveTo(x, y);
-    ctx.lineTo(x, y + arm);
+    ctx.lineTo(x, y - arm);
     ctx.stroke();
+
+    ctx.setLineDash([]);
 
     // Solid arrowheads, matching how iCAD draws them.
     ctx.beginPath();
@@ -1371,16 +1380,17 @@ export const renderViewOrigins = ({
     ctx.fill();
 
     ctx.beginPath();
-    ctx.moveTo(x, y + arm);
-    ctx.lineTo(x + head * 0.42, y + arm - head);
-    ctx.lineTo(x - head * 0.42, y + arm - head);
+    ctx.moveTo(x, y - arm);
+    ctx.lineTo(x + head * 0.42, y - arm + head);
+    ctx.lineTo(x - head * 0.42, y - arm + head);
     ctx.closePath();
     ctx.fill();
 
     // A small open square at the corner reads as "this is a datum", and distinguishes the
-    // marker from a leader or a dimension witness line at a glance.
+    // marker from a leader or a dimension witness line at a glance. Drawn into the same
+    // quadrant the two arms occupy — up and to the right — so a negative height, not positive.
     const box = head * 0.85;
-    ctx.strokeRect(x, y, box, box);
+    ctx.strokeRect(x, y - box, box, box);
   });
 
   ctx.restore();
