@@ -1,0 +1,96 @@
+{
+  "cache_version": "v45",
+  "category_attribution": {
+    "accuracy": 0.6829268292682927,
+    "confusion": {
+      "drawing_views->notes_section": 5,
+      "notes_section->drawing_views": 6,
+      "notes_section->title_block": 2
+    },
+    "correct": 28,
+    "matched": 41
+  },
+  "macro_f1": 0.7785982478097622,
+  "match_tiers": {
+    "handle": 19,
+    "text": 22
+  },
+  "method": "deterministic",
+  "micro": {
+    "duplicates": 0,
+    "f1": 0.7735849056603775,
+    "fn": 14,
+    "fp": 10,
+    "precision": 0.803921568627451,
+    "recall": 0.7454545454545455,
+    "tp": 41
+  },
+  "pairs": 36,
+  "per_category": {
+    "bill_of_materials": {
+      "duplicates": 0,
+      "f1": 0.7058823529411764,
+      "fn": 4,
+      "fp": 1,
+      "precision": 0.8571428571428571,
+      "recall": 0.6,
+      "tp": 6
+    },
+    "drawing_views": {
+      "duplicates": 0,
+      "f1": 0.8085106382978724,
+      "fn": 9,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.6785714285714286,
+      "tp": 19
+    },
+    "isometric_view": {
+      "duplicates": 0,
+      "f1": null,
+      "fn": 0,
+      "fp": 0,
+      "precision": null,
+      "recall": null,
+      "tp": 0
+    },
+    "notes_section": {
+      "duplicates": 0,
+      "f1": 0.7428571428571429,
+      "fn": 0,
+      "fp": 9,
+      "precision": 0.5909090909090909,
+      "recall": 1.0,
+      "tp": 13
+    },
+    "other_engineering_references": {
+      "duplicates": 0,
+      "f1": null,
+      "fn": 0,
+      "fp": 0,
+      "precision": null,
+      "recall": null,
+      "tp": 0
+    },
+    "title_block": {
+      "duplicates": 0,
+      "f1": 0.8571428571428571,
+      "fn": 1,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.75,
+      "tp": 3
+    }
+  },
+  "scored_pairs": 25,
+  "scorer_note": "Mutation pairs are drawn from the engine's own comparison pool, so they cannot reveal a scoping bug and their category attribution is not independent. Human pairs are required for both.",
+  "status_confusion": {
+    "ADDED->ADDED": 5,
+    "CHANGED->CHANGED": 29,
+    "REMOVED->CHANGED": 3,
+    "REMOVED->REMOVED": 4
+  },
+  "unresolvable_labels": [],
+  "zero_finding_false_positives": 0,
+  "zero_finding_pairs": 11
+}
