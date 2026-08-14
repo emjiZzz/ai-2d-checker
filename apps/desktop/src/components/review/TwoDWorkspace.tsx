@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, MoreVertical, Check, Activity, Grid, Move, LayoutTemplate, Crosshair } from "lucide-react";
+import { Maximize, Download, MoreVertical, Check, Move, LayoutTemplate, Crosshair } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -224,10 +224,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const violations = useWorkspaceStore(s => s.violations);
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
-  const showCanvasStats = useReviewStore(s => s.showCanvasStats);
-  const toggleCanvasStats = useReviewStore(s => s.toggleCanvasStats);
-  const showGrid = useReviewStore(s => s.showGrid);
-  const toggleGrid = useReviewStore(s => s.toggleGrid);
   const showViewOrigins = useReviewStore(s => s.showViewOrigins);
   const toggleViewOrigins = useReviewStore(s => s.toggleViewOrigins);
 
@@ -872,34 +868,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
                   {isViewMenuOpen && (
                     <div className="absolute right-0 top-full mt-2 w-60 glass-panel rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 border border-border-color bg-bg-card animate-fade-in">
-
-                      <button
-                        onClick={() => { toggleCanvasStats(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showCanvasStats
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
-                            : "text-text-primary hover:bg-sidebar-item-hover"
-                          }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Activity size={16} />
-                          <span>{showCanvasStats ? "Hide Canvas Stats" : "Show Canvas Stats"}</span>
-                        </div>
-                        {showCanvasStats && <Check size={14} className="text-accent-cyan" />}
-                      </button>
-
-                      <button
-                        onClick={() => { toggleGrid(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showGrid
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
-                            : "text-text-primary hover:bg-sidebar-item-hover"
-                          }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Grid size={16} />
-                          <span>{showGrid ? "Hide Canvas Grid" : "Show Canvas Grid"}</span>
-                        </div>
-                        {showGrid && <Check size={14} className="text-accent-cyan" />}
-                      </button>
 
                       {/* One marker per view, at that view's own ORIGIN — computed by
                           `viewDatums.ts`, not read off the viewport window (which is what this

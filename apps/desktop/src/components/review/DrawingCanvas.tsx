@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { AnnotationSeverity, getAnnotationBadgeMap } from '../../stores/workspace/types';
@@ -51,7 +51,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
     const theme = useThemeStore((s) => s.theme);
 
-    const [renderDiagnostics, setRenderDiagnostics] = useState({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
     const [redrawTrigger, setRedrawTrigger] = useState(0);
 
     const [annotationModal, setAnnotationModal] = useState<{
@@ -162,7 +161,6 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             hoveredMarkerId={hoveredMarkerId}
             hoveredAnnotationId={hoveredAnnotationId}
             isNeonCAD={true}
-            setRenderDiagnostics={setRenderDiagnostics}
             markerPositionsRef={markerPositionsRef}
             redrawTrigger={redrawTrigger}
             isDraggingRef={isDraggingRef}
@@ -243,44 +241,10 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             />
           );
         })()}
-
-
-
-        {/* High-Fidelity HUD Engineering Diagnostics Overlay */}
-        {useReviewStore(s => s.showCanvasStats) && (
-          <div
-            className={`absolute bottom-3 left-3 flex items-center gap-3 px-3 py-1 rounded-sm border backdrop-blur-md pointer-events-none font-mono text-xs shadow-md ${theme === 'hc-light'
-                ? 'bg-[var(--bg-card)]/85 border-zinc-200/80 text-zinc-600'
-                : 'bg-zinc-950/80 border-white/10 text-zinc-400'
-              }`}
-          >
-            <ZoomDisplay />
-            <div className="w-[1px] h-3 bg-white/10" />
-            <div>VIRTUALIZED: <span className="text-emerald-400 font-bold">{renderDiagnostics.drawCount}/{renderDiagnostics.entityCount}</span></div>
-            <div className="w-[1px] h-3 bg-white/10" />
-            <div>RENDER: <span className="text-amber-400 font-bold">{renderDiagnostics.renderTimeMs}ms</span></div>
-          </div>
-        )}
       </div>
     );
   }
 );
-
-/**
- * Zoom percentage display — imperative DOM update, no React re-render on zoom.
- */
-const ZoomDisplay = () => {
-  const theme = useThemeStore((s) => s.theme);
-  const spanRef = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    const unsub = useReviewStore.subscribe((state) => {
-      if (spanRef.current) spanRef.current.textContent = `${(state.viewport.scale * 100).toFixed(0)}%`;
-    });
-    return unsub;
-  }, []);
-  const initScale = useReviewStore.getState().viewport.scale;
-  return <div>ZOOM: <span ref={spanRef} style={{ color: theme === 'hc-light' ? '#0284c7' : '#00e5ff', fontWeight: 600 }}>{(initScale * 100).toFixed(0)}%</span></div>;
-};
 
 const SEVERITY_ORDER: AnnotationSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
 

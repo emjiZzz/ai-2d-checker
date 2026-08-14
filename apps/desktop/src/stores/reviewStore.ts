@@ -38,10 +38,6 @@ interface ReviewState {
   toggleMarkerLabels: () => void;
   showAnnotations: boolean;
   toggleAnnotations: () => void;
-  showCanvasStats: boolean;
-  toggleCanvasStats: () => void;
-  showGrid: boolean;
-  toggleGrid: () => void;
   showViewOrigins: boolean;
   toggleViewOrigins: () => void;
   selectedViolationId: string | null;
@@ -253,10 +249,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
   showAnnotations: false,
   toggleAnnotations: () => set((state) => ({ showAnnotations: !state.showAnnotations })),
-  showCanvasStats: true,
-  toggleCanvasStats: () => set((state) => ({ showCanvasStats: !state.showCanvasStats })),
-  showGrid: false,
-  toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
   // One marker per view, at that view's own origin. Off by default: it is a reference overlay,
   // not part of the sheet, and a drawing with no paper-space viewports (the DWG-exported
   // reference sheets) has none to show at all.

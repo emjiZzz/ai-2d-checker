@@ -18,7 +18,6 @@ interface CanvasRendererProps {
   hoveredMarkerId: string | null;
   hoveredAnnotationId?: string | null;
   isNeonCAD: boolean;
-  setRenderDiagnostics: (stats: { entityCount: number, drawCount: number, renderTimeMs: number }) => void;
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
   redrawTrigger: number;
   canvasInteractionHandlers: any;
@@ -41,7 +40,6 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   hoveredMarkerId,
   hoveredAnnotationId,
   isNeonCAD,
-  setRenderDiagnostics,
   markerPositionsRef,
   redrawTrigger,
   canvasInteractionHandlers,
@@ -59,16 +57,12 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const viewportRef = useRef(useReviewStore.getState().viewport);
   /** Stable ref to the latest drawCanvas — used by the imperative viewport subscription below. */
   const drawCanvasFnRef = useRef<() => void>(() => { });
-  /** Latest render stats, flushed to React state on a trailing throttle (see drawCanvas). */
-  const latestDiagRef = useRef({ entityCount: 0, drawCount: 0, renderTimeMs: 0 });
-  const diagFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // viewport intentionally NOT subscribed via React hook — managed via viewportRef + store subscription
   const activeLayers = useReviewStore(s => s.activeLayers);
   const showViolations = useReviewStore(s => s.showViolations);
   const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
   const visibleMarkerTypes = useReviewStore(s => s.visibleMarkerTypes);
-  const showGrid = useReviewStore(s => s.showGrid);
   const showViewOrigins = useReviewStore(s => s.showViewOrigins);
 
   const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
@@ -158,7 +152,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       return canvas.toDataURL('image/png');
     },
     getCanvasElement: () => canvasRef.current
-  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, showGrid, showViewOrigins]);
+  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, showViewOrigins]);
 
   // Subscribe to viewport changes without triggering React re-renders.
   // On every setViewport call (each mouse pixel during pan), we update the ref and schedule
@@ -193,51 +187,6 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-canvas').trim() || '#262b36';
     }
     ctx.fillRect(0, 0, renderWidth, renderHeight);
-
-    // 2. Draw fine engineering grids (if enabled via 3-dots view controls menu)
-    if (!isExport && showGrid) {
-      ctx.save();
-      ctx.strokeStyle = theme === 'hc-light' ? 'rgba(9, 9, 11, 0.08)' : 'rgba(63, 63, 70, 0.25)';
-      ctx.lineWidth = 1;
-
-      const targetScreenSpacing = 50;
-      const rawWorldSpacing = targetScreenSpacing / effectiveScale;
-      const exponent = Math.floor(Math.log10(rawWorldSpacing));
-      const powerOf10 = Math.pow(10, exponent);
-      const ratio = rawWorldSpacing / powerOf10;
-
-      let worldSpacing = powerOf10;
-      if (ratio > 5) {
-        worldSpacing = powerOf10 * 5;
-      } else if (ratio > 2) {
-        worldSpacing = powerOf10 * 2;
-      }
-
-      const screenSpacing = worldSpacing * effectiveScale;
-      const screenOriginX = viewport.x - normXMin * effectiveScale;
-      const screenOriginY = viewport.y - normYMin * effectiveScale;
-
-      // Batch ALL grid lines into one Path2D — avoids ~40+ individual GPU flushes per frame
-      const gridPath = new Path2D();
-      const kStartX = Math.floor((0 - screenOriginX) / screenSpacing);
-      const kEndX = Math.ceil((renderWidth - screenOriginX) / screenSpacing);
-      for (let k = kStartX; k <= kEndX; k++) {
-        const sx = Math.round(screenOriginX + k * screenSpacing);
-        gridPath.moveTo(sx, 0);
-        gridPath.lineTo(sx, renderHeight);
-      }
-      const kStartY = Math.floor((0 - screenOriginY) / screenSpacing);
-      const kEndY = Math.ceil((renderHeight - screenOriginY) / screenSpacing);
-      for (let k = kStartY; k <= kEndY; k++) {
-        const sy = Math.round(screenOriginY + k * screenSpacing);
-        gridPath.moveTo(0, sy);
-        gridPath.lineTo(renderWidth, sy);
-      }
-      ctx.stroke(gridPath);
-      ctx.restore();
-    }
-
-
 
     // 3. Setup transformations
     let scale = effectiveScale;
@@ -368,7 +317,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showGrid, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
+  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {
@@ -383,46 +332,13 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    const startTime = performance.now();
-    const stats = renderContent(ctx, false);
-    const endTime = performance.now();
-
-    if (stats) {
-      // Throttle diagnostics to ~3x/sec. Calling setRenderDiagnostics every
-      // frame would re-render DrawingCanvas + CanvasRenderer on every pan/zoom
-      // pixel, defeating the viewportRef path that deliberately keeps pans off
-      // the React render pipeline. Stats accumulate in a ref; a single trailing
-      // timer flushes the most recent value, so the readout still converges to
-      // the final frame after activity settles.
-      latestDiagRef.current = {
-        entityCount: stats.totalEntities,
-        drawCount: stats.drawnEntities,
-        renderTimeMs: Math.round((endTime - startTime) * 100) / 100
-      };
-      if (diagFlushTimerRef.current === null) {
-        diagFlushTimerRef.current = setTimeout(() => {
-          diagFlushTimerRef.current = null;
-          setRenderDiagnostics(latestDiagRef.current);
-        }, 300);
-      }
-    }
-  }, [renderContent, setRenderDiagnostics]);
+    renderContent(ctx, false);
+  }, [renderContent]);
 
   // Keep drawCanvasFnRef current so the viewport subscription always calls the latest version
   useEffect(() => {
     drawCanvasFnRef.current = drawCanvas;
   });
-
-  // Cancel any pending diagnostics flush on unmount so setState can't fire on
-  // a torn-down component (e.g. when the workspace tab is switched away).
-  useEffect(() => {
-    return () => {
-      if (diagFlushTimerRef.current) {
-        clearTimeout(diagFlushTimerRef.current);
-        diagFlushTimerRef.current = null;
-      }
-    };
-  }, []);
 
   // Schedule canvas redraws for all non-viewport invalidations (layer toggles, violations, hover, etc.).
   // Viewport-driven redraws are handled imperatively by the store subscription above.
