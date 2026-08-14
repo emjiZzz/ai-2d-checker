@@ -26,6 +26,7 @@ from services.backend.infrastructure.audit.comparison import (
 )
 from services.backend.infrastructure.eval.scorer import SPATIAL_MATCH_RADIUS_MM
 from services.backend.infrastructure.audit.comparison.params import (
+    _BINDINGS,
     DEFAULT_PARAMS,
     ZONE_PARAMS,
     ComparisonParams,
@@ -106,6 +107,101 @@ def test_every_field_is_addressable_by_the_sweep():
     assert not unreachable
     for field in fields(ComparisonParams):
         DEFAULT_PARAMS.with_value(field.name, getattr(DEFAULT_PARAMS, field.name))
+
+
+# ─── a binding must name the module that READS the constant ───────────────────────────
+#
+# `sweep_override` rebinds a module global. That only reaches the engine if the module it
+# rebinds is the module whose code reads the name. Nothing else in this file checks that:
+# `current_params()` reads through the same binding it writes through, so a binding pointing
+# at a module that merely *declares* the constant agrees with itself perfectly while the
+# engine runs on a copy somewhere else.
+#
+# The failure is silent and total — the sweep reports a swept parameter and measures a
+# frozen one — and this repo has already paid for the same shape once, when `sweep.py` and
+# `runner.py` each reproduced the engine call and the sweep measured F1 0.68 against the
+# eval's 0.92 on the same corpus at the same commit, for four days.
+#
+# The move that creates it is ordinary: extracting a function to a new module carries the
+# *read* out of the bound module and leaves the declaration behind.
+
+
+def _module_source_tree(module_path: str):
+    import ast
+    from pathlib import Path
+
+    from services.backend.infrastructure.audit.comparison.params import _resolve
+
+    module = _resolve(module_path)
+    return ast.parse(Path(module.__file__).read_text(encoding="utf-8")), Path(module.__file__)
+
+
+@pytest.mark.parametrize(("field_name", "binding"), sorted(_BINDINGS.items()))
+def test_the_bound_module_is_the_one_that_reads_the_constant(field_name, binding):
+    """The bound module must both declare the name and read it back.
+
+    `ast.walk` deliberately descends into nested functions: the only read of
+    `MIN_STRUCTURED_VALUE_LENGTH` is ~250 lines inside `generate_deterministic_candidates`,
+    and a check that only looked at module scope would miss it — and would keep passing if
+    that function moved out, which is the exact case this test exists for.
+    """
+    import ast
+
+    module_path, attribute = binding
+    tree, source = _module_source_tree(module_path)
+    names = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == attribute]
+
+    assert any(isinstance(n.ctx, ast.Store) for n in names), (
+        f"{field_name!r} is bound to {module_path}, but {source.name} never assigns "
+        f"{attribute}. `sweep_override` would setattr a name that module does not own."
+    )
+    assert any(isinstance(n.ctx, ast.Load) for n in names), (
+        f"{field_name!r} is bound to {module_path}, which declares {attribute} but never "
+        f"reads it. Whatever code does read it now lives elsewhere, so `sweep_override` "
+        f"rebinds a constant nothing consumes: the sweep would report this parameter as "
+        f"having no effect. Move the binding to the module holding the read."
+    )
+
+
+def test_no_second_module_declares_a_bound_constant():
+    """A shadow copy is the other half of the same defect.
+
+    If two modules both assign `MIN_STRUCTURED_VALUE_LENGTH`, the sweep rebinds one and the
+    engine may read the other — and both hold the same literal today, so every value-equality
+    assertion in this file still passes. Attribute access (`orchestrator.MIN_...`) is fine and
+    intentionally not flagged; it resolves through the bound module at call time.
+    """
+    import ast
+    from pathlib import Path
+
+    from services.backend.infrastructure.audit.comparison.params import _resolve
+
+    owner = {
+        attribute: Path(_resolve(module_path).__file__).resolve()
+        for module_path, attribute in _BINDINGS.values()
+    }
+    backend = Path(__file__).resolve().parent.parent / "services" / "backend"
+
+    shadows = []
+    for py in backend.rglob("*.py"):
+        if ".venv" in py.parts or "__pycache__" in py.parts:
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in tree.body:  # module scope only — a local of the same name is harmless
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id in owner:
+                    if py.resolve() != owner[target.id]:
+                        shadows.append(f"{target.id} declared in {py.relative_to(backend)}")
+
+    assert not shadows, (
+        "A swept constant is declared in a module the sweep does not rebind: "
+        + "; ".join(shadows)
+    )
 
 
 # ─── the override mechanism ───────────────────────────────────────────────────────────
