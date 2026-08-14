@@ -12,6 +12,7 @@ import {
   shapePointsToScreen,
   type RegionFractions,
 } from '../../utils/zoneFractions';
+import { HIDE_SECTION_CALLOUTS, sectionCalloutsForLayers } from './sectionCallouts';
 
 
 // Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags and convert escape codes
@@ -498,6 +499,14 @@ export const renderEntities = ({
   let totalEntities = 0;
   let drawnEntities = 0;
 
+  // Section-view identifiers (`Ａ－Ａ` and the lone `Ａ` at each cut arrow). Resolved once per
+  // payload and memoised on the layers object, because the answer needs the whole sheet — a lone
+  // letter only qualifies when a matching designation exists elsewhere on it — and this function
+  // reruns on every pan and zoom. See sectionCallouts.ts for why the frame's grid labels survive.
+  const sectionCallouts = HIDE_SECTION_CALLOUTS
+    ? sectionCalloutsForLayers(layers, cleanCadText)
+    : null;
+
   // One device pixel. This is the floor for every stroke, and it is the whole point of
   // rendering vectors: 1.5 CSS px cannot land on the pixel grid, so it straddles two device
   // pixels and antialiases into a pair of greys — the same soft edge the raster path produces.
@@ -557,6 +566,13 @@ export const renderEntities = ({
       // plausible-but-wrong position — present in vector mode, absent in raster and in
       // iCAD SX. Skipped only for drawing; the entity stays in the comparison set.
       if (ent.properties?.outside_viewport) return;
+
+      // The section IDENTIFIER is draughting furniture: which letter names a cut says nothing
+      // about the part, and it re-letters freely between revisions. The comparison already
+      // ignores it (orchestrator.DROP_SECTION_CALLOUT_LABELS); this stops it being painted too,
+      // so the sheet does not show a label that produces no finding. The section's CONTENT — the
+      // dimensions and callouts inside the view it names — is drawn and compared as before.
+      if (sectionCallouts?.has(ent)) return;
 
       let strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
       if (isExport) {

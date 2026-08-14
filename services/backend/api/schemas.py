@@ -59,6 +59,10 @@ class DrawingResponse(BaseModel):
     entity_counts: dict
     metadata: dict
     ai_summary: dict | None = None
+    # Drawing-number tokens the desktop client compares between the two slots to reject a
+    # reference/revision pair that is not a pair. Defaulted, so drawings ingested before
+    # this field existed deserialize as "no judgement possible" rather than failing.
+    drawing_numbers: list[str] = []
     created_at: datetime
     updated_at: datetime
 

@@ -34,13 +34,10 @@ export function useUploadJobPolling(jobId: string | null, side: "old" | "new") {
         if (job.drawing_id) {
           fetchDrawing(job.drawing_id)
             .then(completedDrawing => {
-              if (side === "old") {
-                state.setOldDrawing(completedDrawing);
-                state.fetchLayers(completedDrawing.id, "old");
-              } else {
-                state.setNewDrawing(completedDrawing);
-                state.fetchLayers(completedDrawing.id, "new");
-              }
+              // Extraction succeeding does not mean the drawing belongs in this room.
+              // applyCompletedDrawing installs it, or rejects and deletes it when it is not
+              // a revision of what the other slot already holds.
+              state.applyCompletedDrawing(completedDrawing, side);
             })
             .catch(err => {
               console.warn("Failed to fetch drawing details after job completion", err);

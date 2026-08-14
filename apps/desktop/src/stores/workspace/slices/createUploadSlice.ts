@@ -2,6 +2,10 @@ import { StateCreator } from "zustand";
 import { WorkspaceState, UploadSlice, UploadState, QueueEntry } from "../types";
 import { uploadFile } from "../../../services/fetchUtils";
 import { deleteDrawing } from "../../../services/drawingsApi";
+import {
+  describeDrawingPairMismatch,
+  isDrawingPairMismatch,
+} from "../../../utils/drawingIdentity";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10GB
 
@@ -23,6 +27,78 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
 
   setOldUploadState: (state) => set({ oldUploadState: state }),
   setNewUploadState: (state) => set({ newUploadState: state }),
+
+  applyCompletedDrawing: (drawing, side) => {
+    const isOld = side === "old";
+    const other = isOld ? get().newDrawing : get().oldDrawing;
+
+    // The room's two slots must hold two revisions of ONE drawing. Without this, an
+    // unrelated file ingests cleanly and produces a full comparison in which every value
+    // differs — confident, complete, and meaningless.
+    if (other && isDrawingPairMismatch(drawing.drawing_numbers, other.drawing_numbers)) {
+      const message = describeDrawingPairMismatch(
+        drawing.drawing_numbers ?? [],
+        other.drawing_numbers ?? [],
+        other.file_name
+      );
+
+      // Discard the drawing that was just ingested — not the one already in the room. The
+      // rejected upload is the user's mistake and the slot it targeted is unambiguous, which
+      // is what makes deleting here safe (§ room-owned drawings: deletion belongs only where
+      // intent is explicit). Best-effort: a lingering record is better than a lost one, and
+      // the slot is cleared either way so it can never be compared.
+      deleteDrawing(drawing.id).catch((err) =>
+        console.warn(`Failed to delete rejected drawing ${drawing.id}:`, err)
+      );
+
+      if (isOld) {
+        set({
+          oldDrawing: null,
+          oldUploadState: "failed",
+          oldUploadProgress: 0,
+          oldError: message,
+          activeOldJobId: null,
+        });
+      } else {
+        set({
+          newDrawing: null,
+          newUploadState: "failed",
+          newUploadProgress: 0,
+          newError: message,
+          activeNewJobId: null,
+        });
+      }
+
+      set((prev) => {
+        const existing = prev.uploadQueue.find((q) => q.side === side);
+        const entry: QueueEntry = {
+          id: existing?.id || Math.random().toString(36).substring(7),
+          file_name: existing?.file_name || drawing.file_name,
+          side,
+          status: "failed",
+          progress: 0,
+          error: message,
+        };
+        return {
+          uploadQueue: [...prev.uploadQueue.filter((q) => q.side !== side), entry],
+          compatibilityStatus: "Mismatch",
+        };
+      });
+
+      return false;
+    }
+
+    // setOldDrawing/setNewDrawing own the rest: layers, annotations, zone regions and the
+    // compatibility recalc all hang off them.
+    if (isOld) {
+      set({ oldUploadState: "completed", oldUploadProgress: 100, oldError: null, activeOldJobId: null });
+      get().setOldDrawing(drawing);
+    } else {
+      set({ newUploadState: "completed", newUploadProgress: 100, newError: null, activeNewJobId: null });
+      get().setNewDrawing(drawing);
+    }
+    return true;
+  },
 
   clearUpload: (side) => {
     if (side === "old") {
@@ -214,12 +290,10 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       // 8. Poll Stage 1 background conversion and schema parsing pipeline
       // Offloaded to useUploadJobPolling hook!
       if (job.status === "completed") {
-        if (isOld) {
-          set({ oldDrawing: drawing, oldUploadState: "completed", oldUploadProgress: 100 });
-          get().fetchLayers(drawing.id, "old");
-        } else {
-          set({ newDrawing: drawing, newUploadState: "completed", newUploadProgress: 100 });
-          get().fetchLayers(drawing.id, "new");
+        // Goes through the same gate as the polled path — a drawing that is not a revision
+        // of the room's other slot is rejected and deleted here too.
+        if (!get().applyCompletedDrawing(drawing, side)) {
+          return false;
         }
       } else if (job.status === "failed") {
         throw new Error(job.error_message || "Background extraction job aborted.");

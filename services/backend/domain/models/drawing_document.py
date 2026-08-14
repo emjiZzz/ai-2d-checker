@@ -25,6 +25,17 @@ class DrawingDocument(Document):
     extraction_schema_version: int = Field(0, description="Version of the entity extraction schema used")
     transform_version: int = Field(0, description="Version of the model<->paper viewport transform maths used")
 
+    # Drawing-number-shaped text tokens found on the sheet, used to reject a
+    # reference/revision pair that is not a pair. Deliberately separate from `part_number`
+    # below: that field is dead on real drawings (detect_revision returns None on 14/14
+    # corpus sides), and populating it would activate the dormant `previous_revision_id`
+    # auto-link in audits.py as a side effect. See infrastructure/cad/drawing_identity.py.
+    # Empty means "no judgement possible", never "no match" -- see is_pair_mismatch.
+    drawing_numbers: list[str] = Field(
+        default_factory=list,
+        description="Drawing-number-shaped tokens extracted from the sheet's text",
+    )
+
     # --- PHASE 7.1: DrawingDocument Revision Chain fields ---
     part_number: str | None = Field(None, description="Extracted part number identifier")
     revision_letter: str | None = Field(None, description="Drawing revision index (e.g. A, B, C)")

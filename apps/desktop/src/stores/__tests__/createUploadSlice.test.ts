@@ -124,6 +124,79 @@ describe('createUploadSlice', () => {
     expect(deleteDrawing).not.toHaveBeenCalled();
   });
 
+  describe('applyCompletedDrawing — the reference/revision pair guard', () => {
+    const drawing = (id: string, numbers?: string[]) =>
+      ({ id, file_name: `${id}.dxf`, drawing_numbers: numbers } as any);
+
+    it('installs a drawing that is a revision of the one already in the room', () => {
+      useWorkspaceStore.setState({ oldDrawing: drawing('ref', ['M7452A0N01']) });
+
+      const ok = useWorkspaceStore
+        .getState()
+        .applyCompletedDrawing(drawing('rev', ['M7452A0N01']), 'new');
+
+      expect(ok).toBe(true);
+      expect(useWorkspaceStore.getState().newDrawing?.id).toBe('rev');
+      expect(deleteDrawing).not.toHaveBeenCalled();
+    });
+
+    it('rejects and deletes a drawing that is not the same part', () => {
+      useWorkspaceStore.setState({
+        oldDrawing: drawing('ref', ['M745228N01']),
+      });
+
+      const ok = useWorkspaceStore
+        .getState()
+        .applyCompletedDrawing(drawing('unrelated', ['M745219N01']), 'new');
+
+      expect(ok).toBe(false);
+
+      const state = useWorkspaceStore.getState();
+      // The slot is left empty, so the bad pair can never reach a comparison...
+      expect(state.newDrawing).toBeNull();
+      expect(state.newUploadState).toBe('failed');
+      expect(state.compatibilityStatus).toBe('Mismatch');
+      // ...the message names both drawings so the user knows which file was wrong...
+      expect(state.newError).toContain('M745219N01');
+      expect(state.newError).toContain('M745228N01');
+      // ...and the rejected upload is purged, not left orphaned on disk.
+      expect(deleteDrawing).toHaveBeenCalledTimes(1);
+      expect(deleteDrawing).toHaveBeenCalledWith('unrelated');
+    });
+
+    it('deletes the REJECTED drawing, never the one already in the room', () => {
+      useWorkspaceStore.setState({ oldDrawing: drawing('keep_me', ['M745228N01']) });
+
+      useWorkspaceStore
+        .getState()
+        .applyCompletedDrawing(drawing('reject_me', ['M745219N01']), 'new');
+
+      expect(deleteDrawing).not.toHaveBeenCalledWith('keep_me');
+      expect(useWorkspaceStore.getState().oldDrawing?.id).toBe('keep_me');
+    });
+
+    it('allows the pair when either side yielded no drawing number', () => {
+      // Absent evidence is not a mismatch — rejecting here would delete a good upload.
+      useWorkspaceStore.setState({ oldDrawing: drawing('ref', []) });
+
+      const ok = useWorkspaceStore
+        .getState()
+        .applyCompletedDrawing(drawing('rev', ['M745219N01']), 'new');
+
+      expect(ok).toBe(true);
+      expect(deleteDrawing).not.toHaveBeenCalled();
+    });
+
+    it('allows the first upload into an empty room', () => {
+      const ok = useWorkspaceStore
+        .getState()
+        .applyCompletedDrawing(drawing('first', ['M745219N01']), 'new');
+
+      expect(ok).toBe(true);
+      expect(deleteDrawing).not.toHaveBeenCalled();
+    });
+  });
+
   it('deletes the drawing a slot previously held when replaced by a new upload', async () => {
     // Room-owned model: uploading over an occupied slot purges the displaced drawing.
     useWorkspaceStore.setState({ oldDrawing: { id: 'old_1', file_name: 'prev.dwg' } as any });

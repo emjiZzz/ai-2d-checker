@@ -115,9 +115,21 @@ per-string placement delta against ezdxf's own rendering. Run it after touching
 services/backend/.venv/Scripts/python.exe tools/render_audit.py storage/uploads/0029fc8cdf974f5e92fa7148a679255d.dxf
 ```
 
-On that drawing the census must stay at **497/518** (518 minus 6 `layer` + 12 `block` containers
-minus 3 clipped model-space entities — nothing is missing at that number), and the text oracle's
-`|dx|` max must stay near 1 drawing unit. It was 33.3 before the placement fixes.
+On that drawing the census must stay at **490/518** (518 minus 6 `layer` + 12 `block` containers
+minus 3 clipped model-space entities minus **7 section-callout entities** — nothing is missing at
+that number), and the text oracle's `|dx|` max must stay near 1 drawing unit. It was 33.3 before
+the placement fixes.
+
+⚠ It read **497/518** until 2026-08-14, when the canvas stopped painting the section-view callout
+— the `Ａ－Ａ` designation and lone `Ａ` labels, the cut-plane line, and the arrow ticks and label
+tails on its ends (see `sectionCallouts.ts`). Those 7 are their own census bucket rather than a
+smaller `drawn`, deliberately: folding a deliberate cull into the denominator's shortfall is how a
+harness that exists to detect **missing geometry** stops being able to. If you add another cull,
+give it a bucket and update this number with its breakdown.
+
+The cull is swept across `storage/uploads` before landing: **23 of 32 drawings cull nothing, 9
+cull 8–10 entities each, and the maximum on any sheet is 10.** Re-run that sweep if you touch the
+rule — a jump in those numbers is the failure mode, and it does not show up as a test failure.
 
 This harness is now the **only** way to tell whether a sheet's extraction is complete. There is no
 raster fallback in the app to eyeball against — `renderMode` was deleted and the PNG display path

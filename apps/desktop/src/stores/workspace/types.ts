@@ -9,6 +9,13 @@ export interface DrawingItem {
   entity_counts: Record<string, number>;
   metadata: Record<string, any>;
   status?: string;
+  /**
+   * Drawing-number-shaped tokens found on the sheet, from the backend's
+   * `infrastructure/cad/drawing_identity.py`. Optional because drawings ingested before
+   * that field existed simply do not carry it — and an absent list means "cannot judge",
+   * never "no match". See `isDrawingPairMismatch`.
+   */
+  drawing_numbers?: string[];
   created_at: string;
 }
 
@@ -174,6 +181,13 @@ export interface UploadSlice {
   setOldUploadState: (state: UploadState) => void;
   setNewUploadState: (state: UploadState) => void;
   uploadDrawingFile: (file: File, side: "old" | "new") => Promise<boolean>;
+  /**
+   * Installs a finished drawing into its slot, or rejects it as not belonging to this room.
+   * The single gate both completion paths go through — the immediate one in
+   * `uploadDrawingFile` and the polled one in `useUploadJobPolling`. Returns false when the
+   * drawing was rejected and deleted.
+   */
+  applyCompletedDrawing: (drawing: DrawingItem, side: "old" | "new") => boolean;
   clearUpload: (side: "old" | "new") => void;
   recalculateCompatibility: () => void;
 }

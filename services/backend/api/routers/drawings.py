@@ -79,6 +79,7 @@ async def upload_drawing(file: UploadFile = File(...)):
                 status=drawing.status,
                 entity_counts=drawing.entity_counts,
                 metadata=drawing.metadata,
+                drawing_numbers=drawing.drawing_numbers,
                 created_at=drawing.created_at,
                 updated_at=drawing.updated_at
             ),
@@ -141,6 +142,7 @@ async def list_drawings():
             status=d.status,
             entity_counts=d.entity_counts,
             metadata=d.metadata,
+            drawing_numbers=d.drawing_numbers,
             created_at=d.created_at,
             updated_at=d.updated_at
         )
@@ -191,6 +193,7 @@ async def get_drawing(id: str):
             status=drawing.status,
             entity_counts=drawing.entity_counts,
             metadata=drawing.metadata,
+            drawing_numbers=drawing.drawing_numbers,
             created_at=drawing.created_at,
             updated_at=drawing.updated_at
         )

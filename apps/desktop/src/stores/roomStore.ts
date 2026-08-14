@@ -13,6 +13,7 @@ import { RoomSchema, RoomListSchema } from "../schemas/apiSchemas";
 import { useWorkspaceStore, DrawingItem, saveWorkspaceState, loadWorkspaceState } from "./workspaceStore";
 import { reconcilePersistedIds } from "../utils/persistedViolations";
 import { fetchPersistedViolations } from "../utils/persistedViolationsApi";
+import { mapCanvasMarkingsToMarkers } from "../utils/restoreCanvasMarkings";
 
 /**
  * The only comparison method. Renamed from `"rag"`, which named a technique it does not
@@ -153,6 +154,26 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             sessionData.compliance_score ?? null,
             sessionData.client_name || null
           );
+
+          // The session's violations are the NON-MATCHED findings only — `orchestrator.py`
+          // never persists an AuditViolation for a MATCHED row, because there is nothing to
+          // review about one. So restoring from them alone brings the findings back and drops
+          // every green checkmark, which is what re-entering a compared room used to do.
+          //
+          // `canvas_markings` is the full set and the same source the live path renders from,
+          // so when the room carries it, it wins — reconciled against the very violations
+          // fetched above, which is what gives the reviewable rows their real ids. Falls
+          // through to the session violations when a room has no markings stored (an audit
+          // that was not a physical comparison), so this can only add rows, never remove them.
+          const sessionMarkings = roomData.physical_comparison_results?.canvas_markings;
+          if (Array.isArray(sessionMarkings) && sessionMarkings.length > 0) {
+            useWorkspaceStore.setState({
+              violations: reconcilePersistedIds(
+                mapCanvasMarkingsToMarkers(sessionMarkings),
+                violationsData
+              ),
+            });
+          }
         } catch {}
       } else {
         if (oldDoc) ws.setOldDrawing(oldDoc);
@@ -162,43 +183,9 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         else ws.clearUpload("new");
 
         if (roomData.physical_comparison_results && roomData.physical_comparison_results.canvas_markings) {
-          const mappedMarkings = roomData.physical_comparison_results.canvas_markings.map((marking: any, index: number) => {
-            let penType = "resolved_green";
-            if (marking.status === "REMOVED") penType = "ai_red";
-            else if (marking.status === "CHANGED") penType = "ai_orange";
-            else if (marking.status === "ADDED") penType = "checker_blue";
-            else if (marking.status === "CONFLICT") penType = "ai_conflict";
-
-            return {
-              id: `phys_chk_restored_${index}_${Date.now()}`,
-              severity: marking.status === "MATCHED" ? "low" : "high",
-              category: marking.category || "Physical Checklist",
-              description: marking.text_content,
-              recommendation: marking.details || "Automatic verification match",
-              affected_entities: [],
-              confidence: 1.0,
-              coordinates: marking.coordinates,
-              ref_coordinates: marking.ref_coordinates,
-              bbox: marking.bbox,
-              ref_bbox: marking.ref_bbox,
-              pen_type: penType,
-              is_resolved: marking.status === "MATCHED",
-              original_value: marking.original_value,
-              // Provenance from the removed `hybrid` method (ADR-006) — always undefined
-              // now, kept for cached payloads written before the removal, same as backend.
-              verification: marking.verification,
-              origin: marking.origin,
-              // Sub-item taxonomy tag (docs/checklist-taxonomy-grouping-implementation-plan.md,
-              // Phase 5) — pass-through only, undefined when the backend didn't set one.
-              feature: marking.feature,
-              // Both were dropped here while the live path (markerGenerator.ts) kept them, so a
-              // restored room lost the two fields that identify a finding. `entity_handle` is
-              // what a human correction sends to the trainer, and both are the join key back to
-              // the persisted AuditViolation below.
-              entity_handle: marking.entity_id,
-              status: marking.status
-            };
-          });
+          const mappedMarkings = mapCanvasMarkingsToMarkers(
+            roomData.physical_comparison_results.canvas_markings
+          );
 
           // The comparison persisted an AuditViolation per non-MATCHED finding and stamped the
           // owning session id into diagnostics *before* the payload was cached, so a restored

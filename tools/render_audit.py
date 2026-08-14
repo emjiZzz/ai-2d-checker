@@ -64,8 +64,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import statistics
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -113,6 +115,149 @@ BRANCH_TABLE: dict[str, tuple[str, ...]] = {
 #: `block` is an INSERT container whose children are exploded and drawn separately. Both are in
 #: the serializer payload, so the HUD's denominator counts entities that can never be drawn.
 NON_DRAWABLE_TYPES = frozenset({"layer", "block", "xref"})
+
+
+#: Mirrors `SECTION_DESIGNATION_RE` / `LONE_LETTER_RE` in
+#: `apps/desktop/src/components/review/sectionCallouts.ts`. Same letter both sides.
+_SECTION_DESIGNATION_RE = re.compile(r"^([A-Za-z])\s*[-‐‑–—ー－]\s*\1$", re.IGNORECASE)
+_LONE_LETTER_RE = re.compile(r"^[A-Za-z]$")
+#: `viewport_transform.NO_VIEWPORT` — the projector never resolved this entity to a viewport,
+#: i.e. it is native paper-space sheet furniture (frame, title block, border grid labels).
+_NO_VIEWPORT = -1
+
+
+def _canvas_text(entity: dict[str, Any]) -> str:
+    """The string the canvas would paint, read in `renderEntities`' own field order."""
+    geo = entity.get("geometry") or {}
+    props = entity.get("properties") or {}
+    raw = str(geo.get("text") or geo.get("content") or props.get("text") or "")
+    # The `cleanCadText` subset that can affect a match: MTEXT braces and formatting codes.
+    raw = re.sub(r"\\[A-Za-z][^;]*;", "", raw.replace("{", "").replace("}", ""))
+    return unicodedata.normalize("NFKC", raw).strip()
+
+
+#: Coincidence tolerance in projected paper units — see `COINCIDENT` in `sectionCallouts.ts`.
+_COINCIDENT = 1.0
+_APPARATUS_TYPES = {"leader", "polyline", "multileader"}
+_MAX_APPARATUS_VERTICES = 3
+
+
+def _through_viewport(ent: dict[str, Any]) -> bool:
+    try:
+        return int((ent.get("properties") or {}).get("viewport_index")) > _NO_VIEWPORT
+    except (TypeError, ValueError):
+        return False
+
+
+def _line_ends(ent: dict[str, Any]) -> list[tuple[float, float]]:
+    geo = ent.get("geometry") or {}
+    out = []
+    for key in ("start", "end"):
+        p = geo.get(key)
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            out.append((float(p[0]), float(p[1])))
+    return out
+
+
+def _vertex_list(ent: dict[str, Any]) -> list[tuple[float, float]]:
+    geo = ent.get("geometry") or {}
+    raw = geo.get("vertices") or geo.get("points") or []
+    return [
+        (float(p[0]), float(p[1]))
+        for p in raw
+        if isinstance(p, (list, tuple)) and len(p) >= 2
+    ]
+
+
+def _cut_plane_lines(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The sheet's cut-plane lines: `CENTER` lines in the minority colour.
+
+    Port of `findCutPlaneLines` in `sectionCallouts.ts` — see there for why colour rather than
+    position, and for the corpus measurement behind it.
+    """
+    centre = [
+        e
+        for e in entities
+        if (e.get("entity_type") or "").lower() == "line"
+        and _through_viewport(e)
+        and "CENTER" in str((e.get("properties") or {}).get("linetype", "")).upper()
+    ]
+    if len(centre) < 2:
+        return []
+
+    buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for e in centre:
+        buckets[str((e.get("properties") or {}).get("color", "unknown"))].append(e)
+    if len(buckets) < 2:
+        return []
+
+    counts = sorted((len(g) for g in buckets.values()), reverse=True)
+    if counts[0] == counts[1]:
+        return []
+
+    return [e for g in buckets.values() if len(g) < counts[0] for e in g]
+
+
+def section_callout_ids(entities: list[dict[str, Any]]) -> set[int]:
+    """`id()`s of the section-view identifiers the canvas refuses to draw.
+
+    Port of `findSectionCallouts` in `sectionCallouts.ts`; the two must agree or this harness
+    stops reproducing the HUD's `drawn/total`, which is the only thing it is for. Both gates are
+    reproduced: a lone letter qualifies only alongside a matching `X-X` designation, and only
+    text projected through a viewport is eligible at all, so the sheet frame's grid labels —
+    which are lone letters too — are never swept up.
+    """
+    candidates: list[tuple[dict[str, Any], str]] = []
+    for ent in entities:
+        if (ent.get("entity_type") or "").lower() != "text":
+            continue
+        props = ent.get("properties") or {}
+        try:
+            vp = int(props.get("viewport_index"))
+        except (TypeError, ValueError):
+            continue
+        if vp <= _NO_VIEWPORT:
+            continue
+        text = _canvas_text(ent)
+        if text:
+            candidates.append((ent, text))
+
+    letters = {
+        m.group(1).upper()
+        for _, text in candidates
+        if (m := _SECTION_DESIGNATION_RE.match(text))
+    }
+    if not letters:
+        return set()
+
+    found = {
+        id(ent)
+        for ent, text in candidates
+        if _SECTION_DESIGNATION_RE.match(text)
+        or (_LONE_LETTER_RE.match(text) and text.upper() in letters)
+    }
+
+    cut_lines = _cut_plane_lines(entities)
+    if not cut_lines:
+        return found
+    found.update(id(e) for e in cut_lines)
+
+    vertices = [p for e in cut_lines for p in _line_ends(e)]
+    for ent in entities:
+        if (ent.get("entity_type") or "").lower() not in _APPARATUS_TYPES:
+            continue
+        if not _through_viewport(ent):
+            continue
+        verts = _vertex_list(ent)
+        if not 2 <= len(verts) <= _MAX_APPARATUS_VERTICES:
+            continue
+        anchors = list(verts) + [
+            ((verts[0][0] + verts[-1][0]) / 2, (verts[0][1] + verts[-1][1]) / 2)
+        ]
+        if any(math.dist(a, v) <= _COINCIDENT for a in anchors for v in vertices):
+            found.add(id(ent))
+
+    return found
 
 
 def classify(entity: dict[str, Any]) -> str:
@@ -509,10 +654,17 @@ def build_report(dxf_path: Path) -> dict[str, Any]:
     # records, which is why the HUD denominator is larger than the entity count.
     payload_entities = entities + layers
 
+    # Needs the whole sheet, so it cannot live inside the per-entity `classify`. Only a verdict
+    # that would otherwise be `drawn` is overridden, mirroring the renderer's own order: the
+    # `outside_viewport` cull runs first, and a non-drawable record never reaches this at all.
+    callouts = section_callout_ids(payload_entities)
+
     census = Counter()
     by_type: dict[str, Counter] = defaultdict(Counter)
     for ent in payload_entities:
         verdict = classify(ent)
+        if verdict == "drawn" and id(ent) in callouts:
+            verdict = "section-callout"
         census[verdict] += 1
         by_type[(ent.get("entity_type") or "?").lower()][verdict] += 1
 

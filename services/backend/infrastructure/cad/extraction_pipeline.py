@@ -1,3 +1,4 @@
+import asyncio
 import time
 import traceback
 from datetime import UTC, datetime
@@ -74,7 +75,6 @@ class ExtractionPipeline:
             if drawing.format.lower() in ("step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"):
                 logger.info(f"Drawing format is 3D model ({drawing.format}). Initializing 3D pipeline for: {input_abs_path}")
                 parser_start = time.time()
-                import asyncio
                 metadata, mesh_content = await asyncio.to_thread(ThreeDPipeline.parse_and_convert, input_abs_path)
                 parsing_duration = time.time() - parser_start
                 
@@ -105,35 +105,59 @@ class ExtractionPipeline:
                 conversion_duration = time.time() - conv_start
                 logger.info(f"Drawing conversion to DXF complete. Duration: {conversion_duration:.4f}s")
                 
-                # Parse DXF using ezdxf
+                # Parse DXF using ezdxf -- offloaded, see the note above step 3.
                 parser_start = time.time()
-                entities, layers, counts, metadata = self.parser.parse_file(dxf_file_path)
+                entities, layers, counts, metadata = await asyncio.to_thread(
+                    self.parser.parse_file, dxf_file_path
+                )
                 parsing_duration = time.time() - parser_start
             elif drawing.format.lower() == "pdf":
                 logger.info(f"Drawing format is PDF. Initializing safe layout extraction for: {input_abs_path}")
                 pdf_parser = PDFParser()
                 parser_start = time.time()
-                entities, layers, counts, metadata = pdf_parser.parse_file(input_abs_path)
+                entities, layers, counts, metadata = await asyncio.to_thread(
+                    pdf_parser.parse_file, input_abs_path
+                )
                 parsing_duration = time.time() - parser_start
             else:
                 # Direct DXF path
                 dxf_file_path = input_abs_path
-                
-                # Parse DXF using ezdxf
+
+                # Parse DXF using ezdxf -- offloaded, see the note above step 3.
                 parser_start = time.time()
-                entities, layers, counts, metadata = self.parser.parse_file(dxf_file_path)
+                entities, layers, counts, metadata = await asyncio.to_thread(
+                    self.parser.parse_file, dxf_file_path
+                )
                 parsing_duration = time.time() - parser_start
 
             # 3. Generate High-Fidelity premium background rendering
+            #
+            # Offloaded via `asyncio.to_thread`, like every other blocking step in this method.
+            # This runs inside the single background worker task, which lives on the *same*
+            # event loop that serves HTTP -- so anything left inline here stalls every other
+            # request for its full duration. `render_dxf_background` is the worst offender in
+            # the pipeline: a 24x18in figure at 350 dpi is ~8400x6300 px and takes seconds.
+            # See `06 - Gotchas .../Gotcha - The Background Queue Was Not a Background Thread.md`.
+            #
+            # These mutate `metadata` in place (`render_bounds`, `render_layout`); the awaits
+            # below join before anything reads it, so the thread hop changes nothing there.
+            #
+            # NB both renderers drive matplotlib through the `pyplot` state machine, which is
+            # not the thread-safe API -- `render_dxf_background`'s failure path calls
+            # `plt.close('all')`. That is only safe because this queue has a single serial
+            # consumer, so at most one render is ever in flight. Parallelising the worker
+            # requires porting them to the OO `Figure`/`FigureCanvasAgg` API first.
             if drawing.format.lower() == "pdf":
                 from services.backend.infrastructure.rendering.pdf_background_renderer import render_pdf_background
-                render_pdf_background(input_abs_path, drawing_id, metadata)
+                await asyncio.to_thread(render_pdf_background, input_abs_path, drawing_id, metadata)
             elif drawing.format.lower() in ("step", "stp", "iges", "igs", "icd"):
                 # No 2D background raster needed for 3D GLTF models
                 pass
             elif dxf_file_path and dxf_file_path.exists():
                 from services.backend.infrastructure.rendering.dxf_background_renderer import render_dxf_background
-                render_dxf_background(dxf_file_path, drawing_id, metadata, entities)
+                await asyncio.to_thread(
+                    render_dxf_background, dxf_file_path, drawing_id, metadata, entities
+                )
 
             # 4. Persist Extracted Geometry Records into MongoDB
             # Save layers as well (as an entity type)
@@ -219,6 +243,18 @@ class ExtractionPipeline:
                     previous.is_latest_revision = False
                     await previous.save()
                     logger.info(f"Phase 7: Established revision chain. Supersedes previous Rev {previous.revision_letter} (ID: {previous.id}).")
+
+            # Drawing-number tokens, for the reference/revision pair guard. Independent of
+            # the Phase 7.2 block above, which is dead on real sheets -- see
+            # infrastructure/cad/drawing_identity.py for the measurement and for why this
+            # does not simply repair `part_number`.
+            from services.backend.infrastructure.cad.drawing_identity import (
+                extract_drawing_numbers,
+            )
+            drawing.drawing_numbers = extract_drawing_numbers(entities)
+            logger.info(
+                f"Drawing identity tokens for {drawing_id}: {drawing.drawing_numbers or 'none found'}"
+            )
 
             drawing.is_latest_revision = True
             drawing.status = "completed"
