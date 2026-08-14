@@ -25,7 +25,23 @@ export const OTHER_FEATURE_LABEL = "Other / Unclassified";
 // rendered with a distinct "not yet supported" treatment instead of the normal
 // "no changes detected" empty state, so they don't read as "checked and clean" when
 // nothing was actually checked.
-export const DEFERRED_FEATURE_KEYS: ReadonlySet<string> = new Set(["line_name"]);
+//
+// `origin`, `alignment_of_views` and `text_attributes` joined `line_name` on 2026-08-14:
+// no backend code can assign any of them (their intended producer was Generator B, which
+// ADR-006 deleted), so each was reporting a clean result for a check that never ran.
+//
+// ⚠ Membership here HIDES rows — ChecklistPanel checks `isDeferred` before `hasRows`, so a
+// deferred key that ever carries findings drops them silently. Remove a key here in the same
+// change that gives it a producer, exactly as `line_attributes` did.
+//
+// Mirrors DEFERRED_FEATURES in the backend taxonomy; kept in step by
+// tests/test_taxonomy_consistency.py::test_deferred_features_match.
+export const DEFERRED_FEATURE_KEYS: ReadonlySet<string> = new Set([
+  "origin",
+  "alignment_of_views",
+  "text_attributes",
+  "line_name",
+]);
 
 export const COMPARISON_TAXONOMY: Record<string, FeatureItem[]> = {
   drawing_views: [

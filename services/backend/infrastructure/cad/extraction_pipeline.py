@@ -197,6 +197,23 @@ class ExtractionPipeline:
                     )
                 )
 
+            # Replace, never append. `run` had no delete because it was only ever reached once
+            # per drawing, straight after upload — so a second run (the re-extract route, a
+            # requeued job) would silently DOUBLE every entity, and a doubled payload renders
+            # and compares as a plausible drawing rather than as an error.
+            #
+            # Deliberately here and not at the top: everything above can fail (conversion,
+            # parse, render), and on failure the previous extraction must survive intact. By
+            # this line the new entities are built and the only remaining step is the write.
+            replaced = await ExtractedEntity.find(
+                ExtractedEntity.drawing_id == drawing_id
+            ).delete()
+            if replaced and getattr(replaced, "deleted_count", 0):
+                logger.info(
+                    f"Re-extraction: cleared {replaced.deleted_count} existing entities for "
+                    f"drawing {drawing_id} before writing {len(bulk_entities)} new ones."
+                )
+
             if bulk_entities:
                 await ExtractedEntity.insert_many(bulk_entities)
 
@@ -255,6 +272,26 @@ class ExtractionPipeline:
             logger.info(
                 f"Drawing identity tokens for {drawing_id}: {drawing.drawing_numbers or 'none found'}"
             )
+
+            # Zone templates store their fractions against `render_bounds`, so if a re-extraction
+            # produces different bounds from the ones a template was authored against, every
+            # fraction silently maps to the wrong place — a mirrored-overlay class of defect that
+            # looks plausible. Re-rendering the same file is deterministic, so this should never
+            # fire; it fires when the RENDERER changed between the two extractions, which is
+            # exactly the case nobody would think to check.
+            previous_bounds = (drawing.metadata or {}).get("render_bounds")
+            new_bounds = metadata.get("render_bounds")
+            if previous_bounds and new_bounds and list(previous_bounds) != list(new_bounds):
+                logger.warning(
+                    f"render_bounds CHANGED for drawing {drawing_id} across extractions: "
+                    f"{previous_bounds} -> {new_bounds}. Zone templates stored against the old "
+                    f"bounds now map to the wrong region and must be re-authored."
+                )
+                job.diagnostics["render_bounds_changed"] = {
+                    "previous": list(previous_bounds),
+                    "current": list(new_bounds),
+                }
+                await job.save()
 
             drawing.is_latest_revision = True
             drawing.status = "completed"

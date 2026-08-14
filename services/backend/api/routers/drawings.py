@@ -38,7 +38,7 @@ async def upload_drawing(file: UploadFile = File(...)):
     Enforces local secure authorization, checks file extension limits, streams file,
     computes SHA-256 hash, and queues it for background ODA/DXF extraction via DrawingIngestionService.
     """
-    from ...domain.services.drawing_ingestion_service import DrawingIngestionService
+    from ...infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
 
     try:
         drawing, job, is_duplicate = await DrawingIngestionService.process_ingestion(file)
@@ -85,6 +85,58 @@ async def upload_drawing(file: UploadFile = File(...)):
             ),
             job=job_response,
             is_duplicate=is_duplicate
+        )
+    )
+
+
+@router.post(
+    "/drawings/{id}/reextract",
+    response_model=StandardResponse[JobResponse],
+    summary="Re-run extraction on an already-uploaded drawing",
+    dependencies=[Depends(get_auth_token)]
+)
+async def reextract_drawing(id: str):
+    """Re-parse a drawing from its stored file, replacing its extracted entities.
+
+    Extraction-time fields (`render_paths`, `render_text_point`, MTEXT rotation, the
+    elliptical-arc fix) do not reach drawings ingested before they existed, and until this route
+    the only cure was delete-and-re-upload — which loses the drawing's id, its room slot and its
+    audit history. `DrawingDocument.extraction_schema_version` says which drawings are stale;
+    this is how they are brought current without losing anything attached to them.
+
+    Returns the queued job. Poll it on `GET /jobs/{id}` exactly as after an upload.
+
+    The previous entities stay readable until the new parse succeeds, so a failed re-extraction
+    leaves the drawing exactly as it was rather than blank.
+    """
+    from ...infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
+
+    try:
+        drawing, job = await DrawingIngestionService.reextract_drawing(id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        corr_id = correlation_id_var.get()
+        logger.error(f"[{corr_id}] Re-extraction failed to queue for {id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Re-extraction could not be queued. Reference: {corr_id}"
+        )
+
+    return StandardResponse(
+        success=True,
+        data=JobResponse(
+            id=str(job.id),
+            drawing_id=job.drawing_id,
+            status=job.status,
+            error_message=job.error_message,
+            diagnostics=job.diagnostics,
+            conversion_duration_seconds=job.conversion_duration_seconds,
+            parsing_duration_seconds=job.parsing_duration_seconds,
+            total_duration_seconds=job.total_duration_seconds,
+            created_at=job.created_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at
         )
     )
 
@@ -166,7 +218,7 @@ async def delete_drawing(id: str):
 
     # Single source of truth for drawing deletion: entities, jobs, upload file,
     # rendering, gltf, comparison/OCR caches, and the record itself.
-    from ...domain.services.drawing_ingestion_service import DrawingIngestionService
+    from ...infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
     await DrawingIngestionService.purge_drawing(id)
 
     return StandardResponse(success=True, data={"deleted_id": id})

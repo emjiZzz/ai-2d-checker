@@ -2,7 +2,7 @@ import pytest
 from fastapi import HTTPException, UploadFile
 
 from services.backend.api.routers.drawings import upload_drawing
-from services.backend.domain.services.drawing_ingestion_service import DrawingIngestionService
+from services.backend.infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
 
 pytestmark = pytest.mark.asyncio
 

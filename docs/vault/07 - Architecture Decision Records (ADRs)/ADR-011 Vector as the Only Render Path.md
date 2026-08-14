@@ -98,6 +98,12 @@ Two things carry that load instead:
    and the wrapped-elliptical-arc fix are all computed at **extraction** time. Drawings already in
    MongoDB predate them. There is no re-extract endpoint — only `upload_drawing`.
 
+   > **Superseded in part, 2026-08-14.** `POST /drawings/{id}/reextract` now re-runs extraction
+   > in place, keeping the drawing's id, room slot and audit history. The prerequisite itself
+   > stands — stale drawings still render wrong until re-extracted — but it is no longer paid for
+   > by destroying and re-uploading the record.
+   > See [[Gotcha - The Extraction Pipeline Had Never Been Run Twice]].
+
 **Known gaps shipping with this**, all measured and none blocking:
 
 - no `hatch`/`solid` branch in `renderEntities.ts` — the audited drawing carries zero hatches

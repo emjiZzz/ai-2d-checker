@@ -88,12 +88,25 @@ def mock_beanie_docs(monkeypatch):
     async def mock_insert_many(cls, documents, *args, **kwargs):
         return documents
 
+    class MockFind:
+        """`run` clears a drawing's entities before inserting the new ones, so a re-extraction
+        replaces rather than doubles them. The pipeline must survive that call or the thread
+        assertions below prove nothing — which is exactly what `_run_pipeline`'s completion
+        check exists to catch."""
+
+        async def delete(self):
+            class _Result:
+                deleted_count = 0
+
+            return _Result()
+
     monkeypatch.setattr(DrawingDocument, "save", mock_save)
     monkeypatch.setattr(ExtractionJob, "save", mock_save)
     monkeypatch.setattr(DrawingDocument, "get", classmethod(mock_get))
     monkeypatch.setattr(ExtractionJob, "get", classmethod(mock_get))
     monkeypatch.setattr(DrawingDocument, "find_one", classmethod(mock_find_one))
     monkeypatch.setattr(ExtractedEntity, "insert_many", classmethod(mock_insert_many))
+    monkeypatch.setattr(ExtractedEntity, "find", classmethod(lambda cls, *a, **k: MockFind()))
 
 
 @pytest.fixture(autouse=True)

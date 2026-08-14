@@ -140,7 +140,7 @@ async def test_delete_room_purges_both_owned_drawings(mock_beanie_rooms, monkeyp
     soft-deleted. Nothing dangles.
     """
     from services.backend.api.routers.rooms import delete_room
-    from services.backend.domain.services.drawing_ingestion_service import DrawingIngestionService
+    from services.backend.infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
 
     purged: list[str] = []
 
@@ -169,7 +169,7 @@ async def test_delete_room_purges_both_owned_drawings(mock_beanie_rooms, monkeyp
 async def test_delete_room_without_drawings_purges_nothing(mock_beanie_rooms, monkeypatch):
     """A room holding no drawings deletes cleanly without calling purge_drawing."""
     from services.backend.api.routers.rooms import delete_room
-    from services.backend.domain.services.drawing_ingestion_service import DrawingIngestionService
+    from services.backend.infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
 
     purged: list[str] = []
 

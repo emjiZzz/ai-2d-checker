@@ -1,23 +1,29 @@
 import hashlib
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 import aiofiles
 from fastapi import HTTPException, UploadFile, status
 
 from ...config import settings
 from ...domain.models.drawing_document import DrawingDocument
-from ...domain.models.extracted_entity import ExtractedEntity
+from ...domain.models.extracted_entity import EXTRACTION_SCHEMA_VERSION, ExtractedEntity
 from ...domain.models.extraction_job import ExtractionJob
-from ...infrastructure.cad.processing_queue import processing_queue
-from ...infrastructure.storage.path_resolver import get_storage_root
+from ..cad.processing_queue import processing_queue
+from ..storage.path_resolver import get_storage_root
 from ...logger import correlation_id_var, logger
 
 
 class DrawingIngestionService:
     """
-    Domain service responsible for managing CAD drawing uploads, file hashing,
-    sandbox storage management, database record creation/resetting, and CAD queue dispatching.
+    Orchestrates CAD drawing uploads, file hashing, sandbox storage management, database
+    record creation/resetting, and CAD queue dispatching.
     Decouples storage and CAD pipeline interactions from the HTTP API router layer.
+
+    Called `a domain service` here until 2026-08-14, which is what kept it in `domain/` while
+    importing `infrastructure/` and `fastapi`. It is an application service over infrastructure —
+    see this package's `__init__.py` for why the fix was to move it rather than invert its
+    imports.
     """
 
     ALLOWED_EXTENSIONS = ("dwg", "dxf", "pdf", "step", "stp", "iges", "igs", "icd", "sldprt", "sldasm")
@@ -134,6 +140,83 @@ class DrawingIngestionService:
         return drawing, job, False
 
     @classmethod
+    async def reextract_drawing(cls, drawing_id: str) -> tuple[DrawingDocument, ExtractionJob]:
+        """Re-run extraction on a drawing already in storage, from its original file.
+
+        Extraction-time fields do not reach drawings ingested before they existed —
+        `render_paths`, `render_text_point`, MTEXT rotation, the elliptical-arc fix — and until
+        this route the only cure was deleting the drawing and uploading it again, which loses
+        the record, its room slot, its audit history and its id. `EXTRACTION_SCHEMA_VERSION`
+        names which drawings are stale; this is how they get fixed.
+
+        Reuses the upload pipeline verbatim rather than reimplementing it. That is the point:
+        a second extraction path would drift from the first, and the failure mode of drift here
+        is a drawing that renders subtly differently depending on how it was ingested.
+
+        The caller gets the queued job back and polls it exactly like an upload.
+
+        Raises:
+            HTTPException 404 — no such drawing.
+            HTTPException 409 — an extraction is already queued or running for it; two
+                concurrent runs would race on the same entity set.
+            HTTPException 422 — the source file is gone, so there is nothing to re-read.
+        """
+        from ..audit.comparison.cache_manager import ComparisonCacheManager
+
+        drawing = await DrawingDocument.get(drawing_id)
+        if not drawing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Drawing {drawing_id} not found.",
+            )
+
+        if drawing.status in ("queued", "processing"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Drawing {drawing_id} already has an extraction {drawing.status}. "
+                    "Wait for it to finish before re-extracting."
+                ),
+            )
+
+        # The uploaded file is the input. It is never deleted except by `purge_drawing`, but a
+        # drawing whose file went missing must fail here with a reason rather than enqueue a job
+        # that dies in the worker with a path error nobody reads.
+        source = get_storage_root() / drawing.file_path if drawing.file_path else None
+        if not source or not source.exists():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"Source file for drawing {drawing_id} is missing from storage; "
+                    "it cannot be re-extracted. Re-upload the drawing instead."
+                ),
+            )
+
+        # Cached comparisons were computed against the entities this run is about to replace.
+        # Leaving them would serve findings whose entities no longer exist — a hit returns in
+        # ~0.14s and silently bypasses the whole re-extraction. Cleared BEFORE the job runs so
+        # there is no window where a stale hit can be served against new entities.
+        ComparisonCacheManager.clear_cache_for_drawing(drawing_id)
+
+        # Entities are NOT deleted here. `ExtractionPipeline.run` replaces them immediately
+        # before its own insert, so a parse that fails leaves the previous extraction intact and
+        # the drawing keeps rendering. Deleting up front would blank the canvas for as long as
+        # the job sits in the queue, and permanently if the job then failed.
+        job = ExtractionJob(drawing_id=str(drawing.id), status="queued")
+        await job.save()
+
+        drawing.status = "queued"
+        drawing.updated_at = datetime.now(UTC)
+        await drawing.save()
+
+        await processing_queue.enqueue(str(drawing.id), str(job.id))
+        logger.info(
+            f"Queued re-extraction for drawing {drawing_id} ('{drawing.file_name}'), "
+            f"schema version {drawing.extraction_schema_version} -> {EXTRACTION_SCHEMA_VERSION}"
+        )
+        return drawing, job
+
+    @classmethod
     async def purge_drawing(cls, drawing_id: str) -> None:
         """
         Hard-deletes a drawing and every artifact it owns: extracted entities,
@@ -145,7 +228,7 @@ class DrawingIngestionService:
         the DB record dangling. Single source of truth for drawing deletion,
         shared by the drawings DELETE route and room deletion.
         """
-        from ...infrastructure.audit.comparison.cache_manager import ComparisonCacheManager
+        from ..audit.comparison.cache_manager import ComparisonCacheManager
 
         drawing = await DrawingDocument.get(drawing_id)
 

@@ -761,9 +761,20 @@ export const renderEntities = ({
           });
         }
 
-        // The measurement string. `text_point` is the DXF text MIDPOINT, so it is drawn
-        // centred on both axes rather than from a baseline-left origin like TEXT entities.
-        const tp = geo.text_point || geo.def_point;
+        // The measurement string, anchored where the CAD actually put it.
+        //
+        // `render_text_point` is the insert of the MTEXT inside the dimension's own geometry
+        // block — the CAD's authored position, offset perpendicular to the dimension line by
+        // roughly `text_height/2 + DIMGAP` so the value reads BESIDE the line. `text_point` is
+        // the DXF `text_midpoint`, which sits ON the line: preferring it drew every measurement
+        // straight through its own dimension line, so the line appeared broken where the glyphs
+        // crossed it. See `_dimension_render_geometry` for the measured offsets.
+        //
+        // Falls back to `text_point` because `render_text_point` is computed at EXTRACTION time:
+        // a drawing ingested before it simply does not carry the field. Those keep the old
+        // placement rather than losing their text, until `POST /drawings/{id}/reextract` brings
+        // them current.
+        const tp = geo.render_text_point || geo.text_point || geo.def_point;
         if (dimText && tp) {
           const baseHeight = ent.properties?.text_height || ent.properties?.height || 2.5;
           const screenTextHeight = baseHeight * scale;
@@ -841,6 +852,47 @@ export const renderEntities = ({
         // ellipses, and is why ellipses are extracted at all — that reads as broken geometry.
         if (ent.properties?.is_closed || ent.properties?.closed) {
           p2d.closePath();
+        }
+
+        // A LEADER's arrowhead is not geometry in the file — the size lives on its DIMSTYLE as
+        // DIMASZ, harvested at extraction as `arrow_size`. Drawing only the vertex chain leaves
+        // a bare line that stops at the feature, which reads as a pointer that never arrives:
+        // ezdxf records two extra primitives at the tip and we drew none of them.
+        //
+        // DXF orders leader vertices FROM the arrow, so vertex 0 is the tip and the head points
+        // along 1 -> 0. Filled, matching the solid arrow iCAD SX draws.
+        const arrowSize = Number(ent.properties?.arrow_size) || 0;
+        const wantsArrow =
+          (ent.type === 'leader' || ent.type === 'multileader') &&
+          ent.properties?.has_arrowhead !== 0 &&
+          arrowSize > 0 &&
+          vertices.length >= 2;
+        if (wantsArrow) {
+          const [tipX, tipY] = vertices[0];
+          const [nextX, nextY] = vertices[1];
+          const dx = tipX - nextX;
+          const dy = tipY - nextY;
+          const len = Math.hypot(dx, dy);
+          if (len > 0) {
+            const ux = dx / len;
+            const uy = dy / len;
+            // Drawing units, NOT screen: these batches are stroked under a world-space
+            // transform (see `ctx.lineWidth = ... / scale` below), and `arrow_size` is already
+            // viewport-scaled at extraction. Multiplying by `scale` here would grow the
+            // arrowhead with the zoom.
+            // Half-width from the DXF convention for a closed filled head: length / 6.
+            const half = arrowSize / 6;
+            const backX = tipX - ux * arrowSize;
+            const backY = tipY - uy * arrowSize;
+            if (!fillBatches[strokeColor]) {
+              fillBatches[strokeColor] = { color: strokeColor, path: new Path2D() };
+            }
+            const fp = fillBatches[strokeColor].path;
+            fp.moveTo(tipX, tipY);
+            fp.lineTo(backX - uy * half, backY + ux * half);
+            fp.lineTo(backX + uy * half, backY - ux * half);
+            fp.closePath();
+          }
         }
       }
     });

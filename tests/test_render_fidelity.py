@@ -105,6 +105,271 @@ def test_dimension_recovers_the_width_factor_from_its_block():
     assert mapped["properties"]["tracking"] == pytest.approx(0.875)
 
 
+def test_dimension_text_anchors_on_the_block_mtext_not_on_text_midpoint():
+    """`text_midpoint` sits ON the dimension line; the block's MTEXT is offset off it.
+
+    Anchoring the measurement on `text_midpoint` drew every value straight through its own
+    dimension line, so the line looked broken where the glyphs crossed it. Measured on
+    M745221N01's revision (model units): the ⌀145 line is at x −105.70 and its MTEXT at
+    −110.02, ⌀100 at −93.80 against −98.06, the horizontal `6` at y −439.05 against −434.79 —
+    a uniform ~4.3 offset perpendicular to the line.
+
+    Asserted by moving the block's MTEXT rather than by trusting a generated dimension to
+    reproduce the offset: ezdxf's renderer *writes* `text_midpoint` to wherever it placed the
+    text, so on a doc it authored the two points coincide and no fixture can tell them apart.
+    iCAD SX is the one that offsets them, which is the whole reason this went unnoticed.
+    """
+    doc = ezdxf.new(setup=True)
+    dim = doc.modelspace().add_linear_dim(base=(0, 20), p1=(0, 0), p2=(100, 0))
+    dim.render()
+
+    block = doc.blocks.get(dim.dimension.dxf.geometry)
+    for child in block:
+        if child.dxftype() == "MTEXT":
+            child.dxf.insert = (child.dxf.insert.x, child.dxf.insert.y + 4.26)
+            break
+
+    mapped = EntityMapper.map_dimension(dim.dimension)
+    on_line = mapped["geometry"]["text_point"]
+    beside = mapped["geometry"]["render_text_point"]
+
+    assert beside[0] == pytest.approx(on_line[0], abs=1e-6)
+    assert beside[1] - on_line[1] == pytest.approx(4.26, abs=1e-6)
+
+
+def test_dimension_without_a_block_mtext_keeps_the_old_anchor():
+    """No harvested point means the renderer falls back to `text_point`, as it did before.
+
+    Extraction-time fields do not reach drawings already ingested — there is no re-extract
+    endpoint — so the absent case is the common one, not an edge case.
+    """
+    doc = ezdxf.new(setup=True)
+    dim = doc.modelspace().add_linear_dim(base=(0, 20), p1=(0, 0), p2=(100, 0))
+    dim.render()
+
+    block = doc.blocks.get(dim.dimension.dxf.geometry)
+    for child in list(block):
+        if child.dxftype() in ("MTEXT", "TEXT"):
+            block.delete_entity(child)
+
+    mapped = EntityMapper.map_dimension(dim.dimension)
+
+    assert "render_text_point" not in mapped["geometry"]
+    assert mapped["geometry"]["text_point"] is not None
+
+
+def test_dimension_text_anchor_lands_in_geometry_so_it_gets_projected():
+    """In `properties` it would stay in model coordinates and place the text off the sheet.
+
+    `text_point` is projected through the viewport transform because the dimension schema lists
+    it under `points`; `render_text_point` has to be in the same place to get the same treatment.
+    """
+    doc = ezdxf.new(setup=True)
+    dim = doc.modelspace().add_linear_dim(base=(0, 20), p1=(0, 0), p2=(100, 0))
+    dim.render()
+
+    mapped = EntityMapper.map_dimension(dim.dimension)
+
+    assert "render_text_point" not in mapped["properties"]
+
+    from services.backend.infrastructure.cad.entity_mapper import GEOMETRY_SCHEMA
+
+    assert "render_text_point" in GEOMETRY_SCHEMA["dimension"]["points"]
+
+
+def test_dimension_text_anchor_does_not_disturb_the_comparison_anchor():
+    """`text_point` must keep reading `text_midpoint`.
+
+    The comparison scopes entities by their points, so moving `text_point` by the text gap
+    would shift dimensions between zones and stale every cached audit. Same split as
+    `render_text` vs `text`: add a field for the renderer, never repoint the existing one.
+    """
+    doc = ezdxf.new(setup=True)
+    dim = doc.modelspace().add_linear_dim(base=(0, 20), p1=(0, 0), p2=(100, 0))
+    dim.render()
+
+    expected = dim.dimension.dxf.text_midpoint
+    mapped = EntityMapper.map_dimension(dim.dimension)
+
+    assert mapped["geometry"]["text_point"][0] == pytest.approx(expected.x)
+    assert mapped["geometry"]["text_point"][1] == pytest.approx(expected.y)
+
+
+# ---------------------------------------------------------------------------
+# A LEADER's hookline is not in its vertex list
+# ---------------------------------------------------------------------------
+
+
+def _leader(doc, vertices, **attribs):
+    return doc.modelspace().add_leader(vertices, dxfattribs=attribs)
+
+
+def test_leader_extends_its_landing_under_the_annotation_text():
+    """A LEADER stores its path plus `has_hookline`/`text_width`, not the landing itself.
+
+    Without extending it the callout's pointer stops in mid-air short of its own label.
+    Measured on M745221N01's `6-9キリ`: our chain ended at paper x 125.0 while ezdxf's own
+    rendering reached 107.9 — 17.1 units short, the entire landing.
+    """
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(0, 0), (-10, -10), (-14, -10)])
+    leader.dxf.has_hookline = 1
+    leader.dxf.text_width = 22.62
+
+    mapped = EntityMapper.map_leader(leader)
+    verts = mapped["geometry"]["vertices"]
+
+    assert len(verts) == 4, "the landing segment was not appended"
+    # The final segment runs in -x, so the landing continues in -x by exactly text_width.
+    assert verts[-1][0] == pytest.approx(-14 - 22.62)
+    assert verts[-1][1] == pytest.approx(-10)
+
+
+def test_a_leader_without_a_hookline_is_left_alone():
+    """The spec-default trap: ezdxf reads back `has_hookline=1` and `text_width=1` for a
+    LEADER that declares neither, so reading them lengthens every plain leader by a phantom
+    unit. This file's two section-callout tails were extended by exactly 1.0 before the
+    presence check went in."""
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(0, 0), (-10, -10), (-14, -10)])
+
+    assert leader.dxf.has_hookline == 1, "precondition: ezdxf reports the spec default"
+    assert not leader.dxf.hasattr("has_hookline"), "precondition: but the file never set it"
+
+    mapped = EntityMapper.map_leader(leader)
+
+    assert len(mapped["geometry"]["vertices"]) == 3
+    assert mapped["properties"]["has_hookline"] is False
+
+
+def test_dxf_is_set_separates_a_written_attribute_from_a_spec_default():
+    """`_dxf_get` answers 'what is the effective value'; `_dxf_is_set` answers 'did the file
+    say this'. The two disagree exactly where branching on presence matters."""
+    from services.backend.infrastructure.cad.entity_mapper import _dxf_get, _dxf_is_set
+
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(0, 0), (-10, -10), (-14, -10)])
+
+    assert _dxf_get(leader.dxf, "has_hookline", 0) == 1     # readable...
+    assert _dxf_is_set(leader.dxf, "has_hookline") is False  # ...but not written
+
+    leader.dxf.has_hookline = 1
+    assert _dxf_is_set(leader.dxf, "has_hookline") is True
+
+
+def test_leader_landing_uses_the_annotation_width_not_the_declared_text_width():
+    """`text_width` under-states the annotation it belongs to.
+
+    On M745221N01's revision the leader declares 22.62 while the MTEXT it points from is 28.56
+    wide — 5.94 short, which leaves the landing ending *inside* the text instead of spanning it.
+    `annotation_handle` is a hard reference to that MTEXT, so the real width is one lookup away.
+    """
+    doc = ezdxf.new(setup=True)
+    mtext = doc.modelspace().add_mtext("6-9キリ")
+    mtext.dxf.width = 28.56
+    leader = _leader(doc, [(0, 0), (-10, -10), (-14, -10)])
+    leader.dxf.has_hookline = 1
+    leader.dxf.text_width = 22.62
+    leader.dxf.annotation_handle = mtext.dxf.handle
+
+    verts = EntityMapper.map_leader(leader)["geometry"]["vertices"]
+
+    assert verts[-1][0] == pytest.approx(-14 - 28.56), "the landing used the leader's short width"
+
+
+def test_leader_falls_back_to_text_width_when_no_annotation_is_linked():
+    """A leader naming no annotation still gets a landing — just the declared one."""
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(0, 0), (-10, -10), (-14, -10)])
+    leader.dxf.has_hookline = 1
+    leader.dxf.text_width = 22.62
+
+    verts = EntityMapper.map_leader(leader)["geometry"]["vertices"]
+
+    assert verts[-1][0] == pytest.approx(-14 - 22.62)
+
+
+def test_leader_annotation_that_is_not_mtext_is_ignored():
+    """`annotation_type` also allows a block or a tolerance; only MTEXT carries a usable width."""
+    doc = ezdxf.new(setup=True)
+    msp = doc.modelspace()
+    other = msp.add_line((0, 0), (1, 1))
+    leader = _leader(doc, [(0, 0), (-10, -10), (-14, -10)])
+    leader.dxf.has_hookline = 1
+    leader.dxf.text_width = 22.62
+    leader.dxf.annotation_handle = other.dxf.handle
+
+    verts = EntityMapper.map_leader(leader)["geometry"]["vertices"]
+
+    assert verts[-1][0] == pytest.approx(-14 - 22.62)
+
+
+def test_leader_carries_the_arrow_size_from_its_dimstyle():
+    """A LEADER has no arrowhead geometry; the size lives on the DIMSTYLE it names, as DIMASZ.
+
+    Without it the pointer is a bare line that stops at the feature and reads as a leader that
+    never arrives — ezdxf records two extra primitives at the tip that we drew none of.
+    """
+    doc = ezdxf.new(setup=True)
+    doc.dimstyles.get("Standard").dxf.dimasz = 4.0
+    leader = _leader(doc, [(0, 0), (-10, -10)])
+    # Assigned after construction: `add_leader` forces `dimstyle='EZDXF'` and silently discards
+    # a dimstyle passed through `dxfattribs`.
+    leader.dxf.dimstyle = "Standard"
+
+    props = EntityMapper.map_leader(leader)["properties"]
+
+    assert props["arrow_size"] == pytest.approx(4.0), "read from the wrong dimstyle"
+    assert props["has_arrowhead"] == 1
+
+
+def test_leader_arrow_size_falls_back_to_the_dxf_default():
+    """A leader naming a dimstyle the file never defines still gets an arrow."""
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(0, 0), (-10, -10)])
+    leader.dxf.dimstyle = "NoSuchStyle"
+
+    assert EntityMapper.map_leader(leader)["properties"]["arrow_size"] == pytest.approx(2.5)
+
+
+def test_arrow_size_is_scaled_with_the_viewport():
+    """`arrow_size` is a length, so a leader inside a scaled viewport gets a scaled arrow.
+
+    Measured on M745221N01: the reference's leader is paper-space and keeps DIMASZ 2.5, while
+    the revision's runs through a 0.7143 viewport and resolves to 1.786.
+    """
+    from services.backend.infrastructure.cad.entity_mapper import SCALED_PROPERTY_KEYS
+
+    assert "arrow_size" in SCALED_PROPERTY_KEYS
+
+
+def test_leader_vertex_zero_is_the_arrow_tip():
+    """DXF orders leader vertices FROM the arrow, so the head points along vertex 1 -> 0.
+
+    Pinned because the chain reads naturally as text-to-feature, which is backwards, and an
+    arrow drawn on the wrong end lands in the middle of the annotation.
+    """
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(100, 100), (80, 80), (70, 80)])
+
+    verts = EntityMapper.map_leader(leader)["geometry"]["vertices"]
+
+    assert verts[0][0] == pytest.approx(100) and verts[0][1] == pytest.approx(100)
+
+
+def test_leader_landing_follows_the_final_segment_direction():
+    """The landing continues the last segment, whatever its angle — not always horizontal."""
+    doc = ezdxf.new(setup=True)
+    leader = _leader(doc, [(0, 0), (30, 40)])   # final segment is a 3-4-5 diagonal
+    leader.dxf.has_hookline = 1
+    leader.dxf.text_width = 10.0
+
+    verts = EntityMapper.map_leader(leader)["geometry"]["vertices"]
+
+    assert verts[-1][0] == pytest.approx(30 + 6.0)   # 10 * 3/5
+    assert verts[-1][1] == pytest.approx(40 + 8.0)   # 10 * 4/5
+
+
 # ---------------------------------------------------------------------------
 # MTEXT rotation lives in text_direction, not in dxf.rotation
 # ---------------------------------------------------------------------------

@@ -42,7 +42,30 @@ OTHER_FEATURE_LABEL = "Other / Unclassified"
 # implementation-plan.md, decision 6) — the frontend renders these with a distinct
 # "not yet supported" treatment instead of the normal "no changes detected" empty state,
 # so they don't read as "checked and clean" when nothing was actually checked.
-DEFERRED_FEATURES: set[str] = {"line_name"}
+#
+# `origin`, `alignment_of_views` and `text_attributes` joined `line_name` on 2026-08-14.
+# All three are `drawing_views` sub-items that **no code can assign**: `feature_classifier`'s
+# module docstring names Generator B as their intended source, ADR-006 deleted Generator B,
+# and `classify_drawing_view_feature` returns `OTHER_FEATURE_KEY` for anything it cannot
+# confidently match. So each was rendering "No changes detected." on every comparison this
+# system has ever run — a check that never ran, reporting clean. `line_attributes` was the
+# fourth; it left this set the same day by gaining a real producer instead
+# (`line_attribute_differ`), which is the other honest resolution.
+# See docs/vault/06 - .../Gotcha - A Checklist Item With No Producer Reported Clean.md.
+#
+# ⚠ Membership here HIDES rows: `ChecklistPanel` checks `isDeferred` before `hasRows`, so a
+# deferred item showing findings would render the "not yet supported" text and drop them on
+# the floor. Before adding a key, confirm nothing can assign it — and when you build a
+# producer for one of these, remove it from this set in the same change.
+#
+# Mirrored at apps/desktop/src/utils/comparisonTaxonomy.ts (`DEFERRED_FEATURE_KEYS`), kept in
+# step by tests/test_taxonomy_consistency.py::test_deferred_features_match.
+DEFERRED_FEATURES: set[str] = {
+    "origin",
+    "alignment_of_views",
+    "text_attributes",
+    "line_name",
+}
 
 TAXONOMY: dict[Category, list[FeatureItem]] = {
     "drawing_views": [

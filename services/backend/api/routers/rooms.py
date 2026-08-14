@@ -164,7 +164,7 @@ async def delete_room(room_id: str):
     # The room owns its drawings: hard-delete both slots (entities, jobs, files,
     # caches, records) so nothing dangles once the room is gone. The Room record
     # itself stays soft-deleted, matching AuditSession convention.
-    from ...domain.services.drawing_ingestion_service import DrawingIngestionService
+    from ...infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
     for drawing_id in (room.active_old_drawing_id, room.active_new_drawing_id):
         if drawing_id:
             try:

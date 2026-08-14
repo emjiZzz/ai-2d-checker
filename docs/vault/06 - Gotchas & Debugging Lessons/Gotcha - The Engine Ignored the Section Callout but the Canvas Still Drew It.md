@@ -157,9 +157,11 @@ conflating them is what made the risk look bigger than it was.
 ## Deliberately not done
 
 - **No backend property.** Stamping `section_callout` at extraction would let `render_audit` and
-  the canvas share one source of truth, but it needs a re-ingest to reach existing drawings and
-  there is no re-extract endpoint — only `upload_drawing`. The duplicated rule is the cheaper
-  trade today; if a third consumer appears, move it.
+  the canvas share one source of truth, but it needs a re-extraction to reach existing drawings.
+  The duplicated rule is the cheaper trade today; if a third consumer appears, move it. *(The
+  re-extraction half of that objection expired on 2026-08-14 —
+  [[Gotcha - The Extraction Pipeline Had Never Been Run Twice]] — so if this is revisited, the
+  remaining cost is just the re-run, not a lost drawing id.)*
 - **No label-proximity gate on the cut line.** Colour already separates it, and the only honest
   constant available was the 2.2-unit margin above. If a minority-colour `CENTER` line that is not
   a cut plane ever appears on a sheet with a section designation, that gate is what to add — the

@@ -8,7 +8,24 @@ from pymongo import ASCENDING, IndexModel
 # Bump when the shape of `properties` / `geometry` changes such that previously
 # extracted rows can no longer be interpreted the same way. Stored on the parent
 # DrawingDocument so stale extractions are detectable without re-reading entities.
-EXTRACTION_SCHEMA_VERSION = 2
+#
+# v3: dimensions carry `geometry.render_text_point`, the text anchor harvested from the
+# dimension's own geometry block. Rows written at v2 lack it and the canvas falls back to
+# `text_point` — which sits ON the dimension line, so their measurements still draw through
+# it. Strictly additive, so v2 rows remain readable; the bump is what makes "this drawing
+# predates the fix and needs re-extracting" answerable, which is the field's whole purpose.
+# The cure is `POST /drawings/{id}/reextract`, which keeps the drawing's id and history.
+# v4: LEADER vertex chains carry their hookline — the landing segment that runs under the
+# annotation text, which the DXF stores as `has_hookline`/`text_width` rather than as a vertex.
+# Rows written at v3 or earlier stop short of their own label (17.1 paper units short on
+# M745221N01's `6-9キリ` callout), which reads as a pointer that never arrives.
+# v5: the leader landing is sized from the linked annotation's own width
+# (`annotation_handle` -> MTEXT `width`) rather than the leader's `text_width`, which
+# under-states it — 22.62 against 28.56 on M745221N01's revision, leaving the landing ending
+# inside its own label. v4 rows have a landing that is short by that difference.
+# v6: leaders carry `arrow_size` (DIMASZ from their dimstyle, viewport-scaled) so the canvas can
+# draw the arrowhead. v5 rows have none, and their pointers end in a bare line at the feature.
+EXTRACTION_SCHEMA_VERSION = 6
 
 
 class ExtractedEntity(Document):

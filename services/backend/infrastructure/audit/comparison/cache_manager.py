@@ -395,7 +395,19 @@ class ComparisonCacheManager:
     # inside it, which `title` correctly claims by precedence. Measured: drops 0 findings on
     # that pair and leaves both baselines byte-identical. It is a net, not a fix -- anything it
     # ever drops is a bug upstream of it, and it logs each drop so that bug is findable.
-    COMPARISON_CACHE_VERSION = "v48"
+    #
+    # v49: **`line_attributes` produces findings.** The sub-item has existed since the checklist
+    # was grouped and no generator has ever assigned it -- `feature_classifier` names Generator B
+    # as its intended source and ADR-006 deleted Generator B -- so the card was reachable only
+    # through its empty state, which reads "No changes detected." It reported a clean result for
+    # every comparison this system has ever run, on a check that never ran.
+    # `line_attribute_differ` now profiles each side's stroke geometry by (linetype, lineweight),
+    # resolved through the layer table, and emits one row per line attribute either drawing draws
+    # with: MATCHED on both sides, ADDED/REMOVED when only one side uses it. Counts are shown but
+    # never drive a status -- see that module for why, and for the measured row-count basis of
+    # the key. Every cached audit is invalidated because drawing_views gains rows and its rollup
+    # status can flip to CHANGED on a one-sided line attribute.
+    COMPARISON_CACHE_VERSION = "v49"
 
     @staticmethod
     def _get_cache_path(

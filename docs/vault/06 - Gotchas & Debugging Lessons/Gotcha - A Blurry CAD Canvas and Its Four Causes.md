@@ -146,8 +146,10 @@ menu so it can be A/B'd on real geometry first; `setRenderMode` had no caller an
 app before this, which is precisely how the vector path shipped unable to draw a dimension.
 
 ⚠ **Dimension geometry is produced at extraction time.** Drawings already in MongoDB have
-dimensions with no `render_paths` — they must be re-uploaded. There is no re-extract endpoint,
-only `upload_drawing`.
+dimensions with no `render_paths` and must be re-extracted. *(As written this said re-**uploaded**,
+because until 2026-08-14 there was no other option; `POST /drawings/{id}/reextract` now does it
+without discarding the drawing's id, room slot or audit history —
+[[Gotcha - The Extraction Pipeline Had Never Been Run Twice]].)*
 
 ### Measured after re-ingestion (M745221N01, 2026-08-11)
 
@@ -535,8 +537,9 @@ better and offline — but only if someone runs it, so **run it after any change
 `renderEntities.ts`, `entity_mapper.py` or `geometry_serializer.py`**, per `CLAUDE.md`.
 
 One standing prerequisite survives the flip: `render_paths`, MTEXT rotation and the elliptical-arc
-fix are all computed at **extraction** time, so drawings already in MongoDB must be re-uploaded.
-There is no re-extract endpoint.
+fix are all computed at **extraction** time, so drawings already in MongoDB must be re-extracted.
+*(Written when the only way to do that was a re-upload; `POST /drawings/{id}/reextract` has done it
+in place since 2026-08-14.)*
 
 ## Related
 

@@ -88,6 +88,126 @@ defect from scratch as a result.
    ADR-003's, and ADR-007 replaced them.
    Guarded by `tests/test_maturity_ledger.py`.
 
+## Design principles — SOLID and DRY, as this codebase has actually paid for them
+
+These are **judgement, not hard constraints**: nothing mechanically enforces them, and
+`architect-reviewer` is the only thing that reviews for them (CI's ruff/mypy gates are
+`continue-on-error`). Every example below is a real defect or a real decision in this repo —
+they are cited so the principle is checkable rather than quotable. If an example goes stale,
+fix it or delete it; a principle illustrated by a lie is worse than one with no example.
+
+### DRY — the failure mode here is *drift*, not typing
+
+Duplication in this codebase does not announce itself by breaking. Two copies of one rule keep
+working while they slowly disagree, and the output stays plausible. That is the expensive
+shape, and it has landed four times:
+
+- **`is_margin_grid_text` was implemented twice** and the copies drifted — only one normalised
+  NFKC, so full-width grid labels were dropped in one path and kept in the other, where they
+  bridged clusters across the sheet. `orchestrator.is_in_margin` now delegates.
+- **`sweep.py` and `runner.py` each reproduced the engine call** with no shared call site.
+  `sweep.py` landed one day before the zone-template seam and never got it, so it measured
+  **F1 0.68 against the eval's 0.92 on the same corpus at the same commit** — for four days.
+- **`mutator.py` shares `apply_zone_overrides`** with the engine rather than re-deriving zones.
+  A mutator applying *nearly* the engine's rules is the same defect one layer down.
+- **`is_component_of_dwg_no` lives in `infrastructure/utils/text.py`** and is imported by
+  `marking_builder` rather than restated, so the cards and the checklist table cannot disagree
+  about what was dropped.
+
+**Reach across a module boundary before you reimplement a rule.** `line_attribute_differ`
+calls `GeometrySerializer._resolve_lineweight` — a private method in the *rendering* layer —
+because the alternative is the checklist holding a second opinion about how thick a line is.
+Crossing that boundary is the cheaper mistake.
+
+⚠ **When you genuinely cannot share, pin the duplication with a test.** The taxonomy is
+hand-mirrored in `taxonomy.py` and `comparisonTaxonomy.ts` because no runtime type-sharing
+exists between the two languages; `tests/test_taxonomy_consistency.py` parses both and fails if
+either side moves alone. `sectionCallouts.ts` deliberately mirrors `refine_view_labels` for the
+same reason, and says so in its docstring. **Unpinned deliberate duplication is just
+duplication.**
+
+### SRP — one rule, one place, especially for rules enforced in several places
+
+- **`zone_ownership.py` exists because zone precedence was being decided four ways** in four
+  ad-hoc exclusion lists. It was reported violated from live reviews twice in one day. One
+  arbitration now answers "which zone owns this entity", and the safe-zone net keyed on it is a
+  **net, not a fix** — anything it drops is a bug upstream, and it logs each drop so that bug
+  stays findable.
+- **`params.py` collects all 20 tuning constants** out of six modules. The point is not tidiness:
+  a sweep that compares runs against each other cannot attribute a change if a constant is
+  declared where it is used.
+- A function that both *decides* and *acts* cannot be measured. `extract_title_ul_kv` returning
+  its claimed entity ids — instead of quietly subtracting them — is what made "only take content
+  out of the shared pool if you will compare it" checkable.
+
+### Open/Closed — extend at a declared seam, and make the seam earn itself
+
+- **`retrieval/encoder.py` is a pluggable seam so a dense encoder must win a bake-off** against
+  lexical rather than being assumed better.
+- **`extract_dynamic_regions_async(zone_template=…)` has three states** — `None` resolves from
+  Mongo (the app), `{}` asserts no pinned zones, `{...}` applies exactly those with no database
+  access. It takes **fractions, not resolved boxes**, so an offline run still exercises the
+  conversion whose failure mode is a plausible mirrored zone. A seam that bypasses the code
+  under test is worse than no seam.
+- ⛔ **Do not add a seam "for flexibility".** `apply_best()` on the sweep deliberately does not
+  exist, pinned by a test: one click applying optima found on synthetic edits to a single sheet
+  would undo what Stage 0 exists to establish.
+
+### Liskov & Interface Segregation — where they actually bite here
+
+- **Substitutability is about the sentinels, not the class hierarchy.** DXF `BYLAYER` (-1),
+  `BYBLOCK` (-2) and `DEFAULT` (-3) are *instructions to look elsewhere*, not widths. Flattening
+  them to a number is how every inheriting entity once rendered at 0.01mm. A subtype that
+  silently answers a different question than its contract promises is the same bug in another
+  costume — see `_dxf_get` (effective value) vs `_dxf_is_set` (did the file say it).
+- **Interfaces here are schemas, and narrowing them is a hard constraint, not a preference.**
+  Constraint 1 above: a bare `dict` field on anything nested in `PhysicalComparisonResponse`
+  emits open-ended `additionalProperties` and Gemini rejects the request. Fixed fields, always.
+
+### Dependency Inversion — depend on the seam, not on the environment
+
+**`domain/` must not import `infrastructure/`, `api/`, or a web framework. This is now
+enforced, not reviewed** — `tests/test_layer_boundaries.py` parses every module under `domain/`
+with `ast`, resolves relative imports to their real targets, and fails on any outward edge. It
+checks imports nested inside function bodies too, because two of the three original violations
+were deferred imports that a module-header review does not see.
+
+It became true on 2026-08-14, having been false for months in two places:
+
+- **`domain/services/drawing_ingestion_service.py`** imported the processing queue, the storage
+  path resolver, the comparison cache manager — and `fastapi`. Moved to
+  `infrastructure/ingestion/`. ⚠ **The instructive part is why moving beat inverting**: ports
+  for the three infrastructure imports would have made the grep clean while leaving a web
+  framework in the domain layer, i.e. a fix that looks complete. A class taking `UploadFile` and
+  raising `HTTPException` is an application service over infrastructure — its own docstring said
+  so — and `infrastructure/audit/comparison/orchestrator.py` is the existing precedent for
+  where a router-called orchestrator lives.
+- **`domain/contracts.py`** re-exported seven `api/schemas.py` Pydantic models as "canonical
+  domain data contracts" — the *schema leakage* `architect-reviewer` also flags. It had **zero
+  importers**: dead code whose only live effect was the edge itself. Deleted.
+
+Where the principle does hold elsewhere, it holds because someone needed to *test* the thing:
+
+Where the principle does hold, it holds because someone needed to *test* the thing:
+
+- The learned bundle resolves `LEARNED_MODEL_DIR` → repo path → deprecated vault, so an install
+  that trained earlier keeps working and migrates itself on its next retrain — no script, no
+  window where the model is missing.
+- `runner.no_network()` patches `socket.connect` to raise on any non-local address, so "zero
+  network calls" is **enforced rather than claimed**.
+- Two of the three relocated Stage 0g tests were *environment-dependent*, not broken: they
+  asserted against the real, gitignored vault, so they would have failed in CI for a reason
+  unrelated to the code. Both now take an injected path.
+
+**Prefer the version of a dependency you can assert against.**
+
+> [!IMPORTANT] The rule that outranks all of the above.
+> **A refactor must be proven inert before anything is attributed to it.** `params.py` was
+> landed and measured byte-identical to the committed baseline *first*; the zone-template seam
+> likewise. Land a structural change and a behavioural change together and neither is
+> attributable — which in this repo means the measurement is worthless, and the measurement is
+> the product.
+
 ## Verified commands
 
 Backend tests — run from the repo root. **No `PYTHONPATH` prefix is needed**; `pyproject.toml`
@@ -138,9 +258,38 @@ as the source of `render_bounds` and as an input to title-block OCR and the PDF 
 reinstate it as a display source, and do not delete the generator — `render_bounds` is what every
 zone template's fractions and identity are stored against.
 
-⚠ `render_paths` (dimensions), MTEXT rotation and the elliptical-arc fix are computed at
-**extraction** time. A drawing ingested before those will render wrong, and there is no re-extract
-endpoint — only `upload_drawing`.
+⚠ `render_paths` (dimensions), `render_text_point` (dimension text anchors), leader hooklines,
+MTEXT rotation and the elliptical-arc fix are computed at **extraction** time. A drawing ingested
+before those will render wrong until it is re-extracted.
+
+Since 2026-08-14 there is a re-extract route, so this is no longer "re-upload or live with it":
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/v1/drawings/<id>/reextract
+```
+
+It re-parses from the stored file and keeps the drawing's id, room slot and audit history —
+delete-and-re-upload loses all three. Returns the queued job; poll `GET /jobs/{id}`. Refuses with
+409 while an extraction is already running and 422 if the source file is gone. Cached comparisons
+for that drawing are cleared first, because a hit returns in ~0.14s and would otherwise bypass the
+whole re-extraction.
+
+`EXTRACTION_SCHEMA_VERSION` (`extracted_entity.py`) says which drawings need it: it is stamped
+onto each `DrawingDocument` as `extraction_schema_version`, so a drawing predating a fix is
+identifiable without re-reading its entities. **Bump it when you add an extraction-time field**,
+with a `# vN:` note saying what a stale row is missing and how it degrades. Currently **6**.
+Nothing reads it yet — that is a gap, not permission to leave it stale.
+
+⚠ **`_dxf_get` tells you the effective value, `_dxf_is_set` tells you whether the file said it.**
+ezdxf returns the DXF-spec default for an unset optional, so a LEADER that declares neither reads
+back `has_hookline = 1` and `text_width = 1` — both truthy, neither written. Anything that
+branches on *presence* must use `_dxf_is_set`; branching on the read value silently applies a
+default the CAD never asked for.
+
+⚠ `ExtractionPipeline.run` **replaces** a drawing's entities, deleting the previous set
+immediately before its own insert. Keep that ordering: earlier, and a failed parse leaves the
+drawing blank; absent, and a second run silently doubles every entity — which renders and compares
+as a plausible drawing rather than as an error. Pinned by `tests/test_extraction_replacement.py`.
 
 Note: PowerShell 5.1 is the default shell here and **does not support `&&`**. Use `;`, or run
 the command in bash.

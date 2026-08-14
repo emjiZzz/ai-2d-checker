@@ -20,8 +20,8 @@ import pytest
 from services.backend.domain.models.drawing_document import DrawingDocument
 from services.backend.domain.models.extracted_entity import ExtractedEntity
 from services.backend.domain.models.extraction_job import ExtractionJob
-from services.backend.domain.services import drawing_ingestion_service as svc
-from services.backend.domain.services.drawing_ingestion_service import DrawingIngestionService
+from services.backend.infrastructure.ingestion import drawing_ingestion_service as svc
+from services.backend.infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
 from services.backend.infrastructure.audit.comparison.cache_manager import ComparisonCacheManager
 from services.backend.infrastructure.cad.processing_queue import processing_queue
 
@@ -168,3 +168,138 @@ async def test_purge_drawing_removes_record_file_and_caches(storage, mock_db):
     assert drawing_id not in mock_db["drawings"]                       # record gone
     assert not any(j.drawing_id == drawing_id for j in mock_db["jobs"].values())  # job gone
     assert mock_db["calls"]["cache_clear"] == [drawing_id]             # caches cleared
+
+
+# ---------------------------------------------------------------------------
+# Re-extraction: bringing a stale drawing current without losing its identity
+# ---------------------------------------------------------------------------
+
+
+async def test_reextract_queues_a_job_against_the_same_drawing(storage, mock_db):
+    """The point of the route: the drawing keeps its id, its file and its record.
+
+    Delete-and-re-upload was the only previous cure for a drawing ingested before an
+    extraction-time field existed, and it discards the id every room slot and audit
+    references.
+    """
+    drawing, first_job, _ = await DrawingIngestionService.process_ingestion(
+        _FakeUploadFile("bracket.dxf", b"fake dxf drawing bytes")
+    )
+    drawing_id = str(drawing.id)
+    drawing.status = "completed"
+    await drawing.save()
+    mock_db["calls"]["enqueue"].clear()
+
+    same_drawing, job = await DrawingIngestionService.reextract_drawing(drawing_id)
+
+    assert str(same_drawing.id) == drawing_id          # same record, not a new one
+    assert (storage / drawing.file_path).exists()      # source file untouched
+    assert str(job.id) != str(first_job.id)            # a fresh job to poll
+    assert job.drawing_id == drawing_id
+    assert same_drawing.status == "queued"
+    assert mock_db["calls"]["enqueue"] == [(drawing_id, str(job.id))]
+
+
+async def test_reextract_clears_cached_comparisons_before_queueing(storage, mock_db):
+    """A cache hit returns in ~0.14s and would bypass the whole re-extraction.
+
+    Cached audits were computed against the entities this run replaces, so leaving them
+    serves findings whose entities no longer exist. Cleared before the job is enqueued,
+    so there is no window where a stale hit can be served against new entities.
+    """
+    drawing, _job, _ = await DrawingIngestionService.process_ingestion(
+        _FakeUploadFile("bracket.dxf", b"fake dxf drawing bytes")
+    )
+    drawing_id = str(drawing.id)
+    drawing.status = "completed"
+    await drawing.save()
+
+    await DrawingIngestionService.reextract_drawing(drawing_id)
+
+    assert mock_db["calls"]["cache_clear"] == [drawing_id]
+
+
+async def test_reextract_refuses_while_an_extraction_is_already_running(storage, mock_db):
+    """Two concurrent runs would race on the same entity set."""
+    from fastapi import HTTPException
+
+    drawing, _job, _ = await DrawingIngestionService.process_ingestion(
+        _FakeUploadFile("bracket.dxf", b"fake dxf drawing bytes")
+    )
+    drawing_id = str(drawing.id)
+
+    for busy in ("queued", "processing"):
+        drawing.status = busy
+        await drawing.save()
+        mock_db["calls"]["enqueue"].clear()
+
+        with pytest.raises(HTTPException) as excinfo:
+            await DrawingIngestionService.reextract_drawing(drawing_id)
+
+        assert excinfo.value.status_code == 409
+        assert mock_db["calls"]["enqueue"] == []       # nothing queued
+
+
+async def test_reextract_refuses_when_the_source_file_is_gone(storage, mock_db):
+    """Fail with a reason here rather than enqueue a job that dies in the worker.
+
+    The worker's path error surfaces only in a log nobody reads, and the drawing sits at
+    'queued' forever.
+    """
+    from fastapi import HTTPException
+
+    drawing, _job, _ = await DrawingIngestionService.process_ingestion(
+        _FakeUploadFile("bracket.dxf", b"fake dxf drawing bytes")
+    )
+    drawing_id = str(drawing.id)
+    drawing.status = "completed"
+    await drawing.save()
+    (storage / drawing.file_path).unlink()
+    mock_db["calls"]["enqueue"].clear()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await DrawingIngestionService.reextract_drawing(drawing_id)
+
+    assert excinfo.value.status_code == 422
+    assert mock_db["calls"]["enqueue"] == []
+    assert mock_db["calls"]["cache_clear"] == []       # nothing destroyed on the way out
+
+
+async def test_reextract_rejects_an_unknown_drawing(storage, mock_db):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as excinfo:
+        await DrawingIngestionService.reextract_drawing("does-not-exist")
+
+    assert excinfo.value.status_code == 404
+
+
+async def test_reextract_does_not_delete_entities_up_front(storage, mock_db):
+    """Entity replacement belongs to the pipeline, immediately before its own insert.
+
+    Deleting here would blank the canvas for as long as the job sits in the queue, and
+    permanently if the parse then failed. Pinned because moving the delete into the service
+    reads like the obvious tidy-up.
+    """
+    drawing, _job, _ = await DrawingIngestionService.process_ingestion(
+        _FakeUploadFile("bracket.dxf", b"fake dxf drawing bytes")
+    )
+    drawing_id = str(drawing.id)
+    drawing.status = "completed"
+    await drawing.save()
+
+    deletes: list[str] = []
+    original_find = ExtractedEntity.find
+
+    def recording_find(cls, *args, **kwargs):
+        found = original_find(*args, **kwargs)
+        deletes.append("called")
+        return found
+
+    ExtractedEntity.find = classmethod(recording_find)
+    try:
+        await DrawingIngestionService.reextract_drawing(drawing_id)
+    finally:
+        ExtractedEntity.find = original_find
+
+    assert deletes == [], "the service must leave entity replacement to the pipeline"

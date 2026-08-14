@@ -45,6 +45,7 @@ from .marking_builder import (
     generate_auto_matched_markings
 )
 from .coordinate_resolver import resolve_marking_coordinates, harden_value_only_coordinates
+from .line_attribute_differ import diff_line_attributes
 from .marking_reconciler import reconcile_relocated_markings
 from .schemas import Coordinate2D, BoundingBox2D
 from .cache_manager import ComparisonCacheManager
@@ -1529,6 +1530,30 @@ async def generate_deterministic_candidates(
             f"Marking reconciliation: {before_count} -> {len(clean_markings)} findings "
             f"({(before_count - len(clean_markings))} relocated REMOVED/ADDED pairs merged)."
         )
+
+    # Line attributes — which line types and thicknesses the views are drawn with.
+    #
+    # Runs on `ref_views_pool`/`rev_views_pool` rather than `filtered_*_entities`: safe_filter's
+    # remaining passes (structured-value de-dup, learned dismissals) are keyed on TEXT, and a
+    # stroke has none, so applying them here would filter nothing while implying it had.
+    #
+    # The full entity lists are passed alongside for their `layer` records only. Those carry no
+    # geometry, so `scope_entities_to_views` drops them from both pools, and without them every
+    # BYLAYER stroke would resolve against an empty layer table.
+    #
+    # Placed after reconciliation because these markings carry no coordinates and have nothing
+    # to reconcile — running them through it would only ask a proximity merge to reason about
+    # findings that have no position.
+    line_attribute_markings = diff_line_attributes(
+        ref_views_pool, rev_views_pool, ref_entities, rev_entities,
+    )
+    clean_markings.extend(line_attribute_markings)
+    logger.info(
+        f"Line attributes: {len(line_attribute_markings)} profile row(s) — "
+        f"{len([m for m in line_attribute_markings if m.get('status') == 'MATCHED'])} on both sides, "
+        f"{len([m for m in line_attribute_markings if m.get('status') == 'ADDED'])} revision-only, "
+        f"{len([m for m in line_attribute_markings if m.get('status') == 'REMOVED'])} reference-only."
+    )
 
     # Amendment/revision-history table -> title_block, not drawing_views.
     #

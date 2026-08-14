@@ -49,10 +49,27 @@ def mock_beanie_docs(monkeypatch):
             return mock_jobs.get(id_str)
         return None
 
+    class MockFind:
+        """`ExtractionPipeline.run` clears a drawing's entities before inserting the new ones,
+        so a re-extraction replaces rather than doubles them. Without this the pipeline dies
+        before it writes anything and every assertion below passes or fails for the wrong
+        reason."""
+
+        async def delete(self):
+            class _Result:
+                deleted_count = 0
+
+            return _Result()
+
+    async def mock_insert_many(cls, documents, *args, **kwargs):
+        return documents
+
     monkeypatch.setattr(DrawingDocument, "save", mock_save)
     monkeypatch.setattr(ExtractionJob, "save", mock_save)
     monkeypatch.setattr(DrawingDocument, "get", classmethod(mock_get))
     monkeypatch.setattr(ExtractionJob, "get", classmethod(mock_get))
+    monkeypatch.setattr(ExtractedEntity, "find", classmethod(lambda cls, *a, **k: MockFind()))
+    monkeypatch.setattr(ExtractedEntity, "insert_many", classmethod(mock_insert_many))
 
 @pytest.fixture
 def dummy_step_file(tmp_path) -> Path:

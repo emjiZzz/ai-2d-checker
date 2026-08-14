@@ -50,7 +50,11 @@ GEOMETRY_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "spline": {"point_lists": ("control_points", "fit_points", "points")},
     "dimension": {
-        "points": ("def_point", "text_point", "ext1_point", "ext2_point"),
+        # `render_text_point` is the block's own text anchor, offset off the dimension line;
+        # `text_point` is `text_midpoint`, which sits on it. Both are projected — the renderer
+        # prefers the former, and the comparison keeps reading the latter, so entity pooling and
+        # every cached audit are untouched. Same split as `render_text` vs `text`.
+        "points": ("def_point", "text_point", "ext1_point", "ext2_point", "render_text_point"),
         # The flattened contents of the dimension's anonymous geometry block. Listed here
         # so the model->paper projection reaches them for free; a dimension whose anchors
         # were projected but whose rendered lines were not would draw its measurement in
@@ -68,7 +72,12 @@ GEOMETRY_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
 # Property keys holding drawing-unit sizes that must scale with the viewport.
 # `width_factor` and `tracking` are deliberately absent: they are dimensionless
 # multipliers, not lengths, and scaling them would compound with the geometry scale.
-SCALED_PROPERTY_KEYS: tuple[str, ...] = ("height", "radius", "text_height", "column_width")
+SCALED_PROPERTY_KEYS: tuple[str, ...] = (
+    "height", "radius", "text_height", "column_width", "arrow_size",
+)
+
+#: DXF's own default for DIMASZ, used when a leader names a dimstyle the file does not define.
+_DEFAULT_DIMASZ = 2.5
 
 # Tessellation density for curved dimension geometry (radial, diameter and angular
 # dimensions render as arcs). A full circle at this density is well under a pixel of
@@ -98,6 +107,22 @@ def _dxf_get(dxf: Any, name: str, default: Any = None) -> Any:
     except Exception:
         return default
     return default if value is None else value
+
+
+def _dxf_is_set(dxf: Any, name: str) -> bool:
+    """True only when the DXF actually CARRIES this attribute.
+
+    Distinct from reading it: ezdxf returns the DXF-spec default for an unset optional
+    attribute, so an absent `has_hookline` reads back as `1` and an absent `text_width` as
+    `1` — both truthy, neither written by the CAD. Anything that branches on "did the file
+    say this" has to ask here first; `_dxf_get` answers the different question of "what is
+    the effective value", and the two disagree exactly where it matters.
+    """
+    try:
+        checker = getattr(dxf, "hasattr", None)
+        return bool(checker(name)) if callable(checker) else False
+    except Exception:
+        return False
 
 
 def _as_xy(point: Any, default: tuple[float, float] = (0.0, 0.0)) -> list[float]:
@@ -494,6 +519,27 @@ class EntityMapper:
                         if height:
                             text_meta["text_height"] = float(height)
 
+                        # WHERE the block puts the measurement, which is not where the
+                        # DIMENSION's own `text_midpoint` puts it.
+                        #
+                        # `text_midpoint` sits ON the dimension line -- it is the line's
+                        # midpoint, not the text's. The CAD offsets the text perpendicular to
+                        # the line by `text_height/2 + DIMGAP` so it reads BESIDE the line, and
+                        # only the block records that. Measured on M745221N01's revision, model
+                        # units: the phi145 line is at x -105.70 and its MTEXT at -110.02, phi100
+                        # at -93.80 against -98.06, and the horizontal `6` at y -439.05 against
+                        # -434.79. A uniform ~4.3 offset that anchoring on `text_midpoint`
+                        # discards, drawing every measurement straight through its own dimension
+                        # line -- which is what the canvas did, and what iCAD SX does not.
+                        #
+                        # Harvested rather than recomputed from height and DIMGAP: the offset is
+                        # only *approximately* uniform (4.32 / 4.25 / 4.26 on one sheet), the
+                        # side depends on the text direction, and a leader-style radial dimension
+                        # places its text differently again. The authored point is exact and free.
+                        insert = _dxf_get(e.dxf, "insert", None)
+                        if insert is not None:
+                            text_meta["render_text_point"] = _as_xyz(insert)
+
                         # The string the block ACTUALLY renders, which is not the same as the
                         # one `map_dimension` reconstructs from `actual_measurement`.
                         #
@@ -613,6 +659,13 @@ class EntityMapper:
         if rendered["fills"]:
             geometry["render_fills"] = rendered["fills"]
         props.update(rendered["text"])
+
+        # Lives in geometry, not properties, so the model->paper projection reaches it through
+        # the schema's `points` tuple. A text anchor left in properties would stay in model
+        # coordinates and place the measurement off the sheet entirely.
+        render_text_point = props.pop("render_text_point", None)
+        if render_text_point is not None:
+            geometry["render_text_point"] = render_text_point
 
         return {
             "entity_type": "dimension",
@@ -894,8 +947,89 @@ class EntityMapper:
             vertices = [_as_xyz(v) for v in entity.vertices]
 
         props = common_properties(entity)
+        # Effective value, not presence: the DXF default for `has_arrowhead` is 1 (enabled), and
+        # that IS the right reading for a leader that stays silent — unlike `has_hookline` below,
+        # where the default is a landing the CAD never asked for.
         props["has_arrowhead"] = _dxf_get(entity.dxf, "has_arrowhead", 1)
-        props["dimstyle"] = _dxf_get(entity.dxf, "dimstyle", "")
+        style_name = _dxf_get(entity.dxf, "dimstyle", "")
+        props["dimstyle"] = style_name
+
+        # A LEADER carries no arrowhead geometry — the size lives on the DIMSTYLE it names, as
+        # DIMASZ. Without it the pointer is a bare line that stops at the feature, which reads as
+        # a leader that never arrives; ezdxf records two extra primitives at the tip that we drew
+        # none of. Stored as a length so the viewport projection scales it with everything else.
+        #
+        # ⚠ ezdxf draws this arrow at ~1.5x DIMASZ (measured: its recorded tip box solves to a
+        # triangle 3.75 long against DIMASZ 2.5 on this sheet). That multiplier is not documented
+        # anywhere we could find, so DIMASZ is used raw rather than fitted to one renderer — a
+        # slightly small arrow is a size difference, no arrow is a missing feature.
+        arrow_size = 0.0
+        try:
+            doc = getattr(entity, "doc", None)
+            if doc is not None and style_name and style_name in doc.dimstyles:
+                arrow_size = float(_dxf_get(doc.dimstyles.get(style_name).dxf, "dimasz", 0.0) or 0.0)
+        except Exception:
+            arrow_size = 0.0
+        props["arrow_size"] = arrow_size or _DEFAULT_DIMASZ
+
+        # The hookline -- the landing segment that runs under the annotation text -- is NOT in
+        # the vertex list. A LEADER stores its path plus two flags, and the renderer is expected
+        # to extend the final segment by `text_width` so the line reaches the text it points
+        # from. Without it a callout's pointer stops in mid-air short of its own label.
+        #
+        # Measured on M745221N01's `6-9キリ` callout: our chain ended at paper x 125.0 while
+        # ezdxf's own rendering of the same leader reaches 107.9 -- **17.1 units short**, which
+        # is the entire landing. `text_width` is 22.62 model units (16.16 projected), so
+        # extending by it lands at 108.8, within ~1 unit of ezdxf. The residual is the dimstyle
+        # gap ezdxf also adds; it is left out because reading DIMGAP here to chase one unit
+        # costs more than it buys, and being 1 unit short of the text beats being 17.
+        # Both must be PRESENT, not merely readable. ezdxf hands back the DXF-spec defaults for
+        # unset optionals — `has_hookline` reads 1 and `text_width` reads 1 on a leader that
+        # declares neither — so reading them would extend every plain leader by a phantom unit.
+        # Measured: this file's two section-callout tails carry neither attribute and were
+        # lengthened by exactly 1.0 before the presence check went in.
+        has_hookline = _dxf_is_set(entity.dxf, "has_hookline") and _dxf_get(entity.dxf, "has_hookline", 0)
+        text_width = (
+            _dxf_get(entity.dxf, "text_width", 0.0) if _dxf_is_set(entity.dxf, "text_width") else 0.0
+        )
+        props["has_hookline"] = bool(has_hookline)
+        props["text_width"] = text_width
+        # `text_width` UNDER-STATES the annotation. On M745221N01's revision the leader declares
+        # 22.62 while the MTEXT it points from is 28.56 wide — 5.94 short, which leaves the
+        # landing ending inside the text instead of spanning it. The leader also carries
+        # `annotation_handle`, a hard reference to that very MTEXT, so the real width is one
+        # lookup away; `text_width` is only the fallback for a leader that names no annotation.
+        #
+        # This deliberately OVERSHOOTS ezdxf, which uses `text_width` and lands 4.2 units short
+        # of the text. The evidence for the longer landing is the reference sheet of the same
+        # pair: it has no hookline and instead authors its landing as an explicit LINE, 27.9
+        # units against a 29.0-wide text — i.e. the CAD's own landing spans its annotation. Our
+        # ezdxf-agreement checks cover text placement and the entity census, neither of which
+        # this touches.
+        annotation_width = 0.0
+        if _dxf_is_set(entity.dxf, "annotation_handle"):
+            try:
+                doc = getattr(entity, "doc", None)
+                target = doc.entitydb.get(_dxf_get(entity.dxf, "annotation_handle", None)) if doc else None
+                if target is not None and target.dxftype() == "MTEXT":
+                    annotation_width = float(_dxf_get(target.dxf, "width", 0.0) or 0.0)
+            except Exception:
+                annotation_width = 0.0
+
+        landing = annotation_width or text_width
+        props["landing_width"] = landing
+        if has_hookline and landing and len(vertices) >= 2:
+            tail_from, tail_to = vertices[-2], vertices[-1]
+            dx = tail_to[0] - tail_from[0]
+            dy = tail_to[1] - tail_from[1]
+            span = math.hypot(dx, dy)
+            if span > 0:
+                width = float(landing)
+                vertices.append([
+                    tail_to[0] + dx / span * width,
+                    tail_to[1] + dy / span * width,
+                    tail_to[2] if len(tail_to) > 2 else 0.0,
+                ])
 
         return {
             "entity_type": "leader",
