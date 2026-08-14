@@ -72,9 +72,15 @@ _BINDINGS: dict[str, tuple[str, str]] = {
     "ambiguity_margin": ("..comparison.marking_reconciler", "AMBIGUITY_MARGIN"),
     "min_fuzzy_length": ("..comparison.marking_reconciler", "MIN_FUZZY_LENGTH"),
     "max_normalized_move": ("..comparison.marking_reconciler", "MAX_NORMALIZED_MOVE"),
-    # orchestrator — the structured-value suppression net's collision floor
+    # candidate_generator — the structured-value suppression net's collision floor.
+    # Bound to `candidate_generator`, not `orchestrator`, because that is the module whose
+    # code READS it (`_collect_structured_text_values`). It was declared in `orchestrator`
+    # until the 2026-08-14 split; binding the declaring module instead of the reading one
+    # makes `sweep_override` rebind a constant nothing consumes, and the sweep then reports
+    # the parameter as inert -- indistinguishable from a real negative result. Pinned by
+    # `tests/test_comparison_params.py::test_the_bound_module_is_the_one_that_reads_the_constant`.
     "min_structured_value_length": (
-        "..comparison.orchestrator",
+        "..comparison.candidate_generator",
         "MIN_STRUCTURED_VALUE_LENGTH",
     ),
     # zone_detector — the tier the plan warns about; see `ZONE_PARAMS`

@@ -104,7 +104,7 @@ shape, and it has landed four times:
 
 - **`is_margin_grid_text` was implemented twice** and the copies drifted — only one normalised
   NFKC, so full-width grid labels were dropped in one path and kept in the other, where they
-  bridged clusters across the sheet. `orchestrator.is_in_margin` now delegates.
+  bridged clusters across the sheet. `candidate_generator.is_in_margin` now delegates.
 - **`sweep.py` and `runner.py` each reproduced the engine call** with no shared call site.
   `sweep.py` landed one day before the zone-template seam and never got it, so it measured
   **F1 0.68 against the eval's 0.92 on the same corpus at the same commit** — for four days.
@@ -207,6 +207,46 @@ Where the principle does hold, it holds because someone needed to *test* the thi
 > likewise. Land a structural change and a behavioural change together and neither is
 > attributable — which in this repo means the measurement is worthless, and the measurement is
 > the product.
+
+## Where the deterministic comparison engine lives
+
+Split on **2026-08-14**; before that it was one 2049-line `orchestrator.py` built around a
+1334-line function with 21 nested closures. Measured byte-identical against
+`tools/eval.py --baseline` at every step of the split — it bought testability, nothing else.
+
+| File | Holds |
+| :--- | :--- |
+| `comparison/orchestrator.py` (252) | `perform_drawing_comparison` only — cache check, AuditSession/AuditViolation writes, post-cache learned pass. Plus the compatibility façade below. |
+| `comparison/candidate_generator.py` (1542) | The engine: `generate_deterministic_candidates` and every helper that filters its candidates. |
+| `comparison/title_matcher.py` (457) | Upper-left / bottom title-block key↔value pairing. |
+| `bom/zone_geometry.py` | `is_in_bbox` moved here beside `point_in_shape`, so the comparison layer and `title_matcher` share one answer to "is this entity in this zone". |
+
+Dependencies run one way: `zone_geometry → title_matcher → candidate_generator → orchestrator`.
+
+⚠ **`orchestrator.py` re-exports the whole surface**, because it is the historical import site
+for **10 test modules** plus `api/routers/audits.py` (`perform_drawing_comparison`),
+`infrastructure/eval/{runner,sweep}.py` (`generate_deterministic_candidates`) and
+`infrastructure/learning/inference.py` (`build_marking_table`). Import from it or from the real
+module — both work. **Do not "clean up" those re-exports**; ruff flags them F401 and they carry
+a per-line `# noqa` saying why.
+
+⚠ **`perform_drawing_comparison` calls `generate_deterministic_candidates` by its bare
+module-global name on purpose.** Python resolves that in `orchestrator`'s namespace at call
+time, which is what lets `tests/test_comparison_architecture.py` intercept the engine with
+`monkeypatch.setattr(orchestrator, "generate_deterministic_candidates", …)`. Writing it as
+`candidate_generator.generate_deterministic_candidates(...)` silently bypasses that patch.
+
+⚠ **A vault note or ADR citing `orchestrator.py:<line>` from before 2026-08-14 almost certainly
+means `candidate_generator.py`.** Those line numbers were mostly stale already — ADR-003 cites
+`orchestrator.py:290` for a function that had moved to 547 — so treat them as "somewhere in the
+engine", not as coordinates. They are deliberately not rewritten: an ADR is a point-in-time
+record.
+
+⚠ **`MIN_STRUCTURED_VALUE_LENGTH` lives in `candidate_generator.py`, not `orchestrator.py`,**
+because that is the module that *reads* it, and `params._BINDINGS` must name the reading module
+or the sweep silently measures nothing. See
+`docs/vault/06 - .../Gotcha - A Swept Constant Must Be Bound To The Module That Reads It.md`.
+Guarded by `tests/test_comparison_params.py::test_the_bound_module_is_the_one_that_reads_the_constant`.
 
 ## Verified commands
 

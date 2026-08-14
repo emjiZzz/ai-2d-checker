@@ -123,3 +123,26 @@ def point_in_any_shape(x: float, y: float, shapes: Iterable) -> bool:
         if point_in_shape(x, y, bbox, polygon):
             return True
     return False
+
+
+def is_in_bbox(entity: Any, bbox: Any, polygon: Any = None) -> bool:
+    """Whether an entity's insert point is inside a zone.
+
+    The entity-level counterpart to `point_in_shape`, and the reason it lives here rather
+    than in the comparison layer: both `orchestrator` and `title_matcher` need it, and a
+    second copy of "is this entity in this zone" is the drift shape this codebase has
+    already paid for four times.
+
+    `polygon` is the hand-drawn outline for a zone the user reshaped in the editor; when
+    absent the bbox is the shape, which is every un-reshaped zone. Passing it matters most
+    for the EXCLUSION calls in safe_filter: excluding on a reshaped zone's bounding box
+    would drop content from the notch the user deliberately cut out of it, and that content
+    belongs to no other category — a silent false negative.
+    """
+    if not bbox:
+        return False
+    geom = getattr(entity, "geometry", {})
+    if not geom or "insert" not in geom or len(geom["insert"]) < 2:
+        return False
+    x, y = geom["insert"][0], geom["insert"][1]
+    return point_in_shape(x, y, bbox, polygon)
