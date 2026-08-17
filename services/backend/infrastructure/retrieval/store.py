@@ -40,9 +40,15 @@ from scipy.sparse import csr_matrix, load_npz, save_npz
 
 from ...logger import logger
 
-#: Bump when the on-disk layout changes shape. An index written under an older version is
-#: refused rather than misread — the manifest is checked on every load.
-INDEX_SCHEMA_VERSION = 1
+#: Bump when the on-disk layout changes shape, **or when what a record means changes**. An index
+#: written under an older version is refused rather than misread — the manifest is checked on
+#: every load, and `bootstrap_retrieval_indexes` rebuilds anything that does not report OK.
+#:
+#: v2: `build_index` collapses byte-identical texts. A v1 index can hold the same text more than
+#: once, so its `n_records` overstates the number of distinguishable answers — which is the
+#: denominator of the chance floor every retrieval verdict is gated on. A stale v1 index is not
+#: merely old, it reports a corpus size that is not true.
+INDEX_SCHEMA_VERSION = 2
 
 _MATRIX_FILE = "vectors.npz"
 _RECORDS_FILE = "records.jsonl"

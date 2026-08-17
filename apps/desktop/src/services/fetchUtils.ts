@@ -190,20 +190,33 @@ export async function* streamApi(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
 
+    let buffer = "";
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("data: ")) {
-            const payload = line.slice(6).trim();
-            if (payload && payload !== "[DONE]") {
-              yield payload;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trimEnd();
+          if (trimmedLine.startsWith("data: ")) {
+            const rawPayload = trimmedLine.slice(6);
+            if (rawPayload === "[DONE]") {
+              return;
             }
-          } else if (line.trim() && !line.startsWith(":")) {
-            yield line.trim();
+            try {
+              const parsed = JSON.parse(rawPayload);
+              if (typeof parsed === "string") {
+                yield parsed;
+                continue;
+              }
+            } catch {
+              // Not JSON, yield raw payload
+            }
+            yield rawPayload;
           }
         }
       }

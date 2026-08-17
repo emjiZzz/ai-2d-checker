@@ -136,4 +136,5 @@ def features_from_marking(m: dict) -> dict:
 
 def exact_key(category: Optional[str], text: Optional[str]) -> str:
     """Stable key for exact-match correction memory: category + normalized text."""
-    return f"{str(category or 'unknown')}|{_norm(text)}"
+    clean_cat = str(category or 'unknown').removeprefix("comparison_")
+    return f"{clean_cat}|{_norm(text)}"

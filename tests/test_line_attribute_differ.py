@@ -159,9 +159,15 @@ def test_a_stroke_count_difference_is_never_a_change():
     markings = diff_line_attributes(ref, rev, ref, rev)
 
     assert [m["status"] for m in markings] == ["MATCHED"]
-    # The counts are still reported — hidden is not the same as not-a-status.
-    assert "x9" in markings[0]["original_value"]
-    assert "x12" in markings[0]["text_content"]
+    # The counts are not reported at all any more. They used to be, on the reasoning that
+    # "hidden is not the same as not-a-status" — but showing `x9` against `x12` under a MATCHED
+    # badge is what the owner reported on 2026-08-17 as "not even what I wanted", and the count
+    # was also the card's headline and the string the canvas fuzzy-matched on. This card answers
+    # "what line types does the drawing use", which is a question about the SET.
+    assert markings[0]["original_value"] == "CENTER 0.25mm"
+    assert markings[0]["text_content"] == "CENTER 0.25mm"
+    assert "9" not in markings[0]["text_content"]
+    assert "12" not in markings[0]["text_content"]
 
 
 def test_a_line_type_only_the_revision_uses_is_reported_added():
@@ -175,7 +181,7 @@ def test_a_line_type_only_the_revision_uses_is_reported_added():
     assert len(added) == 1
     assert "HIDDEN" in added[0]["text_content"]
     assert added[0]["original_value"] is None
-    assert rows["CONTINUOUS 0.25mm x1"]["status"] == "MATCHED"
+    assert rows["CONTINUOUS 0.25mm"]["status"] == "MATCHED"
 
 
 def test_a_line_type_only_the_reference_uses_is_reported_removed():

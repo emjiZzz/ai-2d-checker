@@ -407,7 +407,37 @@ class ComparisonCacheManager:
     # never drive a status -- see that module for why, and for the measured row-count basis of
     # the key. Every cached audit is invalidated because drawing_views gains rows and its rollup
     # status can flip to CHANGED on a one-sided line attribute.
-    COMPARISON_CACHE_VERSION = "v49"
+    #
+    # v50: **an uncorroborated OCR title-block value is no longer promoted to a field.**
+    # `resolve_field`'s grounding-miss branch returned the OCR string whenever the spatial
+    # search also came back NONE -- i.e. it trusted the value in the one case where *nothing*
+    # corroborated it. On M745227N01 that published `ME17227N24`, a string appearing nowhere on
+    # either drawing, as a REMOVED title_block finding; the real `M745227N01` was rejected by
+    # `_separated_by_rule` because it sits across a ruled divider from its own `DWG.No.` label.
+    # Now returns NONE and lets the spatial path own the field. The split-value case is
+    # unaffected -- it is decided by the substring branch, which requires a spatial reading to
+    # exist. Cached audits are invalidated because any title-block field resolved through that
+    # branch can change value, which changes findings.
+    #
+    # v51: **Mach. code / Unit Code got a checklist item of its own.** The marking already
+    # carried the combined label " Mach. code /  Unit Code", but `title_feature_map` had no
+    # entry for it, so every one of these findings was tagged `OTHER_FEATURE_KEY` and rendered
+    # under "Other / Unclassified". New `title_block.machine_unit_code` covers 機器記号 AND
+    # ユニット記号 as ONE item, the same way the DWG No. is one item for its ruled sub-cells --
+    # the value spans both cells on this client's sheets (`FSRS2`) and the extractor already
+    # reads it as one string. The `feature` tag travels on the cached marking, so every cached
+    # audit carries the old `other` value and would render the finding in the wrong card.
+    #
+    # v52: **line attributes report the line TYPES used, not stroke tallies.** Reported by the
+    # owner against the live card: `CENTER 0.25MM X9` as a heading over a body reading x8 vs x9,
+    # and `CONTINUOUS 0.25mm x20` vs `x2` badged MATCHED. The count was baked into `describe()`,
+    # so it was the card's headline, part of the row's IDENTITY (the same line type rendered as
+    # a different card whenever a re-trace moved the tally) and the string the canvas fuzzy-
+    # matched on -- while `status` explicitly ignores counts. This card answers "what kind of
+    # line types does the drawing use", which is a question about the SET; the count is still
+    # computed and is simply not claimed. Every cached audit carries the old count-bearing
+    # `text_content` / `original_value`, so all of them render the old card.
+    COMPARISON_CACHE_VERSION = "v52"
 
     @staticmethod
     def _get_cache_path(

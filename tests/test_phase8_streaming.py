@@ -83,6 +83,9 @@ async def test_streaming_engine_offline_fallback():
     with patch(
         "services.backend.infrastructure.ai.copilot.streaming_engine.StreamingEngine._get_api_key",
         return_value=None
+    ), patch(
+        "services.backend.infrastructure.ai.copilot.streaming_engine.StreamingEngine._get_openai_api_key",
+        return_value=None
     ):
         tokens = []
         async for token in StreamingEngine.generate_token_stream("test prompt", "context"):

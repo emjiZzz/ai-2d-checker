@@ -80,6 +80,17 @@ async def _run(args: argparse.Namespace) -> int:
         for item in result.skipped[:10]:
             print(f"    {item}")
 
+    # A replaced entry means storage/cache/ held a title-block reading that disagreed with the
+    # corpus, i.e. this run would have scored against something the corpus cannot reproduce.
+    # Printed rather than left in RunResult, where it was recorded and never surfaced.
+    replaced = [n for n in result.ocr_restored if "replaced" in n]
+    if replaced:
+        print(f"  OCR cache: replaced {len(replaced)} differing entr(y/ies) from the corpus:")
+        for item in replaced[:10]:
+            print(f"    {item}")
+    elif result.ocr_restored:
+        print(f"  OCR cache: restored {len(result.ocr_restored)} missing entr(y/ies).")
+
     if args.json:
         payload = result.score.to_dict()
         payload["seconds"] = round(result.seconds, 3)

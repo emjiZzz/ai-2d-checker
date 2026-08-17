@@ -36,7 +36,7 @@ from .index_builder import (
     records_from_standard_chunks,
     store_for,
 )
-from .store import Record
+from .store import IndexStatus, Record
 
 #: Cap on how much of a corpus is pulled into memory for a rebuild. Well above the live corpus;
 #: present so that an unexpectedly large collection degrades into a logged truncation rather than
@@ -123,12 +123,19 @@ def _lesson_record(violation: AuditViolation) -> Record | None:
 
 
 async def bootstrap_retrieval_indexes(root: Path | None = None) -> dict[str, BuildResult]:
-    """Build any collection that has no usable index yet. Called once at startup.
+    """Build any collection without a *usable* index. Called once at startup.
 
-    Only builds what is missing, so a restart does not pay for a rebuild of an index that is
-    already good. A collection whose *source* changed while the process was down is not detected
-    here — `manifest.source_digest` exists for that, and acting on it is R2/R3 work once there is
-    a metric to say whether staleness is actually costing anything.
+    Only builds what is not already good, so a restart does not pay for a rebuild it does not
+    need. A collection whose *source* changed while the process was down is not detected here —
+    `manifest.source_digest` exists for that, and acting on it is R2/R3 work once there is a
+    metric to say whether staleness is actually costing anything.
+
+    **Usable means `IndexStatus.OK`, not "the files are present".** This gated on `store.exists()`
+    until 2026-08-14, which checks for a manifest and a records file and nothing about their
+    contents — so `INDEX_SCHEMA_VERSION` was inert in practice. An index left behind by an older
+    build reported STALE at every `search()` and was never rebuilt by anything, meaning the guard
+    that exists to stop an old index being misread instead made the collection permanently
+    unsearchable. Bumping the version now actually migrates an install.
     """
     results: dict[str, BuildResult] = {}
     builders = {
@@ -138,9 +145,14 @@ async def bootstrap_retrieval_indexes(root: Path | None = None) -> dict[str, Bui
     }
 
     for collection, rebuild in builders.items():
-        if store_for(collection, root).exists():
-            logger.debug(f"[retrieval] '{collection}' index already present; not rebuilding.")
+        status = store_for(collection, root).load()
+        if status is IndexStatus.OK:
+            logger.debug(f"[retrieval] '{collection}' index is usable; not rebuilding.")
             continue
+        if status is not IndexStatus.MISSING:
+            logger.info(
+                f"[retrieval] '{collection}' index reports {status}; rebuilding it from source."
+            )
         try:
             results[collection] = await rebuild(root)
         except Exception as err:  # noqa: BLE001 — startup must not die on an index build

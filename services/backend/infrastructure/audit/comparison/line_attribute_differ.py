@@ -170,16 +170,27 @@ def profile_line_attributes(
     return profile
 
 
-def describe(key: tuple[str, float], count: int) -> str:
-    """The ORIGINAL/REVISION cell for one profile row: `CENTER 0.25mm x12`.
+def describe(key: tuple[str, float]) -> str:
+    """The ORIGINAL/REVISION cell for one profile row: `CENTER 0.25mm`.
 
-    ASCII `x`, not `×`. Every string on this path is re-encoded latin-1 by `transcode_value`
-    and passed through `safe_decode`'s mojibake repair, which is on record for corrupting a
-    literal `±` into halfwidth katakana. A multiplication sign buys nothing worth testing that
-    pipeline for.
+    **No stroke count.** This card answers "what kind of line types does the drawing use",
+    which is a question about the SET of line types, not about how many strokes each one
+    drew. The count used to be part of this string, and that was wrong in three ways at once
+    (owner's report, 2026-08-17):
+
+    1. It made the count the card's headline — `CENTER 0.25MM X9` — while `status` explicitly
+       ignores counts, so the card read as self-contradictory: `x20` against `x2`, MATCHED.
+    2. It put the count in the row's IDENTITY, so the same line type rendered as a different
+       card whenever a re-trace moved the tally. A revision is a re-trace, so it moves nearly
+       every time.
+    3. `text_content` is what `markerGenerator.ts` fuzzy-matches against sheet text, so the
+       count was also feeding the phantom-marker path.
+
+    The count is still computed (`profile_line_attributes`) and is available to anything that
+    wants it; it is simply not something this card claims.
     """
     linetype, weight_mm = key
-    return f"{linetype} {weight_mm:g}mm x{count}"
+    return f"{linetype} {weight_mm:g}mm"
 
 
 def diff_line_attributes(
@@ -220,33 +231,32 @@ def diff_line_attributes(
         rev_bucket = rev_profile.get(key)
         linetype, weight_mm = key
 
+        # The row IS the line type. Stroke counts are deliberately absent from every
+        # user-facing string — see `describe`.
+        label = describe(key)
+
         if ref_bucket and rev_bucket:
             status = "MATCHED"
-            text_content = describe(key, rev_bucket["count"])
-            original_value = describe(key, ref_bucket["count"])
+            text_content = label
+            original_value = label
             details = (
-                f"Line attribute {linetype} at {weight_mm:g}mm is used on both drawings "
-                f"({ref_bucket['count']} strokes on the reference, {rev_bucket['count']} on "
-                f"the revision). Stroke counts differ on any re-traced drawing and are not "
-                f"treated as a change."
+                f"Both drawings use {linetype} at {weight_mm:g}mm in the drawing views."
             )
         elif rev_bucket:
             status = "ADDED"
-            text_content = describe(key, rev_bucket["count"])
+            text_content = label
             original_value = None
             details = (
-                f"The revision draws {rev_bucket['count']} stroke(s) with {linetype} at "
-                f"{weight_mm:g}mm. The reference uses this line attribute nowhere in the "
-                f"drawing views."
+                f"The revision uses {linetype} at {weight_mm:g}mm in the drawing views. "
+                f"The reference uses this line type nowhere."
             )
         else:
             status = "REMOVED"
-            text_content = describe(key, ref_bucket["count"])
-            original_value = text_content
+            text_content = label
+            original_value = label
             details = (
-                f"The reference draws {ref_bucket['count']} stroke(s) with {linetype} at "
-                f"{weight_mm:g}mm. The revision uses this line attribute nowhere in the "
-                f"drawing views."
+                f"The reference uses {linetype} at {weight_mm:g}mm in the drawing views. "
+                f"The revision uses this line type nowhere."
             )
 
         colours = Counter()

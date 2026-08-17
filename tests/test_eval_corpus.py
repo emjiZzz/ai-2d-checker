@@ -393,6 +393,71 @@ def test_captured_ocr_is_restored_into_an_empty_cache(tmp_path):
     assert pair.restore_ocr_cache(cache_dir=cache) == []
 
 
+def test_a_stale_cache_entry_is_replaced_not_deferred_to(tmp_path):
+    """Restoring filled a GAP but could not repair a STALE entry, while its own docstring
+    claimed it made a score reproducible and `run_corpus` claimed it made the score "a
+    function of the corpus alone". Both were false whenever `storage/cache/` already held a
+    different reading for the same drawing and file hash — the normal state on any machine
+    that has run a live comparison, because the engine writes that cache itself.
+
+    Measured on M745227N01 before the fix: planting a `STALE9999` DWG_NO and restoring
+    reported "nothing restored" and left the planted value in place, so the run scored
+    against a reading the corpus could not reproduce.
+    """
+    reading = '{"TITLE": "FSRS2", "DWG_NO": "M7452A0N01"}\n'
+    sha = write_text_stable(tmp_path / "P" / "ref.ocr.json", reading)
+    write_text_stable(tmp_path / "P" / "rev.ocr.json", reading)
+    pair = _ocr_pair(tmp_path, sha)
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    target = cache / pair.ref.ocr_cache_filename()
+    # What a live comparison leaves behind: same key, different reading.
+    write_text_stable(target, '{"TITLE": "FSRS2", "DWG_NO": "STALE9999"}\n')
+
+    reported = pair.restore_ocr_cache(cache_dir=cache)
+
+    assert read_text_stable(target) == reading, (
+        "the corpus is the authority for a reproducible score; a differing cache entry "
+        "must lose, or the run scores against something the corpus cannot reproduce"
+    )
+    assert any("replaced" in name for name in reported), (
+        "an overwrite must be reported distinctly from filling a gap -- silently repairing "
+        "it trades one invisible state dependency for another"
+    )
+
+
+def test_a_reformatted_cache_entry_is_not_treated_as_stale(tmp_path):
+    """The other half, and the reason this compares readings rather than bytes.
+
+    **19 corpus pair-sides share one OCR cache key**: every mutation pair derives from a base
+    drawing and reuses its id and file hash, so `M7452A0N01/ref` and 18 mutation sides all map
+    to the same file. Their captured payloads were exported at different times and differ in
+    JSON formatting alone -- measured 2026-08-17, every such collision in the corpus is
+    identical after parse. A byte comparison calls all of them stale and rewrites them on every
+    run: 4 writes per run, reported as if the corpus were drifting.
+    """
+    reading = '{"TITLE": "FSRS2", "DWG_NO": "M7452A0N01"}\n'
+    sha = write_text_stable(tmp_path / "P" / "ref.ocr.json", reading)
+    write_text_stable(tmp_path / "P" / "rev.ocr.json", reading)
+    pair = _ocr_pair(tmp_path, sha)
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    target = cache / pair.ref.ocr_cache_filename()
+    # Same reading, exported with different whitespace and key order.
+    write_text_stable(target, '{\n  "DWG_NO":  "M7452A0N01",\n  "TITLE": "FSRS2"\n}\n')
+    before = read_text_stable(target)
+
+    reported = pair.restore_ocr_cache(cache_dir=cache)
+
+    assert not any("replaced" in name for name in reported), (
+        "a formatting-only difference is the same reading; reporting it as stale is noise "
+        "that hides a real one"
+    )
+    assert read_text_stable(target) == before, "and it must not be rewritten either"
+
+
 def test_drifted_ocr_capture_fails_loudly(tmp_path):
     sha = write_text_stable(tmp_path / "P" / "ref.ocr.json", '{"TITLE": "one"}\n')
     pair = _ocr_pair(tmp_path, sha)

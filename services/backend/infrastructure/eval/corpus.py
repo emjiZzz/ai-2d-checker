@@ -548,7 +548,7 @@ class CorpusPair:
         return self.dir / f"{side}.ocr.json"
 
     def restore_ocr_cache(self, cache_dir: Path | None = None) -> list[str]:
-        """Write each side's captured OCR reading back into the cache if it is missing.
+        """Put each side's captured OCR reading into the cache, replacing any other reading.
 
         **This is what makes a score reproducible.** The title-block reading used to live
         only in `storage/cache/`, outside the sha256-pinned corpus — so deleting old
@@ -557,8 +557,24 @@ class CorpusPair:
         the numbers just quietly stopped meaning the same thing.
 
         Restoring rather than injecting because `generate_deterministic_candidates` reads
-        the cache internally and offers no seam to pass a reading through. Idempotent, and
-        it only ever writes back exactly what the corpus captured.
+        the cache internally and offers no seam to pass a reading through. Idempotent: it
+        only ever writes back exactly what the corpus captured.
+
+        ⚠ **It writes over a DIFFERING entry, and that is the point.** Until 2026-08-17 the
+        write was guarded by `if not target.exists()`, so this filled a *gap* but could not
+        repair a *stale* entry — while this docstring claimed it made a score reproducible
+        and `run_corpus` claimed it made the score "a function of the corpus alone". Both
+        were false whenever `storage/cache/` already held a different reading for the same
+        drawing and file hash, which is the normal state on any machine that has run a live
+        comparison, because the engine writes that cache itself. Measured: planting a
+        `STALE9999` DWG_NO and calling this reported "nothing restored" and left the planted
+        value in place.
+
+        The corpus is the authority for a reproducible score, so a differing entry loses.
+        Overwrites are reported distinctly (`"<name> (replaced a differing entry)"`) and
+        `tools/eval.py` prints them, because silently repairing this would trade one
+        invisible state dependency for another. See the vault note "A Fixed OCR Misread
+        Came Back Through the Title Zone".
         """
         base = cache_dir or ocr_cache_dir()
         restored: list[str] = []
@@ -578,6 +594,22 @@ class CorpusPair:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 write_text_stable(target, text)
                 restored.append(target.name)
+            else:
+                # Compare the READING, not the bytes. **19 corpus pair-sides share this one
+                # cache key** — every mutation pair derives from a base drawing and reuses its
+                # id and file hash, so `M7452A0N01/ref` and 18 mutation sides all map here —
+                # and the same capture exported twice differs in JSON formatting alone.
+                # Measured 2026-08-17: every such collision in this corpus is formatting-only,
+                # identical after parse. A byte comparison calls all of them stale and rewrites
+                # them on every run: 4 pointless writes per run, reported as if something were
+                # wrong. Only a differing *reading* is worth replacing.
+                try:
+                    stale = json.loads(read_text_stable(target)) != json.loads(text)
+                except ValueError:
+                    stale = True  # unparseable cache entry: the corpus reading wins
+                if stale:
+                    write_text_stable(target, text)
+                    restored.append(f"{target.name} (replaced a differing entry)")
         return restored
 
     def missing_ocr_cache(self, cache_dir: Path | None = None) -> list[str]:

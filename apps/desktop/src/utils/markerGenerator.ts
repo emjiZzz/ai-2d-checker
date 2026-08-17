@@ -138,7 +138,22 @@ export const generateComparisonMarkings = ({
     const isStructuredCategory =
       marking.category === "title_block" || marking.category === "bill_of_materials";
 
-    if (!usedDirectIdMapping && !isStructuredCategory) {
+    // A sheet-wide finding has no position, so it gets no marker — the same invariant as the
+    // structured case above, arrived at from the opposite direction. `line_attributes` answers
+    // "what line types does the drawing use", which is a statement about every stroke of one
+    // kind across the whole view; the backend says so and deliberately emits no `coordinates`
+    // ("there is no single point a canvas marker could honestly sit at",
+    // line_attribute_differ.diff_line_attributes).
+    //
+    // It is `drawing_views`, though, and the guard above is keyed on CATEGORY — so this fell
+    // straight through into fuzzy matching, where `text_content` ("CONTINUOUS 1mm") was matched
+    // against sheet text and painted a marker at whatever it hit. Reported from a live review
+    // on M745221N01 as marker [M009], sitting near the title block and claiming to be a line
+    // attribute. Same defect as the シム表 checkmarks, one category over: the fix for those was
+    // written as a category rule when the invariant is per-finding.
+    const isSheetWideFinding = marking.feature === "line_attributes";
+
+    if (!usedDirectIdMapping && !isStructuredCategory && !isSheetWideFinding) {
       const isShortAnnotation = searchTerm && searchTerm.trim().length <= 6 && !searchTerm.includes('\n');
       const exactMatchFilter = (entities: typeof textEntities) =>
         entities.filter(e => e.text.trim().toLowerCase() === searchTerm.trim().toLowerCase());
@@ -206,7 +221,14 @@ export const generateComparisonMarkings = ({
 
       // ── MATCHED fallback: try a lenient token search so checkmarks can be placed ──
       const isMatched = (marking.status || "").toUpperCase() === "MATCHED";
-      if (isMatched && !coordinates && matches.length === 0 && refMatches.length === 0) {
+      // `isSheetWideFinding` has to be repeated here, not just at the grounding guard above.
+      // This fallback splits `text_content` into tokens and loose-matches each at threshold 50,
+      // so suppressing the strict pass alone just hands the same string to a LOOSER search —
+      // "CONTINUOUS 1mm" tokenises to ["CONTINUOUS", "1mm"] and lands on whatever it first
+      // brushes against. That is how marker [M009] reached the title block on M745221N01.
+      // A finding about every stroke on the sheet stays coordinate-less; the checklist row is
+      // built from `violations` in the store, not from here, so it is unaffected.
+      if (isMatched && !isSheetWideFinding && !coordinates && matches.length === 0 && refMatches.length === 0) {
         const tokens = searchTerm.split(/\s+/).filter((t: string) => t.length >= 2);
         for (const token of tokens) {
           const looseFwd = findAllFuzzyMatches(token, textEntities, preferModel, false, 50);

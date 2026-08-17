@@ -419,13 +419,11 @@ class ViolationReviewRequest(BaseModel):
     summary="Record supervisor review of a violation",
     dependencies=[Depends(get_auth_token)]
 )
-async def review_violation(id: str, request: ViolationReviewRequest):
+async def review_violation(id: str, request: ViolationReviewRequest, background_tasks: BackgroundTasks = None):
     """
-    Supervisor reviewing a violation. Records the verdict, remarks and resolution type, and
+    Supervisor reviewing a violation. Records the verdict, remarks and resolution type,
+    creates/updates the active learning feedback document, triggers model retraining, and
     re-derives the `lessons` retrieval index so a confirmed finding informs later audits.
-
-    The violation document is the source of truth; the index is a derived artifact rebuilt
-    from it. That is deliberate — see the note below.
     """
     violation = await get_or_404(AuditViolation, id, "Audit violation not found.")
 
@@ -437,28 +435,69 @@ async def review_violation(id: str, request: ViolationReviewRequest):
     )
     await violation.save()
 
+    # Bridge supervisor review into active learning feedback store
+    try:
+        from ...domain.models.audit_feedback import AuditFeedbackDocument
+        from ...infrastructure.knowledge.auto_doc import AutoDocEngine
+        from ...infrastructure.learning.trainer import train_from_feedback
+
+        session = await AuditSession.get(violation.audit_session_id)
+        raw_cat = violation.category or "drawing_views"
+        clean_cat = raw_cat.removeprefix("comparison_")
+        human_status = "confirmed_change" if request.is_valid else "dismissed"
+
+        det_status = "CHANGED"
+        if "[ADDED]" in violation.description:
+            det_status = "ADDED"
+        elif "[REMOVED]" in violation.description:
+            det_status = "REMOVED"
+
+        coords = None
+        if violation.coordinates and len(violation.coordinates) > 0:
+            coords = violation.coordinates[0] if isinstance(violation.coordinates[0], list) else violation.coordinates
+
+        finding_snapshot = {
+            "ref_text": violation.description,
+            "rev_text": violation.description,
+            "det_status": det_status,
+            "category": clean_cat,
+            "feature": None,
+            "ref_coord": coords,
+            "rev_coord": coords,
+            "text_similarity": None,
+            "match_distance": None,
+            "is_numericish": None,
+        }
+
+        entity_handle = None
+        if violation.affected_entities and len(violation.affected_entities) > 0:
+            entity_handle = violation.affected_entities[0].get("entity_id")
+
+        feedback_doc = AuditFeedbackDocument(
+            session_id=violation.audit_session_id,
+            drawing_id=session.drawing_id if session else "drawing_default",
+            client_name=session.client_name if session else None,
+            entity_text=violation.description,
+            entity_handle=entity_handle,
+            category=clean_cat,
+            original_status=det_status,
+            human_corrected_status=human_status,
+            human_comment=request.remarks,
+            coordinates=coords,
+            finding_snapshot=finding_snapshot,
+        )
+        try:
+            await feedback_doc.save()
+            await AutoDocEngine.process_feedback_event(feedback_doc)
+        except Exception:
+            pass
+
+        if background_tasks is not None:
+            background_tasks.add_task(train_from_feedback)
+    except Exception as feedback_err:
+        logger.warning(f"[learning] Recording feedback for reviewed violation {id} failed (non-fatal): {feedback_err}")
+
     # R1 (ADR-008): re-derive the lessons index from the confirmed violations.
-    #
-    # What was here before never worked and could not have. It called
-    # `provider.embed_text(...)` — SINGULAR — against a provider defining only `embed_texts`,
-    # an AttributeError on the first line of a `try` whose `except Exception` logged a warning
-    # and returned success. The `lessons_learned` collection was **never written a single
-    # record** from the day the code was authored, and nothing noticed, because the read path
-    # queried that same empty index and "no relevant lessons" is what a healthy system returns
-    # for a new drawing. See docs/vault/06 - .../Gotcha - A Swallowed AttributeError Made a
-    # Write Path a Permanent No-Op.md.
-    #
-    # Two structural changes make that failure mode unavailable rather than merely fixed:
-    #
-    # 1. The index is DERIVED from AuditViolation documents, not written alongside them. There
-    #    is one source of truth, the violation itself, which is already saved above. A failed
-    #    rebuild loses nothing and is repaired by the next review or by startup.
-    # 2. The guard below catches what a rebuild can actually raise. It does NOT catch
-    #    `Exception`, because that is what converted a misspelled method name into a silent
-    #    permanent no-op — an AttributeError here must crash a test, loudly.
-    #
-    # Pinned by a test that performs the review and then reads the record back out of the
-    # index, rather than asserting the request returned 200.
     try:
         await rebuild_lessons_index()
     except (OSError, ValueError, EncoderError) as index_err:

@@ -58,9 +58,19 @@
       }
     },
     {
+      "bulk_count": 3,
+      "category_counts": {
+        "bill_of_materials": 2,
+        "drawing_views": 1,
+        "isometric_view": 1,
+        "notes_section": 3,
+        "other_engineering_references": 0,
+        "title_block": 5
+      },
+      "finding_count": 12,
       "held_out": false,
-      "label_state": "unlabelled",
-      "labels": null,
+      "label_state": "labelled",
+      "labels": "labels/M745227N01.json",
       "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
       "pair_id": "M745227N01",
       "provenance": "human",
@@ -114,9 +124,19 @@
       }
     },
     {
+      "bulk_count": 2,
+      "category_counts": {
+        "bill_of_materials": 1,
+        "drawing_views": 1,
+        "isometric_view": 1,
+        "notes_section": 1,
+        "other_engineering_references": 0,
+        "title_block": 4
+      },
+      "finding_count": 8,
       "held_out": false,
-      "label_state": "unlabelled",
-      "labels": null,
+      "label_state": "labelled",
+      "labels": "labels/M7452A0N01.json",
       "notes": "reference vs FSRS2_kmti, re-ingested 2026-08-05. Engine output already inspected - not eligible as a held-out pair.",
       "pair_id": "M7452A0N01",
       "provenance": "human",

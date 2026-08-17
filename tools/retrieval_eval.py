@@ -145,7 +145,7 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
     queries = [q.strip() for q in (args.queries or "").split(";") if q.strip()]
     if not queries:
         print("  No queries given. Pass --queries 'first query; second query; ...'")
-        print("  Queries must come from real audit situations, not from the corpus text —")
+        print("  Queries must come from real audit situations, not from the corpus text -")
         print("  a query written by reading the answer measures nothing.")
         return 1
 
@@ -193,6 +193,16 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # Same guard every other console tool here carries. Without it this script died with
+    # UnicodeEncodeError on a cp932 console while printing the `worksheet` usage hint -- so the
+    # one command that explains how to unblock the retrieval metric was the one that crashed.
+    # See [[Gotcha - Our Own Punctuation Broke on the cp932 Console]].
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):  # pragma: no cover
+            pass
+
     parser = argparse.ArgumentParser(
         prog="retrieval_eval",
         description="Measure retrieval against hand-labelled queries (Stage R2).",

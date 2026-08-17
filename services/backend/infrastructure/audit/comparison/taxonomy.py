@@ -103,6 +103,11 @@ TAXONOMY: dict[Category, list[FeatureItem]] = {
         FeatureItem("drawn", "Drawn"),
         FeatureItem("quantity", "Quantity"),
         FeatureItem("job_number", "Job Number"),
+        # 機器記号 + ユニット記号. ONE item for both cells deliberately, the same way the DWG No.
+        # is one item for its ruled sub-cells: the value routinely spans them (`FSRS2` runs
+        # across both on this client's sheets), and the extractor already reads it as one
+        # string. Splitting it would name two rows a reviewer cannot point at separately.
+        FeatureItem("machine_unit_code", "Machine Code / Unit Code"),
         FeatureItem("cross_reference_number", "Cross Reference Number"),
         FeatureItem("previous_drawing_number", "Previous Drawing Number"),
         FeatureItem("revision_code", "Revision Code"),

@@ -524,7 +524,26 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
                 )
                 sv = str(spatial_val).strip()
                 if not sv or sv.upper() == "NONE":
-                    return ocr_val_str, spatial_coords
+                    # NOTHING corroborates the OCR string: it matches no text run on the sheet,
+                    # and the spatial search found no value either. Case 1 above cannot be in
+                    # play -- a split value leaves its fragments on the drawing as real runs, so
+                    # the spatial reading finds one (that is exactly what
+                    # `test_ocr_value_retention_on_grounding_miss` pins, via the substring branch
+                    # below). What reaches here is an OCR string with no evidence of any kind,
+                    # and returning it promotes an unverifiable claim to a title-block field --
+                    # which then diffs against the other side and becomes a FINDING.
+                    #
+                    # Measured on M745227N01: the reference's real DWG No. `M745227N01` sits
+                    # across a ruled divider from its own `DWG.No.` label, so `_separated_by_rule`
+                    # (correctly, by its own rules) rejects it and the spatial search returns
+                    # NONE. The misread `ME17227N24` -- a string that appears nowhere on either
+                    # drawing -- was then reported as a REMOVED title_block field, because the
+                    # revision's OCR returned null for the same field.
+                    #
+                    # Returning NONE loses nothing that was ever verifiable, and lets the spatial
+                    # path own the field. See the vault note "A Fixed OCR Misread Came Back
+                    # Through the Title Zone".
+                    return "NONE", spatial_coords
                 n_ocr, n_sv = _normalize_for_match(ocr_val_str), _normalize_for_match(sv)
                 if n_sv and (n_sv in n_ocr or n_ocr in n_sv):
                     return ocr_val_str, spatial_coords
@@ -584,8 +603,17 @@ def extract_title_block(entities: list, all_text_list: List[str] = None, ocr_res
     f_std, std_c = extract_proximity_value(["Std. No.", "標準図番号"], "below")
     f_standard, standard_c = extract_proximity_value(["Standard"], "below")
     
-    f_mach, mach_c = extract_proximity_value(["Mach. code", "Unit Code", "機器記号", "ユニット記号"], "below", prefer_lowest_y=True)
+    f_mach, mach_c = extract_proximity_value(
+        ["Mach. code", "機器記号"], "below", dx_tol=25.0, dy_tol=30.0, dy_min=1.0, prefer_lowest_y=True
+    )
+    if f_mach == "NONE":
+        f_mach, mach_c = extract_proximity_value(
+            ["Mach. code", "Unit Code", "機器記号", "ユニット記号"], "below", dx_tol=45.0, dy_tol=30.0, dy_min=1.0, prefer_lowest_y=True
+        )
     f_dwg, dwg_c = resolve_field("DWG NO", ["DWG. No.", "図面番号", "図番"], "below", dx_tol=20.0, dy_tol=35.0, dy_min=1.0, prefer_lowest_y=True)
+    if f_dwg == "NONE":
+        # On standard Japanese title blocks (e.g. Kusakabe/JIS), the drawing number cell sits to the RIGHT of the '図面番号 / DWG. No.' label column
+        f_dwg, dwg_c = resolve_field("DWG NO", ["DWG. No.", "図面番号", "図番"], "right", dx_tol=60.0, dy_tol=25.0, dy_min=1.0, prefer_lowest_y=True)
 
     # TITLE occupies a cell BESIDE its label, split by a ruled horizontal into two rows. The old
     # 'below' search read neither of them -- it walked down past the label into the drawing-number

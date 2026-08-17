@@ -189,9 +189,46 @@ async def perform_drawing_comparison(
         )
         await comparison_session.save()
 
+        # Look up previous reviewed violations for this drawing pair to carry forward verdicts and remarks
+        from ...learning.feature_extractor import _norm
+        prior_reviews: dict[tuple[str, str], AuditViolation] = {}
+        prior_reviews_norm: dict[tuple[str, str], AuditViolation] = {}
+        try:
+            prior_sessions = await AuditSession.find(
+                AuditSession.reference_drawing_id == str(ref_drawing.id),
+                AuditSession.drawing_id == str(rev_drawing.id),
+                AuditSession.id != comparison_session.id
+            ).sort(-AuditSession.started_at).limit(5).to_list()
+
+            if prior_sessions:
+                prior_session_ids = [str(s.id) for s in prior_sessions]
+                reviewed_violations = await AuditViolation.find(
+                    {"audit_session_id": {"$in": prior_session_ids}, "resolution_type": {"$ne": None}}
+                ).to_list()
+                for rv in reviewed_violations:
+                    key = (rv.category, rv.description)
+                    norm_key = (rv.category, _norm(rv.description))
+                    if key not in prior_reviews:
+                        prior_reviews[key] = rv
+                    if norm_key not in prior_reviews_norm:
+                        prior_reviews_norm[norm_key] = rv
+        except Exception as review_lookup_err:
+            logger.debug(f"[comparison] Previous review lookup: {review_lookup_err}")
+
+        # Check prior reviews and suppress REJECTED false positives
+        for m in clean_markings:
+            cat = f"comparison_{m.get('category')}"
+            desc = f"[{m.get('status')}] {m.get('details')}"
+            norm_key = (cat, _norm(desc))
+            prior = prior_reviews.get((cat, desc)) or prior_reviews_norm.get(norm_key)
+            if prior and prior.resolution_type == "REJECTED":
+                m["status"] = "MATCHED"
+                if prior.checker_remarks:
+                    m["details"] = f"{m.get('details')} (Supervisor Marked Matched: {prior.checker_remarks})"
+
         SEVERITY_MAP = {"CHANGED": "medium", "ADDED": "high", "REMOVED": "high"}
         violations_to_save = []
-        for marking_dict in non_matched:
+        for marking_dict in clean_markings:
             marking = CanvasMarking(**marking_dict)
             coords = None
             if marking.coordinates:
@@ -201,22 +238,33 @@ async def perform_drawing_comparison(
                     else:
                         coords = marking.coordinates
 
-            violations_to_save.append(
-                AuditViolation(
-                    audit_session_id=str(comparison_session.id),
-                    severity=SEVERITY_MAP.get(marking.status, "medium"),
-                    category=f"comparison_{marking.category}",
-                    description=f"[{marking.status}] {marking.details}",
-                    recommendation=f"Resolve discrepancy in '{marking.text_content}' against the reference drawing.",
-                    source="physical_comparison",
-                    confidence=0.95,
-                    standard_reference=None,
-                    affected_entities=[
-                        {"entity_id": marking.entity_id, "marker_shape": "BOX"}
-                    ] if marking.entity_id else [],
-                    coordinates=coords,
+            cat = f"comparison_{marking.category}"
+            desc = f"[{marking.status}] {marking.details}"
+            norm_key = (cat, _norm(desc))
+            prior = prior_reviews.get((cat, desc)) or prior_reviews_norm.get(norm_key)
+
+            # Save non-matched findings OR findings that carry a supervisor verdict
+            if marking.status != "MATCHED" or (prior and prior.resolution_type):
+                violations_to_save.append(
+                    AuditViolation(
+                        audit_session_id=str(comparison_session.id),
+                        severity=SEVERITY_MAP.get(marking.status, "medium"),
+                        category=cat,
+                        description=desc,
+                        recommendation=f"Resolve discrepancy in '{marking.text_content}' against the reference drawing.",
+                        source="physical_comparison",
+                        confidence=0.95,
+                        standard_reference=None,
+                        affected_entities=[
+                            {"entity_id": marking.entity_id, "marker_shape": "BOX"}
+                        ] if marking.entity_id else [],
+                        coordinates=coords,
+                        is_resolved=prior.is_resolved if prior else False,
+                        resolved_at=prior.resolved_at if prior else None,
+                        checker_remarks=prior.checker_remarks if prior else None,
+                        resolution_type=prior.resolution_type if prior else None,
+                    )
                 )
-            )
 
         if violations_to_save:
             await AuditViolation.insert_many(violations_to_save)
@@ -230,7 +278,7 @@ async def perform_drawing_comparison(
 
         logger.info(
             f"Phase 1.4: Persisted {len(violations_to_save)} comparison violations "
-            f"(session {comparison_session.id}, score {comparison_score}%)."
+            f"(session {comparison_session.id}, score {comparison_score}%, {len(prior_reviews)} carried-forward reviews)."
         )
     except Exception as persist_err:
         logger.warning(f"Comparison violation persistence failed (non-fatal): {persist_err}")

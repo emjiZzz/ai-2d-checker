@@ -181,6 +181,66 @@ class BuildResult:
     n_records: int
     built: bool
     reason: str = ""
+    #: How many records were dropped as byte-identical copies of an earlier one. Reported rather
+    #: than swallowed: a non-zero count here is a fact about the *source*, and the source is where
+    #: it should be fixed. See `_collapse_duplicate_texts`.
+    n_duplicates_dropped: int = 0
+
+
+def _collapse_duplicate_texts(
+    collection: str,
+    records: Sequence[Record],
+) -> tuple[list[Record], int]:
+    """Keep one record per distinct text, first occurrence wins.
+
+    **This guards the metric's denominator, and it is a net rather than a fix.** `corpus_size` in
+    `metrics.py` is `manifest.n_records`, and the chance floor every verdict is gated on is `k/N`
+    over that count. Index the same text twice and N doubles while the number of *distinguishable*
+    answers does not, so the floor halves and a corpus reports itself as discriminating when it is
+    not. Duplicates also score identically, so they take adjacent slots and a top-5 returns three
+    answers wearing five badges; and each relevant chunk acquires a twin, which pushes an
+    annotator's mean `relevant_ids` toward 2 and raises the `n_relevant` term of
+    `chance_recall_at_k` — so the floor climbs on the inflated count too. Both routes end at "not
+    informative", by different arithmetic.
+
+    ⚠ **This would not have caught the incident that prompted it, and saying so is the point.** On
+    2026-08-14 `standards` reported 32 records that were 16 texts each present twice. The source
+    was not a double ingest — `build_index` never saw 32 records. Mongo held one standard and 16
+    chunks; the other 16 were the chunks of a *deleted* standard, still in a stale index that
+    `bootstrap_retrieval_indexes` declined to rebuild because it gated on file presence rather
+    than on `IndexStatus`. The fix for that is in `service.py`. What this function is for is the
+    case that genuinely reaches here: `lessons` in particular, where two approved violations on
+    different drawings routinely carry identical text and are one answer to a query.
+
+    **First occurrence wins** so the result is deterministic and the earliest record keeps the
+    citation. Each drop is logged with both citations, on the `zone_ownership` principle — anything
+    this net catches is a bug upstream, and it stays findable only if the net says what it caught.
+    """
+    seen: dict[str, Record] = {}
+    kept: list[Record] = []
+    dropped = 0
+
+    for record in records:
+        key = hashlib.sha256(record.text.encode("utf-8")).hexdigest()
+        first = seen.get(key)
+        if first is None:
+            seen[key] = record
+            kept.append(record)
+            continue
+        dropped += 1
+        logger.warning(
+            f"[retrieval] '{collection}': dropping {record.citation()} as a byte-identical copy "
+            f"of {first.citation()}. Only the first is indexed. Two records with the same text "
+            f"are one answer, and counting them as two inflates the corpus the recall gate is "
+            f"measured against — fix this at the source, not here."
+        )
+
+    if dropped:
+        logger.warning(
+            f"[retrieval] '{collection}': {len(records)} record(s) collapsed to {len(kept)} "
+            f"distinct text(s); {dropped} duplicate(s) dropped."
+        )
+    return kept, dropped
 
 
 def build_index(
@@ -200,6 +260,7 @@ def build_index(
         logger.info(f"[retrieval] Nothing to index for '{collection}'; skipping build.")
         return BuildResult(collection, 0, built=False, reason="no records")
 
+    records, n_dropped = _collapse_duplicate_texts(collection, records)
     texts = [r.text for r in records]
     encoder = TfidfEncoder()
     try:
@@ -217,7 +278,7 @@ def build_index(
         source_digest=_digest(texts),
     )
     encoder.save(store.directory)
-    return BuildResult(collection, len(records), built=True)
+    return BuildResult(collection, len(records), built=True, n_duplicates_dropped=n_dropped)
 
 
 def _digest(texts: Sequence[str]) -> str:

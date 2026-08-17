@@ -1,18 +1,58 @@
 # AI-2D-Checker — Agent Instructions
 
-> [!IMPORTANT] 🔴 Current priority, set 2026-08-12 — **label. Start with `M7452A0N01`.**
+> [!IMPORTANT] 🔴 Current priority, set 2026-08-17 — **label. Next is `M745230A01`.**
 >
 > This is the next session's task. Read the **"🧭 What's next"** section of
 > `docs/vault/00 - AI Maturity Status.md` for it in full — that file is the authority and this is
 > only a pointer to it, deliberately. Do not act on the summary below without reading it; a
 > restatement that drifts from the ledger is the phantom constraint 5 exists to prevent.
 >
-> In one line: **the zone-template blocker is cleared** — rows in no zone fell 9 → 1 and
-> `baseline-v45.json` is metric-for-metric identical to v43, so the repair cost nothing measurable
-> — and **nothing now stands between this project and its first human labels.** The corpus is
-> still **0 of 8**, which is the only thing keeping the system at rung 0.
+> In one line: **two human pairs are labelled** — `M7452A0N01` (8 findings) and `M745227N01` (12),
+> both 2026-08-17 — and the corpus is measuring the engine: **R 0.60 templated / 0.65
+> detection-only** over 20 findings, attribution 0.92. The corpus is **2 of 8**, which is still the
+> only thing keeping the system at rung 0. `current_rung` and `rung_evidence` are unchanged and
+> must stay that way until there are eight.
 >
-> ✅ **`notes` / `iso` placement was raised, measured and closed the same day — do not reopen it
+> ⚠ **Recall fell 0.75 → 0.60 when the second pair landed, with no engine change.** At this corpus
+> size the number describes *which sheets are labelled*, not the engine. Do not treat movement here
+> as a regression unless the mutation invariant moves with it.
+>
+> 🔴 **The corpus is now returning false negatives, which is what it exists for.** Largest: **added
+> notes go entirely unreported** — a revision adding three instructions to a reference with no notes
+> block at all produced zero findings (`notes_section` recall 0.25). Then an **added DIMENSION**
+> unreported, then the **isometric view missed on both pairs** (zero text/dimension in the `iso`
+> box, so unreachable by tuning). See the ledger before touching any of these.
+>
+> ⚠ **The queue is `M745230A01` → `M7452A1N01` → `M7452A2N01`. `M745203N01` is parked** until a
+> 1.361-aspect template is hand-aligned (owner's call, 2026-08-10), so Stage 0b tops out at
+> **5 / 8** until that changes. Do not re-litigate the ordering.
+>
+> ✅ **The corpus has now closed its first defect, not just found one.** A fabricated title-block
+> field (`ME17227N24`, present on neither drawing) was published and diffed into a finding;
+> `resolve_field` trusted an OCR string in the one case where nothing corroborated it. **Fixed,
+> cache v49 → v50** — [[Gotcha - A Fixed OCR Misread Came Back Through the Title Zone]], which is
+> also worth reading for *how* it was found: the obvious cause was measured and refuted first.
+>
+> ⚠ **Two defects found while labelling remain open**, both in `06 - Gotchas`: the `aspect-1.414`
+> template has **no `shim` zone** (so the シム表 is compared, against the guideline), and
+> `eval_corpus.py worksheet` **cannot place a DIMENSION** (reads `insert`, dimensions carry
+> `def_point`), displaying a comparable entity with the two marks the guideline treats as *ignore*.
+>
+> 🔴 **`pytest` is NOT green — 5 pre-existing failures** in `test_label_status`,
+> `test_lessons_index_write_path` and `test_matcher_feedback` (feedback/correction-verb area).
+> Verified pre-existing, not caused by the v50 fix. The "Known pre-existing test failures: **None**"
+> section below is **stale** — fix those or update it before trusting it.
+>
+> ⚠ **A full `tools/eval.py` run no longer reproduces the committed baselines, and that is the
+> corpus growing, not a regression.** Use `--provenance mutation` for the invariant — it
+> reproduces `baseline-v48.json` exactly at P 0.9796 / R 0.8727 / F1 0.9231.
+>
+> 🔴 **`line_attribute_differ` got its first measurement from that pair and it is negative** — it
+> produced 2 of the 4 templated false positives (`CONTINUOUS 1mm x1`, `CENTER 0.5mm x1` reported
+> ADDED, because a revision is a re-trace). Its own work-log entry said the eval could not measure
+> it; a human pair is what broke that blind spot. Unresolved — see the ledger.
+>
+> ✅ **`notes` / `iso` placement was raised, measured and closed on 2026-08-12 — do not reopen it
 > on the original reasoning.** The defect was a false detection anchor (`仕上げ` matching
 > `仕上げ記号` in the tolerance block), not the pinning. *Unpinning* `notes` was measured and
 > **rejected**: detection scores F1 0.87 against the pinned box's 0.92. See the ledger's ⛔

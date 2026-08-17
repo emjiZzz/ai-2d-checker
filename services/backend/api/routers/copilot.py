@@ -36,17 +36,20 @@ async def copilot_stream(body: CopilotStreamRequest):
 
     full_prompt = f"{history_text}\n[USER]: {body.message}".strip()
 
+    import json
+
     async def sse_generator():
         try:
             async for token in StreamingEngine.generate_token_stream(
                 prompt=full_prompt,
                 context=body.context
             ):
-                # SSE format: each message must be prefixed with 'data: ' and end with double newline
-                yield f"data: {token}\n\n"
+                # SSE format: JSON-encode token to safely preserve whitespace, newlines, and unicode
+                yield f"data: {json.dumps(token)}\n\n"
         except Exception as gen_err:
             logger.error(f"Copilot SSE stream generator error: {gen_err}")
-            yield "data: ⚠️ An error occurred while generating the response.\n\n"
+            err_msg = json.dumps("⚠️ An error occurred while generating the response.")
+            yield f"data: {err_msg}\n\n"
         finally:
             yield "data: [DONE]\n\n"
 

@@ -125,13 +125,14 @@ export async function sendCopilotMessage(userText: string): Promise<string> {
     // On stream failure, replace the empty streaming message with the error
     store.updateStreamingMessage(
       assistantMsgId,
-      `⚠ Copilot error: ${err?.message || "Connection lost."}`
+      `⚠ Copilot error: ${err?.message || "Connection lost."}`,
+      false
     );
     fullResponse = "";
   } finally {
     store.setThinking(false);
     // Mark streaming as done
-    store.updateStreamingMessage(assistantMsgId, "");
+    store.updateStreamingMessage(assistantMsgId, "", false);
   }
 
   return fullResponse;

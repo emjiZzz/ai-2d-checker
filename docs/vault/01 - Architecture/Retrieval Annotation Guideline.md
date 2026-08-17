@@ -5,7 +5,7 @@ tags: [evaluation, ground-truth, annotation, retrieval, second-brain, rag]
 status: dormant — the track was retired 2026-08-10; this defines the condition for reopening it
 guideline_version: 2026-08-07
 date: 2026-08-07
-verified-against: schema enforced by `infrastructure/retrieval/labels.py`; 0 human labels, corpus census standards=0 / domain_rules=6 / lessons=0
+verified-against: schema enforced by `infrastructure/retrieval/labels.py`; 0 human labels, corpus census 2026-08-14 standards=16 / domain_rules=6 / lessons=3 (standards read 32 until the stale-index repair — see [[Gotcha - A Stale Index Kept Answering For a Deleted Standard]])
 related: [ADR-009 Retiring the Standards Knowledge Track, Standards Knowledge — Staged Plan, Eval Corpus Annotation Guideline]
 ---
 
@@ -16,22 +16,51 @@ Part of Stage R2 in [[Standards Knowledge — Staged Plan]]. Decisions:
 Sibling: [[Eval Corpus Annotation Guideline]], which governs the *comparison* corpus.
 
 > [!NOTE] **Dormant, and deliberately not retired** — [[ADR-009 Retiring the Standards Knowledge Track]], 2026-08-10
-> The standards knowledge track stopped at R2 because the corpus is empty, so **no labelling is scheduled
-> and none should be started today.** This guideline is kept because it *is* half the reopening
-> condition: the track reopens when `standard_chunks > 0` **and** ≥30 labels at
-> `provenance: human` clear the four gates defined below. **Do not weaken a gate to make the track
-> restartable** — the gates are what stop a meaningless number being produced, and producing one is
-> the failure the whole track existed to correct. The schema in `infrastructure/retrieval/labels.py`
-> and the tooling in `tools/retrieval_eval.py` both stay in the tree and stay tested.
+> The standards knowledge track stopped at R2 because the corpus was empty. This guideline is kept
+> because it *is* half the reopening condition: the track reopens when `standard_chunks > 0`
+> **and** ≥30 labels at `provenance: human` clear the four gates defined below. **Do not weaken a
+> gate to make the track restartable** — the gates are what stop a meaningless number being
+> produced, and producing one is the failure the whole track existed to correct. The schema in
+> `infrastructure/retrieval/labels.py` and the tooling in `tools/retrieval_eval.py` both stay in
+> the tree and stay tested.
+>
+> > [!TIP] **Amended 2026-08-14 — the first clause is now satisfied, so read the second carefully.**
+> > `standard_chunks` = 16. The blanket *"no labelling is scheduled and none should be started
+> > today"* that stood here is withdrawn, because it was reasoning from a corpus of zero.
+> >
+> > What replaces it is narrower and is **not** permission to start labelling:
+> > - **Collecting real queries is unblocked and useful now.** Queries are the input no tooling can
+> >   synthesise, they take the longest to gather, and nothing about them expires.
+> > - **Transcribing relevance labels is not yet worth doing**, for a mechanical reason rather than
+> >   a scheduling one: labels record the index's `source_digest` and `assert_matches_index` refuses
+> >   to score across a mismatch. Any upload that grows the corpus past the chance floor **rebuilds
+> >   the index and invalidates every label already written**. Queries survive that; judgements do
+> >   not. Label after the corpus settles, not before.
+> >
+> > This is the sequencing the ledger's critical path assumes too: the comparison corpus
+> > (`M7452A0N01`, 0 of 8) is what moves a rung. This track is parallel and does not.
 
-> [!WARNING] **Read the census before labelling anything.**
+> [!WARNING] **Read the census before labelling anything — and read it as a count of *distinct*
+> answers.**
 > ```bash
 > python tools/retrieval_eval.py census
 > ```
-> As of 2026-08-07 the `standards` collection holds **zero documents** — no standard has ever
-> been uploaded to this system. Labelling queries against an empty corpus produces nothing but
-> `unanswerable` entries. **Uploading standards comes first.** See the R2 finding in
-> [[00 - AI Maturity Status]].
+> **2026-08-14: `standards` = 16**, from one workbook. It is no longer zero, which is what changed;
+> it is also not yet enough. At k=5 the chance floor gate (`≤ 0.25`) needs **20 distinct chunks**,
+> so `standard_chunks > 0` is necessary and not sufficient — see *How many* and *the chance floor*
+> below.
+>
+> ⚠ This line read **32** for four days. Half the index was a *deleted* standard's chunks, and the
+> duplication halved the reported chance floor from a failing 0.31 to a passing 0.16 — a corpus
+> reporting itself as measurable because it was double-counting a document that no longer existed.
+> [[Gotcha - A Stale Index Kept Answering For a Deleted Standard]]. **A census figure is a claim
+> about the index, not about the source, until the two have been reconciled.**
+>
+> The 16 that remain are the four text-bearing sheets of an 18-sheet workbook; the other 14 are
+> pasted images and contribute nothing
+> ([[Gotcha - A Standard That Ingested Nothing Reported Success]]). Labelling against this corpus
+> today would produce mostly `unanswerable` entries — which is a real coverage finding and worth
+> having, but is not a retrieval measurement. See the R2 finding in [[00 - AI Maturity Status]].
 
 ---
 
@@ -114,8 +143,15 @@ Every report prints `chance` beside every rate. A shuffling ranker scores roughl
 | Corpus | `chance recall@5` | What `recall@5 = 1.00` means |
 | :--- | :--- | :--- |
 | 6 docs | 0.83 | almost nothing — you retrieved 5 of 6 documents |
+| **16 docs** | **0.31** | **`standards` today — still above the gate, so still no verdict** |
 | 20 docs | 0.25 | the floor the tooling requires before it will render a verdict |
 | 500 docs | 0.01 | a real result |
+
+⚠ **Count distinct texts, not records.** The floor is computed from `manifest.n_records`, and an
+index holding the same text twice inflates that count without adding an answer — which *lowers*
+the reported floor and can carry a corpus through this gate that should not pass it. `build_index`
+now collapses byte-identical texts for exactly this reason. See
+[[Gotcha - A Stale Index Kept Answering For a Deleted Standard]].
 
 A verdict is only rendered when the chance floor is **≤ 0.25**, the sample is **≥ 30**, the lift
 over chance is **≥ 0.15**, and no synthetic labels were scored. All four, or the report says

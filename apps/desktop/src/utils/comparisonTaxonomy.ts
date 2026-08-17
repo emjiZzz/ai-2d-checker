@@ -79,6 +79,9 @@ export const COMPARISON_TAXONOMY: Record<string, FeatureItem[]> = {
     { key: "drawn", label: "Drawn" },
     { key: "quantity", label: "Quantity" },
     { key: "job_number", label: "Job Number" },
+    // 機器記号 + ユニット記号 — one item for both cells, mirroring taxonomy.py. See the note
+    // there: the value spans both cells on this client's sheets and is extracted as one string.
+    { key: "machine_unit_code", label: "Machine Code / Unit Code" },
     { key: "cross_reference_number", label: "Cross Reference Number" },
     { key: "previous_drawing_number", label: "Previous Drawing Number" },
     { key: "revision_code", label: "Revision Code" },

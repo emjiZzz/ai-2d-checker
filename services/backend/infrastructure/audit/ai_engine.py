@@ -153,47 +153,97 @@ class AIEngine:
             "Examine the image carefully and identify all visual and layout violations."
         )
 
-        if not _GENAI_AVAILABLE or genai is None or genai_types is None or not api_key:
-            logger.warning("Gemini SDK or API key not available; skipping AI vision pass.")
+        openai_key = os.environ.get("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
+        if openai_key == "YOUR_OPENAI_API_KEY_HERE":
+            openai_key = None
+
+        has_gemini = _GENAI_AVAILABLE and genai is not None and genai_types is not None and bool(api_key)
+
+        if not has_gemini and not openai_key:
+            logger.warning("Neither Gemini nor OpenAI API key is available; skipping AI vision pass.")
             return []
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key) if has_gemini else None
 
-        # Model is env-driven (settings.GEMINI_MODEL_*, see config.py) instead of hardcoded.
-        # This was pinned to "gemini-2.0-flash", which Google shut down June 1 2026 — and
-        # because run_pass swallows its own exception and returns [], the standards pass has
-        # been silently returning "no violations" ever since rather than failing loudly.
-        # PRO first: this is the accuracy-sensitive standards/visual inspection pass, not chat.
         primary_model = settings.GEMINI_MODEL_PRO
         fallback_model = settings.GEMINI_MODEL_FALLBACK
         models_to_try = [primary_model] if primary_model == fallback_model else [primary_model, fallback_model]
 
-        async def run_pass(instruction: str, prompt_text: str, is_visual: bool) -> list:
-            content_parts = []
+        async def run_openai_pass(instruction: str, prompt_text: str, is_visual: bool) -> list:
+            if not openai_key:
+                return []
+            import httpx
+            import base64
+            target_model = getattr(settings, "OPENAI_MODEL", "gpt-5.4") or "gpt-4o"
+            logger.info(f"[failover] Dispatching Stage 2 audit pass to OpenAI using model: {target_model}")
+            
+            user_parts: list[dict] = [{"type": "text", "text": f"{instruction}\n\n{prompt_text}"}]
             if is_visual and png_bytes:
-                content_parts.append(
-                    genai_types.Part.from_bytes(data=png_bytes, mime_type="image/png")
-                )
-            content_parts.append(genai_types.Part.from_text(text=f"{instruction}\n\n{prompt_text}"))
+                b64_img = base64.b64encode(png_bytes).decode("utf-8")
+                user_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64_img}"}
+                })
 
-            last_err: Exception | None = None
-            for model_name in models_to_try:
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=content_parts,
-                        config=genai_types.GenerateContentConfig(
-                            response_mime_type="application/json"
-                        )
+            payload = {
+                "model": target_model,
+                "messages": [
+                    {"role": "system", "content": "You are a CAD drawing standards compliance inspector. Return a JSON object with a 'violations' array."},
+                    {"role": "user", "content": user_parts}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0
+            }
+            headers = {
+                "Authorization": f"Bearer {openai_key.strip()}",
+                "Content-Type": "application/json"
+            }
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as http_client:
+                    res = await http_client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+                    res.raise_for_status()
+                    res_data = res.json()
+                    content = res_data["choices"][0]["message"]["content"]
+                    parsed = json.loads(content.strip())
+                    violations = parsed.get("violations", [])
+                    logger.info(f"[failover] OpenAI audit pass succeeded: found {len(violations)} violations.")
+                    return violations
+            except Exception as openai_err:
+                logger.error(f"[failover] OpenAI audit pass failed: {openai_err}")
+                return []
+
+        async def run_pass(instruction: str, prompt_text: str, is_visual: bool) -> list:
+            if has_gemini and client is not None:
+                content_parts = []
+                if is_visual and png_bytes:
+                    content_parts.append(
+                        genai_types.Part.from_bytes(data=png_bytes, mime_type="image/png")
                     )
-                    res_data = json.loads(response.text.strip())
-                    return res_data.get("violations", [])
-                except Exception as e:
-                    last_err = e
-                    logger.warning(f"Standards pass failed on model '{model_name}': {e}")
-            # Still [] so one bad pass doesn't sink the audit, but the model is now named in
-            # the log — the old message could not distinguish a dead model from a clean drawing.
-            logger.error(f"Standards pass failed on every model in {models_to_try}: {last_err}")
+                content_parts.append(genai_types.Part.from_text(text=f"{instruction}\n\n{prompt_text}"))
+
+                last_err: Exception | None = None
+                for model_name in models_to_try:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=content_parts,
+                            config=genai_types.GenerateContentConfig(
+                                response_mime_type="application/json"
+                            )
+                        )
+                        res_data = json.loads(response.text.strip())
+                        return res_data.get("violations", [])
+                    except Exception as e:
+                        last_err = e
+                        logger.warning(f"Standards pass failed on Gemini model '{model_name}': {e}")
+                
+                logger.warning(f"All Gemini models failed ({last_err}). Attempting OpenAI failover...")
+
+            # Fallback to OpenAI
+            if openai_key:
+                return await run_openai_pass(instruction, prompt_text, is_visual)
+
+            logger.error(f"Standards pass failed on every configured provider.")
             return []
 
         # Run both passes asynchronously

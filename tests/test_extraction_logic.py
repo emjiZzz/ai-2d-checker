@@ -281,6 +281,32 @@ def test_ungrounded_ocr_value_defers_to_spatial_reading():
     assert fields["DWG NO"]["value"] == "M745227N01"
 
 
+def test_uncorroborated_ocr_value_is_dropped_not_published():
+    """The third case, and the one that shipped a fabricated finding for weeks.
+
+    `resolve_field` had two branches for a grounding miss: the OCR value is a *fragment* case
+    (keep it) or it disagrees with a spatial reading (prefer the spatial one). Both need a
+    spatial reading to exist. When the spatial search ALSO returns NONE the old code returned
+    the OCR string -- trusting it in the one case where nothing corroborates it at all.
+
+    Measured on M745227N01: `_separated_by_rule` rejects the real `M745227N01` because it sits
+    across a ruled divider from its own `DWG.No.` label, so the spatial reading is NONE, and
+    the misread `ME17227N24` -- absent from both drawings -- was published as a title-block
+    field and diffed into a REMOVED finding.
+
+    Here the label exists but no value is reachable below it, which is that shape in miniature.
+    """
+    entities = [
+        MockEntity("text", "図面番号", 100.0, 100.0),  # label present...
+        # ...and no value entity anywhere near it, so the proximity search returns NONE.
+    ]
+    fields = extract_title_fields(entities, ocr_results={"DWG_NO": "ME17227N24"})
+    assert fields["DWG NO"]["value"] == "NONE", (
+        "an OCR value with neither a matching text run nor a spatial reading is "
+        "uncorroborated in both available directions and must not become a field"
+    )
+
+
 def test_grounded_ocr_value_is_still_trusted():
     """The other side of the same guard: an OCR value that DOES match drawing text stays."""
     entities = [

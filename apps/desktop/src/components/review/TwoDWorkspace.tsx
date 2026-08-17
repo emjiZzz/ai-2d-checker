@@ -222,6 +222,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const newDrawing = useWorkspaceStore(s => s.newDrawing);
   const complianceScore = useWorkspaceStore(s => s.complianceScore);
   const violations = useWorkspaceStore(s => s.violations);
+  const aiScanProgress = useWorkspaceStore(s => s.aiScanProgress);
+  const isPhysicalComparisonEnabled = useReviewStore(s => s.isPhysicalComparisonEnabled);
+  const isRightPanelVisible = complianceScore !== null || aiScanProgress === "completed" || isPhysicalComparisonEnabled;
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showViewOrigins = useReviewStore(s => s.showViewOrigins);
@@ -612,7 +615,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
     const oldFileName = useWorkspaceStore.getState().oldDrawing?.file_name;
     const newFileName = useWorkspaceStore.getState().newDrawing?.file_name;
-    const hasResults = complianceScore !== null;
+    const hasResults = complianceScore !== null || useWorkspaceStore.getState().aiScanProgress === "completed" || useReviewStore.getState().isPhysicalComparisonEnabled;
 
     const MIN_TABSET_WIDTH = 220;
 
@@ -630,7 +633,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     } else if (activeLayoutPreset === 'right') {
@@ -640,7 +643,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     } else {
@@ -651,7 +654,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: 15, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: 15, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     }
@@ -719,32 +722,33 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     }
   }, [zonesGateOpen, model]);
 
-  // Dynamic show/hide for AI Auditor right panel based on complianceScore results
-  const prevScoreRef = useRef(complianceScore);
-  const isInitialModelLoadRef = useRef(true);
+  // Dynamic show/hide for AI Auditor & Copilot right panel based on comparison/audit results
+  const prevRightVisibleRef = useRef(isRightPanelVisible);
+  const isInitialRightLoadRef = useRef(true);
 
   useEffect(() => {
     if (!model) return;
 
     const node = model.getNodeById("rightPanelTab");
-    const hasResults = complianceScore !== null;
+    const isVisible = isRightPanelVisible;
 
-    if (isInitialModelLoadRef.current) {
-      isInitialModelLoadRef.current = false;
-      if (!hasResults && node) {
+    if (isInitialRightLoadRef.current) {
+      isInitialRightLoadRef.current = false;
+      if (!isVisible && node) {
         model.doAction(Actions.deleteTab("rightPanelTab"));
+      } else if (isVisible && !node) {
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
       }
     } else {
-      const wasNull = prevScoreRef.current === null;
-      const isNull = !hasResults;
-      if (wasNull && !isNull && !node) {
-        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
-      } else if (!wasNull && isNull && node) {
+      const wasVisible = prevRightVisibleRef.current;
+      if (!wasVisible && isVisible && !node) {
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+      } else if (wasVisible && !isVisible && node) {
         model.doAction(Actions.deleteTab("rightPanelTab"));
       }
     }
-    prevScoreRef.current = complianceScore;
-  }, [complianceScore, model]);
+    prevRightVisibleRef.current = isVisible;
+  }, [isRightPanelVisible, model]);
 
   const handleAction = (action: Action) => {
     if (action.type === Actions.DELETE_TAB) {

@@ -65,36 +65,73 @@ def generate(
     `SummaryStatus.UNAVAILABLE`, which is normal operation -- ADR-010 decision 4.
     """
     api_key = settings.GEMINI_API_KEY
-    if not api_key or api_key == "YOUR_GEMINI_API_KEY_HERE":
-        raise SummaryUnavailableError("No Gemini API key is configured.")
+    openai_key = settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY")
+    if openai_key == "YOUR_OPENAI_API_KEY_HERE":
+        openai_key = None
 
-    # Imported here rather than at module scope so that importing this package -- which the
-    # verifier's tests do -- does not require the google genai SDK or any network stack.
-    from google import genai  # noqa: PLC0415 — see comment above: keeps the SDK off the import path
-    from google.genai import types  # noqa: PLC0415
+    if not (api_key and api_key != "YOUR_GEMINI_API_KEY_HERE") and not openai_key:
+        raise SummaryUnavailableError("Neither Gemini nor OpenAI API key is configured.")
 
-    client = genai.Client(api_key=api_key)
     prompt = build_prompt(findings, language)
-
     last_error: Exception | None = None
-    for model in settings.GEMINI_MODEL_CASCADE:
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=[prompt],
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    response_mime_type="application/json",
-                    response_schema=GroundedSummary,
-                    temperature=0.0,
-                ),
-            )
-            return GroundedSummary.model_validate_json(response.text), model
-        except Exception as err:  # noqa: BLE001 — provider SDKs raise a wide, undocumented set
-            last_error = err
-            logger.warning(f"[summary] Model {model} failed: {err}")
 
-    raise SummaryUnavailableError(f"Every model in the cascade failed. Last error: {last_error}")
+    # 1. Try Gemini cascade first if configured
+    if api_key and api_key != "YOUR_GEMINI_API_KEY_HERE":
+        try:
+            from google import genai  # noqa: PLC0415
+            from google.genai import types  # noqa: PLC0415
+
+            client = genai.Client(api_key=api_key)
+            for model in settings.GEMINI_MODEL_CASCADE:
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=[prompt],
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_INSTRUCTION,
+                            response_mime_type="application/json",
+                            response_schema=GroundedSummary,
+                            temperature=0.0,
+                        ),
+                    )
+                    return GroundedSummary.model_validate_json(response.text), model
+                except Exception as err:  # noqa: BLE001
+                    last_error = err
+                    logger.warning(f"[summary] Gemini model {model} failed: {err}")
+        except Exception as genai_init_err:
+            last_error = genai_init_err
+            logger.warning(f"[summary] Gemini client initialization failed: {genai_init_err}")
+
+    # 2. Fallback to OpenAI if configured
+    if openai_key:
+        try:
+            import httpx
+            target_model = getattr(settings, "OPENAI_MODEL", "gpt-5.4") or "gpt-4o"
+            logger.info(f"[summary] Attempting summary generation via OpenAI model: {target_model}")
+            payload = {
+                "model": target_model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_INSTRUCTION},
+                    {"role": "user", "content": prompt}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0
+            }
+            headers = {
+                "Authorization": f"Bearer {openai_key.strip()}",
+                "Content-Type": "application/json"
+            }
+            with httpx.Client(timeout=60.0) as http_client:
+                res = http_client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+                res.raise_for_status()
+                res_data = res.json()
+                content = res_data["choices"][0]["message"]["content"]
+                return GroundedSummary.model_validate_json(content), f"openai/{target_model}"
+        except Exception as openai_err:
+            last_error = openai_err
+            logger.warning(f"[summary] OpenAI fallback failed: {openai_err}")
+
+    raise SummaryUnavailableError(f"Every model provider failed. Last error: {last_error}")
 
 
 def deterministic_summary(findings: list[Finding]) -> str:

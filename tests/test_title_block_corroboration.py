@@ -101,3 +101,57 @@ def test_short_numeric_value_outside_region_does_not_falsely_corroborate():
     )
     m = _find(markings, "T. Q'ty")
     assert m["status"] in ("REMOVED", "ADDED"), m
+
+
+def test_machine_and_unit_code_share_one_checklist_item():
+    """機器記号 and ユニット記号 are ONE card, the way the DWG No. is one card for its
+    ruled sub-cells.
+
+    The marking already carried the combined label " Mach. code /  Unit Code" — the extractor
+    widens its search across both cells precisely because the value spans them on this client's
+    sheets (`FSRS2` runs under both headers) — but `title_feature_map` had no entry for it, so
+    the finding was tagged OTHER_FEATURE_KEY and rendered under "Other / Unclassified" instead
+    of in the title-block section.
+
+    `feature` travels on the cached marking, which is why this needed a cache bump (v51).
+    """
+    markings: list = []
+    inject_title_block_markings(
+        clean_markings=markings,
+        # Not a prefix of any drawing number, so the COMPONENT_OF_DWG_NO_FIELDS suppression
+        # does not fire — this is the shape the owner reported.
+        ref_title_fields={"MACHINE CODE": {"value": "FSRS2"}},
+        rev_title_fields={"MACHINE CODE": {"value": "FSRS3"}},
+        ref_entities=[],
+        rev_entities=[],
+        ref_title_bbox=TITLE_BBOX,
+        rev_title_bbox=TITLE_BBOX,
+    )
+    m = _find(markings, "Mach. code")
+    assert m["feature"] == "machine_unit_code", (
+        f"expected the combined title-block item, got {m['feature']!r} — an unmapped field "
+        f"falls to OTHER and renders outside the title-block section"
+    )
+    assert "Unit Code" in m["details"], "one card must name both cells"
+
+
+def test_machine_code_that_is_a_dwg_no_prefix_still_gets_no_card():
+    """The new item must not undo the DWG No. segment suppression.
+
+    A machine code that genuinely IS the drawing number's prefix is already carried by the
+    DWG No. card; giving it a second card was the defect behind
+    "Gotcha - Drawing Number Segments Reported as Separate Fields".
+    """
+    markings: list = []
+    inject_title_block_markings(
+        clean_markings=markings,
+        ref_title_fields={"MACHINE CODE": {"value": "M745"}, "DWG NO": {"value": "M745203N01"}},
+        rev_title_fields={"MACHINE CODE": {"value": "M745"}, "DWG NO": {"value": "M745203N01"}},
+        ref_entities=[],
+        rev_entities=[],
+        ref_title_bbox=TITLE_BBOX,
+        rev_title_bbox=TITLE_BBOX,
+    )
+    assert not [m for m in markings if "Mach. code" in m["details"]], (
+        "a machine code corroborated as the DWG No. prefix must stay suppressed"
+    )

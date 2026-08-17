@@ -133,15 +133,18 @@ class SpatialDiffer:
     def _normalize_text(text: str) -> str:
         """
         Normalizes text to gracefully handle standard "Copy-Trace" upgrades.
-        For example: "Dia 25" -> "ø25", ignoring extra spaces.
+        For example: "Dia 25" -> "ø25", ignoring extra spaces and character width variations.
         """
         import unicodedata
         t = unicodedata.normalize("NFKC", text)
-        t = t.lower().replace(" ", "").replace("\n", "")
+        t = t.lower().replace(" ", "").replace("\n", "").replace("\t", "").replace("\r", "").replace("\u3000", "")
         # Common standard upgrades
         t = t.replace("dia", "ø").replace("diameter", "ø")
         t = t.replace("deg", "°").replace("degrees", "°")
         t = t.replace("rad", "r").replace("radius", "r")
+        # Fold fullwidth/Unicode multiplication symbols, colons, brackets
+        t = t.replace("×", "x").replace("✕", "x").replace("✖", "x").replace("⨯", "x")
+        t = t.replace("：", ":").replace("（", "(").replace("）", ")").replace("　", "")
         return t
 
     @staticmethod

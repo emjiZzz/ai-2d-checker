@@ -105,9 +105,10 @@ def inject_title_block_markings(
     }
 
     # Sub-item taxonomy tag per field (docs/checklist-taxonomy-grouping-implementation-
-    # plan.md). STD NO/STANDARD/MACHINE CODE/DWG NO have no dedicated taxonomy feature
-    # (the user's own field list doesn't name one) — left as OTHER rather than forced
-    # into a nearby-sounding key.
+    # plan.md). STD NO/STANDARD/DWG NO have no dedicated taxonomy feature (the user's own
+    # field list doesn't name one) — left as OTHER rather than forced into a nearby-sounding
+    # key. MACHINE CODE gained `machine_unit_code` on 2026-08-17, on the owner's request, and
+    # it covers 機器記号 AND ユニット記号 as one item — see the note in taxonomy.py.
     title_feature_map = {
         "QTY": "quantity",
         "CROSS REF NO": "cross_reference_number",
@@ -122,6 +123,7 @@ def inject_title_block_markings(
         "TITLE SUB": "machine_name",
         "DATE": "creation_date",
         "JOB NO": "job_number",
+        "MACHINE CODE": "machine_unit_code",
         "REVISION CODE": "revision_code",
     }
 

@@ -166,6 +166,54 @@ describe('markerGenerator tests', () => {
     expect(result.length).toBeLessThanOrEqual(1);
   });
 
+  it('gives a sheet-wide line_attributes finding NO marker anywhere on the canvas', () => {
+    // Regression, reported from a live review on M745221N01: marker [M009] read
+    // "CONTINUOUS 1mm x1 / Cat: drawing views / Stat: MATCHED" and sat near the title block,
+    // claiming a position for a finding that describes every stroke of one kind across the
+    // whole sheet. The backend deliberately emits no `coordinates` for these and says so
+    // (line_attribute_differ.diff_line_attributes).
+    //
+    // Same defect as the shim-table checkmarks above, one category over: that fix was written
+    // as a CATEGORY rule (title_block / bill_of_materials) when the invariant is per-finding,
+    // and `line_attributes` is `drawing_views`. Two paths had to be closed -- the strict
+    // grounding pass AND the MATCHED loose-token fallback, which re-matches at threshold 50
+    // and is what actually placed [M009].
+    const rawMarkings = [
+      {
+        text_content: 'CONTINUOUS 1mm',
+        details: 'Both drawings use CONTINUOUS at 1mm in the drawing views.',
+        status: 'MATCHED',
+        category: 'drawing_views',
+        feature: 'line_attributes',
+        coordinates: null,
+        ref_coordinates: null,
+      },
+    ];
+    const bounds = { xMin: 0, xMax: 1000, yMin: 0, yMax: 1000 };
+    // Sheet text the loose token search would happily land on: "1mm" and "CONTINUOUS" both
+    // brush against these at threshold 50.
+    const sheetText = [
+      { text: 'CONTINUOUS', x: 120, y: 900, height: 3 },
+      { text: '1mm', x: 300, y: 120, height: 3 },
+      { text: 'M745221N01', x: 800, y: 100, height: 3 },
+    ] as any;
+
+    const result = generateComparisonMarkings({
+      rawMarkings,
+      textEntities: sheetText,
+      refTextEntities: sheetText,
+      drawing: { id: 'rev', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      oldDrawing: { id: 'base', metadata: { render_bounds: [0, 0, 1000, 1000] } },
+      bounds,
+      refBounds: bounds,
+    });
+
+    const placed = result.filter(
+      (r: any) => Array.isArray(r.coordinates) || Array.isArray(r.ref_coordinates)
+    );
+    expect(placed).toHaveLength(0);
+  });
+
   it('passes `feature` through untouched, and leaves it undefined when the backend omits it', () => {
     const rawMarkings = [
       {

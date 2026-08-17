@@ -26,7 +26,17 @@ CONSOLE_TOOLS = [
     "tools/label_status.py",
     "tools/eval.py",
     "tools/standards_scan.py",
+    # Added 2026-08-14 after it crashed for real: `retrieval_eval.py worksheet` printed an em
+    # dash while explaining how to supply queries, and died with UnicodeEncodeError on a cp932
+    # console. It was also the only tool in `tools/` with no `reconfigure(errors="replace")`
+    # guard, so both layers failed at once. Both are fixed; this pins the literal half.
+    "tools/retrieval_eval.py",
 ]
+
+# NOT listed, deliberately, and worth knowing about: `tools/eval_corpus.py` carries 3 cp932-unsafe
+# print literals but DOES have the reconfigure guard, so it degrades instead of crashing. Adding it
+# here would fail today. It is the corpus/labelling tool, i.e. on the project's critical path, so
+# the literals are worth cleaning up — but that is its own change, not a rider on this one.
 
 
 def _print_literals(path: pathlib.Path):

@@ -24,8 +24,8 @@ except Exception:  # pragma: no cover
     logger = logging.getLogger("learning.trainer")
 
 # Verdict label mapping. Label 1 == "this IS a true discrepancy", label 0 == "not a real
-# discrepancy / false alarm / actually matched".
-VERDICT_ZERO = {"dismissed", "verdict_matched"}
+# discrepancy / false alarm / actually matched / badly paired".
+VERDICT_ZERO = {"dismissed", "verdict_matched", "mispaired_missing_counterpart", "mispaired_wrong_match"}
 VERDICT_ONE = {"confirmed_valid", "verdict_changed", "confirmed_change"}
 
 # Pairing feedback: the human says the engine matched the wrong two entities, or missed a

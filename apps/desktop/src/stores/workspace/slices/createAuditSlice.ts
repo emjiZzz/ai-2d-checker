@@ -73,9 +73,9 @@ export const createAuditSlice: StateCreator<WorkspaceState, [], [], AuditSlice> 
       activeSessionId: sessionId,
       violations: sanitizedViolations,
       hiddenViolationIds: {},
-      complianceScore,
-      auditStatus: "completed",
-      selectedClient: clientName,
+      complianceScore: clientName ? complianceScore : null,
+      auditStatus: clientName ? "completed" : "idle",
+      selectedClient: clientName || null,
     });
   },
 
