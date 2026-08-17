@@ -116,6 +116,10 @@ async def startup_event() -> None:
                 logger.info(f"[retrieval] Built '{collection}': {result.n_records} record(s).")
             else:
                 logger.info(f"[retrieval] '{collection}' not built: {result.reason}.")
+                
+        # D3. Cloud & Local Database Auto-Sync Worker
+        from .infrastructure.database.sync_manager import sync_manager
+        sync_manager.start()
     else:
         logger.warning("FastAPI backend is operating in offline/disconnected fallback mode.")
 
@@ -130,6 +134,13 @@ async def startup_event() -> None:
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     logger.info("Shutting down Standalone FastAPI Backend...")
+    # Safe shutdown cleanup of background auto-sync worker
+    try:
+        from .infrastructure.database.sync_manager import sync_manager
+        await sync_manager.stop()
+    except Exception as e:
+        logger.warning(f"Error stopping database sync manager: {e}")
+
     # Safe shutdown cleanup of database client
     await db_manager.disconnect()
     

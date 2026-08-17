@@ -119,6 +119,10 @@ graph TD
     Gotchas --> G55["[[Gotcha - Every Published Baseline Measures a Configuration Users Do Not Get]]"]
     Gotchas --> G56["[[Gotcha - A Swept Constant Must Be Bound To The Module That Reads It]]"]
     Gotchas --> G57["[[Gotcha - A Stale Index Kept Answering For a Deleted Standard]]"]
+    Gotchas --> G58["[[Gotcha - A Verdict Mapping That Contradicted Its Own Comment]]"]
+    Gotchas --> G59["[[Gotcha - One Heading Twice in a Note Is One Retrieval Record]]"]
+    Gotchas --> G60["[[Gotcha - The Strongest Signal in the Audit Query Was Never Written]]"]
+    Gotchas --> G61["[[Gotcha - The Learned Model Switching On Froze the Backend]]"]
 
     ADRs --> A2["[[ADR-002 Decoupled Zone Bounding Box Endpoint]]"]
     ADRs --> A3b["[[ADR-003 AI Maturity Ladder]]"]
@@ -130,6 +134,7 @@ graph TD
     ADRs --> A9["[[ADR-009 Retiring the Standards Knowledge Track]]"]
     ADRs --> A10["[[ADR-010 Grounded LLM Summarization of Comparison Results]]"]
     ADRs --> A11["[[ADR-011 Vector as the Only Render Path]]"]
+    ADRs --> A12["[[ADR-012 Indexing Human Judgement as Retrieval Collections]]"]
 
     Domain --> D1["[[Japanese CAD Title Block & Tolerance Standards]]"]
 ```

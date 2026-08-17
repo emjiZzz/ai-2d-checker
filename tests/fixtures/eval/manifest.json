@@ -2,9 +2,19 @@
   "guideline_version": "2026-08-06",
   "pairs": [
     {
+      "bulk_count": 0,
+      "category_counts": {
+        "bill_of_materials": 1,
+        "drawing_views": 6,
+        "isometric_view": 0,
+        "notes_section": 3,
+        "other_engineering_references": 0,
+        "title_block": 6
+      },
+      "finding_count": 16,
       "held_out": false,
-      "label_state": "unlabelled",
-      "labels": null,
+      "label_state": "labelled",
+      "labels": "labels/M745203N01.json",
       "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
       "pair_id": "M745203N01",
       "provenance": "human",
@@ -96,9 +106,19 @@
       }
     },
     {
+      "bulk_count": 0,
+      "category_counts": {
+        "bill_of_materials": 1,
+        "drawing_views": 11,
+        "isometric_view": 0,
+        "notes_section": 3,
+        "other_engineering_references": 0,
+        "title_block": 6
+      },
+      "finding_count": 21,
       "held_out": false,
-      "label_state": "unlabelled",
-      "labels": null,
+      "label_state": "labelled",
+      "labels": "labels/M745230A01.json",
       "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
       "pair_id": "M745230A01",
       "provenance": "human",

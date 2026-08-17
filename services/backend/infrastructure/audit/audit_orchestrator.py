@@ -9,6 +9,7 @@ from ...domain.models.standard_chunk import StandardChunk
 from ...domain.models.standard_document import StandardDocument
 from ...logger import logger
 from .. import retrieval
+from ..retrieval.queries import build_drawing_keywords, drawing_query_text, layer_names_for
 from .ai_engine import AIEngine
 from .confidence import ConfidenceScorer
 from .rule_engine import RuleEngine
@@ -196,40 +197,41 @@ class AuditOrchestrator:
         Returns:
             List of relevant StandardChunk objects, capped at ``top_k``.
         """
-        # Build a set of keyword tokens from the drawing's metadata
-        keywords: list[str] = []
-
-        # 1. Layer names are the strongest signal (e.g. "BORDER", "DIMENSION", "GEOMETRY")
-        layer_meta = drawing.metadata.get("layers", [])
-        if isinstance(layer_meta, list):
-            for layer in layer_meta:
-                if isinstance(layer, str) and layer.strip():
-                    # Normalise: strip AutoCAD prefixes and split by underscore / hyphen
-                    parts = re.split(r"[_\-\s]+", layer.upper())
-                    keywords.extend(p.lower() for p in parts if len(p) > 2)
-
-        # 2. Entity types from entity_counts (e.g. "line", "dimension", "text", "hatch")
-        for entity_type in drawing.entity_counts.keys():
-            keywords.append(entity_type.lower())
-
-        # 3. File name stem can hint at part type (e.g. "anchor_bolt", "flange_detail")
-        stem_parts = re.split(r"[_\-\s\.]+", drawing.file_name)
-        keywords.extend(p.lower() for p in stem_parts if len(p) > 3)
-
-        if not keywords:
-            logger.debug("RAG: No keywords extracted from drawing metadata. Skipping lessons retrieval.")
-            return []
-
-        # Deduplicate and trim to avoid overly broad MongoDB queries
-        unique_keywords = list(dict.fromkeys(keywords))[:20]
-        logger.debug(f"RAG: Querying StandardChunks with keywords: {unique_keywords}")
-
+        # How the query is built lives in `retrieval.queries.build_drawing_query`, not here.
+        # Stage B harvests real production queries into the query store, and a harvester that
+        # rebuilt this logic *nearly* identically would measure a query production does not
+        # actually search with — the same defect shape as a mutator that only approximates the
+        # engine's zone rules. One construction, two callers. See [[ADR-012]].
+        #
+        # ✅ Layer names come from `ExtractedEntity.layer`, fixed 2026-08-17. They were read from
+        # `drawing.metadata["layers"]` — **a key nothing has ever written** — so the branch this
+        # builder's own comment calls "the strongest signal" contributed nothing on all 44
+        # drawings, and a production query was the file name plus a constant. It could not fail:
+        # a missing key yields a shorter query, not an error.
+        # See [[Gotcha - The Strongest Signal in the Audit Query Was Never Written]].
+        #
+        # ⚠ The layer fetch is a **database call**, and it sits inside the try below rather than
+        # above it on purpose. Everything about lessons retrieval is non-fatal by design — "if
+        # retrieval fails, the audit continues without lessons" — and hoisting a Mongo round
+        # trip out of that guard would let a transient DB error crash a whole audit for the sake
+        # of a context-window nicety. It did, for one commit, and a test caught it.
         try:
+            layer_names = await layer_names_for(str(drawing.id))
+            unique_keywords = build_drawing_keywords(drawing, layer_names)
+            if not unique_keywords:
+                logger.debug(
+                    "RAG: No keywords extracted from drawing metadata. Skipping lessons retrieval."
+                )
+                return []
+
+            query_text = drawing_query_text(drawing.file_name, unique_keywords)
+            logger.debug(f"RAG: Querying StandardChunks with keywords: {unique_keywords}")
+
             # R1 (ADR-008): rank with the local lexical index. Char n-gram TF-IDF, exact
             # cosine, offline. This is the stage that R0 emptied — the version before it
             # searched hash-seeded noise and logged "Retrieved N semantic match(es)".
             ranked = await AuditOrchestrator._retrieve_via_lexical_index(
-                query_text=f"{drawing.file_name} " + " ".join(unique_keywords),
+                query_text=query_text,
                 standard_ids=standard_ids,
                 top_k=top_k,
             )

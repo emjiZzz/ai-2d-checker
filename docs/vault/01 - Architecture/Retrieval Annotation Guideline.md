@@ -171,11 +171,50 @@ the frontmatter **and** `labels.GUIDELINE_VERSION`, then re-label or discard. Do
 
 ```bash
 python tools/retrieval_eval.py census
-python tools/retrieval_eval.py worksheet --collection standards --queries "first real query; second"
+python tools/retrieval_eval.py queries harvest --collection standards
+python tools/retrieval_eval.py queries add --collection standards --query "a real question" --note "asked during the M7452 review"
+python tools/retrieval_eval.py queries list --collection standards
+python tools/retrieval_eval.py smoke --collection vault --limit 40   # prove the path first
+python tools/retrieval_eval.py worksheet --collection standards --from-store
 # fill in the markdown, then transcribe to tests/fixtures/retrieval/labels-standards.json
 python tools/retrieval_eval.py score --collection standards
 python tools/retrieval_eval.py score --collection standards --baseline
 ```
 
+> [!TIP] **Amended 2026-08-17 — queries now have a home of their own ([[ADR-012 Indexing Human Judgement as Retrieval Collections]], Stage B).**
+> `storage/retrieval/queries/queries-{collection}.json` records **neither `source_digest` nor
+> `guideline_version`**, deliberately. This document's *Drift* section is about labels, and it
+> should not be read as applying to queries: a corpus rebuild invalidates a judgement about which
+> chunk answers a question, and does not un-ask the question. That asymmetry is the reason
+> collecting queries is worth doing before the corpus settles, and it is now enforced by schema
+> rather than by discipline.
+>
+> **Harvested 2026-08-17: 44 drawings → 19 distinct production queries.** Below the 30 gate, so
+> `queries harvest` cannot on its own produce a scoreable set. It is also not meant to: every
+> production query has the same shape, so they measure the production path rather than a
+> checker's need. **The `checker` origin is the one that cannot be generated**, and it is still
+> the binding constraint on this track.
+>
+> ⚠ Read [[Gotcha - The Strongest Signal in the Audit Query Was Never Written]] before treating a
+> harvested query as representative: the pipeline's layer-name branch reads a key nothing writes,
+> so a production query today is the file name plus constant noise. Fixing that changes what these
+> stored queries *are*, and the two must move together.
+
 The worksheet retrieves candidates and leaves every relevance box **unticked**. It deliberately
 does not guess: a label the tool wrote is not evidence about whether retrieval helps a person.
+
+> [!TIP] **`smoke` implements the synthetic run this document has described since 2026-08-07.**
+> Until then the *"synthetic labels are generated from the corpus"* paragraph above described
+> tooling that did not exist — `Provenance.SYNTHETIC` was honoured everywhere in the scoring path,
+> and nothing could produce one. `labels.synthetic_label_set` closes that, and
+> `retrieval_eval.py smoke` scores it.
+>
+> **Run it before labelling anything.** It exercises index load, encoder, ranking, gate arithmetic
+> and report rendering, so a defect in the measurement path surfaces before the hours rather than
+> after. Its recall figure is circular and means nothing; **the gate lines are what to read.**
+>
+> Measured on `vault`, 2026-08-17: chance 0.01, lift +0.67, 40 queries — three of four gates pass
+> and the verdict is correctly withheld on `labels are synthetic` alone. The circular recall was
+> **0.68**, i.e. on the easiest possible task lexical retrieval misses a third of the time, which
+> is worth carrying into any encoder comparison as a prior — and is largely an artifact of repeated
+> generic headings (`Symptom`, `Cause`, `Fix`).

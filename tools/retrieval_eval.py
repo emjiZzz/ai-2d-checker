@@ -38,14 +38,36 @@ from services.backend.infrastructure.retrieval.labels import (  # noqa: E402
     LabelSet,
     default_baseline_path,
     default_labels_path,
+    synthetic_label_set,
 )
-from services.backend.infrastructure.retrieval.metrics import format_report  # noqa: E402
+from services.backend.infrastructure.retrieval.metrics import (  # noqa: E402
+    MIN_QUERIES_FOR_VERDICT,
+    format_report,
+)
+from services.backend.infrastructure.retrieval.queries import (  # noqa: E402
+    QueryOrigin,
+    QuerySet,
+    build_drawing_query,
+    default_queries_path,
+    layer_names_for,
+)
 
 #: Collections whose contents are client-specific and gitignored. Their record counts and
 #: digests are machine-local, so a committed baseline must not pin them — otherwise the fixture
 #: only matches the machine that generated it, and every other install reads a normal difference
 #: as a regression.
-CLIENT_LOCAL_COLLECTIONS = frozenset({retrieval.DOMAIN_RULES})
+#: `vault` is deliberately absent: it is git-tracked and identical on every install at a given
+#: commit, so a committed value here is valid rather than machine-specific. It does churn with
+#: ordinary documentation work, which is a baseline-regeneration nuisance and *not* the property
+#: this set is about.
+CLIENT_LOCAL_COLLECTIONS = frozenset(
+    {
+        retrieval.DOMAIN_RULES,
+        retrieval.CORRECTIONS,
+        retrieval.FINDINGS,
+        retrieval.ENTITIES,
+    }
+)
 
 
 def _census_entry(entry) -> dict:
@@ -137,12 +159,171 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _harvest_production_queries(collection: str) -> int:
+    """Record the query the pipeline builds for every drawing in the database.
+
+    These are real in the sense the guideline cares about — they are literally what production
+    searches with, and they are built from drawing metadata rather than from the corpus text, so
+    they do not smuggle the answer into the question.
+
+    They are *not* a substitute for questions a checker asked. Every one has the same shape, so
+    a set made only of these measures the production path rather than a checker's need. The
+    report below says so rather than leaving it to be inferred from the origin column.
+    """
+    # Deferred on purpose: these pull in motor and beanie, and `census`, `score` and
+    # `worksheet` all run without a database. Importing at module level would make every
+    # invocation of this tool pay for a driver only `harvest` uses.
+    import asyncio  # noqa: PLC0415
+
+    from services.backend.domain.models.drawing_document import (  # noqa: PLC0415
+        DrawingDocument,
+    )
+    from services.backend.infrastructure.database.connection import (  # noqa: PLC0415
+        db_manager,
+    )
+
+    async def run() -> int:
+        if not await db_manager.connect():
+            print("  Could not connect to MongoDB; no drawings to harvest from.")
+            return 1
+
+        drawings = await DrawingDocument.find_all().to_list()
+        path = default_queries_path(collection)
+        store = QuerySet.load(path, collection)
+
+        # A production query is *derived* from the current code and the current drawings, so a
+        # harvest is a projection and must be idempotent. Re-running after the query
+        # construction changes would otherwise leave the store holding queries production can
+        # no longer issue, alongside the new ones, with nothing to tell them apart.
+        # Human-origin queries are never touched: those are the input that cannot be regenerated.
+        dropped = store.drop_origin(QueryOrigin.PRODUCTION)
+
+        added = skipped = no_keywords = 0
+        for drawing in drawings:
+            layer_names = await layer_names_for(str(drawing.id))
+            text = build_drawing_query(drawing, layer_names)
+            if text is None:
+                no_keywords += 1
+                continue
+            entry = store.add(
+                text,
+                QueryOrigin.PRODUCTION,
+                note=f"pipeline query for {drawing.file_name}",
+            )
+            if entry is None:
+                skipped += 1
+            else:
+                added += 1
+
+        store.save(path)
+        await db_manager.disconnect()
+
+        print(f"  {len(drawings)} drawing(s) examined")
+        print(f"  replaced {dropped} stale production query/queries (human-origin kept)")
+        print(f"  added   {added}")
+        print(f"  skipped {skipped} (query text already stored)")
+        print(f"  no keywords {no_keywords}")
+        print(f"  wrote {path}")
+        return 0
+
+    return asyncio.run(run())
+
+
+def cmd_smoke(args: argparse.Namespace) -> int:
+    """Score a generated label set to prove the measurement path works. Never evidence.
+
+    Stage C asks an annotator for ~30 relevance judgements per collection. This runs the whole
+    scoring path first — index load, encoder, ranking, gate arithmetic, report — on labels
+    generated from the corpus, so a defect anywhere in it surfaces before the hours are spent
+    rather than after.
+
+    The result is circular by construction and the report says so. What is worth reading is not
+    the recall figure but **which gates fire**: a collection that cannot clear the chance floor
+    today will not clear it with real labels either, and that is knowable now.
+    """
+    label_set = synthetic_label_set(args.collection, limit=args.limit)
+    if not label_set.labels:
+        print(f"  '{args.collection}' has no headed records to generate from.")
+        print("  Collections built from Mongo documents carry no section headings; this smoke")
+        print("  test only applies to the markdown-chunked ones (vault, domain_rules).")
+        return 1
+
+    result = evaluate(
+        collection=args.collection,
+        label_set=label_set,
+        k=args.k,
+        include_synthetic=True,
+    )
+    print(format_report(result.score, args.collection, result.census.encoder))
+    print(
+        "\n  ** SMOKE TEST. These labels were generated from the corpus, so the recall figure\n"
+        "     is circular and is not a measurement of anything. Read the gate lines instead:\n"
+        "     they are the real constraint on whether this collection can be measured at all."
+    )
+    return 0
+
+
+def cmd_queries(args: argparse.Namespace) -> int:
+    """The Stage B query store."""
+    collection = args.collection
+    path = default_queries_path(collection)
+
+    if args.subcommand == "harvest":
+        return _harvest_production_queries(collection)
+
+    store = QuerySet.load(path, collection)
+
+    if args.subcommand == "add":
+        origin = QueryOrigin(args.origin)
+        entry = store.add(args.query, origin, note=args.note)
+        if entry is None:
+            print(f"  Already stored; nothing written. ({args.query})")
+            return 0
+        store.save(path)
+        print(f"  added {entry.query_id} [{entry.origin}] {entry.query}")
+        print(f"  wrote {path}")
+        return 0
+
+    # list
+    counts = store.counts_by_origin()
+    print(f"\n  QUERY STORE - '{collection}'  ({path})")
+    print("  " + "-" * 74)
+    if not store.queries:
+        print("  empty. Queries must come from real audit situations, never from the corpus.")
+        print("  `queries harvest` records what the pipeline itself searches with;")
+        print("  `queries add --query '...'` records a question a person actually asked.")
+        return 0
+
+    for q in store.queries:
+        print(f"  {q.query_id}  [{q.origin:10}]  {q.query[:80]}")
+    print("  " + "-" * 74)
+    print(f"  {len(store.queries)} stored: " + ", ".join(f"{k}={v}" for k, v in counts.items()))
+
+    human = len(store.queries) - counts.get(str(QueryOrigin.PRODUCTION), 0)
+    print(f"  {MIN_QUERIES_FOR_VERDICT} needed for a verdict.")
+    if human == 0 and store.queries:
+        print(
+            "  ** ALL PRODUCTION-SHAPED. These measure the production path, not a checker's\n"
+            "     need - every one has the same form. Add checker-asked questions before\n"
+            "     treating a score over this set as evidence about retrieval quality."
+        )
+    return 0
+
+
 def cmd_worksheet(args: argparse.Namespace) -> int:
     """Emit a markdown worksheet of candidates for a human to judge."""
     out_dir = Path(args.out) if args.out else REPO_ROOT / "storage" / "retrieval" / "drafts"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    queries = [q.strip() for q in (args.queries or "").split(";") if q.strip()]
+    if getattr(args, "from_store", False):
+        store = QuerySet.load(default_queries_path(args.collection), args.collection)
+        queries = [q.query for q in store.queries]
+        if not queries:
+            print(f"  The query store for '{args.collection}' is empty.")
+            print("  Run `retrieval_eval.py queries harvest` or `queries add` first.")
+            return 1
+    else:
+        queries = [q.strip() for q in (args.queries or "").split(";") if q.strip()]
     if not queries:
         print("  No queries given. Pass --queries 'first query; second query; ...'")
         print("  Queries must come from real audit situations, not from the corpus text -")
@@ -234,11 +415,53 @@ def main() -> int:
     work = sub.add_parser("worksheet", help="emit a markdown worksheet for a human to label")
     work.add_argument("--collection", default=retrieval.STANDARDS, choices=ALL_COLLECTIONS)
     work.add_argument("--queries", help="semicolon-separated real queries")
+    work.add_argument(
+        "--from-store",
+        action="store_true",
+        help="take the queries from the Stage B query store instead of --queries",
+    )
     work.add_argument("--k", type=int, default=10)
     work.add_argument("--out", help="output directory")
 
+    q = sub.add_parser("queries", help="the Stage B query store (queries do not expire)")
+    q_sub = q.add_subparsers(dest="subcommand", required=True)
+
+    q_list = q_sub.add_parser("list", help="show the stored queries and their origins")
+    q_list.add_argument("--collection", default=retrieval.STANDARDS, choices=ALL_COLLECTIONS)
+
+    q_add = q_sub.add_parser("add", help="record one real query a person asked")
+    q_add.add_argument("--collection", default=retrieval.STANDARDS, choices=ALL_COLLECTIONS)
+    q_add.add_argument("--query", required=True, help="the question, in the words it was asked")
+    q_add.add_argument(
+        "--origin",
+        default=str(QueryOrigin.CHECKER),
+        choices=[str(o) for o in QueryOrigin],
+        help="where it came from. 'production' is reserved for `harvest`.",
+    )
+    q_add.add_argument("--note", default="", help="the situation that raised it")
+
+    q_harvest = q_sub.add_parser(
+        "harvest",
+        help="record the query the audit pipeline itself builds, for every drawing",
+    )
+    q_harvest.add_argument("--collection", default=retrieval.STANDARDS, choices=ALL_COLLECTIONS)
+
+    smoke = sub.add_parser(
+        "smoke",
+        help="score generated labels to prove the path works. Circular; never evidence.",
+    )
+    smoke.add_argument("--collection", default=retrieval.VAULT, choices=ALL_COLLECTIONS)
+    smoke.add_argument("--k", type=int, default=5)
+    smoke.add_argument("--limit", type=int, default=None, help="cap the generated labels")
+
     args = parser.parse_args()
-    commands = {"census": cmd_census, "score": cmd_score, "worksheet": cmd_worksheet}
+    commands = {
+        "census": cmd_census,
+        "score": cmd_score,
+        "worksheet": cmd_worksheet,
+        "queries": cmd_queries,
+        "smoke": cmd_smoke,
+    }
     return commands[args.command](args)
 
 

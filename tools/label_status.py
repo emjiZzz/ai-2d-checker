@@ -51,6 +51,7 @@ from services.backend.infrastructure.learning.trainer import (  # noqa: E402
     MATCHER_FEEDBACK,
     VERDICT_ONE,
     VERDICT_ZERO,
+    majority_class_baseline,
 )
 
 # Above this share of label 0, a trained head's prior is negative enough that `p_true` clears
@@ -58,6 +59,12 @@ from services.backend.infrastructure.learning.trainer import (  # noqa: E402
 # Not a measured threshold — a stated convention, flagged as one, in the same spirit as
 # `min_structured_value_length`. Replace it with a measured value once held-out pairs exist.
 SKEW_WARN_SHARE = 0.65
+
+# Below this much accuracy over the majority-class baseline, the head is barely doing more than
+# predicting the common answer — which in SPATIAL_CATEGORIES is the suppressing answer. Also a
+# stated convention, not a measured one; it mirrors the 0.15 lift gate `retrieval/metrics.py`
+# applies to recall over its chance floor, which is the closest thing to a precedent here.
+MIN_MEANINGFUL_LIFT = 0.15
 
 
 def _bucket(verb: str | None) -> str:
@@ -152,7 +159,13 @@ def render(s: dict[str, Any]) -> None:
     print(f"    both classes        {'yes' if s['both_classes_present'] else 'NO - will not train'}")
 
     share = zeros / total if total else 0.0
+    baseline = majority_class_baseline({"0": zeros, "1": ones})
     print(f"\n  negative share        {share:.0%}")
+    if baseline is not None:
+        print(
+            f"  majority baseline     {baseline:.1%}   "
+            f"<- always answering '{'class 0' if zeros >= ones else 'class 1'}' scores this"
+        )
     if share > SKEW_WARN_SHARE:
         print(
             f"    ** SKEWED. At this balance a trained head clears LOW_THRESH "
@@ -186,6 +199,30 @@ def render(s: dict[str, Any]) -> None:
             f"    n_verdict {meta.get('n_verdict')}   n_category {meta.get('n_category')}   "
             f"metrics {meta.get('metrics') if meta.get('metrics') else '{} (inert)'}"
         )
+        # The accuracy is never shown alone. On this corpus a bare 0.733 reads as strong and is
+        # ten points over always-guessing, not seventy-three. Same rule `retrieval/metrics.py`
+        # enforces for recall against `chance_recall_at_k`.
+        bundle_metrics = meta.get("metrics") or {}
+        cv = bundle_metrics.get("verdict_cv_accuracy")
+        floor = bundle_metrics.get("verdict_majority_baseline")
+        if isinstance(cv, (int, float)):
+            if isinstance(floor, (int, float)):
+                lift = cv - floor
+                print(
+                    f"    cv accuracy {cv:.1%} against a {floor:.1%} majority baseline "
+                    f"= {lift:+.1%} of skill"
+                )
+                if lift < MIN_MEANINGFUL_LIFT:
+                    print(
+                        "    ** That lift is small. The head is close to just predicting the\n"
+                        "       majority class, which in SPATIAL_CATEGORIES means suppressing."
+                    )
+            else:
+                print(
+                    f"    cv accuracy {cv:.1%} - baseline not recorded (bundle predates it); "
+                    "retrain to get it"
+                )
+
         stale = meta.get("n_verdict") != total
         if stale:
             print(

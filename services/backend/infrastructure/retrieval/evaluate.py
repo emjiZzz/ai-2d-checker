@@ -17,12 +17,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import query as run_query
-from .index_builder import DOMAIN_RULES, LESSONS, STANDARDS, store_for
+from .index_builder import (
+    CORRECTIONS,
+    DOMAIN_RULES,
+    ENTITIES,
+    FINDINGS,
+    LESSONS,
+    STANDARDS,
+    VAULT,
+    store_for,
+)
 from .labels import LabelSet
 from .metrics import QueryOutcome, RetrievalScore, score_retrieval
 from .store import IndexStatus
 
-ALL_COLLECTIONS = (STANDARDS, DOMAIN_RULES, LESSONS)
+ALL_COLLECTIONS = (STANDARDS, DOMAIN_RULES, LESSONS, CORRECTIONS, FINDINGS, VAULT, ENTITIES)
 
 
 @dataclass(frozen=True)

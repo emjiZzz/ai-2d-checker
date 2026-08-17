@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useConnectionStore } from "./stores/connectionStore";
 import { useAuthStore } from "./stores/authStore";
 import { useThemeStore } from "./stores/themeStore";
@@ -34,6 +34,31 @@ function App() {
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  // Maximize window on login, restore on logout
+  const prevAuthenticated = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (isInitializing) return; // wait until session restore is complete
+    const justLoggedIn = !prevAuthenticated.current && isAuthenticated;
+    const justLoggedOut = prevAuthenticated.current && !isAuthenticated;
+    prevAuthenticated.current = isAuthenticated;
+
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return;
+
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        if (justLoggedIn) {
+          await win.maximize();
+        } else if (justLoggedOut) {
+          await win.unmaximize();
+        }
+      } catch (err) {
+        console.warn("Window resize after auth change failed:", err);
+      }
+    })();
+  }, [isAuthenticated, isInitializing]);
 
   // Sync TanStack Query onlineManager with backend connection health status
   useEffect(() => {

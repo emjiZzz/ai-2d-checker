@@ -73,6 +73,7 @@ const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v16";
 
 /** Width of the Comparison Results tabset, matching what the layout seed used to apply. */
 const LEFT_TABSET_WEIGHT = 15;
+const RIGHT_TABSET_WEIGHT = 15;
 const LEFT_TABSET_MIN_WIDTH = 220;
 
 interface TwoDWorkspaceProps {
@@ -633,7 +634,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     } else if (activeLayoutPreset === 'right') {
@@ -643,7 +644,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: 20, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     } else {
@@ -654,7 +655,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: 15, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     }

@@ -44,9 +44,12 @@ class Settings:
     LOG_LEVEL: str = os.getenv("SIDECAR_LOG_LEVEL", "INFO")
     STORAGE_ROOT: str = os.getenv("STORAGE_ROOT", "./storage")
     
-    # Database Configuration
+    # Database Configuration & Failover
     MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
+    MONGO_FALLBACK_URI: str = os.getenv("MONGO_FALLBACK_URI", "mongodb://127.0.0.1:27017")
     MONGO_DB_NAME: str = os.getenv("MONGO_DB_NAME", "ai_2d_checker")
+    ENABLE_DB_AUTO_SYNC: bool = os.getenv("ENABLE_DB_AUTO_SYNC", "true").lower() in ("1", "true", "yes")
+    DB_AUTO_SYNC_INTERVAL_SEC: int = int(os.getenv("DB_AUTO_SYNC_INTERVAL_SEC", "60"))
     
     # API Security Token
     API_TOKEN: str | None = os.getenv("API_TOKEN")

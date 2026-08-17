@@ -9,6 +9,18 @@ import { getLearnedModelStatus, retrainLearnedModel, type LearnedModelStatus } f
  * manual Retrain button. This is the honest cold-start surface: with few corrections the model
  * abstains and this panel says so.
  */
+/**
+ * Below this much accuracy over the majority-class baseline, the head is barely doing more than
+ * predicting the common answer. Mirrors `MIN_MEANINGFUL_LIFT` in `tools/label_status.py`, which
+ * in turn mirrors the 0.15 lift gate `retrieval/metrics.py` applies to recall over its chance
+ * floor. Hand-mirrored across the language boundary, like the comparison taxonomy — pinned by
+ * `LearningPanel.test.tsx`.
+ */
+export const MIN_MEANINGFUL_LIFT = 0.15;
+
+const numberOrNull = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
 export const LearningPanel: React.FC = () => {
   const [status, setStatus] = useState<LearnedModelStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +53,15 @@ export const LearningPanel: React.FC = () => {
   const nVerdict = status?.n_verdict ?? 0;
   const pct = minTrain > 0 ? Math.min(100, Math.round((nVerdict / minTrain) * 100)) : 0;
   const ready = !!status?.verdict_ready;
+
+  // Both come from the bundle the backend trained, never recomputed here: the panel and
+  // `tools/label_status.py` must not be able to disagree about what the model scored.
+  // `verdict_majority_baseline` was added 2026-08-17, so a bundle trained before that has the
+  // accuracy and no floor — rendered as the bare accuracy rather than a wrong comparison.
+  const cvAccuracy = numberOrNull(status?.metrics?.verdict_cv_accuracy);
+  const majorityBaseline = numberOrNull(status?.metrics?.verdict_majority_baseline);
+  const lift =
+    cvAccuracy !== null && majorityBaseline !== null ? cvAccuracy - majorityBaseline : null;
 
   return (
     <div className="bg-bg-card border border-border-color rounded-xl p-6 backdrop-blur-md shadow-sm">
@@ -96,10 +117,33 @@ export const LearningPanel: React.FC = () => {
 
           <div className="text-[10px] text-text-muted font-mono">
             Last trained: {status.trained_at ? new Date(status.trained_at).toLocaleString() : "never"}
-            {status.metrics && typeof status.metrics.verdict_cv_accuracy === "number" && (
-              <> · CV accuracy: {(status.metrics.verdict_cv_accuracy * 100).toFixed(1)}%</>
+            {typeof cvAccuracy === "number" && (
+              <> · CV accuracy: {(cvAccuracy * 100).toFixed(1)}%</>
+            )}
+            {typeof cvAccuracy === "number" && typeof majorityBaseline === "number" && (
+              <>
+                {" "}
+                vs {(majorityBaseline * 100).toFixed(1)}% baseline (
+                {lift !== null && lift >= 0 ? "+" : ""}
+                {lift !== null ? (lift * 100).toFixed(1) : "?"}%)
+              </>
             )}
           </div>
+
+          {/*
+            The accuracy is never shown alone. On the live corpus (71 class-0 against 41 class-1)
+            always answering "not a real change" scores 63.4%, so a bare "73.3% accuracy" reads as
+            strong when it is ten points of skill. Same rule the retrieval side already enforces,
+            where every rate is printed beside its chance floor.
+          */}
+          {typeof lift === "number" && lift < MIN_MEANINGFUL_LIFT && (
+            <div className="text-[10px] text-amber-400/90 leading-relaxed">
+              The model is only {(lift * 100).toFixed(1)}% better than always predicting the
+              majority answer. In drawing views, notes and isometric views that answer is
+              &ldquo;no change&rdquo;, so a weak head suppresses findings rather than filtering
+              noise.
+            </div>
+          )}
         </div>
       )}
     </div>

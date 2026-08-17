@@ -38,10 +38,16 @@
 > `eval_corpus.py worksheet` **cannot place a DIMENSION** (reads `insert`, dimensions carry
 > `def_point`), displaying a comparable entity with the two marks the guideline treats as *ignore*.
 >
-> 🔴 **`pytest` is NOT green — 5 pre-existing failures** in `test_label_status`,
-> `test_lessons_index_write_path` and `test_matcher_feedback` (feedback/correction-verb area).
-> Verified pre-existing, not caused by the v50 fix. The "Known pre-existing test failures: **None**"
-> section below is **stale** — fix those or update it before trusting it.
+> ✅ **`pytest` is green again — 1180 passed, 3 skipped, 0 failed (2026-08-17).** The 5 failures
+> this block previously called "pre-existing" were **not**: `git log -L` puts all five in
+> `9336601`, one commit old, and the test catching one of them predates it. Two regressions, both
+> fixed — `trainer.VERDICT_ZERO` had swallowed the two `mispaired_*` verbs in contradiction of the
+> `MATCHER_FEEDBACK` block 16 lines below it (32 rows into the suppression class; inert only
+> because `MIN_MINORITY_SHARE` abstained), and `review_violation`'s new feedback bridge re-opened
+> a swallow a test already pinned. See
+> [[Gotcha - A Verdict Mapping That Contradicted Its Own Comment]].
+> ⚠ **The lesson is about this block, not the bug**: an inherited "pre-existing" label is a claim,
+> and it went unchecked for the one commit in which it was false. Verify before inheriting it.
 >
 > ⚠ **A full `tools/eval.py` run no longer reproduces the committed baselines, and that is the
 > corpus growing, not a regression.** Use `--provenance mutation` for the invariant — it
@@ -398,9 +404,12 @@ contract; the suites grow.** (Until 2026-08-11 `pyproject.toml`'s `addopts` carr
 documented `pytest tests/ -q` resolved to `-qq` and printed **no totals line at all** — the one
 command the docs recommended was the one that could not report a result. `-q` has been removed
 from `addopts`; the command below now prints a count.)
-- `pytest` — **994 passed, 3 skipped, 0 failed.** The 3 skips are deliberate rung gates in
-  `tests/test_maturity_ledger.py`, not failures.
-- `npx vitest run` — **333 passed across 30 files.**
+- `pytest` — **1239 passed, 3 skipped, 0 failed** (measured 2026-08-17). The 3 skips are
+  deliberate rung gates in `tests/test_maturity_ledger.py`, not failures.
+  ⚠ `tests/test_phase4_audit_pipeline.py` alone takes **~3 minutes** and its runtime swings
+  between runs — it appears to make a real network call. Pre-existing (verified by timing it
+  against a stashed working tree), and worth `--ignore`-ing for a fast inner loop.
+- `npx vitest run` — **408 passed across 35 files.**
 - `npx tsc --noEmit` — **0 errors** (now also gated in CI; it previously ran only over the shared
   types package, so `apps/desktop` was unenforced on merge).
 

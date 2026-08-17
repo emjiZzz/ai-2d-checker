@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LogOut, Minus, Square, X, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
+import { LogOut, Minus, Square, X, Compass, Bookmark, History, Settings, Box, Columns, PanelLeft, PanelRight, Database, type LucideIcon } from "lucide-react";
 import kmtiLogo from "../assets/kmti_logo.png";
 import { useAuthStore } from "../stores/authStore";
 import { useNavStore } from "../stores/navStore";
 import { useReviewStore } from "../stores/reviewStore";
 import { useRoomStore } from "../stores/roomStore";
+import { ClusterUpgradeModal } from "./admin/ClusterUpgradeModal";
+import { fetchDatabaseStatus, DatabaseStatusResponse } from "../services/databaseApi";
 
 type NavKey = "workspace" | "3d-workspace" | "standards" | "history" | "settings";
 
@@ -44,7 +46,34 @@ export const AppHeader: React.FC = () => {
   const activeRoom = useRoomStore(s => s.activeRoom);
 
   const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [dbStatus, setDbStatus] = useState<DatabaseStatusResponse | null>(null);
   const layoutMenuRef = useRef<HTMLDivElement>(null);
+
+  const loadDbStatus = async () => {
+    if (user?.role === "admin") {
+      try {
+        const res = await fetchDatabaseStatus();
+        if (res?.connected) {
+          setDbStatus(res);
+        }
+      } catch {
+        // Silently ignore if backend is still initializing
+      }
+    }
+  };
+
+  useEffect(() => {
+    loadDbStatus();
+    (window as any).__openClusterUpgradeModal = () => {
+      setIsUpgradeModalOpen(true);
+    };
+    const interval = setInterval(loadDbStatus, 45000);
+    return () => {
+      delete (window as any).__openClusterUpgradeModal;
+      clearInterval(interval);
+    };
+  }, [user?.role, isAuthenticated]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -166,6 +195,26 @@ export const AppHeader: React.FC = () => {
               </div>
             )}
 
+            {/* Admin Cloud Cluster Storage Badge */}
+            {user?.role === "admin" && dbStatus?.storage && (
+              <button
+                onClick={() => setIsUpgradeModalOpen(true)}
+                title="MongoDB Atlas Cluster Storage (Admin View) — Click to view capacity & upgrade details"
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all duration-150 ${
+                  dbStatus.storage.is_warning
+                    ? "bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25 animate-pulse"
+                    : dbStatus.mode === "cloud_primary"
+                    ? "bg-amber-500/10 border-amber-500/25 text-amber-300 hover:bg-amber-500/20"
+                    : "bg-emerald-500/10 border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/20"
+                }`}
+              >
+                <Database size={12} className={dbStatus.storage.is_warning ? "text-rose-400" : "text-amber-400"} />
+                <span className="font-mono text-[10px] font-bold">
+                  {dbStatus.mode === "cloud_primary" ? `${dbStatus.storage.data_size_mb} MB / 512 MB` : "Local DB"}
+                </span>
+              </button>
+            )}
+
             {/* Actions */}
             <button
               onClick={() => logout()}
@@ -199,6 +248,17 @@ export const AppHeader: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Admin Cluster Upgrade Modal */}
+      {(user?.role === "admin" || isUpgradeModalOpen) && (
+        <ClusterUpgradeModal
+          isOpen={isUpgradeModalOpen}
+          onClose={() => setIsUpgradeModalOpen(false)}
+          storage={dbStatus?.storage ?? null}
+          mode={dbStatus?.mode ?? "cloud_primary"}
+          onRefresh={loadDbStatus}
+        />
+      )}
     </div>
   );
 };

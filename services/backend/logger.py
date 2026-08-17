@@ -83,6 +83,21 @@ def setup_logger() -> logging.Logger:
     log_dir.mkdir(parents=True, exist_ok=True)
     
     # 1. Stdout Console Handler
+    #
+    # ⚠ stdout is reconfigured to replace unencodable characters first. This console is **cp932**
+    # on the development machine, and cp932 cannot encode an em-dash — which this codebase's log
+    # messages are full of. Every such line raised `UnicodeEncodeError` inside `Handler.emit`,
+    # which logging swallows by printing "--- Logging error ---" plus a full traceback to stderr:
+    # the log line is lost and replaced by noise, in the handler whose job is to report problems.
+    # `tools/retrieval_eval.py` has carried this guard for months, citing
+    # [[Gotcha - Our Own Punctuation Broke on the cp932 Console]]; the server's own logger never
+    # got it. The file handler is already `encoding="utf-8"` and was never affected, so the
+    # failure was console-only and therefore invisible in the logs someone would go read.
+    try:
+        sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):  # pragma: no cover - not a tty, or already wrapped
+        pass
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(ConsoleFormatter())
     logger.addHandler(console_handler)

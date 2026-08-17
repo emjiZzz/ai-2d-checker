@@ -10,69 +10,69 @@ tags: [learned-model, hitl]
 > folder; this note is the human-readable summary. Trained purely on human corrections —
 > no LLM involved.
 
-- **Last trained**: 2026-08-17T02:37:43.054561+00:00
-- **Total corrections**: 104
-- **Verdict labels**: 92  (thresholds to activate: 40 labels **and** ≥30.0% minority class)
-- **Category labels**: 6
-- **Verdict model**: ⛔ held — count met (92/40) but the minority class is 13.0% against a 30.0% floor. Needs `confirmed_valid` / `verdict_changed`, not more `dismissed`.
-- **Exact-match overrides**: 52 matched, 3 changed, 6 reclassified
+- **Last trained**: 2026-08-17T07:48:42.809282+00:00
+- **Total corrections**: 228
+- **Verdict labels**: 112  (thresholds to activate: 40 labels **and** ≥30.0% minority class)
+- **Category labels**: 7
+- **Verdict model**: ✅ active
+- **Exact-match overrides**: 38 matched, 24 changed, 7 reclassified
 
 ## Metrics
 ```json
-{'verdict_abstained': {'reason': 'class_imbalance', 'minority_share': 0.1304, 'required': 0.3, 'detail': "92 labels meet MIN_TRAIN=40, but the minority class is 13.0% of the corpus against a 30.0% floor. Add class-1 corrections (confirmed_valid, verdict_changed); more 'dismissed' makes this worse."}, 'verdict_class_balance': {'0': 80, '1': 12}, 'verdict_minority_share': 0.1304}
+{'verdict_cv_accuracy': 0.7328, 'verdict_class_balance': {'0': 71, '1': 41}, 'verdict_minority_share': 0.3661, 'verdict_majority_baseline': 0.6339}
 ```
 
 ## Sample of learned "not a real change" patterns
+- `notes_section|[removed]originalelementmissingintrace:c2`
 - `title_block|jobno(jobnumber)`
-- `title_block|0`
-- `drawing_views|a`
-- `bill_of_materials|0.39`
-- `drawing_views|271`
-- `drawing_views|geometry:4line,1polyline`
-- `drawing_views|279`
+- `drawing_views|総厚サ6mm`
+- `drawing_views|145`
+- `drawing_views|1`
+- `drawing_views|center0.25mm`
+- `drawing_views|continuous1mmx1`
+- `title_block|field`
+- `title_block|revision`
 - `drawing_views|none`
-- `drawing_views|center0.25mmx5`
-- `title_block|stockqty(stockqty)`
 
 ## Changelog
-- 2026-08-17T02:37:43.054561+00:00 — trained on 104 corrections (verdict labels: 92, category labels: 6); verdict model HELD (class imbalance, minority 13.0%).
-- 2026-08-17T02:37:17.053895+00:00 — trained on 103 corrections (verdict labels: 91, category labels: 6); verdict model HELD (class imbalance, minority 13.2%).
-- 2026-08-17T02:36:46.937383+00:00 — trained on 102 corrections (verdict labels: 90, category labels: 6); verdict model HELD (class imbalance, minority 13.3%).
-- 2026-08-17T02:36:44.398566+00:00 — trained on 103 corrections (verdict labels: 91, category labels: 6); verdict model HELD (class imbalance, minority 13.2%).
-- 2026-08-17T02:36:39.248343+00:00 — trained on 102 corrections (verdict labels: 90, category labels: 6); verdict model HELD (class imbalance, minority 13.3%).
-- 2026-08-17T02:36:35.843602+00:00 — trained on 103 corrections (verdict labels: 91, category labels: 6); verdict model HELD (class imbalance, minority 13.2%).
-- 2026-08-17T02:36:05.672459+00:00 — trained on 102 corrections (verdict labels: 90, category labels: 6); verdict model HELD (class imbalance, minority 13.3%).
-- 2026-08-17T02:09:54.754206+00:00 — trained on 101 corrections (verdict labels: 89, category labels: 6); verdict model HELD (class imbalance, minority 13.5%).
-- 2026-08-17T02:09:34.420927+00:00 — trained on 100 corrections (verdict labels: 88, category labels: 6); verdict model HELD (class imbalance, minority 13.6%).
-- 2026-08-17T01:58:07.759987+00:00 — trained on 99 corrections (verdict labels: 87, category labels: 6); verdict model HELD (class imbalance, minority 13.8%).
-- 2026-08-17T01:57:57.725143+00:00 — trained on 98 corrections (verdict labels: 86, category labels: 6); verdict model HELD (class imbalance, minority 14.0%).
-- 2026-08-17T01:16:35.687250+00:00 — trained on 97 corrections (verdict labels: 85, category labels: 6); verdict model HELD (class imbalance, minority 14.1%).
-- 2026-08-17T01:05:42.900285+00:00 — trained on 96 corrections (verdict labels: 84, category labels: 6); verdict model HELD (class imbalance, minority 14.3%).
-- 2026-08-17T01:05:24.963496+00:00 — trained on 95 corrections (verdict labels: 83, category labels: 6); verdict model HELD (class imbalance, minority 13.2%).
-- 2026-08-17T01:05:23.640202+00:00 — trained on 94 corrections (verdict labels: 82, category labels: 6); verdict model HELD (class imbalance, minority 13.4%).
-- 2026-08-17T01:05:22.189738+00:00 — trained on 93 corrections (verdict labels: 81, category labels: 6); verdict model HELD (class imbalance, minority 13.6%).
-- 2026-08-17T01:05:21.550491+00:00 — trained on 92 corrections (verdict labels: 80, category labels: 6); verdict model HELD (class imbalance, minority 13.8%).
-- 2026-08-17T01:03:45.112409+00:00 — trained on 91 corrections (verdict labels: 79, category labels: 6); verdict model HELD (class imbalance, minority 13.9%).
-- 2026-08-17T01:02:42.295004+00:00 — trained on 90 corrections (verdict labels: 78, category labels: 6); verdict model HELD (class imbalance, minority 14.1%).
-- 2026-08-17T01:01:44.936234+00:00 — trained on 89 corrections (verdict labels: 77, category labels: 6); verdict model HELD (class imbalance, minority 14.3%).
-- 2026-08-17T00:59:56.965398+00:00 — trained on 88 corrections (verdict labels: 76, category labels: 6); verdict model HELD (class imbalance, minority 14.5%).
-- 2026-08-17T00:59:53.406303+00:00 — trained on 87 corrections (verdict labels: 75, category labels: 6); verdict model HELD (class imbalance, minority 14.7%).
-- 2026-08-17T00:59:50.488012+00:00 — trained on 86 corrections (verdict labels: 74, category labels: 6); verdict model HELD (class imbalance, minority 14.9%).
-- 2026-08-17T00:59:47.987655+00:00 — trained on 87 corrections (verdict labels: 75, category labels: 6); verdict model HELD (class imbalance, minority 14.7%).
-- 2026-08-17T00:41:56.533317+00:00 — trained on 86 corrections (verdict labels: 47, category labels: 6); verdict model HELD (class imbalance, minority 23.4%).
-- 2026-08-17T00:39:15.044440+00:00 — trained on 86 corrections (verdict labels: 47, category labels: 6); verdict model HELD (class imbalance, minority 23.4%).
-- 2026-08-17T00:36:36.768238+00:00 — trained on 85 corrections (verdict labels: 47, category labels: 6); verdict model HELD (class imbalance, minority 23.4%).
-- 2026-08-17T00:36:35.952734+00:00 — trained on 84 corrections (verdict labels: 46, category labels: 6); verdict model HELD (class imbalance, minority 23.9%).
-- 2026-08-17T00:36:34.943809+00:00 — trained on 83 corrections (verdict labels: 45, category labels: 6); verdict model HELD (class imbalance, minority 24.4%).
-- 2026-08-17T00:35:46.869023+00:00 — trained on 82 corrections (verdict labels: 44, category labels: 6); verdict model HELD (class imbalance, minority 25.0%).
-- 2026-08-17T00:35:45.655183+00:00 — trained on 81 corrections (verdict labels: 43, category labels: 6); verdict model HELD (class imbalance, minority 25.6%).
-- 2026-08-17T00:35:33.824087+00:00 — trained on 80 corrections (verdict labels: 42, category labels: 6); verdict model HELD (class imbalance, minority 26.2%).
-- 2026-08-17T00:35:32.370751+00:00 — trained on 79 corrections (verdict labels: 41, category labels: 6); verdict model HELD (class imbalance, minority 24.4%).
-- 2026-08-16T23:58:44.393592+00:00 — trained on 78 corrections (verdict labels: 40, category labels: 6); verdict model HELD (class imbalance, minority 25.0%).
-- 2026-08-11T09:47:41.387275+00:00 — trained on 77 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
-- 2026-08-11T09:47:37.921118+00:00 — trained on 76 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
-- 2026-08-11T09:47:32.518090+00:00 — trained on 75 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
-- 2026-08-11T09:46:26.469406+00:00 — trained on 74 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
-- 2026-08-11T09:45:47.712569+00:00 — trained on 73 corrections (verdict labels: 39, category labels: 6); verdict model warming up.
-- 2026-08-11T02:52:40.031702+00:00 — trained on 72 corrections (verdict labels: 38, category labels: 6); verdict model warming up.
-- 2026-08-11T02:52:37.499571+00:00 — trained on 71 corrections (verdict labels: 37, category labels: 6); verdict model warming up.
+- 2026-08-17T07:48:42.809282+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T07:22:50.609252+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T07:17:12.433648+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:34:23.418084+00:00 — trained on 227 corrections (verdict labels: 111, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:34:15.709270+00:00 — trained on 226 corrections (verdict labels: 110, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:34:04.477982+00:00 — trained on 225 corrections (verdict labels: 109, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:33:55.987961+00:00 — trained on 224 corrections (verdict labels: 108, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:33:40.861086+00:00 — trained on 223 corrections (verdict labels: 107, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:33:19.508310+00:00 — trained on 222 corrections (verdict labels: 106, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:33:11.519819+00:00 — trained on 221 corrections (verdict labels: 106, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:32:15.556150+00:00 — trained on 220 corrections (verdict labels: 106, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:32:07.529461+00:00 — trained on 219 corrections (verdict labels: 106, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:31:59.998149+00:00 — trained on 218 corrections (verdict labels: 106, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:31:49.707479+00:00 — trained on 217 corrections (verdict labels: 106, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:31:39.308661+00:00 — trained on 216 corrections (verdict labels: 105, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:31:31.374973+00:00 — trained on 215 corrections (verdict labels: 104, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:31:15.915478+00:00 — trained on 214 corrections (verdict labels: 103, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:31:08.782606+00:00 — trained on 213 corrections (verdict labels: 102, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:30:50.543631+00:00 — trained on 212 corrections (verdict labels: 102, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:30:36.925685+00:00 — trained on 211 corrections (verdict labels: 102, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:30:29.063609+00:00 — trained on 212 corrections (verdict labels: 103, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:30:14.874099+00:00 — trained on 211 corrections (verdict labels: 102, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:30:03.773967+00:00 — trained on 210 corrections (verdict labels: 102, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:29:47.957172+00:00 — trained on 209 corrections (verdict labels: 102, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T06:29:29.730975+00:00 — trained on 208 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:29:26.565517+00:00 — trained on 207 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:29:22.933707+00:00 — trained on 206 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:29:19.836826+00:00 — trained on 205 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:29:00.251970+00:00 — trained on 204 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:28:56.804677+00:00 — trained on 203 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:28:51.529958+00:00 — trained on 202 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:28:46.876692+00:00 — trained on 201 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:28:39.024391+00:00 — trained on 200 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:28:06.128353+00:00 — trained on 199 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:28:03.230686+00:00 — trained on 198 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:27:57.380201+00:00 — trained on 197 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:27:53.629119+00:00 — trained on 196 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:27:50.433196+00:00 — trained on 195 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:27:47.918459+00:00 — trained on 194 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:27:42.910959+00:00 — trained on 193 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
+- 2026-08-17T06:27:13.772527+00:00 — trained on 192 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).

@@ -192,6 +192,70 @@ class LabelSet:
             )
 
 
+def synthetic_label_set(
+    collection: str,
+    root: Path | None = None,
+    limit: int | None = None,
+) -> LabelSet:
+    """A circular label set from the index's own records — **a smoke test, never evidence.**
+
+    Each chunk's own heading becomes the query and its own id the answer, which is exactly the
+    construction the guideline forbids for real labels: *"a query written by reading the answer
+    measures nothing"*. That is the point. It exercises the whole scoring path — index load,
+    encoder, ranking, gate arithmetic, report rendering — so a defect there is found before
+    an annotator spends hours, rather than after.
+
+    Every label is stamped `provenance: synthetic`, so `LabelSet.scored()` excludes them unless
+    `include_synthetic=True` is passed explicitly, and `RetrievalScore.informative` is False
+    whenever they were scored. This function existed only as a description in
+    [[Retrieval Annotation Guideline]] until 2026-08-17 — the guideline documented a smoke test
+    with no implementation, so the one cheap check available before labelling could not be run.
+
+    Records with no `section` are skipped: their heading is what becomes the query, and a label
+    with an empty query is not a test of anything.
+    """
+    from .index_builder import store_for  # noqa: PLC0415 — avoids an import cycle
+    from .store import IndexStatus  # noqa: PLC0415
+
+    store = store_for(collection, root)
+    # `records` is a property backed by `_records`, which only `load()` populates — reading it
+    # on an unloaded store silently yields an empty list, i.e. a label set of zero labels that
+    # scores as a perfect nothing.
+    status = store.load()
+    if status is not IndexStatus.OK:
+        raise LabelError(
+            f"Cannot generate smoke labels for '{collection}': the index reports {status}. "
+            f"Build it first — a generated label set over an unusable index would be an empty "
+            f"file rather than an error."
+        )
+    manifest = store.manifest()
+    records = store.records
+
+    labels: list[RetrievalLabel] = []
+    for i, record in enumerate(records, start=1):
+        heading = (record.section or "").strip()
+        if not heading:
+            continue
+        labels.append(
+            RetrievalLabel(
+                query_id=f"s{i:04d}",
+                query=heading,
+                relevant_ids=[record.id],
+                provenance=Provenance.SYNTHETIC,
+                note="generated from the chunk's own heading; circular by construction",
+            )
+        )
+        if limit is not None and len(labels) >= limit:
+            break
+
+    return LabelSet(
+        collection=collection,
+        guideline_version=GUIDELINE_VERSION,
+        source_digest=manifest.source_digest if manifest else "",
+        labels=labels,
+    )
+
+
 def default_labels_path(collection: str) -> Path:
     repo_root = Path(__file__).resolve().parents[4]
     return repo_root / "tests" / "fixtures" / "retrieval" / f"labels-{collection}.json"

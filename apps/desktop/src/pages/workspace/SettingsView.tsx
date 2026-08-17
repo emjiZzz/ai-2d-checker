@@ -2,13 +2,17 @@ import React from "react";
 import { Moon, Sun, Check } from "lucide-react";
 import { SystemDiagnostics } from "../../components/SystemDiagnostics";
 import { LearningPanel } from "../../components/settings/LearningPanel";
+import { DatabaseClusterPanel } from "../../components/admin/DatabaseClusterPanel";
 import { useThemeStore } from "../../stores/themeStore";
+import { useAuthStore } from "../../stores/authStore";
 
 /**
  * SettingsView — User Preferences, Compliance Settings form, Active Learning, and live System Connection panel.
  */
 export const SettingsView: React.FC = () => {
   const { theme, setTheme } = useThemeStore();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
 
   return (
     <main className="flex-grow h-full min-h-0 overflow-y-auto bg-bg-dark py-8 px-8 box-border">
@@ -96,6 +100,13 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="mt-8">
+          <h2 className="text-xl font-extrabold text-text-primary m-0 tracking-tight mb-4">Cloud Database Cluster</h2>
+          <DatabaseClusterPanel />
+        </div>
+      )}
 
       <div className="mt-8">
         <h2 className="text-xl font-extrabold text-text-primary m-0 tracking-tight mb-4">Active Learning</h2>

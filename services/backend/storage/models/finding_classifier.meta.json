@@ -1,21 +1,17 @@
 {
   "schema": 1,
-  "trained_at": "2026-08-17T02:37:43.054561+00:00",
-  "n_total": 104,
-  "n_verdict": 92,
-  "n_category": 6,
+  "trained_at": "2026-08-17T07:48:42.809282+00:00",
+  "n_total": 228,
+  "n_verdict": 112,
+  "n_category": 7,
   "min_train": 40,
   "metrics": {
-    "verdict_abstained": {
-      "reason": "class_imbalance",
-      "minority_share": 0.1304,
-      "required": 0.3,
-      "detail": "92 labels meet MIN_TRAIN=40, but the minority class is 13.0% of the corpus against a 30.0% floor. Add class-1 corrections (confirmed_valid, verdict_changed); more 'dismissed' makes this worse."
-    },
+    "verdict_cv_accuracy": 0.7328,
     "verdict_class_balance": {
-      "0": 80,
-      "1": 12
+      "0": 71,
+      "1": 41
     },
-    "verdict_minority_share": 0.1304
+    "verdict_minority_share": 0.3661,
+    "verdict_majority_baseline": 0.6339
   }
 }

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -105,8 +106,17 @@ def save_bundle(bundle: dict) -> None:
     # Deliberately `learned_model_dir()`, not `model_path()`: a retrain always writes to the
     # current location even when the bundle it replaces was read from the vault. That is
     # what makes the migration happen by itself rather than needing a script.
+    #
+    # ⚠ Written to a temp file and renamed, never in place. `os.replace` is atomic, so a reader
+    # sees either the whole previous bundle or the whole new one and never a half-written file.
+    # Two retrains can overlap (they are queued from `BackgroundTasks` and their CPU half runs in
+    # a worker thread), and `LearnedModelHolder.reload()` reads this path from a different thread
+    # again — an in-place `joblib.dump` had all three of writer/writer and writer/reader races.
     target = learned_model_dir() / config.MODEL_FILENAME
-    joblib.dump(bundle, target)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    joblib.dump(bundle, tmp)
+    os.replace(tmp, target)
+
     meta = {
         k: bundle.get(k)
         for k in (
@@ -119,8 +129,11 @@ def save_bundle(bundle: dict) -> None:
             "metrics",
         )
     }
-    with open(meta_path(), "w", encoding="utf-8") as f:
+    meta_target = meta_path()
+    meta_tmp = meta_target.with_suffix(meta_target.suffix + ".tmp")
+    with open(meta_tmp, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2, default=str)
+    os.replace(meta_tmp, meta_target)
 
 
 def _empty_bundle() -> dict:
@@ -154,25 +167,45 @@ class LearnedModelHolder:
         return cls._instance
 
     def reload(self) -> None:
-        """Force a re-read of the persisted bundle (call after a retrain)."""
-        self._loaded = False
-        self._bundle = None
-        _ = self.bundle
+        """Force a re-read of the persisted bundle (call after a retrain).
+
+        ⚠ The re-read happens into a local and is published in a single assignment. Clearing
+        `_bundle` first and then loading leaves a window in which a concurrent reader — inference
+        runs on the event loop while a retrain reloads from a worker thread — sees `_loaded=True`
+        with `_bundle=None` and silently skips the learned adjustment for that comparison.
+        Degraded rather than wrong, but invisible, which is the worse property.
+        """
+        fresh = self._read_bundle()
+        self._bundle = fresh
+        self._loaded = True
+
+    @staticmethod
+    def _read_bundle() -> Optional[dict]:
+        """Read the persisted bundle, or None. One read path, used by both entry points.
+
+        Broad `except` on purpose: a bundle that cannot be read must leave learning inactive
+        rather than take the app down, and the failure modes are open-ended — a truncated
+        joblib, a version mismatch, a permissions error. It logs what it caught.
+        """
+        try:
+            p = model_path()
+            if not p.exists():
+                return None
+            loaded = joblib.load(p)
+            logger.info(
+                f"[learning] Loaded model bundle from {p} "
+                f"(trained_at={loaded.get('trained_at')})."
+            )
+            return loaded
+        except Exception as err:  # noqa: BLE001 — see docstring
+            logger.warning(f"[learning] Failed to load model bundle, learning inactive: {err}")
+            return None
 
     @property
     def bundle(self) -> Optional[dict]:
         if not self._loaded:
+            self._bundle = self._read_bundle()
             self._loaded = True
-            try:
-                p = model_path()
-                if p.exists():
-                    self._bundle = joblib.load(p)
-                    logger.info(f"[learning] Loaded model bundle from {p} (trained_at={self._bundle.get('trained_at')}).")
-                else:
-                    self._bundle = None
-            except Exception as err:
-                logger.warning(f"[learning] Failed to load model bundle, learning inactive: {err}")
-                self._bundle = None
         return self._bundle
 
     # --- readiness gates -------------------------------------------------

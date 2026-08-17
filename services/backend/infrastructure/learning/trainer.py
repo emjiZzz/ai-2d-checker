@@ -7,7 +7,10 @@ Model Card that the user actually reads in Obsidian.
 """
 from __future__ import annotations
 
+import asyncio
+import time
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -24,8 +27,12 @@ except Exception:  # pragma: no cover
     logger = logging.getLogger("learning.trainer")
 
 # Verdict label mapping. Label 1 == "this IS a true discrepancy", label 0 == "not a real
-# discrepancy / false alarm / actually matched / badly paired".
-VERDICT_ZERO = {"dismissed", "verdict_matched", "mispaired_missing_counterpart", "mispaired_wrong_match"}
+# discrepancy / false alarm / actually matched".
+#
+# ⚠ Do NOT add a `mispaired_*` verb here. "Badly paired" is not a verdict, and the reasoning is
+# in MATCHER_FEEDBACK below — read it before editing this line. That addition was made once,
+# and it silently routes the corpus's single most-used verb into the suppression direction.
+VERDICT_ZERO = {"dismissed", "verdict_matched"}
 VERDICT_ONE = {"confirmed_valid", "verdict_changed", "confirmed_change"}
 
 # Pairing feedback: the human says the engine matched the wrong two entities, or missed a
@@ -43,6 +50,11 @@ VERDICT_ONE = {"confirmed_valid", "verdict_changed", "confirmed_change"}
 # already paid off on: by the time the model is worth building, the data is there.
 MATCHER_FEEDBACK = {"mispaired_missing_counterpart", "mispaired_wrong_match"}
 
+#: A retrain slower than this is logged loudly. Not a failure — it runs off the loop now — but
+#: `_cv_accuracy` scales with the corpus and this is the number that would otherwise creep back
+#: up unobserved until someone noticed the app was sluggish again.
+SLOW_TRAIN_SECONDS = 5.0
+
 
 def _snapshot_of(doc: Any) -> dict:
     snap = getattr(doc, "finding_snapshot", None)
@@ -55,6 +67,26 @@ def _snapshot_of(doc: Any) -> dict:
         "category": getattr(doc, "category", None),
         "det_status": getattr(doc, "original_status", None),
     }
+
+
+def majority_class_baseline(balance: Mapping[str, int]) -> Optional[float]:
+    """Accuracy of a model that always predicts the most common class. **The floor.**
+
+    `verdict_cv_accuracy` is meaningless on its own, and on this corpus it is actively
+    misleading: at 71 class-0 against 41 class-1, always answering *"not a real change"* scores
+    **0.634**. A reported 0.733 is therefore about **ten points of skill**, not seventy-three —
+    and a reader who does not know the split has no way to tell those apart.
+
+    This is the same rule `retrieval/metrics.py` already enforces for recall, where every rate is
+    printed beside `chance_recall_at_k` and a verdict is withheld unless the lift clears 0.15.
+    The retrieval side learned it; the learning side reported a bare accuracy for months.
+
+    Returns None for an empty corpus — no labels, no floor, rather than a misleading 0.0.
+    """
+    total = sum(balance.values())
+    if not total:
+        return None
+    return round(max(balance.values()) / total, 4)
 
 
 def _cv_accuracy(rows: list[dict], labels: list) -> Optional[float]:
@@ -167,6 +199,10 @@ def build_bundle(docs: list) -> dict:
 
     metrics["verdict_class_balance"] = balance
     metrics["verdict_minority_share"] = round(minority_share, 4)
+    # Recorded whether or not the head activated, and **always beside the accuracy** — see
+    # `majority_class_baseline` for why a bare accuracy figure over an unbalanced corpus reads
+    # far stronger than it is.
+    metrics["verdict_majority_baseline"] = majority_class_baseline(balance)
 
     category_clf = None
     if len(cat_labels) >= config.CATEGORY_MIN_TRAIN and len(set(cat_labels)) >= 2:
@@ -278,24 +314,71 @@ tags: [learned-model, hitl]
         logger.warning(f"[learning] Failed to write Model Card: {err}")
 
 
-async def train_from_feedback() -> dict:
-    """Fetch all feedback, train, persist bundle + card, and hot-reload the in-process model.
+#: Serialises retrains. Two corrections clicked close together queue two background tasks, and
+#: both would otherwise fit a model and write `finding_classifier.joblib` + `.meta.json` at the
+#: same time — from two *threads*, since the CPU half is offloaded. The writes are atomic now, so
+#: the worst case is a wasted fit rather than a corrupt bundle; the lock removes the waste and
+#: makes "the last correction wins" true rather than approximately true.
+_TRAIN_LOCK = asyncio.Lock()
 
-    Returns the same shape as LearnedModelHolder.status() so callers can report it.
-    """
-    from ...domain.models.audit_feedback import AuditFeedbackDocument
 
-    docs = await AuditFeedbackDocument.find_all().to_list()
-    docs.sort(key=lambda d: getattr(d, "created_at", None) or datetime.min.replace(tzinfo=timezone.utc))
-
+def _train_sync(docs: list) -> tuple[dict, dict]:
+    """The whole CPU-bound and disk-bound half of a retrain. **Runs in a worker thread.**"""
     bundle = build_bundle(docs)
     save_bundle(bundle)
     _write_model_card(bundle)
     holder = LearnedModelHolder.get_instance()
     holder.reload()
+    return bundle, holder.status()
+
+
+async def train_from_feedback() -> dict:
+    """Fetch all feedback, train, persist bundle + card, and hot-reload the in-process model.
+
+    Returns the same shape as LearnedModelHolder.status() so callers can report it.
+
+    ⚠ **Everything after the fetch runs in a worker thread, and that is load-bearing rather than
+    tidy.** `build_bundle` fits a classifier and then cross-validates it — `_cv_accuracy` runs a
+    3-fold `StratifiedKFold`, fitting a model per fold and calling `predict_one` per test row.
+    Measured on the live corpus at 112 verdict labels: **7.2 s, every call.**
+
+    This is called from `BackgroundTasks`, which runs an async task **on the event loop**, so
+    before this change a single verdict blocked the whole backend for those 7.2 seconds. The
+    desktop app polls `/health` every 5 s and aborts at 3 s
+    (`connectionStore.checkHealth`), so every verdict produced a "Connection Lost" and a
+    reconnect.
+
+    **It only started happening when the verdict head crossed its activation threshold**, because
+    `_cv_accuracy` is inside the branch that only runs once `minority_share >= MIN_MINORITY_SHARE`.
+    Below it `build_bundle` abstains and returns in milliseconds — so the cost arrived with the
+    milestone, not with a code change, which is why nothing flagged it.
+
+    Same rule `infrastructure/retrieval/service.py` already states for indexing: *"All CPU work is
+    offloaded, because fitting a vocabulary over the corpus blocks the event loop for its whole
+    duration."* The retrieval layer learned this; the learning layer had not.
+    """
+    from ...domain.models.audit_feedback import AuditFeedbackDocument
+
+    async with _TRAIN_LOCK:
+        docs = await AuditFeedbackDocument.find_all().to_list()
+        docs.sort(
+            key=lambda d: getattr(d, "created_at", None)
+            or datetime.min.replace(tzinfo=timezone.utc)
+        )
+
+        started = time.perf_counter()
+        bundle, status = await asyncio.to_thread(_train_sync, docs)
+        elapsed = time.perf_counter() - started
+
     logger.info(
-        f"[learning] Retrained: {bundle.get('n_total')} corrections "
+        f"[learning] Retrained in {elapsed:.2f}s (off-loop): {bundle.get('n_total')} corrections "
         f"(verdict={bundle.get('n_verdict')}, category={bundle.get('n_category')}), "
-        f"verdict_ready={holder.verdict_ready()}."
+        f"verdict_ready={status.get('verdict_ready')}."
     )
-    return holder.status()
+    if elapsed > SLOW_TRAIN_SECONDS:
+        logger.warning(
+            f"[learning] The retrain took {elapsed:.1f}s. It no longer blocks the event loop, "
+            f"but it grows with the corpus — `_cv_accuracy` fits a model per fold and predicts "
+            f"per row. If this keeps climbing, batch the predictions or sample the CV set."
+        )
+    return status

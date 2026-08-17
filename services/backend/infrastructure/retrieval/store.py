@@ -29,6 +29,7 @@ still behave correctly; callers that check it can tell the difference.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -135,7 +136,11 @@ class Manifest:
         return Manifest(**json.loads(path.read_text(encoding="utf-8")))
 
     def dump(self, path: Path) -> None:
-        path.write_text(json.dumps(asdict(self), indent=2) + "\n", encoding="utf-8")
+        # Atomic, like the matrix and records beside it: the manifest is what `load()` trusts for
+        # `n_records`, so a truncated one is read as a corpus of the wrong size.
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(asdict(self), indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
 
 
 class VectorStore:
@@ -181,11 +186,35 @@ class VectorStore:
                 f"the wrong chunk for a hit, which is worse than returning none."
             )
 
+        # ⚠ Every file is written to a temp path and renamed. `os.replace` is atomic, so a reader
+        # never sees a half-written index — and more importantly the three files never come from
+        # two different builds. `review_violation` rebuilds `lessons` on every verdict via
+        # `asyncio.to_thread`, so two verdicts submitted close together genuinely run this method
+        # in **parallel threads**; in-place writes could pair one run's matrix with another run's
+        # records. `load()` detects that (`matrix.shape[0] != len(records)` -> STALE) but nothing
+        # prevented it, and a STALE index silently drops the audit path to substring matching.
+        #
+        # The rename is still per-file, so a concurrent pair can interleave *renames*. That is why
+        # `service.py` also serialises rebuilds behind a lock — atomicity bounds the damage, the
+        # lock removes the interleaving. Both, deliberately: the lock is per-process and this
+        # method is reachable from tooling that does not hold it.
         self.directory.mkdir(parents=True, exist_ok=True)
-        save_npz(self.matrix_path, matrix)
-        with self.records_path.open("w", encoding="utf-8") as handle:
+
+        # ⚠ The temp name keeps the `.npz` extension — `vectors.tmp.npz`, not `vectors.npz.tmp`.
+        # `scipy.sparse.save_npz` **appends `.npz`** when the filename does not already end in
+        # it, so the obvious `.tmp` suffix silently produces `vectors.npz.tmp.npz` and the rename
+        # below then fails with FileNotFoundError on a path that was never written.
+        matrix_tmp = self.matrix_path.with_name(
+            f"{self.matrix_path.stem}.tmp{self.matrix_path.suffix}"
+        )
+        save_npz(matrix_tmp, matrix)
+        os.replace(matrix_tmp, self.matrix_path)
+
+        records_tmp = self.records_path.with_suffix(self.records_path.suffix + ".tmp")
+        with records_tmp.open("w", encoding="utf-8") as handle:
             for record in records:
                 handle.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
+        os.replace(records_tmp, self.records_path)
 
         manifest = Manifest(
             schema_version=INDEX_SCHEMA_VERSION,

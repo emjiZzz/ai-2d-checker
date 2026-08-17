@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Header, Form
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from pymongo.errors import PyMongoError
 from google import genai
 from google.genai import types
 
@@ -489,12 +490,18 @@ async def review_violation(id: str, request: ViolationReviewRequest, background_
         try:
             await feedback_doc.save()
             await AutoDocEngine.process_feedback_event(feedback_doc)
-        except Exception:
-            pass
+        except (OSError, ValueError, PyMongoError) as write_err:
+            # Narrow on purpose, and never silent: an AttributeError here is a typo, not a
+            # failed write, and it must crash rather than cost us a human label. `ValueError`
+            # covers pydantic's ValidationError; AutoDocEngine writes a rule file, hence OSError.
+            logger.warning(
+                f"[learning] Persisting feedback for reviewed violation {id} failed "
+                f"(non-fatal, the verdict itself is saved): {write_err}"
+            )
 
         if background_tasks is not None:
             background_tasks.add_task(train_from_feedback)
-    except Exception as feedback_err:
+    except (ImportError, OSError, ValueError, PyMongoError) as feedback_err:
         logger.warning(f"[learning] Recording feedback for reviewed violation {id} failed (non-fatal): {feedback_err}")
 
     # R1 (ADR-008): re-derive the lessons index from the confirmed violations.

@@ -467,16 +467,19 @@ class SpatialDiffer:
                         "ref_coordinates": [ref["raw_x"], ref["raw_y"]]
                     })
 
-        # Pass 1: Standard threshold
-        match_pass(distance_threshold)
-        
-        # Pass 2: Widened threshold for unmatched leftovers to catch large-distance structural
-        # edits — same-text matches only. A cross-text match at 5x the normal search radius was
-        # never a structural edit (it's a false pair, most likely on drawings with repeated short
-        # dimension labels), so the fallback score+1000 escape hatch is intentionally dropped here.
+        # Stage 1: Exact / Same-Text Matches (Standard -> Widened)
+        # Identical dimension values (e.g. 60==60, 40==40, 170==170, 25==25) ALWAYS take precedence
+        # and are paired first, preventing nearby different numbers from stealing them.
+        match_pass(distance_threshold, same_text_only=True)
+
         widened_floor = FUZZY_THRESHOLD_NORM if is_normalized else FUZZY_THRESHOLD_ABS
         widened_threshold = max(widened_floor, distance_threshold * 5.0)
         match_pass(widened_threshold, same_text_only=True)
+
+        # Stage 2: Genuine Cross-Text Edits on Unmatched Leftovers
+        # Only entities that did NOT have an exact counterpart across the sheet
+        # are evaluated for in-place modifications (e.g. 130 -> 125).
+        match_pass(distance_threshold, same_text_only=False)
 
         # Sweep unmatched REVs -> ADDED
         for rev in rev_texts:

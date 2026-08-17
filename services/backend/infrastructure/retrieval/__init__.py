@@ -35,16 +35,22 @@ import time
 from ...logger import logger
 from .encoder import Encoder, EncoderError
 from .index_builder import (
+    CORRECTIONS,
     DOMAIN_RULES,
+    ENTITIES,
+    FINDINGS,
     LESSONS,
     STANDARDS,
+    VAULT,
     BuildResult,
     build_index,
     chunk_markdown_by_heading,
     current_manifest,
     index_root,
+    records_from_entities,
     records_from_rule_notes,
     records_from_standard_chunks,
+    records_from_vault_notes,
     store_for,
 )
 from .lexical import BM25, TfidfEncoder, char_ngrams, reciprocal_rank_fusion
@@ -55,6 +61,10 @@ __all__ = [
     "STANDARDS",
     "DOMAIN_RULES",
     "LESSONS",
+    "CORRECTIONS",
+    "FINDINGS",
+    "VAULT",
+    "ENTITIES",
     "SearchOutcome",
     "IndexStatus",
     "Hit",
@@ -71,6 +81,8 @@ __all__ = [
     "BuildResult",
     "records_from_standard_chunks",
     "records_from_rule_notes",
+    "records_from_vault_notes",
+    "records_from_entities",
     "chunk_markdown_by_heading",
     "current_manifest",
     "index_root",

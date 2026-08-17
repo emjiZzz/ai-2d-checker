@@ -1,11 +1,32 @@
 """Builds the retrieval indexes from their sources.
 
-Two collections at R1:
+| Collection     | Source                                  | Trust level              |
+| :------------- | :-------------------------------------- | :----------------------- |
+| `standards`    | `StandardChunk` documents in MongoDB    | published standard       |
+| `domain_rules` | client rule notes in the vault          | client-authored rule     |
+| `lessons`      | **APPROVED** `AuditViolation`s          | a human confirmed it     |
+| `corrections`  | non-retracted `AuditFeedbackDocument`s  | a human corrected it     |
+| `findings`     | **every** `AuditViolation`              | mostly unreviewed output |
+| `vault`        | `docs/vault/**/*.md`, by heading        | engineering knowledge    |
+| `entities`     | `ExtractedEntity` text                  | raw drawing content      |
 
-| Collection     | Source today                                   | Source after R3          |
-| :------------- | :--------------------------------------------- | :----------------------- |
-| `standards`    | `StandardChunk` documents in MongoDB            | unchanged                |
-| `domain_rules` | client rule notes in the vault, split by heading | the compiled rule bundle |
+⚠ **`vault` is knowledge about the *system*, not about a drawing.** It answers *"why is this built
+this way"*, which serves an agent or the copilot; it does not answer *"what does this tolerance
+mean"*. Do not read a healthy record count here as coverage of the checker's domain.
+
+⚠ **`entities` is customer drawing content**, so it is client-local and carries the same privacy
+edge as `checker_remarks` — see `service.violation_record`. Local-only at R1.
+
+⚠ **`lessons` is a subset of `findings`, deliberately, and they are separate collections because
+the chance floor is per-collection.** `metrics.chance_recall_at_k` is `k/N` over one collection's
+own `n_records`, so a 17-record `lessons` cannot be measured no matter how much is indexed
+elsewhere. They share `service.violation_record` so the two can never disagree about how a
+violation becomes text.
+
+⚠ **A `findings` hit is not knowledge.** Most of that collection has never been reviewed, so its
+records carry their review state in `Record.source` ("Confirmed finding" / "Rejected finding" /
+"Unreviewed finding") rather than only in metadata — a citation that does not say whether a human
+ever agreed is the "near-miss rules surfaced as authoritative" hazard [[ADR-008]] named.
 
 **Why `domain_rules` reads markdown at R1 when the plan says "from the bundle".** The bundle is an
 R3 deliverable and does not exist yet. Rather than block, the source is expressed as a *function
@@ -26,12 +47,14 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ...logger import logger
 from ..storage.path_resolver import get_storage_root
+from ..utils.text import strip_mtext
 from .encoder import EncoderError
 from .lexical import TfidfEncoder
 from .store import Manifest, Record, VectorStore
@@ -39,6 +62,14 @@ from .store import Manifest, Record, VectorStore
 STANDARDS = "standards"
 DOMAIN_RULES = "domain_rules"
 LESSONS = "lessons"
+#: Stage A (2026-08-17): the human-judgement collections. Both are sourced from the local
+#: MongoDB, so both are **client-local** — see `tools/retrieval_eval.py::CLIENT_LOCAL_COLLECTIONS`.
+CORRECTIONS = "corrections"
+FINDINGS = "findings"
+#: Stage A, second pass. `ENTITIES` is customer drawing content and therefore client-local;
+#: `VAULT` is git-tracked and identical on every install at a given commit, so it is **not**.
+VAULT = "vault"
+ENTITIES = "entities"
 
 #: A source is anything that can produce records. Not a path — see the module docstring.
 RecordSource = Callable[[], Sequence[Record]]
@@ -75,6 +106,16 @@ def chunk_markdown_by_heading(text: str, source: str) -> list[Record]:
     body = _FENCE.sub(" ", text)
     matches = list(_HEADING.finditer(body))
     records: list[Record] = []
+    # A record id is `sha256(f"{source}::{discriminator}")`, and a heading is **not unique within
+    # a note**: `AI Maturity Ladder — Staged Plan` carries six `Exit criterion` sections, one per
+    # stage. Without this counter all six hash to one id, so twelve of the vault's 990 chunks
+    # shared four ids. Harmless while nothing pins a chunk id, and fatal at the moment a relevance
+    # label names one — which is exactly what `RetrievalLabel.relevant_ids` does.
+    #
+    # Only *repeats* are suffixed, so a note with unique headings keeps byte-identical ids and no
+    # existing collection's ids move. See
+    # [[Gotcha - One Heading Twice in a Note Is One Retrieval Record]].
+    seen_headings: Counter[str] = Counter()
 
     if not matches:
         stripped = body.strip()
@@ -98,9 +139,17 @@ def chunk_markdown_by_heading(text: str, source: str) -> list[Record]:
         combined = f"{heading}\n{section_body}"
         if len(combined) < MIN_CHUNK_CHARS:
             continue
+
+        # Counted only for headings that actually become a record, so the numbering is dense
+        # over what is indexed rather than over what was parsed.
+        key = heading or str(i)
+        seen_headings[key] += 1
+        occurrence = seen_headings[key]
+        discriminator = key if occurrence == 1 else f"{key}#{occurrence}"
+
         records.append(
             Record(
-                id=_record_id(source, heading or str(i)),
+                id=_record_id(source, discriminator),
                 text=combined,
                 source=source,
                 section=heading,
@@ -147,6 +196,31 @@ def records_from_standard_chunks(chunks: Iterable) -> list[Record]:
     return records
 
 
+def _records_from_markdown_tree(
+    root: Path,
+    exclude_dirs: frozenset[str] = frozenset(),
+) -> list[Record]:
+    """Every markdown note under `root`, chunked by heading, skipping `exclude_dirs`.
+
+    Shared by `records_from_rule_notes` and `records_from_vault_notes` because "walk the tree,
+    chunk by heading, name the record after the file" is one rule. Two copies of it would keep
+    working while drifting on encoding, sort order or what counts as a note.
+    """
+    records: list[Record] = []
+    for path in sorted(root.rglob("*.md")):
+        if exclude_dirs and any(
+            part in exclude_dirs for part in path.relative_to(root).parts[:-1]
+        ):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError as err:
+            logger.warning(f"[retrieval] Could not read {path.name}: {err}")
+            continue
+        records.extend(chunk_markdown_by_heading(text, source=path.stem))
+    return records
+
+
 def records_from_rule_notes(rules_dir: Path) -> list[Record]:
     """Every markdown note under `rules_dir`, chunked by heading.
 
@@ -160,14 +234,90 @@ def records_from_rule_notes(rules_dir: Path) -> list[Record]:
         )
         return []
 
+    return _records_from_markdown_tree(rules_dir)
+
+
+def records_from_vault_notes(
+    vault_dir: Path,
+    exclude_dirs: frozenset[str] = frozenset(),
+) -> list[Record]:
+    """The Obsidian knowledge base, chunked by heading.
+
+    `exclude_dirs` is supplied by the caller rather than hardcoded here, so the names of the
+    excluded directories live in exactly one place — `service.rebuild_vault_index` derives them
+    from `VaultSyncManager.CLIENT_RULES_DIR` and `learning.config.MODEL_DIRNAME` rather than
+    restating two magic strings that would then be free to drift from their owners.
+
+    **Both exclusions are load-bearing.** The client-rules directory is already the `domain_rules`
+    collection, so indexing it here would put identical text in two collections with different
+    trust levels; and the learned-models directory is a gitignored generated artifact, so
+    including it would make an otherwise reproducible collection vary per install.
+    """
+    if not vault_dir.exists():
+        logger.info(
+            f"[retrieval] No vault at {vault_dir}; the '{VAULT}' collection will not be built."
+        )
+        return []
+
+    return _records_from_markdown_tree(vault_dir, exclude_dirs)
+
+
+#: Below this, an entity's text is not something any real query retrieves — a stray `A`, a bare
+#: `1`, a leader's single-character tag. **A convention, not a measured optimum**, in the same
+#: sense `min_structured_value_length` was one: nothing here has been swept, and the corpus to
+#: sweep it against is what Stage A is building. Recorded as arbitrary rather than dressed up.
+MIN_ENTITY_TEXT_CHARS = 3
+
+#: How many duplicate citations the collapse reports at WARNING before deferring the rest to
+#: DEBUG. Enough to trace a small corpus's drops in full; small enough that `lessons` — rebuilt
+#: on every supervisor verdict, dropping ~67 each time — costs one log line rather than 67.
+MAX_LOGGED_DUPLICATE_CITATIONS = 5
+
+
+def records_from_entities(
+    entities: Iterable,
+    drawing_names: dict[str, str] | None = None,
+) -> list[Record]:
+    """Adapt `ExtractedEntity` documents carrying text into retrieval records.
+
+    Text is read as `properties["text"] or properties["value"]` and normalised through
+    `strip_mtext` — the same two rules the comparison engine uses
+    (`candidate_generator.py:462`). Reading the raw property here would let this collection
+    disagree with the engine about what an entity *says*, which is the drift shape this codebase
+    keeps paying for.
+
+    `drawing_names` maps `drawing_id` to a human-readable file name so a citation reads
+    `M745230A01.dxf > NOTES` rather than a 32-character hex id. Absent, the id is used.
+
+    ⚠ **This is customer drawing content.** Local-only at R1; strip at the edge before anything
+    is transmitted. See `service.violation_record` for the same constraint on `checker_remarks`.
+    """
+    names = drawing_names or {}
     records: list[Record] = []
-    for path in sorted(rules_dir.rglob("*.md")):
-        try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError as err:
-            logger.warning(f"[retrieval] Could not read {path.name}: {err}")
+
+    for entity in entities:
+        properties = getattr(entity, "properties", None) or {}
+        raw = properties.get("text") or properties.get("value") or ""
+        text = strip_mtext(raw).strip()
+        if len(text) < MIN_ENTITY_TEXT_CHARS:
             continue
-        records.extend(chunk_markdown_by_heading(text, source=path.stem))
+
+        drawing_id = getattr(entity, "drawing_id", "") or ""
+        layer = getattr(entity, "layer", "") or "0"
+        records.append(
+            Record(
+                id=str(getattr(entity, "id", "") or _record_id("entity", f"{drawing_id}:{text}")),
+                text=text,
+                source=names.get(drawing_id, drawing_id or "drawing"),
+                section=layer,
+                metadata={
+                    "drawing_id": drawing_id,
+                    "layer": layer,
+                    "entity_type": getattr(entity, "entity_type", ""),
+                    "handle": getattr(entity, "handle", None),
+                },
+            )
+        )
     return records
 
 
@@ -218,6 +368,7 @@ def _collapse_duplicate_texts(
     """
     seen: dict[str, Record] = {}
     kept: list[Record] = []
+    examples: list[str] = []
     dropped = 0
 
     for record in records:
@@ -228,17 +379,30 @@ def _collapse_duplicate_texts(
             kept.append(record)
             continue
         dropped += 1
-        logger.warning(
-            f"[retrieval] '{collection}': dropping {record.citation()} as a byte-identical copy "
-            f"of {first.citation()}. Only the first is indexed. Two records with the same text "
-            f"are one answer, and counting them as two inflates the corpus the recall gate is "
-            f"measured against — fix this at the source, not here."
-        )
+        citation = f"{record.citation()} duplicates {first.citation()}"
+        if len(examples) < MAX_LOGGED_DUPLICATE_CITATIONS:
+            examples.append(citation)
+        # Full detail stays available, one level down. See the note on the aggregate below.
+        logger.debug(f"[retrieval] '{collection}': dropping {citation}. Only the first is indexed.")
 
     if dropped:
+        # **One line, with a bounded sample of citations.** This was a WARNING *per drop* until
+        # 2026-08-17, which is fine for a startup build and pathological for `lessons`: that
+        # collection is rebuilt on **every supervisor verdict** and drops ~67 duplicates each
+        # time, so a single click emitted 67 warnings and buried the one line that matters.
+        #
+        # The citations are kept rather than moved wholesale to DEBUG, because
+        # `test_the_drop_is_reported_rather_than_swallowed` pins a real property: what this net
+        # catches is a bug upstream, and it stays findable only if the net says *what* it caught.
+        # A bounded sample satisfies that at a bounded cost; the remainder is at DEBUG.
+        sample = "; ".join(examples)
+        more = dropped - len(examples)
+        overflow = f" (+{more} more at DEBUG)" if more > 0 else ""
         logger.warning(
             f"[retrieval] '{collection}': {len(records)} record(s) collapsed to {len(kept)} "
-            f"distinct text(s); {dropped} duplicate(s) dropped."
+            f"distinct text(s); {dropped} duplicate(s) dropped. Two records with the same text "
+            f"are one answer, and counting them as two inflates the corpus the recall gate is "
+            f"measured against - fix this at the source, not here. Dropped: {sample}{overflow}."
         )
     return kept, dropped
 
