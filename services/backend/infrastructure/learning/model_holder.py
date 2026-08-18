@@ -192,6 +192,21 @@ class LearnedModelHolder:
             if not p.exists():
                 return None
             loaded = joblib.load(p)
+
+            found = loaded.get("schema")
+            if found != config.BUNDLE_SCHEMA:
+                # Refused, loudly. A bundle written under an older schema has keys this build
+                # cannot match, so loading it would leave every human override silently inert —
+                # the failure mode this codebase has already paid for more than once. The next
+                # correction retrains and rebuilds the keys from each row's stored snapshot.
+                logger.warning(
+                    f"[learning] Model bundle at {p} is schema v{found}; this build reads "
+                    f"v{config.BUNDLE_SCHEMA}. Refusing it — its exact-match keys would never "
+                    f"fire, and an override that silently does nothing is worse than none. "
+                    f"Learning is inactive until the next correction retrains it."
+                )
+                return None
+
             logger.info(
                 f"[learning] Loaded model bundle from {p} "
                 f"(trained_at={loaded.get('trained_at')})."

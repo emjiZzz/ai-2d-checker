@@ -13,6 +13,9 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { recordHistory } from '../../stores/historyStore';
 import type { RegionFractions } from '../../utils/zoneFractions';
 import { getNormalization, screenToWorld, screenToWorldUnflipped, screenDeltaToWorldDelta, parseBounds, clampViewport as clampViewportShared } from '../../utils/coordinateTransform';
+// The click-vs-drag rule lives with the stamping gesture in `useEntityPicking`, so the two
+// cannot drift apart about what counts as a click.
+import { shouldSuppressNextMenu } from './entityPicking';
 import { hitTestMarker, getRoiDragPercentages } from './canvasInteraction';
 
 interface UseCanvasInteractionProps {
@@ -143,7 +146,32 @@ export function useCanvasInteraction({
     wy: number;
   } | null>(null);
   
-  const [preventNextContextMenu, setPreventNextContextMenu] = useState(false);
+  /**
+   * Armed by a gesture that dragged something, consumed by the next menu-opening event.
+   *
+   * ## What broke
+   *
+   * This was `useState` with a check but **no setter** — `handleContextMenu` could clear it and
+   * nothing could ever set it, so the guard had been inert. It was not born that way: `243582e`
+   * and `d98e3bb` both armed it with `if (e.buttons === 2) setPreventNextContextMenu(true)` in
+   * the pan path, and `92e3d3c` dropped that line while rewriting the pan fast path. The check
+   * survived the refactor; the thing it checked did not.
+   *
+   * ## Why it is not restored verbatim
+   *
+   * That line guarded a RIGHT-button drag-pan, whose release fires `contextmenu`. Panning is now
+   * the middle button or space+drag only — `handleMouseDown` returns early for the right button
+   * specifically — so `e.buttons === 2` during a pan is no longer reachable and putting it back
+   * would re-add dead code. (A middle-button release fires no `contextmenu` at all.) The intent generalises, though, and it now has a live case: since stamping moved to a
+   * left-click, the menu opens on `click`, and a gesture that dragged a marker, an annotation
+   * pin or a zone handle ends in a `click` too. Without this the engineer nudges a marker and
+   * the stamping menu opens on top of it.
+   *
+   * A ref, not state: it is written during a gesture that must not re-render, and read later in
+   * that same gesture, where a batched state update would not reliably have landed.
+   */
+  const preventNextContextMenuRef = useRef(false);
+
   const [isHoveringMarkerState, setIsHoveringMarkerState] = useState(false);
 
   // ROI Interactive Drag handles local states.
@@ -419,7 +447,29 @@ export function useCanvasInteraction({
     const currentViewport = useReviewStore.getState().viewport;
     mouseDownRawPosRef.current = { x: e.clientX, y: e.clientY };
 
-    // Restrict panning strictly to primary left mouse button (e.button === 0) or space key pan shortcut
+    // A fresh press is a fresh gesture, so whatever a previous drag armed no longer applies.
+    // Cleared BEFORE the non-left early return below, because a right-click must reset it too —
+    // `mousedown` precedes `contextmenu`, so otherwise a pan would eat the next right-click.
+    preventNextContextMenuRef.current = false;
+
+    // ── MIDDLE BUTTON PANS ────────────────────────────────────────────────────
+    // The primary pan gesture since 2026-08-18, when it replaced the left-drag pan. Space+left
+    // is kept beside it: it is the shortcut a CAD user reaches for, and it costs nothing.
+    //
+    // `preventDefault` is not optional here — a middle press starts the browser's autoscroll,
+    // which hijacks the cursor and swallows every subsequent move event.
+    if (e.button === 1) {
+      e.preventDefault();
+      setIsDragging(true);
+      isDraggingRef.current = true;
+      if (dragDebounceTimerRef.current) {
+        clearTimeout(dragDebounceTimerRef.current);
+        dragDebounceTimerRef.current = null;
+      }
+      setDragStart({ x: e.clientX - currentViewport.x, y: e.clientY - currentViewport.y });
+      return;
+    }
+
     if (e.button !== 0 && !isSpacePressed) {
       return;
     }
@@ -588,11 +638,13 @@ export function useCanvasInteraction({
           dragDebounceTimerRef.current = null;
         }
         setDragStart({ x: e.clientX - currentViewport.x, y: e.clientY - currentViewport.y });
-      } else {
-        setIsDragging(true);
-        isDraggingRef.current = true;
-        setDragStart({ x: e.clientX - currentViewport.x, y: e.clientY - currentViewport.y });
       }
+      // Nothing under the press and nothing to do: a left-drag on empty canvas is deliberately
+      // inert. Panning is the middle button or space+drag (2026-08-18) — the left button's only
+      // jobs on the canvas are selecting an entity and moving one that was grabbed above.
+      //
+      // The press still counts as a click if it never travels, because `isStampClick` decides
+      // that from the distance rather than from anything set here.
     }
   }, [isSpacePressed, violations, drawing, oldDrawing, showViolations, markerPositionsRef, isRoiEditModeEnabled, hoveredHandleInfo, customRegions, canvasRef, isPlacingAnnotation, createAnnotationAt, showAnnotations]);
 
@@ -857,6 +909,18 @@ export function useCanvasInteraction({
 
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    // Armed HERE, before the drag state below is cleared, and read by the `click` that follows.
+    //
+    // Grabbing something arms it whatever the distance: a marker press that never moves is still
+    // a select-or-delete, not a stamp. A pan has to clear `CLICK_SLOP_PX` first, because every
+    // ordinary click drifts a pixel or two and that must remain a click.
+    const travel = Math.hypot(
+      e.clientX - mouseDownRawPosRef.current.x,
+      e.clientY - mouseDownRawPosRef.current.y,
+    );
+    const grabbed = Boolean(dragMarkerId || dragAnnotationId || activeDragHandle || centerDragStart);
+    preventNextContextMenuRef.current = shouldSuppressNextMenu(grabbed, isDragging, travel);
+
     setIsDragging(false);
     
     // Debounce the physical drag end so violation rendering doesn't cause a micro-stutter on release
@@ -994,8 +1058,9 @@ export function useCanvasInteraction({
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (preventNextContextMenu) {
-      setPreventNextContextMenu(false);
+    // Consumed once: the drag that armed it is over, and the next press re-arms from scratch.
+    if (preventNextContextMenuRef.current) {
+      preventNextContextMenuRef.current = false;
       return;
     }
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -1028,7 +1093,7 @@ export function useCanvasInteraction({
       wx,
       wy
     });
-  }, [preventNextContextMenu, canvasRef, drawing, width, height, norm]);
+  }, [canvasRef, drawing, width, height, norm]);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -1065,8 +1130,11 @@ export function useCanvasInteraction({
     if (hoveredHandleInfo) return hoveredHandleInfo.cursor;
     if (dragAnnotationId) return 'grabbing';
     if (isHoveringMarkerState || !!hoveredAnnotationId) return 'pointer';
+    // Only a middle-button or space pan reaches here — a left-drag on empty canvas does nothing.
     if (isDragging) return 'grabbing';
-    return 'grab';
+    // `default`, not `grab`. An open hand advertises a left-drag pan that no longer exists, and
+    // a cursor promising the wrong gesture is worse than a plain arrow.
+    return 'default';
   };
 
   // Stable handlers object so a React.memo'd CanvasRenderer isn't re-rendered

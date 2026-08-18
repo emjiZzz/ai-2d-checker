@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, MoreVertical, Check, Move, LayoutTemplate, Crosshair } from "lucide-react";
+import { Maximize, Download, MoreVertical, Check, Move, LayoutTemplate, Crosshair, ClipboardCheck } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -33,6 +33,8 @@ import { UploadZone } from "./UploadZone";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
+import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
+import { StampMarkingModal } from "./StampMarkingModal";
 import { SavedTemplatesModal } from "./SavedTemplatesModal";
 
 /**
@@ -229,6 +231,12 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showViewOrigins = useReviewStore(s => s.showViewOrigins);
+
+  // Manual engineer check. `isManualCheckMode` is view state (reviewStore, beside every other
+  // mode toggle); the markings it produces are records and live in the workspace store.
+  const isManualCheckMode = useIsManualCheckRoom();
+  const manualSessionId = useWorkspaceStore(s => s.manualSessionId);
+  const startManualSession = useWorkspaceStore(s => s.startManualSession);
   const toggleViewOrigins = useReviewStore(s => s.toggleViewOrigins);
 
   // Zone bbox debug overlay. Lives on workspaceStore rather than reviewStore (where the
@@ -238,6 +246,30 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const zoneRegions = useWorkspaceStore(s => s.zoneRegions);
   const oldDrawingForZones = useWorkspaceStore(s => s.oldDrawing);
   const newDrawingForZones = useWorkspaceStore(s => s.newDrawing);
+
+  // Opening a session is idempotent per pair: `startManualSession` reloads any markings already
+  // recorded, so switching the mode off and on does not orphan earlier work or duplicate it.
+  useEffect(() => {
+    if (!isManualCheckMode || manualSessionId) return;
+    const room = useRoomStore.getState().activeRoom;
+    if (!room?.id || !oldDrawing?.id || !newDrawing?.id) return;
+    startManualSession(String(room.id), String(oldDrawing.id), String(newDrawing.id));
+  }, [isManualCheckMode, manualSessionId, oldDrawing?.id, newDrawing?.id, startManualSession]);
+
+  // A selection belongs to the pair it was made on. Cleared here rather than in the renderer
+  // because this is the only place that knows BOTH drawing ids — a canvas pane knows its own
+  // sheet and the reference, never the revision when it is the reference pane, so it cannot
+  // tell a stale selection from one made on the sheet beside it.
+  //
+  // The cross-sheet outline is what makes this matter: it is keyed on `side`, so a selection
+  // surviving a drawing swap would outline a "counterpart" on a sheet nobody picked from, which
+  // is indistinguishable from a confident answer.
+  const setSelectedEntities = useWorkspaceStore(s => s.setSelectedEntities);
+  const setSelectionLocator = useWorkspaceStore(s => s.setSelectionLocator);
+  useEffect(() => {
+    setSelectedEntities([]);
+    setSelectionLocator(null);
+  }, [oldDrawing?.id, newDrawing?.id, setSelectedEntities, setSelectionLocator]);
 
   const isRoiEditModeEnabled = useReviewStore(s => s.isRoiEditModeEnabled);
   const setRoiEditMode = useReviewStore(s => s.setRoiEditMode);
@@ -845,6 +877,23 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   <span>Redline DXF</span>
                 </Button>
               )}
+              {/*
+                A manual-check room is labelled, not toggled. The mode is a property of the room
+                chosen at creation (`room_mode`), so there is nothing here to switch — a toggle
+                would be a second source of truth that can disagree with the room, and the
+                disagreement is silent in the expensive direction: a manual room that thinks it
+                is an AI room shows the engine's findings and destroys the independence the
+                markings exist for.
+              */}
+              {isManualCheckMode && (
+                <span
+                  className="h-6 px-2 inline-flex items-center gap-1 text-[11px] rounded-sm border border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                  title="This room collects human ground truth. The comparison engine is never run here."
+                >
+                  <ClipboardCheck size={12} />
+                  Manual Engineer Check
+                </span>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -1040,6 +1089,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               onAction={handleAction}
             />
           </div>
+
+          <StampMarkingModal />
 
           <SavedTemplatesModal
             isOpen={isTemplatesModalOpen}

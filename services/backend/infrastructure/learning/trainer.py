@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import config
-from .feature_extractor import exact_key, features_from_snapshot
+from .feature_extractor import exact_key, exact_pair_key, features_from_snapshot
 from .finding_classifier import FindingClassifier
 from .model_holder import LearnedModelHolder, model_card_dir, save_bundle, _empty_bundle
 
@@ -140,8 +140,17 @@ def build_bundle(docs: list) -> dict:
         n_total += 1
         snap = _snapshot_of(doc)
         category = snap.get("category") or getattr(doc, "category", None)
-        text = snap.get("rev_text") or snap.get("ref_text") or getattr(doc, "entity_text", None)
-        key = exact_key(category, text)
+        # **Both sides.** Keying a verdict override on one value let a single dismissal of a
+        # finding involving `20` force-match every other finding where either side was `20`.
+        # See `exact_pair_key`. `entity_text` is the legacy fallback for thin feedback rows with
+        # no snapshot; those carry only the revision side, which keys as an ADDED-shaped pair and
+        # so matches only other one-sided findings.
+        ref_text = snap.get("ref_text")
+        rev_text = snap.get("rev_text") or getattr(doc, "entity_text", None)
+        key = exact_pair_key(category, ref_text, rev_text)
+        # The category override is genuinely a statement about one value ("this text belongs in
+        # notes, not views"), so it keeps the single-sided key.
+        cat_key = exact_key(category, rev_text or ref_text)
         row = features_from_snapshot(snap)
 
         if status in VERDICT_ZERO:
@@ -159,7 +168,7 @@ def build_bundle(docs: list) -> dict:
             if target:
                 cat_rows.append(row)
                 cat_labels.append(str(target))
-                exact_category[key] = str(target)
+                exact_category[cat_key] = str(target)
         # value_correction: captured for the corpus in v1, not yet a verdict/category label.
         # MATCHER_FEEDBACK: likewise captured, deliberately unlabelled. See below.
 

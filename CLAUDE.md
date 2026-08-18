@@ -7,11 +7,16 @@
 > only a pointer to it, deliberately. Do not act on the summary below without reading it; a
 > restatement that drifts from the ledger is the phantom constraint 5 exists to prevent.
 >
-> In one line: **two human pairs are labelled** — `M7452A0N01` (8 findings) and `M745227N01` (12),
-> both 2026-08-17 — and the corpus is measuring the engine: **R 0.60 templated / 0.65
-> detection-only** over 20 findings, attribution 0.92. The corpus is **2 of 8**, which is still the
-> only thing keeping the system at rung 0. `current_rung` and `rung_evidence` are unchanged and
-> must stay that way until there are eight.
+> ⚠ **The "2 of 8" this block used to state is stale — measure it, do not quote it.**
+> `tools/eval_corpus.py status` at 2026-08-18 reports **4 / 8 labelled, 7 registered, 1 of 3 held
+> out**: `M745230A01` (21 findings) and `M745203N01` (16) landed after this block was written, so
+> the queue's head is now **`M7452A1N01`**, then `M7452A2N01`. The engine measurement below still
+> stands as the figure over the first two pairs.
+>
+> In one line: the corpus is measuring the engine — **R 0.60 templated / 0.65 detection-only**
+> over the 20 findings in `M7452A0N01` + `M745227N01`, attribution 0.92. Being short of eight
+> pairs is still the only thing keeping the system at rung 0. `current_rung` and `rung_evidence`
+> are unchanged and must stay that way until there are eight.
 >
 > ⚠ **Recall fell 0.75 → 0.60 when the second pair landed, with no engine change.** At this corpus
 > size the number describes *which sheets are labelled*, not the engine. Do not treat movement here
@@ -112,10 +117,13 @@ defect from scratch as a result.
 
 5. **Keep `docs/vault/00 - AI Maturity Status.md` current, and read it rather than this summary.**
    It is the single canonical answer to "which rung is this system on" — currently **0**, under the
-   ADR-007 definition, because `rung_evidence: none` and the corpus is **0 of 8 human-labelled
-   pairs**. Rung 0 means *pre-measurement*, not "safely deterministic"; do not report it as a
-   feature. Read the ledger before touching the comparison engines, retrieval, the learned model or
-   the AI pipeline. After landing anything: append a work-log entry, tick the stage board, rewrite
+   ADR-007 definition, because `rung_evidence: none` and the corpus is short of eight
+   human-labelled pairs — **4 of 8**, measured 2026-08-18 with `tools/eval_corpus.py status`.
+   Re-run that command rather than quoting this line: it read "0 of 8" while four pairs were
+   already labelled, which is the drift this very constraint warns about below. Rung 0 means
+   *pre-measurement*, not "safely deterministic"; do not report it as a feature. Read the ledger
+   before touching the comparison engines, retrieval, the learned model or the AI pipeline. After
+   landing anything: append a work-log entry, tick the stage board, rewrite
    "What's Next", and if a rung boundary was crossed update `current_rung` **and** `rung_evidence`
    together.
    **A rung claim with no evidence link is a defect** — this file previously advertised "the four V2

@@ -10,6 +10,7 @@ from .comparison_method import (
     ComparisonMethodName,
     normalize_comparison_method,
 )
+from .room_mode import AI_COMPARISON, RoomMode, normalize_room_mode
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
@@ -37,10 +38,22 @@ class Room(Document):
     # API and stays the place a second method would be declared.
     comparison_method: ComparisonMethodName = Field(DETERMINISTIC, description="Method used for physical comparison in this room")
 
+    # What the room is FOR — orthogonal to which engine compares. A manual-check room compares
+    # nothing; it collects human ground truth. Kept off `comparison_method` deliberately: that
+    # field names an engine, and overloading it would resurrect the method picker ADR-006
+    # removed. See room_mode.py.
+    room_mode: RoomMode = Field(AI_COMPARISON, description="Whether this room is an AI comparison or a manual engineer check")
+
     # Rooms written before the rename say "rag". No migration was run, so this validator is
     # what makes those documents loadable — see comparison_method.py on why it is permanent.
     _normalize_method = field_validator("comparison_method", mode="before")(
         lambda v: normalize_comparison_method(v)
+    )
+
+    # Rooms written before `room_mode` existed have no such field; they were all AI comparison
+    # rooms, which is the default. No migration — absent and default mean the same thing.
+    _normalize_room_mode = field_validator("room_mode", mode="before")(
+        lambda v: normalize_room_mode(v)
     )
     
 

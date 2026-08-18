@@ -78,9 +78,46 @@ def test_exact_override_forces_matched_even_when_model_not_ready(monkeypatch):
     holder = _install([_fake_doc("verdict_matched", "SPECIAL LEGEND", ref="SPECIAL LEGEND")])
     assert not holder.verdict_ready()
 
-    m = CanvasMarking(text_content="SPECIAL LEGEND", status="CHANGED", details="d", category="drawing_views")
+    # `original_value` is set because overrides are keyed on **both sides** as of 2026-08-17
+    # (`exact_pair_key`), and because a CHANGED finding with no reference value is not a shape the
+    # engine produces — every CHANGED marking on M745230A01 carries both. The point of this test
+    # is that branch 1 fires without a trained model, which it still does.
+    m = CanvasMarking(text_content="SPECIAL LEGEND", original_value="SPECIAL LEGEND",
+                      status="CHANGED", details="d", category="drawing_views")
     out = apply_learned_adjustments(_response([m]))
     assert out.canvas_markings[0].status == "MATCHED"  # exact human correction wins regardless
+
+
+def test_an_override_is_scoped_to_the_pair_it_was_recorded_for(monkeypatch):
+    """The narrowing that replaced "either side matches".
+
+    A checker dismissed `20 -> 3`. That must not touch `60 -> 20`, which shares one value and is
+    an entirely different finding. Before this scoping, one click on a finding involving `20`
+    force-matched every other finding where either side was `20` — measured on M745230A01, that
+    was two real dimension changes reported as MATCHED.
+    """
+    monkeypatch.setattr(config, "MIN_TRAIN", 1000)     # isolate branch 1 from the model
+    _install([_fake_doc("dismissed", "3", ref="20")])
+
+    same_pair = CanvasMarking(text_content="3", original_value="20",
+                              status="CHANGED", details="d", category="drawing_views")
+    shares_one_value = CanvasMarking(text_content="20", original_value="60",
+                                     status="CHANGED", details="d", category="drawing_views")
+
+    out = apply_learned_adjustments(_response([same_pair, shares_one_value]))
+    assert out.canvas_markings[0].status == "MATCHED", "the corrected finding must stay corrected"
+    assert out.canvas_markings[1].status == "CHANGED", (
+        "a different finding that merely shares one value must be untouched"
+    )
+
+
+def test_added_and_removed_share_one_address(monkeypatch):
+    """Both carry their value in `text_content` with an empty `original_value`, so keying them
+    positionally would file one judgement under two addresses and neither would ever match."""
+    from services.backend.infrastructure.learning.feature_extractor import exact_pair_key
+
+    assert exact_pair_key("drawing_views", None, "C2") == exact_pair_key("drawing_views", "C2", None)
+    assert exact_pair_key("drawing_views", "", "C2") != exact_pair_key("drawing_views", "20", "C2")
 
 
 def test_low_confidence_abstains(monkeypatch):

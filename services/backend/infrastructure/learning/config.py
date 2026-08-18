@@ -85,4 +85,14 @@ MODEL_FILENAME = "finding_classifier.joblib"
 META_FILENAME = "finding_classifier.meta.json"
 CARD_FILENAME = "Model Card.md"
 
-BUNDLE_SCHEMA = 1
+# Bump when the *meaning* of anything inside the bundle changes such that a previously trained
+# bundle can no longer be read correctly. `LearnedModelHolder._read_bundle` refuses a mismatch
+# and logs it, so a stale bundle reports itself rather than silently applying nothing — until
+# 2026-08-17 this field was written and never read, which is the same inert-version-stamp gap
+# CLAUDE.md records against `EXTRACTION_SCHEMA_VERSION`.
+#
+# v2: `exact_matched` / `exact_changed` are keyed by `exact_pair_key` (both sides of a finding,
+#     `cat|ref->rev`) rather than `exact_key` (one side). A v1 bundle's keys are single values
+#     and would never match a v2 lookup, so its overrides would be inert with no signal. The
+#     next correction retrains and the keys are rebuilt from each row's stored snapshot.
+BUNDLE_SCHEMA = 2

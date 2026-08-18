@@ -2,7 +2,9 @@ import React from 'react';
 import { Eye, EyeOff, RotateCcw, Pin, Filter, Plus, ChevronRight } from 'lucide-react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { AnnotationSeverity } from '../../stores/workspace/types';
+import { AnnotationSeverity, type StampTool } from '../../stores/workspace/types';
+import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
+import { TOOL_SIDE } from '../../stores/workspace/slices/createManualCheckSlice';
 
 interface CanvasContextMenuProps {
   x: number;
@@ -33,6 +35,26 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 }) => {
   const showMarkerLabels = useReviewStore((s) => s.showMarkerLabels);
   const toggleMarkerLabels = useReviewStore((s) => s.toggleMarkerLabels);
+
+  // Manual engineer check. In such a room this menu is the ONLY way to put a mark on the
+  // drawing — there is no toolbar and no left-click gesture, so there is never a moment when
+  // two ways of marking are both live and mean different things.
+  const isManualCheckRoom = useIsManualCheckRoom();
+  const selectedEntities = useWorkspaceStore((s) => s.selectedEntities);
+  // The selection is one entity today, so this is it. Written as an anchor rather than
+  // `selectedEntities[0]!` because the list is what the store holds, and a marking is recorded
+  // against exactly one entity either way.
+  const picked = selectedEntities[0] ?? null;
+  const pendingPairRef = useWorkspaceStore((s) => s.pendingPairRef);
+  const setPendingPairRef = useWorkspaceStore((s) => s.setPendingPairRef);
+  const openStamp = useWorkspaceStore((s) => s.openStamp);
+
+  const MANUAL_TOOLS: { tool: StampTool; label: string; color: string }[] = [
+    { tool: 'matched', label: 'Matched', color: '#10b981' },
+    { tool: 'added', label: 'Added', color: '#3b82f6' },
+    { tool: 'removed', label: 'Removed', color: '#ef4444' },
+    { tool: 'not_a_finding', label: 'Not a finding', color: '#a1a1aa' },
+  ];
 
   // Context-aware positioning: detect right & bottom boundaries so submenus fly out cleanly without clipping
   const isNearRightEdge = canvasWidth ? (x + 160 + 145 > canvasWidth || x > canvasWidth - 180) : false;
@@ -169,7 +191,125 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         </div>
       </div>
 
-      {/* 5. Add Marker Submenu */}
+      {/*
+        Manual engineer check — this replaces the Add Marker submenu below rather than sitting
+        beside it. The two produce different things (a ground-truth record vs an ephemeral
+        client-side pin) and offering both at once is how a checker records an hour of work into
+        the wrong place.
+
+        Since 2026-08-18 this section is opened by a LEFT-click on an entity, not a right-click.
+        A right-click still opens the menu — it is the only surface that can cancel a pairing in
+        flight — but resolves no entity, so it falls to the hint above. One gesture records a
+        finding; see `useEntityPicking`.
+      */}
+      {isManualCheckRoom && (
+        <>
+          {!picked ? (
+            <div className="px-2.5 py-1.5 text-[0.68rem] leading-snug opacity-60">
+              Left-click an entity, or drag a box over several, then right-click here.
+            </div>
+          ) : (
+            <>
+              <div
+                className={`px-2.5 py-1 text-[0.62rem] font-mono truncate border-b ${theme === 'hc-light' ? 'border-zinc-200 text-zinc-500' : 'border-white/10 text-zinc-500'}`}
+                title={picked.text || picked.entityType}
+              >
+                {picked.side === 'ref' ? 'REFERENCE' : 'REVISION'} ·{' '}
+                {selectedEntities.length > 1
+                  ? `${selectedEntities.length} entities selected`
+                  : picked.text || picked.entityType}
+              </div>
+
+              {MANUAL_TOOLS.filter(
+                (t) =>
+                  TOOL_SIDE[t.tool] === picked.side ||
+                  // "I looked at this and it is deliberately not a finding" is an attribution
+                  // about one entity, not a claim about a side — the engine can over-report on
+                  // either sheet, and on the reference this was previously unrecordable.
+                  t.tool === 'not_a_finding',
+              ).map((opt) => (
+                <div
+                  key={opt.tool}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${theme === 'hc-light'
+                    ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
+                    : 'hover:bg-cyan-500/15 hover:text-cyan-400'
+                    }`}
+                  onClick={() => {
+                    openStamp({
+                      tool: opt.tool,
+                      ref: picked.side === 'ref' ? picked : null,
+                      rev: picked.side === 'rev' ? picked : null,
+                    });
+                    onClose();
+                  }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: opt.color }} />
+                  <span className="text-[0.72rem]">{opt.label}</span>
+                </div>
+              ))}
+
+              {/* CHANGED is two clicks because it is two entities, and each must contribute its
+                  OWN coordinate. The old marker collapsed both sides onto one point, which is
+                  meaningless the moment a revision is re-traced. */}
+              {picked.side === 'ref' && (
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${theme === 'hc-light'
+                    ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
+                    : 'hover:bg-cyan-500/15 hover:text-cyan-400'
+                    }`}
+                  onClick={() => {
+                    setPendingPairRef(picked);
+                    onClose();
+                  }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#f97316' }} />
+                  <span className="text-[0.72rem]">Changed — pick counterpart…</span>
+                </div>
+              )}
+
+              {picked.side === 'rev' && pendingPairRef && (
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${theme === 'hc-light'
+                    ? 'hover:bg-orange-600/10 hover:text-orange-700'
+                    : 'hover:bg-orange-500/15 hover:text-orange-400'
+                    }`}
+                  onClick={() => {
+                    openStamp({ tool: 'changed', ref: pendingPairRef, rev: picked });
+                    onClose();
+                  }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#f97316' }} />
+                  <span className="text-[0.72rem] truncate">
+                    Changed from “{pendingPairRef.text || pendingPairRef.entityType}”
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* A pairing in flight is cancellable from here, because it is the only surface that
+              can show it — without this the first half of a pair is invisible state. */}
+          {pendingPairRef && (
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs cursor-pointer opacity-70 hover:opacity-100 border-t ${theme === 'hc-light' ? 'border-zinc-200' : 'border-white/10'}`}
+              onClick={() => {
+                setPendingPairRef(null);
+                onClose();
+              }}
+            >
+              <span className="text-[0.7rem]">Cancel pairing</span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 5. Add Marker Submenu — AI rooms only.
+
+          These markers are client-side and ephemeral (`custom_marker_*`, never persisted, and
+          locked out of every write-back path by `isPersistedViolationId`). Useful as a scratch
+          annotation next to engine output; useless as ground truth, which is why a manual-check
+          room offers the section above instead. */}
+      {!isManualCheckRoom && (
       <div
         className={`group/markerSubmenu relative flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${theme === 'hc-light'
           ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
@@ -229,6 +369,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 };

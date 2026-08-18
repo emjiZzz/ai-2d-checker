@@ -3,6 +3,7 @@ from typing import Any, TypeVar, Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from ..domain.models.cad_point import CadPoint, CoordinateSpace
+from ..domain.models.room_mode import AI_COMPARISON, RoomMode, normalize_room_mode
 from ..domain.models.comparison_method import (
     DETERMINISTIC,
     ComparisonMethodName,
@@ -292,8 +293,15 @@ class RoomCreateRequest(BaseModel):
         DETERMINISTIC,
         description="Comparison pipeline for this room. Only the deterministic method exists (ADR-006). The legacy name 'rag' is accepted and normalised."
     )
+    room_mode: RoomMode = Field(
+        AI_COMPARISON,
+        description="What this room is for: 'ai_comparison' runs the deterministic engine; 'manual_check' collects human ground truth and never invokes it. Orthogonal to comparison_method."
+    )
     _normalize_method = field_validator("comparison_method", mode="before")(
         lambda v: normalize_comparison_method(v)
+    )
+    _normalize_room_mode = field_validator("room_mode", mode="before")(
+        lambda v: normalize_room_mode(v)
     )
 
 class RoomResponse(BaseModel):
@@ -309,8 +317,12 @@ class RoomResponse(BaseModel):
     physical_comparison_results: dict | None = None
     zones_confirmed_for: str | None = None
     comparison_method: ComparisonMethodName = DETERMINISTIC
+    room_mode: RoomMode = AI_COMPARISON
     _normalize_method = field_validator("comparison_method", mode="before")(
         lambda v: normalize_comparison_method(v)
+    )
+    _normalize_room_mode = field_validator("room_mode", mode="before")(
+        lambda v: normalize_room_mode(v)
     )
     created_by: str | None = None
     created_at: datetime

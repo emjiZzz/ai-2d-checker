@@ -5,9 +5,12 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
-import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor, renderViewOrigins } from './renderEntities';
+import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor, renderViewOrigins, renderSelectionHighlight } from './renderEntities';
 import { entitiesFromLayers, viewDatumsFromTransform } from './viewDatums';
 import { DrawingCanvasRef } from './DrawingCanvas';
+import { EntityHitIndex } from './entityPicking';
+import { renderManualMarkings } from './renderManualMarkings';
+import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
 
 interface CanvasRendererProps {
   width: number;
@@ -19,6 +22,8 @@ interface CanvasRendererProps {
   hoveredAnnotationId?: string | null;
   isNeonCAD: boolean;
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
+  /** Manual-check picking index. Undefined outside manual mode, where it costs nothing. */
+  entityHitIndex?: EntityHitIndex;
   redrawTrigger: number;
   canvasInteractionHandlers: any;
   cursorStyle: string;
@@ -41,6 +46,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   hoveredAnnotationId,
   isNeonCAD,
   markerPositionsRef,
+  entityHitIndex,
   redrawTrigger,
   canvasInteractionHandlers,
   cursorStyle,
@@ -60,7 +66,21 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
   // viewport intentionally NOT subscribed via React hook — managed via viewportRef + store subscription
   const activeLayers = useReviewStore(s => s.activeLayers);
-  const showViolations = useReviewStore(s => s.showViolations);
+  const showViolationsPref = useReviewStore(s => s.showViolations);
+  const isManualCheckMode = useIsManualCheckRoom();
+  const manualMarkings = useWorkspaceStore((s) => s.markings);
+  const hoveredEntityId = useWorkspaceStore((s) => s.hoveredEntityId);
+  // Selection is part of the canvas's mouse scheme in EVERY room, not a manual-check feature,
+  // so this is read outside the manual gate below.
+  const selectedEntities = useWorkspaceStore((s) => s.selectedEntities);
+  const pendingPairRef = useWorkspaceStore((s) => s.pendingPairRef);
+  const hoverLocator = useWorkspaceStore((s) => s.hoverLocator);
+  const selectionLocator = useWorkspaceStore((s) => s.selectionLocator);
+  // Manual check mode shows no engine output. Not decoration: a checker who can see what the
+  // engine concluded is no longer an independent observer, and independence is the only reason
+  // these markings are worth more than the corrections we already collect. The user's own
+  // `showViolations` preference is read but not written, so leaving the mode restores it.
+  const showViolations = showViolationsPref && !isManualCheckMode;
   const showMarkerLabels = useReviewStore(s => s.showMarkerLabels);
   const visibleMarkerTypes = useReviewStore(s => s.visibleMarkerTypes);
   const showViewOrigins = useReviewStore(s => s.showViewOrigins);
@@ -241,6 +261,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       resolutionMultiplier,
       viewport,
       markerPositionsRef,
+      entityHitIndex,
       isNeonModeActive
     };
 
@@ -252,6 +273,47 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       theme,
       drawing
     });
+
+    // The selection, above the geometry and below everything else. `renderEntities` has just
+    // rebuilt the pick index this reads, so the outlines are this frame's hitboxes rather than
+    // the previous frame's. Filtered to THIS canvas's drawing: a selection carries the id of
+    // the sheet it was made on, and the two panes share this component.
+    renderSelectionHighlight({
+      frame: frameData,
+      entityIds: drawing?.id
+        ? selectedEntities
+            .filter((p) => p.drawingId === String(drawing.id))
+            .map((p) => p.entityId)
+        : [],
+    });
+
+    // What the engineer has recorded, drawn back onto the sheet. Above the geometry because it
+    // is an overlay, and only in a manual-check room — an AI room has no markings and the call
+    // would be a no-op with a per-frame cost.
+    if (isManualCheckMode) {
+      renderManualMarkings({
+        frame: frameData,
+        markings: manualMarkings,
+        // Which sheet this canvas shows. A CHANGED marking holds a different coordinate per
+        // side, so the wrong answer here puts every paired badge on the wrong drawing.
+        side: oldDrawing && drawing?.id === oldDrawing.id ? 'ref' : 'rev',
+        hoveredEntityId,
+        entityHitIndex,
+        pendingPairRef,
+        hoverLocator,
+        // Passed straight through. It was briefly gated on the selection belonging to a drawing
+        // THIS pane knows about, which silently broke the feature in one direction: both panes
+        // read `oldDrawing` from the store, so the reference pane only ever knows the reference's
+        // id and rejected every revision-side selection — killing the outline on exactly the
+        // sheet the engineer turns to after clicking. Staleness across a drawing switch is
+        // handled where it is knowable, by `TwoDWorkspace` clearing the selection when the pair
+        // changes; a renderer cannot tell a stale id from one belonging to the other pane.
+        selectionLocator,
+        // This canvas's own zones — `zoneRegions` is keyed by drawing, and confining a match
+        // to the same zone is what stops a BOM value matching the same value in a view.
+        zones: drawing?.id ? zoneRegions[drawing.id] : null,
+      });
+    }
 
     // Per-view ORIGIN markers, above the geometry so they read as an overlay. Drawn during
     // drag too: they are three tiny paths, and the point of a datum marker is that it tracks
@@ -314,10 +376,8 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
     ctx.restore();
 
-
-
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
+  }, [layers, width, height, activeLayers, showViolations, isManualCheckMode, manualMarkings, hoveredEntityId, selectedEntities, pendingPairRef, hoverLocator, selectionLocator, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, entityHitIndex, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

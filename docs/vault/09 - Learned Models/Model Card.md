@@ -10,12 +10,12 @@ tags: [learned-model, hitl]
 > folder; this note is the human-readable summary. Trained purely on human corrections —
 > no LLM involved.
 
-- **Last trained**: 2026-08-17T07:48:42.809282+00:00
+- **Last trained**: 2026-08-17T09:38:28.731478+00:00
 - **Total corrections**: 228
 - **Verdict labels**: 112  (thresholds to activate: 40 labels **and** ≥30.0% minority class)
 - **Category labels**: 7
 - **Verdict model**: ✅ active
-- **Exact-match overrides**: 38 matched, 24 changed, 7 reclassified
+- **Exact-match overrides**: 38 matched, 25 changed, 7 reclassified
 
 ## Metrics
 ```json
@@ -23,18 +23,20 @@ tags: [learned-model, hitl]
 ```
 
 ## Sample of learned "not a real change" patterns
-- `notes_section|[removed]originalelementmissingintrace:c2`
-- `title_block|jobno(jobnumber)`
-- `drawing_views|総厚サ6mm`
-- `drawing_views|145`
-- `drawing_views|1`
-- `drawing_views|center0.25mm`
-- `drawing_views|continuous1mmx1`
-- `title_block|field`
-- `title_block|revision`
-- `drawing_views|none`
+- `drawing_views|geometry:4line,1polyline->`
+- `title_block|machinecode/unitcode->`
+- `notes_section|2ロール:4(2x2台)->none`
+- `title_block|original->revision`
+- `drawing_views|continuous0.25mmx19->continuous0.25mmx1`
+- `title_block|6->6`
+- `drawing_views|r3->none`
+- `drawing_views|145->145`
+- `title_block|scale(sheetscale)->`
+- `drawing_views|none->continuous1mmx1`
 
 ## Changelog
+- 2026-08-17T09:38:28.731478+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
+- 2026-08-17T09:33:13.419862+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
 - 2026-08-17T07:48:42.809282+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
 - 2026-08-17T07:22:50.609252+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
 - 2026-08-17T07:17:12.433648+00:00 — trained on 228 corrections (verdict labels: 112, category labels: 7); verdict model ACTIVE.
@@ -74,5 +76,3 @@ tags: [learned-model, hitl]
 - 2026-08-17T06:27:53.629119+00:00 — trained on 196 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
 - 2026-08-17T06:27:50.433196+00:00 — trained on 195 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
 - 2026-08-17T06:27:47.918459+00:00 — trained on 194 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
-- 2026-08-17T06:27:42.910959+00:00 — trained on 193 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).
-- 2026-08-17T06:27:13.772527+00:00 — trained on 192 corrections (verdict labels: 101, category labels: 7); verdict model HELD (class imbalance, minority 29.7%).

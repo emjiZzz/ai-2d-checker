@@ -90,10 +90,13 @@ CROSS_TEXT_SIMILARITY_WEIGHT = 100.0
 
 
 def _edit_similarity(ref_clean: str, rev_clean: str) -> float:
-    """0..1 textual similarity of two normalized strings — the tie-break among plausible pairs."""
+    """Similarity between two candidate strings (0.0 to 1.0)."""
     if not ref_clean or not rev_clean:
         return 0.0
-    return SequenceMatcher(None, ref_clean, rev_clean).ratio()
+    # Strip internal 'dim:kind:' prefix so similarity measures the actual dimension numbers/text
+    r_val = ref_clean.split(":", 2)[-1] if ref_clean.startswith("dim:") else ref_clean
+    v_val = rev_clean.split(":", 2)[-1] if rev_clean.startswith("dim:") else rev_clean
+    return SequenceMatcher(None, r_val, v_val).ratio()
 
 
 def _plausible_edit(ref_clean: str, rev_clean: str) -> bool:
@@ -421,19 +424,19 @@ class SpatialDiffer:
                             # never a structural edit, it's a false pair — skip it entirely
                             # rather than letting the dist+1000 fallback pick it up.
                             continue
-                        if not is_same_text and not _plausible_edit(ref["clean_text"], rev["clean_text"]):
-                            # Different, and not similar enough to be one element edited in
-                            # place. Pairing these would report an unrelated string as CHANGED;
-                            # leave both unmatched so they surface as REMOVED + ADDED instead.
-                            continue
-                        # Cross-text pairs are ordered by proximity AND similarity, not
-                        # proximity alone — see CROSS_TEXT_SIMILARITY_WEIGHT for the pairing
-                        # this crossed. Identical-text pairs keep scoring on distance only.
-                        if is_same_text:
-                            score = dist
-                        else:
+                        if not is_same_text:
+                            # For cross-text pairs:
+                            # 1) If they share textual similarity >= CHANGED_SIMILARITY_FLOOR, allow up to threshold.
+                            # 2) If they have low similarity (e.g. unrelated numbers '20' vs '3'), only allow
+                            #    as an in-place edit if they sit at the EXACT same anchor location (strict radius).
                             similarity = _edit_similarity(ref["clean_text"], rev["clean_text"])
+                            if similarity < CHANGED_SIMILARITY_FLOOR:
+                                tight_radius = TWIN_THRESHOLD_NORM if is_normalized else TWIN_THRESHOLD_ABS
+                                if dist > tight_radius or not (_NUMERICISH_RE.match(ref["clean_text"]) and _NUMERICISH_RE.match(rev["clean_text"])):
+                                    continue
                             score = dist + 1000.0 - CROSS_TEXT_SIMILARITY_WEIGHT * similarity
+                        else:
+                            score = dist
                         potential_pairs.append((score, dist, rev, ref))
             
             potential_pairs.sort(key=lambda x: x[0])
@@ -448,6 +451,7 @@ class SpatialDiffer:
                 if rev["clean_text"] == ref["clean_text"]:
                     markings.append({
                         "entity_id": rev["id"],
+                        "ref_entity_id": ref["id"],
                         "text_content": rev["text"],
                         "status": "MATCHED",
                         "details": "Element verified and matches reference.",
@@ -458,6 +462,7 @@ class SpatialDiffer:
                 else:
                     markings.append({
                         "entity_id": rev["id"],
+                        "ref_entity_id": ref["id"],
                         "text_content": rev["text"],
                         "original_value": ref["text"],
                         "status": "CHANGED",

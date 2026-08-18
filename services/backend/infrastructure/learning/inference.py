@@ -13,10 +13,11 @@ the deterministic response untouched — the learner can never make the audit cr
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from . import config
-from .feature_extractor import exact_key, features_from_marking, _norm
+from .feature_extractor import exact_key, exact_pair_key, features_from_marking, _norm
 from .model_holder import LearnedModelHolder
 
 try:
@@ -27,29 +28,106 @@ except Exception:  # pragma: no cover
     logger = logging.getLogger("learning.inference")
 
 
+#: Values made entirely of digits and dimension punctuation. Mirrors
+#: `spatial_differ._NUMERICISH_RE`, which the engine uses for the same judgement one layer down.
+_NUMERIC_OVERRIDE_RE = re.compile(r"^[0-9.,\-/x×øφ°±r():~〜=]+$")
+
+#: Below this length a non-numeric override cannot identify anything by substring, so it must
+#: match a value outright. A convention, stated as one — nothing has measured it.
+MIN_OVERRIDE_SUBSTRING_CHARS = 3
+
+
+def _override_applies(
+    override_value: str,
+    norm_details: str,
+    norm_text: str,
+    norm_orig: str,
+) -> bool:
+    """Does a stored human override apply to this marking? **One direction only.**
+
+    A human dismissed (or confirmed) a finding whose normalised text was `override_value`. This
+    answers *"is this marking that same finding"*, and nothing else.
+
+    ⚠ **The reverse test — "is this marking's value a fragment of the override" — is deliberately
+    absent, and removing it is the fix for a measured defect.** It let the dimension `25` inherit
+    a dismissal recorded for the line attribute `CENTER 0.25MM`, because `"25"` is a substring of
+    `"center0.25mm"`. On `M745230A01` that force-matched three real dimension changes —
+    `25 -> 60`, `55 -> 25`, `170 -> 20` — and reported them to the checker as MATCHED.
+
+    The shape of that bug is the worst available for a human-in-the-loop system: `line_attribute_differ`
+    emits false positives on a re-traced revision, the checker correctly dismisses them, and each
+    dismissal silently converts real dimension findings into **false negatives**. The correction
+    makes the tool quieter and less correct at the same time, and nothing in the UI shows why.
+
+    **A numericish override must match exactly.** `25` and `125` are different values however many
+    characters they share — the same rule `spatial_differ._is_edited_in_place` applies when it
+    lets two numericish strings bypass the similarity floor.
+
+    Guarded by `tests/test_learned_override_scope.py`.
+    """
+    if not override_value:
+        return False
+
+    fields = tuple(f for f in (norm_details, norm_text, norm_orig) if f)
+    if not fields:
+        return False
+
+    if _NUMERIC_OVERRIDE_RE.match(override_value):
+        return any(override_value == field for field in fields)
+    if len(override_value) < MIN_OVERRIDE_SUBSTRING_CHARS:
+        return any(override_value == field for field in fields)
+    return any(override_value in field for field in fields)
+
+
 def _decide(marking: dict, bundle: dict, verdict_ready: bool) -> tuple[Optional[str], Optional[str]]:
     """Return (new_status, new_category) for one marking, or (None, None) to abstain."""
     orig_status = marking.get("status")
     orig_cat = (marking.get("category") or "unknown").removeprefix("comparison_")
+
+    norm_text = _norm(marking.get("text_content") or "")
+    norm_orig = _norm(marking.get("original_value") or "")
+    is_identical_match = bool(norm_text and (norm_text == norm_orig or not norm_orig)) and (orig_status == "MATCHED")
+
+    # Protect true identical matches: A mathematically verified identical dimension ('60'=='60')
+    # must NEVER be flipped to CHANGED by a bare number key in historical feedback.
+    if is_identical_match:
+        return None, None
 
     exact_matched = bundle.get("exact_matched", set())
     exact_changed = bundle.get("exact_changed", set())
     exact_category = bundle.get("exact_category", {})
     verdict_clf = bundle.get("verdict_clf")
 
-    keys = set()
-    for txt in [
-        marking.get("text_content"),
-        marking.get("original_value"),
-        marking.get("details"),
-        f"[{orig_status}] {marking.get('details')}",
-    ]:
-        if txt:
+    # A verdict override is keyed on **both sides of the finding**, via the same
+    # `exact_pair_key` the trainer stores with — one construction, so a lookup and a write can
+    # never drift into disagreeing. Building the transition string here by hand happened to
+    # normalise to the identical key, which is exactly the kind of coincidence that keeps working
+    # right up until `_normalize_text` changes.
+    #
+    # `20 -> 3` therefore keys as `drawing_views|20->3` and cannot be matched by a dismissal of
+    # `60 -> 20`, which was the live defect: one click on a finding involving `20` force-matched
+    # every other finding where either side was `20`.
+    keys = {
+        exact_pair_key(orig_cat, marking.get("original_value"), marking.get("text_content")),
+        exact_pair_key("", marking.get("original_value"), marking.get("text_content")),
+    }
+    # The details string describes the whole finding, so it is pair-scoped already and stays a
+    # useful second address for it.
+    for txt in (marking.get("details"), f"[{orig_status}] {marking.get('details')}"):
+        if txt and txt.strip():
             keys.add(exact_key(orig_cat, txt))
             keys.add(exact_key("", txt))
 
+    # The category override is a statement about one value ("this text belongs in notes, not
+    # views"), not about a transition, so it is looked up single-sided — matching how the
+    # trainer stores it.
+    cat_keys = {
+        exact_key(orig_cat, t)
+        for t in (marking.get("text_content"), marking.get("original_value"))
+        if t
+    }
     new_cat = None
-    for k in keys:
+    for k in cat_keys:
         target = exact_category.get(k)
         if target and target != orig_cat:
             new_cat = target
@@ -74,10 +152,8 @@ def _decide(marking: dict, bundle: dict, verdict_ready: bool) -> tuple[Optional[
     if new_status is None and exact_matched:
         for em in exact_matched:
             em_cat, _, em_val = em.partition("|")
-            if (not em_cat or em_cat == orig_cat or em_cat == "unknown") and em_val and len(em_val) >= 2:
-                if (em_val in norm_details or em_val in norm_text or em_val in norm_orig or
-                    (len(norm_text) >= 2 and norm_text in em_val) or
-                    (len(norm_orig) >= 2 and norm_orig in em_val)):
+            if (not em_cat or em_cat == orig_cat or em_cat == "unknown") and em_val:
+                if _override_applies(em_val, norm_details, norm_text, norm_orig):
                     if orig_status != "MATCHED":
                         new_status = "MATCHED"
                         break
@@ -85,10 +161,8 @@ def _decide(marking: dict, bundle: dict, verdict_ready: bool) -> tuple[Optional[
     if new_status is None and exact_changed:
         for ec in exact_changed:
             ec_cat, _, ec_val = ec.partition("|")
-            if (not ec_cat or ec_cat == orig_cat or ec_cat == "unknown") and ec_val and len(ec_val) >= 2:
-                if (ec_val in norm_details or ec_val in norm_text or ec_val in norm_orig or
-                    (len(norm_text) >= 2 and norm_text in ec_val) or
-                    (len(norm_orig) >= 2 and norm_orig in ec_val)):
+            if (not ec_cat or ec_cat == orig_cat or ec_cat == "unknown") and ec_val:
+                if _override_applies(ec_val, norm_details, norm_text, norm_orig):
                     if orig_status == "MATCHED":
                         new_status = "CHANGED"
                         break
@@ -98,10 +172,20 @@ def _decide(marking: dict, bundle: dict, verdict_ready: bool) -> tuple[Optional[
         row = features_from_marking({**marking, "category": effective_cat})
         dist = verdict_clf.proba([row])[0]
         p_true = float(dist.get(1, 0.0))
+        
+        # Mathematical identity guard: A classifier must NEVER flip identical dimensions ('60'=='60')
+        # to CHANGED, nor claim two conflicting different numbers ('20' vs '3') are MATCHED.
+        is_same_text = norm_text and norm_orig and (norm_text == norm_orig)
+        is_conflicting_numeric = norm_text and norm_orig and (norm_text != norm_orig) and \
+                                bool(re.match(r"^[0-9.,\-/x×øφ°±r():~〜=]+$", norm_text)) and \
+                                bool(re.match(r"^[0-9.,\-/x×øφ°±r():~〜=]+$", norm_orig))
+
         if orig_status in ("CHANGED", "ADDED", "REMOVED") and p_true < config.LOW_THRESH:
-            new_status = "MATCHED"
+            if not is_conflicting_numeric:
+                new_status = "MATCHED"
         elif orig_status == "MATCHED" and p_true > config.HIGH_THRESH:
-            new_status = "CHANGED"
+            if not is_same_text:
+                new_status = "CHANGED"
 
     return new_status, new_cat
 

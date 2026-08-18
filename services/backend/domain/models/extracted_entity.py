@@ -25,7 +25,12 @@ from pymongo import ASCENDING, IndexModel
 # inside its own label. v4 rows have a landing that is short by that difference.
 # v6: leaders carry `arrow_size` (DIMASZ from their dimstyle, viewport-scaled) so the canvas can
 # draw the arrowhead. v5 rows have none, and their pointers end in a bare line at the feature.
-EXTRACTION_SCHEMA_VERSION = 6
+# v7: an ANGULAR dimension's substituted text is converted from radians to degrees and given a
+# degree sign. `actual_measurement` is radians for dim kinds 2 and 5, so v6 rows store `1.05` for
+# a dimension the sheet reads as `60°` — a value printed nowhere on the drawing. Comparison is
+# unaffected (it keys on `measurement` + kind, never this string), but anything showing the text
+# to a person, or capturing it as ground truth via `EntityAddress.text`, is wrong on v6 rows.
+EXTRACTION_SCHEMA_VERSION = 7
 
 
 class ExtractedEntity(Document):

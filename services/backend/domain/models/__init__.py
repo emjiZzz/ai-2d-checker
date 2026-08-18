@@ -18,6 +18,7 @@ from .standard_document import StandardDocument
 from .user_account import UserAccountDocument
 from .user_session import UserSessionDocument
 from .zone_template import ZoneTemplateDocument
+from .ground_truth import GroundTruthMarking, ManualCheckSession
 
 # Document list for typed Beanie initialization mapping
 __all_models__ = [
@@ -40,5 +41,7 @@ __all_models__ = [
     ClientDocument,
     Room,
     AnnotationDocument,
-    ZoneTemplateDocument
+    ZoneTemplateDocument,
+    ManualCheckSession,
+    GroundTruthMarking,
 ]

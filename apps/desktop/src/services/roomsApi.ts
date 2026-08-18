@@ -8,7 +8,7 @@
  */
 
 import { buildHeaders, baseUrl, parseOrThrow } from "./fetchUtils";
-import type { ComparisonMethod, Room } from "../stores/roomStore";
+import type { ComparisonMethod, Room, RoomMode } from "../stores/roomStore";
 
 // ─── Mutation parameter types ─────────────────────────────────────────────────
 
@@ -17,6 +17,8 @@ export interface CreateRoomParams {
   description?: string;
   client_name?: string;
   comparison_method?: ComparisonMethod;
+  /** Chosen at creation. A manual-check room never runs the comparison engine. */
+  room_mode?: RoomMode;
 }
 
 export interface UpdateRoomParams {
@@ -64,6 +66,7 @@ export async function createRoom(params: CreateRoomParams): Promise<Room> {
       description: params.description ?? null,
       client_name: params.client_name ?? null,
       comparison_method: params.comparison_method ?? "deterministic",
+      room_mode: params.room_mode ?? "ai_comparison",
     }),
   });
   return parseOrThrow<Room>(res);

@@ -57,6 +57,12 @@ interface ReviewState {
   isOverlayModeEnabled: boolean;
   toggleOverlayMode: () => void;
 
+  // NOTE: manual engineer check is deliberately NOT a toggle here, unlike every other mode on
+  // this store. It is a property of the ROOM, chosen at creation (`room_mode`) and read via
+  // `useIsManualCheckRoom()`. A flag here would be a second copy that can disagree with the
+  // room — and the disagreement is silent in the direction that matters, since a manual room
+  // rendering engine findings destroys the independence the markings exist to provide.
+
   // Stage 1 Physical Comparison Controls
   isPhysicalComparisonEnabled: boolean;
   togglePhysicalComparison: () => void;

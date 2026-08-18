@@ -453,6 +453,8 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   ctx.restore();
 };
 
+import { EntityHitIndex, entityWorldBounds } from './entityPicking';
+
 export interface RenderFrame {
   ctx: CanvasRenderingContext2D;
   isExport: boolean;
@@ -473,6 +475,15 @@ export interface RenderFrame {
   viewport: { x: number; y: number; scale: number };
   markerPositionsRef: React.MutableRefObject<Record<string, { x: number, y: number }>>;
   isNeonModeActive?: boolean;
+  /**
+   * Manual-check picking index, populated during the entity loop.
+   *
+   * Optional, and absent on every existing caller: when it is undefined the loop does one
+   * `if` per entity and nothing else, so the normal render path is unchanged. It has to be
+   * filled *here* rather than in a separate pass because `renderEntities` batches geometry
+   * into style-keyed `Path2D` objects and entity identity does not survive that.
+   */
+  entityHitIndex?: EntityHitIndex;
 }
 
 export interface RenderEntitiesParams {
@@ -498,6 +509,11 @@ export const renderEntities = ({
 
   let totalEntities = 0;
   let drawnEntities = 0;
+
+  // Rebuilt every frame rather than incrementally maintained: an index that is patched on
+  // change drifts from what is actually on screen the first time an update is missed, and a
+  // stale hit box silently attributes a click to the wrong entity.
+  frame.entityHitIndex?.reset();
 
   // Section-view identifiers (`Ａ－Ａ` and the lone `Ａ` at each cut arrow). Resolved once per
   // payload and memoised on the layers object, because the answer needs the whole sheet — a lone
@@ -573,6 +589,13 @@ export const renderEntities = ({
       // so the sheet does not show a label that produces no finding. The section's CONTENT — the
       // dimensions and callouts inside the view it names — is drawn and compared as before.
       if (sectionCallouts?.has(ent)) return;
+
+      // Pickable-entity index for manual check mode. Placed after the two *semantic* culls
+      // above (an entity outside every viewport, or a section identifier the comparison
+      // deliberately ignores) because those are not on the sheet at all — but before the LOD
+      // and viewport culls below, so an entity the engineer can see as a smear is still
+      // clickable at the zoom where checkers actually read a drawing.
+      frame.entityHitIndex?.record(ent, entityWorldBounds(ent, flipY));
 
       let strokeColor = ent.style?.stroke || ent.properties?.stroke || '#00e5ff';
       if (isExport) {
@@ -1663,6 +1686,67 @@ export const renderZoneEditor = ({
       ctx.stroke();
     }
   });
+
+  ctx.restore();
+};
+
+/**
+ * The current selection, outlined on the sheet.
+ *
+ * Without this a selection is invisible: the click resolves correctly and writes to the store,
+ * and the canvas shows nothing at all — which reads as "clicking does not select" rather than
+ * "selecting has no feedback". The context menu was the only surface that admitted a selection
+ * existed, and it took a screenshot from the owner to catch it.
+ *
+ * Bounds come from the pick index rather than being re-derived, so what is outlined is exactly
+ * the hitbox that was tested. A highlight computed a second way would drift from the thing it
+ * claims to describe, and the drift would be invisible for the same reason the bug above was.
+ *
+ * A SOLID outline where hover uses corner brackets — two states of the same cyan, so a pointer
+ * resting on an already-selected entity still reads as one thing.
+ */
+export const renderSelectionHighlight = ({
+  frame,
+  entityIds,
+}: {
+  frame: any;
+  entityIds: string[];
+}) => {
+  const { ctx, isExport, scale, transX, transY, entityHitIndex } = frame;
+  if (isExport || !entityHitIndex || entityIds.length === 0) return;
+
+  if (frame.isNeonModeActive && !isExport) ctx.filter = 'none';
+
+  ctx.save();
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.5;
+  ctx.fillStyle = 'rgba(34,211,238,0.10)';
+
+  for (const id of entityIds) {
+    const b = entityHitIndex.boundsFor(id);
+    // An id with no box is normal, not a fault: the selection survives a pan that culls the
+    // entity off-screen, and it must come back when it scrolls into view.
+    if (!b) continue;
+
+    // Already flipped-world, so it converts with the frame's own scale and translation — the
+    // same arithmetic the hover highlight uses, and the reason neither goes back through
+    // worldToScreen and risks disagreeing about the Y direction.
+    const x0 = b.x0 * scale + transX;
+    const y0 = b.y0 * scale + transY;
+    const w = b.x1 * scale + transX - x0;
+    const h = b.y1 * scale + transY - y0;
+
+    // A zero-height box is a horizontal line; outlining it as-is draws nothing visible. The
+    // 2px floor is the smallest outline that still reads as a rectangle rather than a stroke.
+    const pw = Math.abs(w) < 2 ? 2 : w;
+    const ph = Math.abs(h) < 2 ? 2 : h;
+
+    ctx.fillRect(x0, y0, pw, ph);
+    ctx.strokeRect(x0, y0, pw, ph);
+  }
 
   ctx.restore();
 };

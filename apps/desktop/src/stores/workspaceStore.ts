@@ -8,6 +8,7 @@ import { createClientSlice } from "./workspace/slices/createClientSlice";
 import { createUndoSlice } from "./workspace/slices/createUndoSlice";
 import { createNavSlice } from "./workspace/slices/createNavSlice";
 import { createAnnotationsSlice } from "./workspace/slices/createAnnotationsSlice";
+import { createManualCheckSlice } from "./workspace/slices/createManualCheckSlice";
 import { useHistoryStore } from "./historyStore";
 
 // Re-export types so we don't break existing imports
@@ -41,6 +42,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     ...createUndoSlice(set, get, store),
     ...createNavSlice(set, get, store),
     ...createAnnotationsSlice(set, get, store),
+    ...createManualCheckSlice(set, get, store),
   })
 );
 

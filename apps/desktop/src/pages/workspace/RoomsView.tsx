@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
-import { useRoomStore } from "../../stores/roomStore";
+import { useRoomStore, type RoomMode } from "../../stores/roomStore";
 import { useRooms } from "../../hooks/useRooms";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
@@ -24,17 +24,22 @@ export const RoomsView: React.FC = () => {
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
   const [description, setDescription] = useState("");
+  // What the room is for. Chosen here and fixed for the room's life: the two workflows are
+  // non-overlapping by construction, so an AI room never shows stamping tools and a manual room
+  // never shows engine findings.
+  const [roomMode, setRoomMode] = useState<RoomMode>("ai_comparison");
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     try {
-      const newRoom = await createRoom({ name, description, client_name: clientName });
+      const newRoom = await createRoom({ name, description, client_name: clientName, room_mode: roomMode });
       setIsCreating(false);
       setName("");
       setClientName("");
       setDescription("");
+      setRoomMode("ai_comparison");
       // openRoom is a Zustand action that hydrates the workspace — called after
       // the Query mutation resolves so we have the real server-generated ID.
       openRoom(newRoom.id);
@@ -193,6 +198,65 @@ export const RoomsView: React.FC = () => {
                     onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
                     onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
                   />
+                </div>
+
+                {/* Room mode — chosen here, fixed for the room's life.
+
+                    Deliberately NOT part of `comparison_method`: that field names which engine
+                    compares two drawings and is a Literal of one, and ADR-006 deleted the picker
+                    that used to offer alternatives. A manual check runs no engine at all, so it
+                    is a separate axis rather than a fourth method. */}
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
+                    ROOM TYPE <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    {([
+                      {
+                        mode: "ai_comparison" as RoomMode,
+                        title: "AI Comparison",
+                        blurb: "Run the deterministic engine and review what it finds.",
+                        accent: "#7c3aed",
+                      },
+                      {
+                        mode: "manual_check" as RoomMode,
+                        title: "Manual Engineer Check",
+                        blurb: "Stamp findings by hand. No engine output is shown.",
+                        accent: "#10b981",
+                      },
+                    ]).map((opt) => {
+                      const active = roomMode === opt.mode;
+                      return (
+                        <button
+                          key={opt.mode}
+                          type="button"
+                          onClick={() => setRoomMode(opt.mode)}
+                          style={{
+                            textAlign: "left",
+                            background: active ? `${opt.accent}1a` : "var(--bg-dark)",
+                            border: `1.5px solid ${active ? opt.accent : "var(--border-color)"}`,
+                            borderRadius: 16,
+                            padding: "14px 16px",
+                            cursor: "pointer",
+                            transition: "border-color 0.15s, background 0.15s",
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: active ? opt.accent : "var(--text-primary)", marginBottom: 4 }}>
+                            {opt.title}
+                          </div>
+                          <div style={{ fontSize: 11, lineHeight: 1.4, color: "var(--text-muted)" }}>
+                            {opt.blurb}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {roomMode === "manual_check" && (
+                    <p style={{ fontSize: 11, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 10 }}>
+                      This room collects ground truth. The engine is never run here, so your
+                      findings are recorded independently of anything it would have said.
+                    </p>
+                  )}
                 </div>
 
                 {/* Client */}

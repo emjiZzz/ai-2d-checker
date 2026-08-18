@@ -436,8 +436,10 @@ class ComparisonCacheManager:
     # matched on -- while `status` explicitly ignores counts. This card answers "what kind of
     # line types does the drawing use", which is a question about the SET; the count is still
     # computed and is simply not claimed. Every cached audit carries the old count-bearing
-    # `text_content` / `original_value`, so all of them render the old card.
-    COMPARISON_CACHE_VERSION = "v52"
+    # v53: Exact-first priority matching in SpatialDiffer. Identical dimension
+    # and annotation values (e.g. 60==60, 40==40, 170==170, 25==25) are paired first across
+    # both standard and widened radius, preventing nearby different numbers from stealing them.
+    COMPARISON_CACHE_VERSION = "v53"
 
     @staticmethod
     def _get_cache_path(

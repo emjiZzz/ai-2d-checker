@@ -1,4 +1,5 @@
 import type { DrawingZonesResponse } from "../../services/drawingsApi";
+import type { GroundTruthMarking } from "../../services/groundTruthApi";
 
 export interface DrawingItem {
   id: string;
@@ -268,6 +269,103 @@ export interface AnnotationsSlice {
   setPendingAnnotationSeverity: (severity: AnnotationSeverity) => void;
 }
 
+/** A stamped entity, captured at click time from the picking index. */
+export interface PickedEntity {
+  drawingId: string;
+  side: "ref" | "rev";
+  entityId: string;
+  handle: string | null;
+  parentHandle: string | null;
+  entityType: string;
+  layer: string;
+  /** Verbatim entity text. Read, never typed — see StampMarkingModal. */
+  text: string;
+  coordinates: [number, number];
+}
+
+/**
+ * The VALUE under the cursor, so the other canvas can outline the same value.
+ *
+ * ## Why this is a value and no longer a position
+ *
+ * It was fractions of each sheet's `render_bounds` until 2026-08-18, on the reasoning that a
+ * position is a weaker hint than a pairing. Two things were wrong with that.
+ *
+ * The arithmetic was a no-op: both canvases share ONE `viewport` from `reviewStore`, and each
+ * builds `scale = viewport.scale * 1000/spanX` with `transX = viewport.x - xmin*scale`, so a
+ * fraction resolves to `f*1000*viewport.scale + viewport.x` on either sheet. The target's span
+ * cancels exactly — measured dx = 0.000000 and dw = 0.000000 across a 3x bounds difference. The
+ * "ghost" was the source rectangle redrawn at the same canvas pixel, off in Y by the ratio of
+ * the two aspect ratios and by nothing else.
+ *
+ * And the premise was wrong regardless: `render_bounds` is the extracted-entity bounding box
+ * plus 5% (`viewport_generator.py`), not the paper, and the sheets do not lay out alike.
+ * `M745204N01` is a clean 3x uniform scaling of that box, matching aspect to four decimals, and
+ * its two sides still place their views differently — so the same fraction is a different
+ * feature. Owner's call, 2026-08-18: match the value, not the place.
+ *
+ * ⚠ This does now suggest a correspondence, which the position version deliberately withheld —
+ * see the note in `renderManualMarkings`. The category selector stays unfilled.
+ */
+/**
+ * Enough of an entity's identity to find its counterpart on the OTHER sheet.
+ *
+ * Named for hover until 2026-08-18, when selecting an entity started publishing one too. The
+ * two gestures build it the same way on purpose — see `buildLocator` in `useEntityPicking`,
+ * which is the single place that constructs it. Two constructions of "what is this entity, for
+ * matching purposes" would keep working while they drifted, and the overlay would just quietly
+ * pair different things depending on which gesture you used.
+ */
+export interface EntityLocator {
+  /** Which canvas the entity is on. The other one outlines the match. */
+  side: "ref" | "rev";
+  /** Normalized value of the entity — see `normalizeEntityValue`. Never empty. */
+  value: string;
+  /** `text` / `dimension` / `leader`. A dimension must not match a note that reads the same. */
+  entityType: string;
+  /** Low 3 bits of `dim_type`; `null` when not a dimension. Separates 80° from a linear 80. */
+  dimKind: number | null;
+  /** Semantic zone the entity sits in, so a BOM value never matches the same value in a view. */
+  zone: string | null;
+  /**
+   * Whether the source sheet MEASURED that zone (`content_aware`) or guessed it
+   * (`percentage_fallback`). Zone is only filtered on where both sides measured it: gating
+   * unconditionally blanked 120 of 184 hovers on `M745204N01`, whose reference guesses
+   * `tolerance`, `notes` and `iso` and so disagrees with the revision about where they are.
+   */
+  zoneMeasured: boolean;
+  /** Position within that zone. Tie-break only, when both sides measured the same zone. */
+  zfx: number | null;
+  zfy: number | null;
+  /**
+   * Where the entity sits among the other copies of its own value on its sheet. The tie-break
+   * that survives the two sheets being laid out differently — see `ValueMatchSpec.cfx`.
+   */
+  cfx: number | null;
+  cfy: number | null;
+  /** Position within the sheet. The weakest tie-break; orders equals, identifies nothing. */
+  sfx: number | null;
+  sfy: number | null;
+}
+
+export type StampTool = "matched" | "added" | "removed" | "changed" | "not_a_finding";
+
+/** A stamp awaiting the engineer's category and notes. */
+export interface PendingStamp {
+  tool: StampTool;
+  ref: PickedEntity | null;
+  rev: PickedEntity | null;
+}
+
+export interface CommitStampInput {
+  category: string;
+  refText: string;
+  revText: string;
+  textWasEdited: boolean;
+  isBulk: boolean;
+  notes: string;
+}
+
 export interface NavSlice {
   currentNav: "workspace" | "standards" | "history" | "settings";
   hasHydrated: boolean;
@@ -276,4 +374,62 @@ export interface NavSlice {
   resetWorkspace: () => void;
 }
 
-export type WorkspaceState = ComparisonSlice & UploadSlice & AuditSlice & ClientSlice & UndoSlice & NavSlice & AnnotationsSlice;
+/**
+ * Manual engineer check — the ground-truth capture session.
+ *
+ * Held here rather than in `reviewStore` because these are *records*, not view state: every
+ * marking is already persisted server-side by the time it lands in `markings`. The mode flag
+ * itself lives in `reviewStore` beside every other mode toggle.
+ *
+ * `pendingPairRef` is the half-finished CHANGED pair. It exists as explicit state rather than
+ * as a closure inside the mouse handler so the toolbar can show that a pairing is in flight —
+ * a click that silently does nothing until the second click is how a user concludes the tool
+ * is broken.
+ */
+export interface ManualCheckSlice {
+  manualSessionId: string | null;
+  markings: GroundTruthMarking[];
+  pendingPairRef: PickedEntity | null;
+  /** The entity under the cursor, or null. Drives the hover highlight only. */
+  hoveredEntityId: string | null;
+  /** Same value, other sheet, following the cursor. See `EntityLocator`. */
+  hoverLocator: EntityLocator | null;
+  /**
+   * Same value, other sheet, for what is SELECTED — so the pair stays outlined once the cursor
+   * moves away. Hover could not do this job: it is cleared the moment you leave the entity, and
+   * the engineer needs to look at both sheets at once to judge a pair.
+   */
+  selectionLocator: EntityLocator | null;
+  /**
+   * The entity the context menu was opened on.
+   *
+   * Captured at right-click rather than re-picked when a menu item fires: the menu sits over
+   * the canvas, so by the time the click lands the cursor is on the menu and a fresh hit test
+   * would resolve to whatever happens to be underneath it.
+   */
+  /**
+   * What the engineer has selected on the canvas — currently always one entity, from a
+   * left-click. A LIST rather than a single pick because the context menu and the renderer both
+   * read it, and a multi-select gesture would otherwise change the shape both depend on.
+   *
+   * Replaced `contextPickedEntity` on 2026-08-18, when left-click stopped opening the stamping
+   * menu and started selecting instead. A single nullable pick and a list would have been two
+   * sources of truth for "what am I about to record against", so there is only the list.
+   */
+  selectedEntities: PickedEntity[];
+  /** Set while a stamp modal is open, so the canvas does not start a second one. */
+  pendingStamp: PendingStamp | null;
+
+  setSelectedEntities: (picked: PickedEntity[]) => void;
+  setHoveredEntityId: (id: string | null) => void;
+  setHoverLocator: (locator: EntityLocator | null) => void;
+  setSelectionLocator: (locator: EntityLocator | null) => void;
+  setPendingPairRef: (picked: PickedEntity | null) => void;
+  openStamp: (stamp: PendingStamp | null) => void;
+  startManualSession: (roomId: string, refDrawingId: string, revDrawingId: string) => Promise<void>;
+  commitStamp: (input: CommitStampInput) => Promise<void>;
+  retractManualMarking: (markingId: string) => Promise<void>;
+  submitManualSession: () => Promise<void>;
+}
+
+export type WorkspaceState = ComparisonSlice & UploadSlice & AuditSlice & ClientSlice & UndoSlice & NavSlice & AnnotationsSlice & ManualCheckSlice;

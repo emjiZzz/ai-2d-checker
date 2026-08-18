@@ -135,6 +135,49 @@ def features_from_marking(m: dict) -> dict:
 
 
 def exact_key(category: Optional[str], text: Optional[str]) -> str:
-    """Stable key for exact-match correction memory: category + normalized text."""
+    """Stable key for exact-match correction memory: category + normalized text.
+
+    ⚠ **Single-sided, and therefore too broad to gate an override on.** Kept because the
+    category-override memory (`exact_category`) is genuinely about one value, and because tests
+    and tooling read it. For deciding whether a stored verdict applies to a finding, use
+    `exact_pair_key` — see the warning there.
+    """
     clean_cat = str(category or 'unknown').removeprefix("comparison_")
     return f"{clean_cat}|{_norm(text)}"
+
+
+#: Separator between the reference and revision halves of a pair key. Applied *after* each side
+#: is normalised, so `_normalize_text` can never mangle or introduce it.
+PAIR_SEP = "->"
+
+
+def exact_pair_key(
+    category: Optional[str],
+    ref_text: Optional[str],
+    rev_text: Optional[str],
+) -> str:
+    """Stable key for a correction, identified by **both sides of the finding**.
+
+    ⚠ **A verdict override is a statement about a pair, not about a value**, and keying it on one
+    side was a measured defect. A checker who dismissed a finding involving `20` created the key
+    `drawing_views|20`, which then matched every finding where *either* side was `20` — so on
+    `M745230A01` a real `20 -> 3` and a real `60 -> 20` were both reported as MATCHED on the
+    strength of one unrelated click.
+
+    The pair key makes that impossible: `drawing_views|20->3` cannot match `60 -> 20`.
+
+    **A one-sided finding keys canonically, on whichever side holds the value.** ADDED and
+    REMOVED markings do not agree about where they put it — measured on `M745230A01`, a REMOVED
+    marking carries the text in `text_content` with an empty `original_value`, exactly like an
+    ADDED one — so keying them positionally would file the same judgement under two addresses and
+    neither would ever match the other. Both become `cat|20->`.
+
+    They still cannot match a two-sided finding: *"this value appeared with no counterpart"* and
+    *"this value changed to something else"* are different judgements, and conflating them is the
+    defect this function exists to fix.
+    """
+    clean_cat = str(category or 'unknown').removeprefix("comparison_")
+    ref_n, rev_n = _norm(ref_text), _norm(rev_text)
+    if not ref_n or not rev_n:
+        return f"{clean_cat}|{ref_n or rev_n}{PAIR_SEP}"
+    return f"{clean_cat}|{ref_n}{PAIR_SEP}{rev_n}"

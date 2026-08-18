@@ -67,25 +67,26 @@ def resolve_marking_coordinates(
     """Resolves coordinates for all comparison markings using exact ID mappings or fuzzy search fallbacks."""
     for m in clean_markings:
         eid = m.get("entity_id")
-        if eid:
-            eid_rev = eid if eid.startswith("REV-") else f"REV-{eid}"
-            eid_ref = eid if eid.startswith("REF-") else f"REF-{eid}"
-            
-            status_val = m.get("status")
-            if status_val == "REMOVED":
-                if eid_ref in id_to_ref_entity:
-                    ref_ent = id_to_ref_entity[eid_ref]
+        ref_eid = m.get("ref_entity_id")
+        status_val = m.get("status")
+
+        if status_val == "REMOVED":
+            if eid and eid.startswith("REF-") and eid in id_to_ref_entity:
+                ref_ent = id_to_ref_entity[eid]
+                if m.get("ref_coordinates") is None:
                     m["ref_coordinates"] = calc_anchor(ref_ent)
-                    used_ref_entities.add(id(ref_ent))
-            else:
-                if eid_rev in id_to_rev_entity:
-                    rev_ent = id_to_rev_entity[eid_rev]
+                used_ref_entities.add(id(ref_ent))
+        else:
+            if eid and eid.startswith("REV-") and eid in id_to_rev_entity:
+                rev_ent = id_to_rev_entity[eid]
+                if m.get("coordinates") is None:
                     m["coordinates"] = calc_anchor(rev_ent)
-                    used_rev_entities.add(id(rev_ent))
-                if status_val in ["CHANGED", "MATCHED"] and eid_ref in id_to_ref_entity:
-                    ref_ent = id_to_ref_entity[eid_ref]
+                used_rev_entities.add(id(rev_ent))
+            if ref_eid and ref_eid.startswith("REF-") and ref_eid in id_to_ref_entity:
+                ref_ent = id_to_ref_entity[ref_eid]
+                if m.get("ref_coordinates") is None:
                     m["ref_coordinates"] = calc_anchor(ref_ent)
-                    used_ref_entities.add(id(ref_ent))
+                used_ref_entities.add(id(ref_ent))
                     
         # Fallback to fuzzy text search if coordinates are missing
         if m.get("coordinates") is None or m.get("ref_coordinates") is None:

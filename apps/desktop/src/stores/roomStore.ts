@@ -25,6 +25,18 @@ import { mapCanvasMarkingsToMarkers } from "../utils/restoreCanvasMarkings";
  */
 export type ComparisonMethod = "deterministic";
 
+/**
+ * What a room is FOR — orthogonal to which engine compares.
+ *
+ * `manual_check` rooms never invoke the comparison engine: an engineer stamps entities by hand
+ * and the result is ground truth. Kept off `ComparisonMethod` on purpose — that names an
+ * engine, and a manual check does not run one. See `domain/models/room_mode.py`.
+ *
+ * Optional on `Room` because rooms created before the field existed carry none, and they were
+ * all AI comparison rooms. Absent and `"ai_comparison"` mean the same thing.
+ */
+export type RoomMode = "ai_comparison" | "manual_check";
+
 export interface Room {
   id: string;
   name: string;
@@ -43,6 +55,8 @@ export interface Room {
   zones_confirmed_for?: string | null;
   /** Only the deterministic method exists (ADR-006). Optional: a room predating the field. */
   comparison_method?: ComparisonMethod;
+  /** Chosen at room creation. Absent on rooms predating it, which were all AI comparisons. */
+  room_mode?: RoomMode;
 }
 
 interface RoomState {
@@ -52,7 +66,7 @@ interface RoomState {
   error: string | null;
 
   fetchRooms: () => Promise<void>;
-  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: ComparisonMethod) => Promise<Room | null>;
+  createRoom: (name: string, description?: string, clientName?: string, comparisonMethod?: ComparisonMethod, roomMode?: RoomMode) => Promise<Room | null>;
   openRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: (roomId: string) => Promise<boolean>;
@@ -79,7 +93,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     }
   },
 
-  createRoom: async (name, description, clientName, comparisonMethod = "deterministic") => {
+  createRoom: async (name, description, clientName, comparisonMethod = "deterministic", roomMode = "ai_comparison") => {
     set({ error: null });
     try {
       const res = await fetch(`${baseUrl()}/api/v1/rooms`, {
@@ -90,6 +104,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
           description: description || null,
           client_name: clientName || null,
           comparison_method: comparisonMethod,
+          room_mode: roomMode,
         })
       });
       const data = await parseAndValidate<Room>(res, RoomSchema);

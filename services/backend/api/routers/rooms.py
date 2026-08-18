@@ -25,6 +25,7 @@ def _to_response(room: Room) -> RoomResponse:
         physical_comparison_results=json.loads(room.physical_comparison_results) if room.physical_comparison_results else None,
         zones_confirmed_for=room.zones_confirmed_for,
         comparison_method=room.comparison_method,
+        room_mode=room.room_mode,
         created_by=room.created_by,
         created_at=room.created_at,
         updated_at=room.updated_at,
@@ -56,10 +57,11 @@ async def create_room(
         description=payload.description,
         client_name=payload.client_name,
         comparison_method=payload.comparison_method,
+        room_mode=payload.room_mode,
         created_by=resolve_username(x_session_token),
     )
     await room.save()
-    logger.info(f"Room created: {room.id} ('{room.name}') method={room.comparison_method}")
+    logger.info(f"Room created: {room.id} ('{room.name}') mode={room.room_mode} method={room.comparison_method}")
     return StandardResponse(success=True, data=_to_response(room))
 
 

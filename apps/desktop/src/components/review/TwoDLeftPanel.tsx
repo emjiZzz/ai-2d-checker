@@ -4,9 +4,11 @@ import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useRoomStore } from "../../stores/roomStore";
 import { isZoneReviewConfirmed, isZoneReviewGrandfathered } from "../../utils/zoneGate";
 import { ChecklistPanel } from "./ChecklistPanel";
+import { ManualMarkingList } from "./ManualMarkingList";
 import { usePhysicalComparison } from "../../hooks/usePhysicalComparison";
 import { getComparisonStages, getComparisonMethodLabel } from "../../utils/comparisonStages";
 import { Button } from "../ui/Button";
+import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
 
 interface TwoDLeftPanelProps {
   currentNav: string;
@@ -16,6 +18,7 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
   const oldDrawing = useWorkspaceStore(s => s.oldDrawing);
   const newDrawing = useWorkspaceStore(s => s.newDrawing);
   const activeRoom = useRoomStore(s => s.activeRoom);
+  const isManualCheckModePanel = useIsManualCheckRoom();
 
   const {
     runPhysicalComparisonAI,
@@ -84,6 +87,17 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
         }
       `}</style>
 
+      {/*
+        A manual-check room replaces this panel outright — header, Run/Re-test controls,
+        progress stages and checklist. Gating only the checklist would leave an engineer
+        looking at a "Run AI Comparison" button in a room whose whole purpose is that no
+        engine runs, and one accidental click would put engine findings in front of someone
+        whose independence is the only reason their markings are worth collecting.
+      */}
+      {isManualCheckModePanel ? (
+        <ManualMarkingList />
+      ) : (
+      <>
       {/* Premium Desktop Header */}
       <div className="tlp-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2 p-2.5 border-b border-border-color bg-bg-sidebar select-none">
         <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -268,9 +282,10 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
         </div>
       )}
 
-      {/* Completed State */}
       {aiScanProgress === "completed" && (
         <ChecklistPanel aiChecklistResults={aiChecklistResults} />
+      )}
+      </>
       )}
     </div>
   );

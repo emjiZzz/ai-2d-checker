@@ -4,6 +4,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { AnnotationSeverity, getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { useThemeStore } from '../../stores/themeStore';
 import { useCanvasInteraction } from './useCanvasInteraction';
+import { useEntityPicking } from './useEntityPicking';
 import { CanvasRenderer } from './CanvasRenderer';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { AnnotationCreateModal } from './AnnotationCreateModal';
@@ -103,6 +104,15 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
       markerPositionsRef
     });
 
+    // Manual-check picking, layered on top. When the mode is off this returns `handlers`
+    // unchanged and no index, so the existing canvas behaves exactly as it did.
+    const { entityHitIndex, handlers: canvasHandlers } = useEntityPicking({
+      handlers,
+      drawing,
+      oldDrawing,
+      canvasRef,
+    });
+
     const {
       isDraggingRef,
       contextMenu,
@@ -164,7 +174,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             markerPositionsRef={markerPositionsRef}
             redrawTrigger={redrawTrigger}
             isDraggingRef={isDraggingRef}
-            canvasInteractionHandlers={handlers}
+            canvasInteractionHandlers={canvasHandlers}
+            entityHitIndex={entityHitIndex}
             cursorStyle={cursorStyle}
             sharedCanvasRef={canvasRef}
           />

@@ -189,6 +189,33 @@ def common_properties(entity: Any) -> dict[str, Any]:
     return props
 
 
+def _degree_sign_in_doc_bytes(entity: Any) -> str:
+    """A degree sign in the BYTE domain this mapper actually works in.
+
+    ⚠ `entity_mapper` runs **before** `dxf_parser.transcode_value`. The DXF is read with
+    `encoding="latin-1"` so bytes survive intact, which means every string here is raw
+    document-codepage bytes with one character per byte -- see the header note in
+    `infrastructure/utils/text.py`. Emitting a real U+00B0 therefore inserts the single byte
+    0xB0, and the later transcode decodes that byte in the document's codepage: under CP932
+    0xB0 is `ｰ`, the halfwidth katakana prolonged sound mark. A 60-degree dimension came
+    back reading `60ｰ`.
+
+    So the sign is encoded to the document's own codepage first and handed over as latin-1
+    characters -- i.e. exactly the bytes the DXF would have contained had it spelled the value
+    itself. CP932 gives 0x81 0x8B, which transcodes back to U+00B0; a UTF-8 document gives
+    0xC2 0xB0, which also transcodes back. Neither byte collides with the MTEXT markup
+    characters (0x5C, 0x7B, 0x7D, 0x7E) that `_clean_mtext_content` strips.
+
+    Falls back to CP932, matching `transcode_value`'s own first fallback, when the document
+    declares no usable encoding.
+    """
+    enc = getattr(getattr(entity, "doc", None), "encoding", None) or "cp932"
+    try:
+        return "°".encode(enc).decode("latin-1")
+    except (LookupError, UnicodeError):
+        return "°".encode("cp932").decode("latin-1")
+
+
 class EntityMapper:
     """
     Standardized mapper that translates raw ezdxf graphic entities
@@ -611,9 +638,27 @@ class EntityMapper:
         # Dimensions contain geometric definition points and overlay texts
         text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
         measurement = entity.dxf.actual_measurement if hasattr(entity.dxf, "actual_measurement") else None
+        dim_type = _dxf_get(entity.dxf, "dimtype", 0)
+        # Low 3 bits carry the KIND; the high bits are flags. Same mask as
+        # `spatial_differ._dimension_key`, which keys on this rather than on display text.
+        dim_kind = int(dim_type or 0) & 0b111
 
         if (not text or "<>" in text) and measurement is not None:
-            meas_str = f"{measurement:.2f}".rstrip('0').rstrip('.')
+            # ⚠ `actual_measurement` is RADIANS for an angular dimension (kinds 2 and 5) and
+            # drawing units for every other kind. Formatting it blindly stored a 60° dimension
+            # as `1.05` and an 80° one as `1.4` -- a value that appears nowhere on the sheet.
+            #
+            # It failed silently for two reasons. The deterministic engine keys dimensions on
+            # `measurement` + kind and never reads this string, so comparison was unaffected;
+            # and on a linear dimension the substitution is correct, which is most of them.
+            # It surfaced only when the manual-check overlay started showing the stored text to
+            # a human, who could see the drawing said `60°` -- and by then `EntityAddress.text`
+            # had been capturing the same wrong string into ground truth.
+            if dim_kind in (2, 5):
+                deg = f"{math.degrees(measurement):.2f}".rstrip('0').rstrip('.')
+                meas_str = deg + _degree_sign_in_doc_bytes(entity)
+            else:
+                meas_str = f"{measurement:.2f}".rstrip('0').rstrip('.')
             text = meas_str if not text else text.replace("<>", meas_str)
 
         text = EntityMapper._clean_mtext_content(text)
@@ -624,8 +669,6 @@ class EntityMapper:
         text_xyz = _as_xyz(text_point)
         if text_xyz[0] == 0 and text_xyz[1] == 0:
             text_xyz = list(def_xyz)
-
-        dim_type = _dxf_get(entity.dxf, "dimtype", 0)
 
         props = common_properties(entity)
         props["text"] = text

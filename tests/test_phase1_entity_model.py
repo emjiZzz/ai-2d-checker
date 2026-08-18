@@ -681,3 +681,98 @@ def test_identity_transform_never_reports_clipping():
     mapped = _build_mapped("text", {"insert": [1e9, -1e9, 0.0]})
     project_mapped_entity(mapped, t)
     assert "outside_viewport" not in mapped["properties"]
+
+
+# ---------------------------------------------------------------------------
+# ANGULAR dimension text
+#
+# `actual_measurement` is RADIANS for an angular dimension and drawing units for
+# everything else. Formatting it blindly stored `1.05` for a 60-degree dimension --
+# a number printed nowhere on the sheet.
+# ---------------------------------------------------------------------------
+
+
+def _angular_dim(msp, degrees=90.0):
+    """A 90-degree angular dimension between two lines through the origin.
+
+    `actual_measurement` (group 42) is written by the authoring CAD application and is unset
+    on a dimension built here, so it is assigned explicitly -- otherwise the substitution
+    branch under test never runs and the text stays the literal `<>`. That is the
+    `_dxf_get` / `_dxf_is_set` distinction: ezdxf reporting the attribute absent is the file
+    not having said it, not a value of zero.
+    """
+    d = msp.add_angular_dim_2l(
+        base=(0, 6), line1=((0, 0), (1, 0)), line2=((0, 0), (0, 1)),
+        override={"dimtsz": 0, "dimblk": "", "dimasz": 2.5},
+    )
+    d.render()
+    # Radians, as a real DXF stores it for an angular dimension.
+    d.dimension.dxf.actual_measurement = math.radians(degrees)
+    return d.dimension
+
+
+def test_angular_dimension_text_is_degrees_not_radians():
+    """The defect the manual-check overlay surfaced: a 60-degree dimension stored `1.05`.
+
+    It hid for two reasons. The deterministic engine keys a dimension on `measurement` plus
+    kind and never reads this string, so comparison never disagreed; and on a linear
+    dimension -- most of them -- the plain substitution is correct. It became visible only
+    when the overlay showed the stored text to someone who could see the drawing said 60
+    degrees, by which point `EntityAddress.text` was capturing the same wrong string into
+    ground truth.
+    """
+    doc = ezdxf.new()
+    mapped = EntityMapper.map_dimension(_angular_dim(doc.modelspace()))
+    props = mapped["properties"]
+
+    # Kind lives in the low 3 bits; 2 and 5 are the angular forms.
+    assert props["dim_type"] & 0b111 in (2, 5)
+
+    # ⚠ This mapper runs BEFORE `dxf_parser.transcode_value`, so its strings are raw
+    # document-codepage bytes carried one character per byte. The assertion applies the same
+    # transcode the parser does, because that is what the value has to survive to reach the
+    # database -- looking for a literal U+00B0 here passes for a CP1252 document and hides the
+    # CP932 case entirely, which is exactly how the first fix shipped broken.
+    text = props["text"].encode("latin-1").decode(doc.encoding or "cp932")
+
+    assert "\N{DEGREE SIGN}" in text, f"angular dimension text lost its degree sign: {text!r}"
+    assert math.isclose(float(text.rstrip("\N{DEGREE SIGN}")), 90.0, abs_tol=0.01), (
+        f"expected ~90 degrees, got {text!r} -- radians would read ~1.57"
+    )
+    # The radian value must not survive anywhere in the displayed string.
+    assert "1.57" not in text
+
+
+def test_angular_degree_sign_survives_a_shift_jis_document():
+    """The regression the first fix shipped: a real U+00B0 written into the byte domain.
+
+    `entity_mapper` sees CP932 bytes as latin-1 characters, so a literal U+00B0 is the single
+    byte 0xB0 -- and CP932 decodes 0xB0 as U+FF70, the halfwidth katakana prolonged sound mark.
+    Both sides of M745204N01 came back reading `60ｰ`, which looks close enough to be missed
+    until the codepoints are printed.
+
+    A CP1252 document cannot catch this: there 0xB0 *is* the degree sign, so the round trip
+    succeeds by accident. The encoding has to be forced.
+    """
+    doc = ezdxf.new()
+    doc.encoding = "cp932"
+    raw = EntityMapper.map_dimension(_angular_dim(doc.modelspace(), degrees=60.0))["properties"]["text"]
+
+    assert "ｰ" not in raw, "degree sign was written as a katakana prolonged sound mark"
+    assert raw.encode("latin-1").decode("cp932") == "60\N{DEGREE SIGN}", (
+        f"CP932 round trip produced {raw.encode('latin-1').decode('cp932')!r}"
+    )
+
+
+def test_linear_dimension_text_is_left_in_drawing_units():
+    """The other half of the same branch: a linear measurement is already in drawing units,
+    so converting it would break every dimension that was previously correct."""
+    doc = ezdxf.new()
+    dim = _rendered_dim(doc.modelspace())
+    dim.dxf.actual_measurement = 100.0  # drawing units, as a real DXF stores it for a linear dim
+    mapped = EntityMapper.map_dimension(dim)
+    props = mapped["properties"]
+
+    assert props["dim_type"] & 0b111 not in (2, 5)
+    assert "\N{DEGREE SIGN}" not in props["text"]
+    assert math.isclose(float(props["text"]), 100.0, abs_tol=0.01)
