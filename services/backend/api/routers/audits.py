@@ -44,6 +44,7 @@ from ...infrastructure.utils.text import (
 from ...logger import logger, correlation_id_var
 from ...config import settings
 from ..dependencies import get_auth_token, get_or_404
+from ...infrastructure.storage.entity_cache import load_entities
 from ..schemas import (
     StandardResponse,
     AuditSessionResponse,
@@ -680,8 +681,8 @@ async def _load_comparison_inputs(request: PhysicalComparisonRequest):
         DrawingDocument, request.drawing_id, "Revised drawing not found."
     )
 
-    ref_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.reference_drawing_id).to_list()
-    rev_entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == request.drawing_id).to_list()
+    ref_entities = await load_entities(request.reference_drawing_id)
+    rev_entities = await load_entities(request.drawing_id)
 
     return ref_drawing, rev_drawing, ref_entities, rev_entities
 

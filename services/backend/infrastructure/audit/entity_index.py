@@ -155,9 +155,9 @@ class EntityIndex:
 
         Uses the compound `(drawing_id, entity_type)` index added in Phase 1.
         """
-        from ...domain.models.extracted_entity import ExtractedEntity
+        from ..storage.entity_cache import load_entities
 
-        entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing_id)).to_list()
+        entities = await load_entities(str(drawing_id))
         return cls(entities, side=side)
 
     # -- lookup ------------------------------------------------------------

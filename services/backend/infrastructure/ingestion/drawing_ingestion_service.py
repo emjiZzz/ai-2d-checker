@@ -12,6 +12,7 @@ from ...domain.models.extraction_job import ExtractionJob
 from ..cad.processing_queue import processing_queue
 from ..storage.path_resolver import get_storage_root
 from ...logger import correlation_id_var, logger
+from ..storage.entity_cache import clear_for_drawing as clear_entity_cache
 
 
 class DrawingIngestionService:
@@ -233,6 +234,7 @@ class DrawingIngestionService:
         drawing = await DrawingDocument.get(drawing_id)
 
         # 1. Parsed entities + jobs
+        clear_entity_cache(drawing_id)
         await ExtractedEntity.find(ExtractedEntity.drawing_id == drawing_id).delete()
         await ExtractionJob.find(ExtractionJob.drawing_id == drawing_id).delete()
 

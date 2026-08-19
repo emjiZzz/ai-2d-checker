@@ -74,6 +74,17 @@ interface RoomState {
   clearError: () => void;
 }
 
+/** One drawing by id. Module scope so `openRoom` can start it before it has the room. */
+const fetchDrawingById = async (id: string): Promise<DrawingItem | null> => {
+  try {
+    return await parseOrThrow<DrawingItem>(
+      await fetch(`${baseUrl()}/api/v1/drawings/${id}`, { headers: buildHeaders() }),
+    );
+  } catch {
+    return null;
+  }
+};
+
 export const useRoomStore = create<RoomState>((set, get) => ({
   rooms: [],
   activeRoom: null,
@@ -117,49 +128,102 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   openRoom: async (roomId) => {
-    // Save current active room's state before switching
+    // Saving the room being LEFT is not on the critical path of opening the next one.
+    //
+    // Safe to leave unawaited because `saveWorkspaceState` snapshots `getState()` synchronously
+    // before its first await — the bytes are already captured, so a later `loadWorkspaceState`
+    // cannot race it into writing the wrong room's state. The two also address different
+    // IndexedDB keys (`workspace-<roomId>`), so they cannot collide.
     const currentRoom = get().activeRoom;
     if (currentRoom) {
-      await saveWorkspaceState(currentRoom.id);
+      void saveWorkspaceState(currentRoom.id).catch((err) =>
+        console.warn("[roomStore] could not save the outgoing room's workspace:", err),
+      );
     }
-    
-    // Switch to new room's state immediately for fast UI feedback
-    await loadWorkspaceState(roomId);
-    
+
     set({ isLoading: true, error: null });
     try {
-      const roomRes = await fetch(`${baseUrl()}/api/v1/rooms/${roomId}`, { headers: buildHeaders() });
+      // Start the drawings BEFORE the room detail comes back.
+      //
+      // The chain was strictly serial — `/rooms/{id}` (833 ms; it carries the whole comparison
+      // checklist) then `/drawings/{id}` then `/layers` — so the canvas could not begin
+      // rendering until all three had landed. The room LIST already carries both drawing ids,
+      // so when the room was opened from it there is nothing to wait for.
+      //
+      // ⚠ This is a prefetch, never a source of truth. `/rooms/{id}` stays authoritative for
+      // WHICH drawings the room points at: the list can be stale, and a room re-pointed at a
+      // different drawing elsewhere would otherwise load the old one and look perfectly normal.
+      // Results are keyed by drawing id and consumed below only when the authoritative id
+      // matches — a miss simply refetches, costing what it costs today.
+      const prefetch = new Map<string, Promise<DrawingItem | null>>();
+      const listed = get().rooms.find((r) => r.id === roomId);
+      for (const id of [listed?.active_old_drawing_id, listed?.active_new_drawing_id]) {
+        if (id) prefetch.set(id, fetchDrawingById(id));
+      }
+
+      // The IndexedDB restore and the room fetch are independent — one reads local storage, the
+      // other the network — and they were awaited one after the other. Run together they cost
+      // the slower of the two rather than their sum.
+      //
+      // ⚠ `loadWorkspaceState` must still finish BEFORE the drawings below are applied: it can
+      // call `resetWorkspace()`, and a reset landing after them would blank the room that was
+      // just opened. Awaiting both here keeps that ordering while removing the serial wait.
+      const [, roomRes] = await Promise.all([
+        loadWorkspaceState(roomId),
+        fetch(`${baseUrl()}/api/v1/rooms/${roomId}`, { headers: buildHeaders() }),
+      ]);
       const roomData = await parseAndValidate<Room>(roomRes, RoomSchema);
 
       // Fetch drawings FIRST before updating activeRoom to prevent sync race condition
       const ws = useWorkspaceStore.getState();
       
-      let oldDoc: DrawingItem | null = null;
-      if (roomData.active_old_drawing_id) {
-        try {
-          const oldRes = await fetch(`${baseUrl()}/api/v1/drawings/${roomData.active_old_drawing_id}`, { headers: buildHeaders() });
-          oldDoc = await parseOrThrow<DrawingItem>(oldRes);
-        } catch {}
-      }
-      
-      let newDoc: DrawingItem | null = null;
-      if (roomData.active_new_drawing_id) {
-        try {
-          const newRes = await fetch(`${baseUrl()}/api/v1/drawings/${roomData.active_new_drawing_id}`, { headers: buildHeaders() });
-          newDoc = await parseOrThrow<DrawingItem>(newRes);
-        } catch {}
-      }
+      // ── fetched CONCURRENTLY, not one after another ──────────────────────────────
+      // These three are independent: two drawings and an audit session, all keyed off ids the
+      // room document already gave us. They used to await in sequence, so opening a room cost
+      // four serial round trips (room -> old -> new -> session -> violations) before anything
+      // appeared. Nothing downstream needed that ordering; it was just written top to bottom.
+      //
+      // `Promise.all` is safe here only because each branch keeps its own try/catch: a rejected
+      // promise would otherwise abandon the other two, and a missing drawing is a normal state
+      // for a half-configured room, not a reason to fail the open.
+      // Takes the prefetched promise when the authoritative id matches one, otherwise fetches.
+      // `prefetch` holds promises rather than results, so a hit awaits a request already in
+      // flight instead of issuing a second one.
+      const fetchDrawing = (id?: string | null): Promise<DrawingItem | null> => {
+        if (!id) return Promise.resolve(null);
+        return prefetch.get(id) ?? fetchDrawingById(id);
+      };
 
-      if (roomData.active_audit_session_id && newDoc) {
+      // The session's two calls stay sequential with respect to each OTHER — violations are
+      // addressed by the session id — but the pair runs alongside the drawings.
+      const fetchSession = async () => {
+        const sessionId = roomData.active_audit_session_id;
+        if (!sessionId) return null;
         try {
-          const sessionRes = await fetch(`${baseUrl()}/api/v1/audits/sessions/${roomData.active_audit_session_id}`, { headers: buildHeaders() });
-          const sessionData = await parseOrThrow<any>(sessionRes);
-          
-          let violationsData = [];
+          const sessionData = await parseOrThrow<any>(
+            await fetch(`${baseUrl()}/api/v1/audits/sessions/${sessionId}`, { headers: buildHeaders() }),
+          );
+          let violationsData: any = [];
           try {
-            const violationsRes = await fetch(`${baseUrl()}/api/v1/audits/sessions/${roomData.active_audit_session_id}/violations`, { headers: buildHeaders() });
-            violationsData = await parseOrThrow<any>(violationsRes);
+            violationsData = await parseOrThrow<any>(
+              await fetch(`${baseUrl()}/api/v1/audits/sessions/${sessionId}/violations`, { headers: buildHeaders() }),
+            );
           } catch {}
+          return { sessionData, violationsData };
+        } catch {
+          return null;
+        }
+      };
+
+      const [oldDoc, newDoc, session] = await Promise.all([
+        fetchDrawing(roomData.active_old_drawing_id),
+        fetchDrawing(roomData.active_new_drawing_id),
+        fetchSession(),
+      ]);
+
+      if (roomData.active_audit_session_id && newDoc && session) {
+        try {
+          const { sessionData, violationsData } = session;
           
           ws.loadSessionIntoWorkspace(
             roomData.active_audit_session_id,

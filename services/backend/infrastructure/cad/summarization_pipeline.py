@@ -10,6 +10,7 @@ from ...infrastructure.audit.context_builder import build_structured_context, lo
 from ...config import settings
 from ...logger import logger
 from ...api.schemas import DrawingSummaryResponse
+from ..storage.entity_cache import load_entities
 
 class SummarizationPipeline:
     async def run(self, drawing_id: str) -> None:
@@ -24,7 +25,7 @@ class SummarizationPipeline:
                 logger.warning(f"Drawing {drawing_id} is marked as failed, skipping AI summarization.")
                 return
                 
-            entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == drawing_id).to_list()
+            entities = await load_entities(drawing_id)
             structured_context = build_structured_context(entities, drawing)
             png_bytes = load_drawing_png(drawing_id)
             

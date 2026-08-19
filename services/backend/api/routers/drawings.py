@@ -15,6 +15,10 @@ from ...core.security import sandboxed_path
 from ...logger import logger, correlation_id_var
 from ...config import settings
 from ..dependencies import get_auth_token, get_or_404
+from ...infrastructure.storage.entity_cache import (
+    load_entities,
+    clear_for_drawing as clear_entity_cache,
+)
 from ..schemas import (
     StandardResponse,
     UploadResponse,
@@ -175,6 +179,7 @@ async def list_drawings():
                 # Backing file on disk is gone - purge orphaned DB record
                 logger.info(f"Pruning orphaned DrawingDocument {d.id} ({d.file_name}) - file not found at {full_path}")
                 try:
+                    clear_entity_cache(str(d.id))
                     await ExtractedEntity.find(ExtractedEntity.drawing_id == str(d.id)).delete()
                     await ExtractionJob.find(ExtractionJob.drawing_id == str(d.id)).delete()
                     await d.delete()
@@ -260,7 +265,7 @@ async def get_drawing(id: str):
 )
 async def get_drawing_layers(id: str):
     drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
-    entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == id).to_list()
+    entities = await load_entities(id)
     
     if not entities:
         return StandardResponse(
@@ -284,7 +289,7 @@ async def get_drawing_layers(id: str):
 )
 async def get_drawing_scene(id: str):
     drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
-    entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == id).to_list()
+    entities = await load_entities(id)
     
     if not entities:
         return StandardResponse(
@@ -385,7 +390,7 @@ async def get_drawing_zones(id: str):
     from ...infrastructure.audit.bom.table_extractor import extract_dynamic_regions
 
     drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
-    entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == id).to_list()
+    entities = await load_entities(id)
 
     if not entities:
         return StandardResponse(

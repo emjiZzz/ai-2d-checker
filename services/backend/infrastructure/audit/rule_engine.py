@@ -21,6 +21,7 @@ from .rules.annotation_rules import (
     validate_threads, validate_revision_clouds, validate_surface_roughness
 )
 from .rules.units_rules import validate_units
+from ..storage.entity_cache import load_entities
 
 
 class RuleEngine:
@@ -36,7 +37,7 @@ class RuleEngine:
         violations: list[AuditViolation] = []
 
         # 1. Fetch all associated extracted graphic primitives from database
-        entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
+        entities = await load_entities(str(drawing.id))
 
         # Group entities by type
         entities_by_type: dict[str, list[ExtractedEntity]] = {}

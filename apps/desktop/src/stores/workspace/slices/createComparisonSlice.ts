@@ -4,6 +4,47 @@ import { useReviewStore } from "../../reviewStore";
 import { buildHeaders, baseUrl, parseOrThrow } from "../../../services/fetchUtils";
 import { fetchDrawingZones } from "../../../services/drawingsApi";
 
+/**
+ * In-flight layer requests, keyed by drawing id.
+ *
+ * Module scope rather than store state: it is read and written inside one synchronous stretch of
+ * `fetchLayers`, and a store field would not be visible to a second caller until React had
+ * flushed — which is precisely the window the duplicate request arrives in.
+ *
+ * Entries are removed on settle, so this is a de-duplicator and never a cache. Layers do change
+ * — `/reextract` rewrites them — and a cache here would serve stale geometry with no way to
+ * invalidate it from the one place that knows.
+ */
+const layerRequests = new Map<string, Promise<Record<string, any[]> | null>>();
+
+async function runLayerFetch(
+  drawingId: string,
+  side: string,
+  set: (partial: any) => void,
+): Promise<void> {
+  const request = (async (): Promise<Record<string, any[]> | null> => {
+    try {
+      const res = await fetch(`${baseUrl()}/api/v1/drawings/${drawingId}/layers`, {
+        headers: buildHeaders(),
+      });
+      const data = await parseOrThrow<{ layers: Record<string, any[]> }>(res);
+      return data?.layers ?? null;
+    } catch (err: any) {
+      console.error(`Failed to fetch layers for ${side} drawing (${drawingId}):`, err.message);
+      return null;
+    } finally {
+      // Cleared on BOTH paths. A failed request left in the map would make every later attempt
+      // await a promise that already rejected, so one flaky fetch would permanently blank the
+      // canvas for that drawing.
+      layerRequests.delete(drawingId);
+    }
+  })();
+
+  layerRequests.set(drawingId, request);
+  const layers = await request;
+  if (layers) set(side === "old" ? { oldLayers: layers } : { newLayers: layers });
+}
+
 export const createComparisonSlice: StateCreator<WorkspaceState, [], [], ComparisonSlice> = (set, get) => ({
   oldDrawing: null,
   newDrawing: null,
@@ -88,25 +129,27 @@ export const createComparisonSlice: StateCreator<WorkspaceState, [], [], Compari
   },
 
   fetchLayers: async (drawingId, side) => {
-    // Was a hand-rolled fetch() that only sent Authorization, never
-    // X-Session-Token — silently 401'd against the session-authenticated
-    // layers endpoint, leaving oldLayers/newLayers stuck at {} with no error
-    // surfaced anywhere (drawing metadata + violation markers still render,
-    // since those come from persisted state / other endpoints, but the
-    // actual CAD geometry never loads). Migrated to fetchUtils.
-    try {
-      const res = await fetch(`${baseUrl()}/api/v1/drawings/${drawingId}/layers`, { headers: buildHeaders() });
-      const data = await parseOrThrow<{ layers: Record<string, any[]> }>(res);
-      if (data?.layers) {
-        if (side === "old") {
-          set({ oldLayers: data.layers });
-        } else {
-          set({ newLayers: data.layers });
-        }
-      }
-    } catch (err: any) {
-      console.error(`Failed to fetch layers for ${side} drawing (${drawingId}):`, err.message);
+    // ── one request per drawing, however many callers ask ────────────────────────────
+    // Opening a room asks TWICE for each drawing: `loadWorkspaceState` restores the pair from
+    // IndexedDB and fetches their layers, then `setDrawing` fetches them again as the server's
+    // room payload lands. Measured in the backend log — the same drawing id served twice,
+    // 6.59s and 5.64s, concurrently, competing for the same Mongo round trip.
+    //
+    // Nothing about that is wrong per caller; both genuinely need the layers. So the fix is
+    // here rather than at either call site: a second ask for a drawing already in flight waits
+    // on the first request instead of starting another.
+    //
+    // Keyed by drawing id, NOT by side. The same drawing can occupy both panes, and the payload
+    // is a property of the drawing — deduplicating by side would miss exactly that case.
+    const inFlight = layerRequests.get(drawingId);
+    if (inFlight) {
+      const layers = await inFlight;
+      // The awaited request resolved into the OTHER side's slot, so this caller still has to
+      // place it in its own.
+      if (layers) set(side === "old" ? { oldLayers: layers } : { newLayers: layers });
+      return;
     }
+    return runLayerFetch(drawingId, side, set);
   },
 
   setViewport: (panX, panY, zoom) => {

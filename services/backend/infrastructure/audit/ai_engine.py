@@ -19,6 +19,7 @@ from ...domain.models.standard_chunk import StandardChunk
 from ...domain.models.standard_document import StandardDocument
 from ...logger import logger
 from .context_builder import build_structured_context, load_drawing_png
+from ..storage.entity_cache import load_entities
 
 class AIEngine:
     """
@@ -84,7 +85,7 @@ class AIEngine:
             return await cls._run_mock_ai_audit(audit_session_id, drawing, standard, grounding_chunks)
 
         # Fetch entities
-        entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
+        entities = await load_entities(str(drawing.id))
 
         # Step 3.1: Build structured context
         structured_context = build_structured_context(entities, drawing)
@@ -332,7 +333,7 @@ class AIEngine:
         the intelligence of standard comparative compliance.
         """
         violations: list[AuditViolation] = []
-        entities = await ExtractedEntity.find(ExtractedEntity.drawing_id == str(drawing.id)).to_list()
+        entities = await load_entities(str(drawing.id))
 
         # Let's perform high-fidelity standard comparison mock-checks
         # e.g. searching for specific tolerances or standard labels in chunks

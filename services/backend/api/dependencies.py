@@ -1,3 +1,4 @@
+from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import Depends, Header, HTTPException, status
 from pydantic import ValidationError
@@ -36,7 +37,7 @@ def resolve_username(x_session_token: str | None) -> str | None:
         return None
 
 
-async def get_or_404(model, id: str, detail: str):
+async def get_or_404(model, id: str, detail: str, projection: dict | None = None):
     """
     Shared Document.get() wrapper. A malformed id must be a clean 404, not an
     unhandled 500. Use this instead of calling `Model.get(id)` directly in
@@ -62,9 +63,28 @@ async def get_or_404(model, id: str, detail: str):
     concrete exception type is a dependency on that library's internals**, and
     nothing fails when the library stops raising it — the code keeps compiling,
     the tests keep passing, and the guard silently stops guarding.
+
+    ⚠ `InvalidId` is live again, so the branch above is not merely historical:
+    the `projection` path below goes through bson's `ObjectId` directly rather
+    than through Beanie's `TypeAdapter`, so a malformed id raises `InvalidId`
+    and never reaches the pydantic one. The two branches now each have exactly
+    one live caller. Keep both.
+
+    `projection` fetches through the raw collection instead of `Document.get()`,
+    for the case where one field dominates the document's transfer cost — see
+    `infrastructure/storage/room_results_cache.py` for the measurements. It is a
+    mongo projection dict (`{"field": 0}` to exclude). The result is still
+    validated into `model`, so callers get the same type either way; a field
+    excluded here must therefore be `None`-able on the model.
     """
     try:
-        doc = await model.get(id)
+        if projection is None:
+            doc = await model.get(id)
+        else:
+            raw = await model.get_pymongo_collection().find_one(
+                {"_id": ObjectId(id)}, projection=projection
+            )
+            doc = model.model_validate(raw) if raw else None
     except (InvalidId, ValidationError):
         doc = None
     if not doc:

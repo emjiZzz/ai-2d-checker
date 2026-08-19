@@ -1,17 +1,17 @@
 {
   "schema": 2,
-  "trained_at": "2026-08-19T01:43:37.183321+00:00",
-  "n_total": 243,
-  "n_verdict": 127,
+  "trained_at": "2026-08-19T09:13:23.465678+00:00",
+  "n_total": 261,
+  "n_verdict": 140,
   "n_category": 7,
   "min_train": 40,
   "metrics": {
-    "verdict_cv_accuracy": 0.7709,
+    "verdict_cv_accuracy": 0.7923,
     "verdict_class_balance": {
       "0": 73,
-      "1": 54
+      "1": 67
     },
-    "verdict_minority_share": 0.4252,
-    "verdict_majority_baseline": 0.5748
+    "verdict_minority_share": 0.4786,
+    "verdict_majority_baseline": 0.5214
   }
 }

@@ -15,6 +15,7 @@ from .dxf_parser import DXFParser
 from .oda_converter import ODAConverter
 from .pdf_parser import PDFParser
 from .three_d_pipeline import ThreeDPipeline
+from ..storage.entity_cache import clear_for_drawing as clear_entity_cache
 
 
 
@@ -205,6 +206,10 @@ class ExtractionPipeline:
             # Deliberately here and not at the top: everything above can fail (conversion,
             # parse, render), and on failure the previous extraction must survive intact. By
             # this line the new entities are built and the only remaining step is the write.
+            # The cache must die BEFORE the entities do: a reader between the delete and the
+            # insert_many below would otherwise repopulate it from a drawing that is briefly
+            # empty, and an empty payload caches as a blank sheet rather than as an error.
+            clear_entity_cache(drawing_id)
             replaced = await ExtractedEntity.find(
                 ExtractedEntity.drawing_id == drawing_id
             ).delete()
