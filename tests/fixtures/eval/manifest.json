@@ -2,40 +2,30 @@
   "guideline_version": "2026-08-06",
   "pairs": [
     {
-      "bulk_count": 0,
-      "category_counts": {
-        "bill_of_materials": 1,
-        "drawing_views": 6,
-        "isometric_view": 0,
-        "notes_section": 3,
-        "other_engineering_references": 0,
-        "title_block": 6
-      },
-      "finding_count": 16,
       "held_out": false,
       "label_state": "labelled",
       "labels": "labels/M745203N01.json",
-      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "notes": "",
       "pair_id": "M745203N01",
       "provenance": "human",
       "ref": {
         "drawing_id": "6a72fc3a90ea9f72a44da76c",
-        "drawing_sha256": "c7db8720990df9639489d35393c836ee62687b1a3c3a0ba2fdde36b9e081edf7",
+        "drawing_sha256": "bb35c0e9e44da14e0054fe63895a8e764948c292380ca9731aaa89e12de14084",
         "entities_sha256": "20ea330e00820f260afc978cb6eccf4985fc5cc2e4320f324e455ce266991a8d",
         "entity_count": 333,
         "file_hash": "bc17b56d6284418c920d903e652ea064e6838c5e472c34d3a3709238b2d74701",
         "file_name": "M745203N01_reference.dxf",
-        "ocr_sha256": "10c43252835c36efc24948bf940930913a623f0f76354c3a2709afbb7059c4fc",
+        "ocr_sha256": "",
         "zone_signature": "aspect-1.361"
       },
       "rev": {
         "drawing_id": "6a72fc4390ea9f72a44da8bb",
-        "drawing_sha256": "925cd599d892fc3d173176a6075a515fb58f673cc033827d58c8542beead08f8",
+        "drawing_sha256": "26480155d75f26669d343b362e86aea434e364cd9050ade7413fa227d7d36ea0",
         "entities_sha256": "3decb6acb5708fd043a34ee428ada5d76af3c84213a7f517d6a34208604af7d4",
         "entity_count": 495,
         "file_hash": "63adc691976bdd520e1a9ef1784f098eb0cce53ae8e94dcfce5916799b26f72e",
         "file_name": "M745203N01_FSRS2_kmti.dxf",
-        "ocr_sha256": "a11aa7733fde92a23f142a5279b51afe549d41a7866fa3f7e01d6696e2d3c29c",
+        "ocr_sha256": "",
         "zone_signature": "aspect-1.414"
       }
     },
@@ -43,12 +33,12 @@
       "held_out": true,
       "label_state": "unlabelled",
       "labels": null,
-      "notes": "held out at export, before any engine run: the only pair on this machine with no comparison cache entry",
+      "notes": "",
       "pair_id": "M745206N01",
       "provenance": "human",
       "ref": {
         "drawing_id": "6a741fb4e01d720e27be276a",
-        "drawing_sha256": "d13537923c9c372b65c64308d35b8f83a4907c60949cda523346c777a7c29b1f",
+        "drawing_sha256": "eb82d5bbfe4d70b63c5f7590dfa026d4f075407ff670b9e8b891505861c942fa",
         "entities_sha256": "605d0928556be0a94e20f9262719d5123f5ef03f6f922fe0bd0ffb38d9474fb0",
         "entity_count": 373,
         "file_hash": "ee6632589e27cddf22956480983f5d203e89a232cd5a55f3394c03804b421eae",

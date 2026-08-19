@@ -49,6 +49,21 @@ interface ReviewState {
    */
   hoveredMarkerId: string | null;
   setHoveredMarkerId: (id: string | null) => void;
+  /**
+   * A matcher correction waiting for the engineer to point at the right entity.
+   *
+   * `mispaired_wrong_match` / `mispaired_missing_counterpart` used to submit immediately with an
+   * optional free-text box for the counterpart. It was skipped 103 times out of 106, leaving a
+   * corpus of rejections with no corrections — and a matcher cannot be trained on negatives,
+   * because there is no target to learn toward.
+   *
+   * So the correction is now armed here and completed by the next entity click on either sheet,
+   * reusing the picking gesture the manual-check flow already provides. The payload is carried
+   * whole rather than rebuilt at completion: the finding's row, category and snapshot belong to
+   * the card that was clicked, and that card may be scrolled away by the time the pick happens.
+   */
+  pendingCounterpart: { payload: any; label: string } | null;
+  setPendingCounterpart: (p: { payload: any; label: string } | null) => void;
   showAnnotations: boolean;
   toggleAnnotations: () => void;
   showViewOrigins: boolean;
@@ -266,6 +281,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
   showMarkerLabels: false,
   toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
+
+  pendingCounterpart: null,
+  setPendingCounterpart: (p) => set({ pendingCounterpart: p }),
 
   hoveredMarkerId: null,
   setHoveredMarkerId: (id) => {

@@ -20,6 +20,7 @@ import {
 } from './entityPicking';
 import type { EntityLocator, PickedEntity } from '../../stores/workspace/types';
 import { findMarkingForEntity } from './manualCheckCategories';
+import { submitAuditFeedbackPayload } from '../../services/auditsApi';
 
 /**
  * Manual-check picking, layered over the existing canvas handlers.
@@ -81,6 +82,8 @@ export function useEntityPicking(params: {
   // same value in a view; it is read per-drawing because the boxes are per-drawing.
   const zoneRegions = useWorkspaceStore((s) => s.zoneRegions);
   const markings = useWorkspaceStore((s) => s.markings);
+  const pendingCounterpart = useReviewStore((s) => s.pendingCounterpart);
+  const setPendingCounterpart = useReviewStore((s) => s.setPendingCounterpart);
 
   // One index per canvas, rebuilt each render by `renderEntities`. A ref rather than state:
   // it is written during the render loop, which must not trigger another render.
@@ -310,6 +313,16 @@ export function useEntityPicking(params: {
     [handlers, pickAt, setHoveredEntityId, setHoverLocator, buildLocator, alreadyMarked],
   );
 
+  /** The click point in CAD units, for a correction that records where the engineer pointed. */
+  const pickedWorld = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return null;
+      return screenToWorld(clientX - rect.left, clientY - rect.top, norm, viewport);
+    },
+    [canvasRef, norm, viewport],
+  );
+
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       handlers.onMouseDown?.(e);
@@ -351,6 +364,32 @@ export function useEntityPicking(params: {
       if (!isStampClick(e.button, press, { x: e.clientX, y: e.clientY })) return;
 
       const hit = pickAt(e.clientX, e.clientY);
+
+      // ── completing a matcher correction ───────────────────────────────────────────
+      // A `mispaired_*` correction was armed in the checklist and is waiting for the engineer
+      // to point at the entity the engine SHOULD have paired with. That click lands here, on
+      // whichever canvas they clicked, and finishes the correction instead of selecting.
+      //
+      // The side is read from the canvas rather than demanded up front: the engineer knows
+      // which sheet holds the counterpart and the app does not, and guessing would refuse
+      // half the legitimate picks.
+      if (pendingCounterpart && hit) {
+        const world = pickedWorld(e.clientX, e.clientY);
+        submitAuditFeedbackPayload({
+          ...pendingCounterpart.payload,
+          corrected_counterpart: {
+            side,
+            handle: hit.handle ?? hit.properties?.handle ?? null,
+            text: String(
+              hit.properties?.text ?? hit.geometry?.text ?? hit.geometry?.content ?? '',
+            ),
+            coordinates: world ? [world.x, world.y] : null,
+          },
+        }).catch((err) => console.warn('[useEntityPicking] counterpart submit failed:', err));
+        setPendingCounterpart(null);
+        return;
+      }
+
       // Same rule as hover: an already-marked entity is not selectable. Selecting it would draw
       // the solid selection outline while `SelectionMenu` declines to open — a box on the sheet
       // with nothing behind it, which reads as the menu having failed rather than as a
@@ -388,7 +427,8 @@ export function useEntityPicking(params: {
       }
     },
     [handlers, pickAt, toPicked, setSelectedEntities, setSelectionLocator, buildLocator,
-     setSelectionMenu, isManualCheckMode, drawing?.id, canvasRef, alreadyMarked],
+     setSelectionMenu, isManualCheckMode, drawing?.id, canvasRef, alreadyMarked,
+     pendingCounterpart, setPendingCounterpart, pickedWorld, side],
   );
 
   /**

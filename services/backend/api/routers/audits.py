@@ -828,6 +828,11 @@ async def submit_audit_feedback(request: AuditFeedbackRequest, background_tasks:
         coordinates=request.coordinates,
         corrected_category=request.corrected_category,
         corrected_value=request.corrected_value,
+        # `model_dump()` rather than the model: the domain layer stores a plain dict so it does
+        # not import an api-layer type, exactly as `finding_snapshot` already does.
+        corrected_counterpart=(
+            request.corrected_counterpart.model_dump() if request.corrected_counterpart else None
+        ),
         finding_snapshot=request.finding_snapshot.model_dump() if request.finding_snapshot else None,
     )
     await feedback_doc.save()

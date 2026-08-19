@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CorrectionControls } from "./CorrectionControls";
 import { submitAuditFeedbackPayload, retractAuditFeedback } from "../../services/auditsApi";
+import { useReviewStore } from "../../stores/reviewStore";
 
 vi.mock("../../services/auditsApi", () => ({
   submitAuditFeedbackPayload: vi.fn().mockResolvedValue({ id: "1", status: "recorded", auto_documented: false, message: "" }),
@@ -33,6 +34,10 @@ const baseProps = {
 
 describe("CorrectionControls", () => {
   beforeEach(() => {
+    // The armed correction is global on purpose — it has to survive the engineer scrolling the
+    // panel — so it also survives a test. One armed pick would otherwise leave every later card
+    // rendering its "waiting" state instead of its menu.
+    useReviewStore.getState().setPendingCounterpart(null);
     mockedSubmit.mockClear();
     mockedRetract.mockClear();
   });
@@ -126,21 +131,43 @@ describe("CorrectionControls", () => {
     expect(mockedSubmit.mock.calls[0][0].human_corrected_status).toBe("confirmed_change");
   });
 
-  it("'wrongly paired' sends a matcher verb, not a verdict, and carries the note", async () => {
-    // The finding in the screenshot that motivated this: "NONE vs 260" is neither a real
-    // change nor a false alarm — the matcher failed to pair it. No previous verb could say so.
+  it("'wrongly paired' ARMS a counterpart pick rather than submitting a bare rejection", async () => {
+    // Changed 2026-08-19. This verb used to submit on the spot, with the correct counterpart
+    // offered as an optional text box — skipped 103 times out of 106, leaving a corpus of
+    // rejections with no corrections. A matcher cannot be trained on those: there is no target
+    // to learn toward.
+    //
+    // So the click now arms a pick and the canvas completes it. Nothing is submitted here,
+    // because a rejection without its correction is the row we already have too many of.
     render(<CorrectionControls {...baseProps} />);
     fireEvent.click(screen.getByTestId("correction-open-r1"));
     fireEvent.click(screen.getByTestId("correction-paired-open-r1"));
-    fireEvent.change(screen.getByTestId("correction-paired-note-r1"), {
-      target: { value: "pairs with 260 on the reference" },
-    });
     fireEvent.click(screen.getByTestId("correction-paired-missing-r1"));
-    await waitFor(() => expect(mockedSubmit).toHaveBeenCalled());
 
-    const payload = mockedSubmit.mock.calls[0][0];
-    expect(payload.human_corrected_status).toBe("mispaired_missing_counterpart");
-    expect(payload.human_comment).toBe("pairs with 260 on the reference");
+    expect(mockedSubmit).not.toHaveBeenCalled();
+
+    // The card says it is waiting. Without this the menu just closes and the one gesture that
+    // finishes the correction is one nobody has been told to make.
+    expect(screen.getByTestId("correction-awaiting-r1")).toBeTruthy();
+
+    const armed = useReviewStore.getState().pendingCounterpart;
+    expect(armed?.payload.human_corrected_status).toBe("mispaired_missing_counterpart");
+    // The whole payload is carried, not rebuilt at completion: the engineer will scroll and pan
+    // before clicking, and this card may be gone from view by then.
+    expect(armed?.payload.category).toBe("drawing_views");
+    expect(armed?.payload.finding_snapshot).toBeTruthy();
+  });
+
+  it("an armed correction can be cancelled", async () => {
+    render(<CorrectionControls {...baseProps} />);
+    fireEvent.click(screen.getByTestId("correction-open-r1"));
+    fireEvent.click(screen.getByTestId("correction-paired-open-r1"));
+    fireEvent.click(screen.getByTestId("correction-paired-wrong-r1"));
+    expect(useReviewStore.getState().pendingCounterpart).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(useReviewStore.getState().pendingCounterpart).toBeNull();
+    expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
   it("offers 'not a change' only where it makes sense", async () => {

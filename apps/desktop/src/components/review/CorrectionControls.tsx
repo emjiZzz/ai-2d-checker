@@ -1,3 +1,4 @@
+import { useReviewStore } from '../../stores/reviewStore';
 import React, { useState } from "react";
 import { Check, AlertTriangle, Tag, Pencil, X, Brain, Unlink, RotateCcw } from "lucide-react";
 import {
@@ -76,6 +77,10 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
 }) => {
   const [mode, setMode] = useState<null | "menu" | "reclassify" | "value" | "paired">(null);
   const [busy, setBusy] = useState(false);
+  const setPendingCounterpart = useReviewStore((s) => s.setPendingCounterpart);
+  const pendingCounterpart = useReviewStore((s) => s.pendingCounterpart);
+  // Only THIS card's armed correction, so twenty rows do not all claim to be waiting.
+  const isWaiting = pendingCounterpart?.payload?.entity_text === (row.field || row.kmti || row.original || matchingViolation?.description || "");
   const [corrected, setCorrected] = useState<string | null>(null);
   // Kept so a mis-click can be taken back. Without it the menu was one-way: the correction
   // was already persisted and had already kicked a retrain, and the card rendered a terminal
@@ -123,6 +128,19 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
     },
   });
 
+  /**
+   * Hand the correction to the canvas and wait for a click.
+   *
+   * The whole payload is stored, not rebuilt at completion: the finding's row, category and
+   * snapshot belong to THIS card, and the engineer will have scrolled and panned before they
+   * click. Rebuilding later would attach the correction to whatever card happened to be in
+   * view.
+   */
+  const arm = (human_corrected_status: HumanCorrectedStatus, label: string) => {
+    setPendingCounterpart({ payload: buildPayload(human_corrected_status), label });
+    setMode(null);
+  };
+
   const submit = async (
     human_corrected_status: HumanCorrectedStatus,
     label: string,
@@ -141,6 +159,35 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
       setMode(null);
     }
   };
+
+  // A correction armed from this card and waiting for a click. Without this the app looks
+  // unresponsive: the menu closes, nothing is recorded yet, and the only thing that will finish
+  // it is a gesture the engineer has not been told to make.
+  if (isWaiting) {
+    return (
+      <span
+        data-testid={`correction-awaiting-${rowId}`}
+        style={{
+          display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: "6px",
+          minWidth: 0, fontSize: "0.65rem", fontWeight: 700, color: "#eab308",
+        }}
+      >
+        <Unlink size={12} /> Click the right entity on either drawing
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setPendingCounterpart(null);
+          }}
+          style={{
+            background: "transparent", border: "none", color: "var(--text-muted)",
+            cursor: "pointer", fontSize: "0.65rem", fontWeight: 600,
+          }}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
 
   if (corrected) {
     return (
@@ -312,19 +359,30 @@ export const CorrectionControls: React.FC<CorrectionControlsProps> = ({
       {mode === "paired" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "2px 4px" }}>
           <span style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}>What did the engine get wrong?</span>
+          {/*
+            Both verbs ARM a pick rather than submitting on the spot.
+
+            They used to submit immediately, with the correct counterpart offered as an optional
+            free-text box below. It was skipped 103 times out of 106 — rationally, it was
+            optional and it was typing — leaving a corpus of rejections with no corrections. A
+            matcher cannot be trained on those: there is no target to learn toward.
+
+            Pointing at the entity is one click and produces a resolvable address, so the next
+            correction is worth something the previous 103 are not.
+          */}
           <button
             data-testid={`correction-paired-missing-${rowId}`}
             style={menuItemStyle}
-            onClick={() => submit("mispaired_missing_counterpart", "Has a match", { human_comment: noteInput.trim() || undefined })}
+            onClick={() => arm("mispaired_missing_counterpart", "Has a match")}
           >
-            <Unlink size={13} color="#eab308" style={menuIconStyle} /> It does have a match on the other drawing
+            <Unlink size={13} color="#eab308" style={menuIconStyle} /> It does have a match — point at it
           </button>
           <button
             data-testid={`correction-paired-wrong-${rowId}`}
             style={menuItemStyle}
-            onClick={() => submit("mispaired_wrong_match", "Wrong pair", { human_comment: noteInput.trim() || undefined })}
+            onClick={() => arm("mispaired_wrong_match", "Wrong pair")}
           >
-            <X size={13} color="#ef4444" style={menuIconStyle} /> These two are not the same thing
+            <X size={13} color="#ef4444" style={menuIconStyle} /> Not the same thing — point at the right one
           </button>
           <input
             data-testid={`correction-paired-note-${rowId}`}

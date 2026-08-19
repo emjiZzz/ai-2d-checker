@@ -1,4 +1,4 @@
-from typing import Any, TypeVar, Optional, Literal
+from typing import Any, List, Optional, TypeVar, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -212,6 +212,24 @@ class PhysicalComparisonRequest(BaseModel):
                     "OCR value only takes effect through a fresh comparison run."
     )
 
+class CorrectedCounterpart(BaseModel):
+    """The entity a human says the engine should have paired with.
+
+    Fixed fields rather than a bare dict. Two reasons: a free-form object lets every client
+    invent its own key names, and `PhysicalComparisonResponse` has already taught this codebase
+    what an open-ended shape costs (constraint 1 in CLAUDE.md).
+
+    `handle` is optional because block-exploded content carries none — the normal case on a
+    reference sheet, at 0.8–13% coverage — so `text` and `coordinates` are how such an entity is
+    identified, not decoration.
+    """
+
+    side: Literal["ref", "rev"]
+    handle: Optional[str] = None
+    text: str = ""
+    coordinates: Optional[List[float]] = None
+
+
 class FindingSnapshot(BaseModel):
     """Fixed-field feature snapshot of a finding at the moment a human corrects it.
 
@@ -226,9 +244,28 @@ class FindingSnapshot(BaseModel):
     det_status: Optional[str] = Field(None, description="Deterministic status before correction: MATCHED/CHANGED/ADDED/REMOVED/CONFLICT")
     category: Optional[str] = None
     feature: Optional[str] = None
-    text_similarity: Optional[float] = None
     ref_coord: Optional[list[float]] = None
     rev_coord: Optional[list[float]] = None
+
+    #: ⚠ The three below are ALWAYS null in stored rows, and that is correct — do not "fix" it.
+    #:
+    #: Measured 2026-08-19: non-null in 0 of 249 documents. That looks like a defect and is not.
+    #: `feature_extractor.build_feature_row` derives each one whenever it arrives as `None`, and
+    #: `features_from_snapshot` routes every stored snapshot through it, so they are computed on
+    #: the training path from `ref_text` / `rev_text` / the two coordinates.
+    #:
+    #: They stay in the schema because the INFERENCE path shares that function and may pass real
+    #: values; one shape serves both, which is what keeps training and serving on a single
+    #: definition of a feature.
+    #:
+    #: Filling them from the client would be train/serve skew and has shipped before — there is
+    #: no `SequenceMatcher` or `SpatialDiffer._normalize_text` in TypeScript, so a browser-side
+    #: `text_similarity` would not be the number the trainer means by that name. Pinned by
+    #: `tests/test_stage_0a_measurement_unblocking.py`.
+    #:
+    #: `match_distance` is `-1.0` where a coordinate is missing (142 of 249 rows) — an explicit
+    #: sentinel, not a silent zero.
+    text_similarity: Optional[float] = None
     match_distance: Optional[float] = None
     is_numericish: Optional[bool] = None
 
@@ -276,6 +313,14 @@ class AuditFeedbackRequest(BaseModel):
     coordinates: Optional[list[float]] = None
     corrected_category: Optional[str] = Field(None, description="Target category for a category_override correction.")
     corrected_value: Optional[str] = Field(None, description="Corrected value for a value_correction.")
+    corrected_counterpart: Optional[CorrectedCounterpart] = Field(
+        None,
+        description=(
+            "For a mispaired_* correction: the entity the engine SHOULD have paired with. "
+            "Optional so the 249 rows predating it stay valid; absent means 'not recorded', "
+            "never 'no counterpart exists'."
+        ),
+    )
     finding_snapshot: Optional[FindingSnapshot] = Field(None, description="Feature snapshot of the corrected finding, used as a training example.")
 
 class AuditFeedbackResponse(BaseModel):

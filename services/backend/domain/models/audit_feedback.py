@@ -24,6 +24,25 @@ class AuditFeedbackDocument(Document):
     # the trainer rebuild the exact runtime feature vector for this correction later.
     corrected_category: Optional[str] = Field(None, description="Target category for a category_override correction")
     corrected_value: Optional[str] = Field(None, description="Corrected value for a value_correction")
+    #: WHICH entity the engine should have paired with, for a `mispaired_*` correction.
+    #:
+    #: The field that makes matcher feedback trainable at all. Measured 2026-08-19: of 106
+    #: `mispaired_*` rows, **3** carried the counterpart -- it was an optional free-text box and
+    #: was rationally skipped. The other 103 record a rejection with no correction, and a matcher
+    #: cannot be trained on negatives: there is no target to learn toward. Those rows are not
+    #: recoverable, which is why the capture had to change rather than the analysis.
+    #:
+    #: Shape: `{"side": "ref"|"rev", "handle": str|None, "text": str, "coordinates": [x, y]}`.
+    #: `handle` is null for block-exploded content, which is the normal case on a reference
+    #: sheet, so the text and coordinate are not redundant padding -- they are how such an
+    #: entity is identified at all.
+    #:
+    #: Optional and defaulting to null: the 249 rows written before 2026-08-19 stay valid and
+    #: unmigrated. A trainer reading this must treat absence as "not recorded", never as "no
+    #: counterpart exists".
+    corrected_counterpart: Optional[dict] = Field(
+        None, description="Entity the engine should have paired with, for a mispaired_* correction"
+    )
     finding_snapshot: Optional[dict] = Field(None, description="Feature snapshot of the corrected finding for model training")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
