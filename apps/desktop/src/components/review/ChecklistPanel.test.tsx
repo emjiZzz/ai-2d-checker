@@ -318,3 +318,56 @@ describe('ChecklistPanel offers a verdict only where one can be recorded', () =>
     expect(screen.getByTestId('review-controls')).toBeTruthy();
   });
 });
+
+describe('a deferred sub-item never hides a finding', () => {
+  /** A 24-hex Mongo ObjectId, so the row counts as a persisted violation. */
+  const PERSISTED_ID = '507f1f77bcf86cd799439012';
+
+  test('a finding labelled with a deferred feature is still rendered', () => {
+    // The defect, and `comparisonTaxonomy.ts` warned about it in its own definition:
+    // "Membership here HIDES rows — a deferred key that ever carries findings drops them
+    // silently." `isDeferred` was checked before `hasRows`, so the "not yet supported" notice
+    // won and the findings were never reached.
+    //
+    // `line_name` is the reachable case: it is deferred AND it sits in the title block, which
+    // has a live classifier. A finding it labelled would have disappeared from this panel with
+    // nothing anywhere to show it had existed.
+    mockWorkspace([
+      {
+        id: PERSISTED_ID,
+        description: 'LINE-B',
+        category: 'title_block',
+        feature: 'line_name',
+        pen_type: 'ai_orange',
+        resolution_type: null,
+        checker_remarks: null,
+      },
+    ]);
+    render(
+      <ChecklistPanel
+        aiChecklistResults={{
+          title_block: tableResult([{ field: 'LineRef', original: 'LINE-A', kmti: 'LINE-B' }]),
+        }}
+      />,
+    );
+
+    // The row is on screen...
+    expect(screen.getByText('LineRef')).toBeTruthy();
+    // ...and it did NOT fall back to the empty-bucket notice.
+    expect(screen.queryByText('Not yet supported for automatic checking.')).toBeNull();
+  });
+
+  test('an EMPTY deferred sub-item still says nothing was checked', () => {
+    // The notice has to survive for the case it was written for. An empty deferred bucket must
+    // not read as "checked and clean" — nothing checked it at all.
+    mockWorkspace([]);
+    render(
+      <ChecklistPanel
+        aiChecklistResults={{
+          title_block: tableResult([{ field: 'Scale', original: '1:3', kmti: '1:3' }]),
+        }}
+      />,
+    );
+    expect(screen.getAllByText('Not yet supported for automatic checking.').length).toBeGreaterThan(0);
+  });
+});

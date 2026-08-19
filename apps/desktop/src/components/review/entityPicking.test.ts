@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  normalizeEntityValue,
   EntityHitIndex,
   entityWorldBounds,
   entityDisplayText,
@@ -473,4 +474,95 @@ describe('what the selection highlight draws', () => {
     expect(index.boundsFor(String(hit.id))).not.toBeNull();
   });
 
+});
+
+describe('groupFractionOf — the source half of the value-group tie-break', () => {
+  const dim = (id: string, text: string) =>
+    ({ id, type: 'dimension', properties: { text, dim_type: 2 } });
+  const build = (...placed: [any, number, number][]) => {
+    const ix = new EntityHitIndex();
+    for (const [e, x, y] of placed) ix.record(e, { x0: x, y0: y, x1: x + 40, y1: y + 20 });
+    return ix;
+  };
+
+  it('places an entity as a fraction of its own value-group box', () => {
+    // The reference's three `60°` on M745204N01: the left-hand one is near the left edge of the
+    // group and near its bottom, and those two fractions are what the other sheet matches on.
+    const left = dim('left', '60°');
+    const ix = build([dim('top', '60°'), 300, 44], [left, 85, 170], [dim('right', '60°'), 515, 170]);
+
+    const f = ix.groupFractionOf(left)!;
+    expect(f.cfx).toBeCloseTo(20 / 470, 6);
+    expect(f.cfy).toBeCloseTo(136 / 146, 6);
+  });
+
+  it('publishes nothing for a value that appears once', () => {
+    // There is no ordering to state, and 0.5 would be a claim rather than a measurement — the
+    // target would then match on a fraction the source never had.
+    const only = dim('only', '183');
+    expect(build([only, 100, 100]).groupFractionOf(only)).toBeNull();
+  });
+
+  it('groups by TYPE and DIMENSION KIND, not by value alone', () => {
+    // Same predicate `findMatches` uses to build its candidates. If the two disagreed, the
+    // source would normalise against one group and the target against another — both would keep
+    // working and quietly compare positions in different spaces.
+    const angular = dim('a', '60°');
+    const ix = build(
+      [angular, 100, 100],
+      [{ id: 'note', type: 'text', properties: { text: '60°' } }, 900, 900],
+    );
+    expect(ix.groupFractionOf(angular)).toBeNull();
+  });
+
+  it('collapses a degenerate axis to the middle instead of dividing by zero', () => {
+    // Three values in a vertical column have no horizontal ordering. 0.5 on both sides makes
+    // that axis contribute nothing to the distance, rather than an Infinity that swamps it.
+    const mid = dim('mid', '4');
+    const ix = build([dim('hi', '4'), 100, 0], [mid, 100, 100], [dim('lo', '4'), 100, 200]);
+    const f = ix.groupFractionOf(mid)!;
+    expect(f.cfx).toBe(0.5);
+    expect(f.cfy).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe('the multiplication sign, which NFKC does not fold', () => {
+  // Reported from a live check on M745204N01: the same BOM row on both sheets, and the overlay
+  // refused to pair them. Everything about the two strings folds except one character.
+  const REF = '4 ロール：12 (2x6台)';
+  const REV = '４ロール：１２（２×６台）';
+
+  it('pairs the row the two sheets spell with x and with ×', () => {
+    expect(normalizeEntityValue(REV)).toBe(normalizeEntityValue(REF));
+  });
+
+  it('was one character away, which is why NFKC looked like it was enough', () => {
+    // The diagnosis, pinned. Full-width digits, parens, colon and the spacing all fold; U+00D7
+    // does not, and a key differing in one character is indistinguishable from a real edit.
+    const nfkcOnly = (v: string) => v.normalize('NFKC').replace(/\s+/g, '').toUpperCase();
+    expect(nfkcOnly(REF)).not.toBe(nfkcOnly(REV));
+    expect(nfkcOnly(REF).replace('X', '')).toBe(nfkcOnly(REV).replace('×', ''));
+  });
+
+  it('folds the same set the backend folds', () => {
+    // `spatial_differ._normalize_text` maps × ✕ ✖ ⨯ to `x`, and `utils/text.py` folds the
+    // full-width `ｘ` too. The engine paired this row while this layer did not — one rule, two
+    // implementations, and only one of them had learned. If the backend's set grows, this fails.
+    for (const glyph of ['×', '✕', '✖', '⨯', 'ｘ']) {
+      expect(normalizeEntityValue(`2${glyph}6`)).toBe(normalizeEntityValue('2x6'));
+    }
+  });
+
+  it('does not fold anything that is merely near it', () => {
+    // `+` and `*` are not spellings of "by" on these sheets, and folding them would merge rows
+    // that genuinely differ — the expensive direction, since a wrong pair reads as confident.
+    expect(normalizeEntityValue('2+6')).not.toBe(normalizeEntityValue('2x6'));
+    expect(normalizeEntityValue('2*6')).not.toBe(normalizeEntityValue('2x6'));
+  });
+
+  it('keeps the sheet spelling on screen', () => {
+    // The fold is a COMPARISON key. The chip must still show what the sheet draws, or the
+    // engineer is shown a string that appears on neither drawing.
+    expect(entityDisplayText({ properties: { text: REV } })).toContain('×');
+  });
 });

@@ -11,6 +11,7 @@ import { DrawingCanvasRef } from './DrawingCanvas';
 import { EntityHitIndex } from './entityPicking';
 import { renderManualMarkings } from './renderManualMarkings';
 import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
+import { markingsToMarkers } from './markerStyles';
 
 interface CanvasRendererProps {
   width: number;
@@ -287,13 +288,35 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
         : [],
     });
 
+    // What the engineer has recorded, drawn through the SAME renderer as engine findings —
+    // same bullet, same detail card, same Show Labels toggle, same colour per status. They were
+    // two visual languages for one idea until 2026-08-18, disagreeing about what colour
+    // `MATCHED` is.
+    //
+    // Called separately rather than concatenated into `visibleViolations` because
+    // `showViolations` is forced FALSE in a manual room — a checker who can see the engine's
+    // conclusions is no longer an independent observer. The gate is about the engine's output,
+    // not about the renderer, so the engineer's own markings pass `showViolations: true`.
+    if (isManualCheckMode) {
+      renderViolationReticles({
+        frame: frameData,
+        violations: markingsToMarkers(manualMarkings),
+        showViolations: true,
+        showMarkerLabels,
+        hoveredMarkerId,
+        selectedViolation,
+        drawing,
+        oldDrawing,
+        visibleMarkerTypes,
+      });
+    }
+
     // What the engineer has recorded, drawn back onto the sheet. Above the geometry because it
     // is an overlay, and only in a manual-check room — an AI room has no markings and the call
     // would be a no-op with a per-frame cost.
     if (isManualCheckMode) {
       renderManualMarkings({
         frame: frameData,
-        markings: manualMarkings,
         // Which sheet this canvas shows. A CHANGED marking holds a different coordinate per
         // side, so the wrong answer here puts every paired badge on the wrong drawing.
         side: oldDrawing && drawing?.id === oldDrawing.id ? 'ref' : 'rev',

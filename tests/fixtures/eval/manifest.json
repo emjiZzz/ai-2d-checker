@@ -1747,13 +1747,13 @@
       "held_out": false,
       "label_state": "unlabelled",
       "labels": null,
-      "notes": "exported 2026-08-06; engine output already inspected, so not held-out eligible",
+      "notes": "",
       "pair_id": "M7452A2N01",
       "provenance": "human",
       "ref": {
-        "drawing_id": "6a742500e01d720e27be2d2a",
-        "drawing_sha256": "cf7382acdf5c36de8213e5f03a89a1750e0105eb6cebe1cac5b7fb42a5feca42",
-        "entities_sha256": "9d1eb76e1d7bd10613e3941298887d3995e5dc17b80fd7deb1bf7f88b5415fb3",
+        "drawing_id": "6a8508ac94fbe63785926802",
+        "drawing_sha256": "35a3cbbb2af0a04e4b66f6e8ab656edba40996c2c48a4e0b4c00172c0dd10ee5",
+        "entities_sha256": "d52e8243118d7d7562d5da59d0533f79000bd7799595d27681cc624d295f43e9",
         "entity_count": 528,
         "file_hash": "5dffd60e2fefd7972c51255c2eff6b03f0360d6c65d9f8c373ff6a62570f6112",
         "file_name": "M7452A2N01_reference.dxf",
@@ -1761,13 +1761,13 @@
         "zone_signature": "aspect-1.414"
       },
       "rev": {
-        "drawing_id": "6a7422e1e01d720e27be2aef",
-        "drawing_sha256": "bd702361a1f54da868599198cc4f5ec81166a63acdd248bb92e12d402f5f337a",
-        "entities_sha256": "10896d276cbd5cc11683d1eae374f45a852b94fdecf34523894d694b7ea91c44",
+        "drawing_id": "6a8508b694fbe63785926a14",
+        "drawing_sha256": "135302f4ad11290e0ecbf33eb04991ca3f1a99fb9c5790499945aa86a4a1475c",
+        "entities_sha256": "ad47a65b011abf7b9fda755c5324a24102ca0ab78d398dd538b3eca63ac40670",
         "entity_count": 569,
-        "file_hash": "60bd619043fc020c30d5b3677b31a11b3a078e4bc2db05cb23322073b1f34496",
-        "file_name": "M7452A2N01_FSRS2_kmti2.dxf",
-        "ocr_sha256": "3c78dfb8c0909c14aa3d1afd3c7ad27a39f396ff12fa52b93f584bd10165599e",
+        "file_hash": "af54ea6e6d8096fe781f8d27d8a2bd426b02324b8b0347e6dcd64d384b7552e8",
+        "file_name": "M7452A2N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "",
         "zone_signature": "aspect-1.414"
       }
     }

@@ -32,39 +32,39 @@ export const ConnectionBanner: React.FC = () => {
     setIsRetrying(false);
   };
 
-  // 1. Reconnected Success Screen (Production Toast Overlay)
+  // 1. Reconnected Success Toast (Non-blocking floating toast at bottom-right, square border)
   if (showRestoredOverlay && status === "online") {
     return (
-      <div className="absolute inset-0 z-[9999] bg-bg-dark/40 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300">
-        <div className="bg-bg-card/95 border border-emerald-500/30 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
-          <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3">
-            <CheckCircle2 size={24} className="text-emerald-500" />
+      <div className="fixed bottom-6 right-6 z-[9999] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="bg-bg-card/95 border border-emerald-500/30 rounded-none px-4 py-3 shadow-2xl flex items-center gap-3 backdrop-blur-md">
+          <div className="w-8 h-8 rounded-none bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+            <CheckCircle2 size={16} className="text-emerald-500" />
           </div>
-          <h3 className="text-base font-bold text-text-primary mb-1">Connection Restored</h3>
-          <p className="text-xs text-text-muted">
-            Auto-refreshing your workspace...
-          </p>
+          <div>
+            <h3 className="text-xs font-bold text-text-primary">Connection Restored</h3>
+            <p className="text-[11px] text-text-muted">Connected to backend service</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 2. Production Connection Offline / Reconnecting Overlay (Slight Backdrop Blur)
+  // 2. Production Connection Offline / Reconnecting Overlay (Slight Backdrop Blur, square borders)
+  // Only shown when confirmed offline/failed/invalid or reconnecting after confirmed disconnection
   if (
     status === "offline" ||
     status === "reconnecting" ||
     status === "failed" ||
-    status === "invalid" ||
-    status === "connecting"
+    status === "invalid"
   ) {
-    const isReconnecting = status === "reconnecting" || status === "connecting" || isRetrying;
+    const isReconnecting = status === "reconnecting" || isRetrying;
 
     return (
-      <div className="absolute inset-0 z-[9999] bg-bg-dark/40 backdrop-blur-sm flex flex-col items-center justify-center p-6 animate-in fade-in duration-300 select-none">
-        <div className="bg-bg-card/95 border border-border-color rounded-2xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+      <div className="absolute inset-0 z-[9999] bg-bg-dark/50 backdrop-blur-sm flex flex-col items-center justify-center p-6 animate-in fade-in duration-300 select-none">
+        <div className="bg-bg-card/95 border border-border-color rounded-none p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
           
           {/* Minimal Production Icon */}
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
+          <div className="w-14 h-14 rounded-none bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
             {isReconnecting ? (
               <RefreshCw size={24} className="text-amber-500 animate-spin" />
             ) : (
@@ -79,14 +79,14 @@ export const ConnectionBanner: React.FC = () => {
 
           {/* Production Non-Tech Copy */}
           <p className="text-xs text-text-muted leading-relaxed mb-6">
-            We're unable to reach the server right now. Please check your network connection or try reconnecting.
+            We're unable to reach the server right now. Please check your backend service or try reconnecting.
           </p>
 
           {/* Primary Action Button */}
           <button
             onClick={handleRetry}
             disabled={isReconnecting}
-            className="w-full h-10 rounded-xl bg-accent-cyan text-on-accent font-semibold text-xs hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer mb-4"
+            className="w-full h-10 rounded-none bg-accent-cyan text-on-accent font-semibold text-xs hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer mb-4"
           >
             <RefreshCw size={14} className={isReconnecting ? "animate-spin" : ""} />
             <span>{isReconnecting ? "Connecting..." : "Retry Connection"}</span>

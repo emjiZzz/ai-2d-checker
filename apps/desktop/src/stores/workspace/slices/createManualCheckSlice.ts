@@ -48,19 +48,68 @@ const TOOL_STATUS: Record<StampTool, MarkingStatus> = {
 };
 
 /**
- * Which side a tool stamps on.
+ * Which side a tool can be recorded from.
  *
- * REMOVED anchors on the **reference** — a removal exists there and nowhere else, which is also
- * why reference-side handle coverage (0.8–13%) is the hard case for addressing. Everything else
- * anchors on the revision, and CHANGED needs both.
+ * Only two are directional, and each for a reason that is about the drawing rather than about
+ * the UI: a REMOVED exists on the **reference** and nowhere else, an ADDED on the **revision**
+ * and nowhere else. (Reference-side handle coverage of 0.8–13% is the hard case for addressing
+ * precisely because REMOVED lives there.)
+ *
+ * MATCHED and CHANGED are claims about an entity that exists on both sheets, so both offer them
+ * — `matched` was `rev`-only until 2026-08-18, which meant the same judgement was recordable
+ * from one sheet and not the other for no reason the drawing could explain.
  */
 export const TOOL_SIDE: Record<StampTool, "ref" | "rev" | "both"> = {
-  matched: "rev",
+  matched: "both",
   added: "rev",
   removed: "ref",
   changed: "both",
   not_a_finding: "rev",
 };
+
+/**
+ * Should the workspace open a manual-check session right now?
+ *
+ * Extracted from the effect that asks it so the question itself is testable. The bug it encodes
+ * was not a wrong answer but a wrong QUESTION: the effect asked "is a session open?" when the
+ * only useful question is "is a session open *for this pair*?". On an app reload the workspace
+ * restores its drawings from IndexedDB before the server's arrive, so a session opened in that
+ * window belongs to the previous pair — and "a session is open" was true, which suppressed the
+ * correction and left the panel listing a pair with no markings.
+ *
+ * @param openPair   the pair the current session belongs to, or null when none is open
+ * @param wantedPair the pair now on screen, or null while the workspace is still assembling
+ */
+/**
+ * The pair whose open request is currently in flight.
+ *
+ * Module scope, not store state, and deliberately so: it must be readable and writable in the
+ * same synchronous tick, before any `set` has been through React. A store field would be read
+ * stale by the second caller and let it through — which is exactly the thing being prevented.
+ *
+ * ## What it prevents
+ *
+ * React StrictMode double-invokes effects in development, so the workspace fires two opens ~40ms
+ * apart. Both reach the server before either has inserted, both find no session to resume, and
+ * both create one. That is visible in the collection as sessions in PAIRS, milliseconds apart —
+ * and the app then holds whichever id came back last, which is a session with nothing in it.
+ *
+ * The server-side resume makes this harmless for a pair that has been opened before. It does not
+ * help the FIRST open of a new pair, where there is genuinely nothing to find; that is the case
+ * this guard covers, and it is the case an engineer meets on their first check of a drawing.
+ */
+let openInFlight: string | null = null;
+
+export function shouldOpenManualSession(
+  isManualCheckRoom: boolean,
+  openPair: string | null,
+  wantedPair: string | null,
+): boolean {
+  if (!isManualCheckRoom) return false;
+  // Nothing to open for yet — a room with one drawing, or mid-load.
+  if (!wantedPair) return false;
+  return openPair !== wantedPair;
+}
 
 function toAddress(picked: PickedEntity | null): EntityAddressPayload | null {
   if (!picked) return null;
@@ -110,11 +159,16 @@ export const createManualCheckSlice: StateCreator<
   ManualCheckSlice
 > = (set, get) => ({
   manualSessionId: null,
+  manualSessionPair: null,
+  manualSessionError: null,
   markings: [],
   pendingPairRef: null,
+  pendingPairTool: "changed",
   hoveredEntityId: null,
   hoverLocator: null,
   selectionLocator: null,
+  selectionMenu: null,
+  selectionCounterpart: null,
   selectedEntities: [],
   pendingStamp: null,
 
@@ -144,6 +198,16 @@ export const createManualCheckSlice: StateCreator<
     set({ hoverLocator: locator });
   },
 
+  setSelectionMenu: (menu) => set({ selectionMenu: menu }),
+
+  setSelectionCounterpart: (picked) => {
+    // Compared by entity id: the resolving pane recomputes this on every render of a frame that
+    // changed, and a fresh object each time would repaint both canvases continuously.
+    const prev = get().selectionCounterpart;
+    if (prev?.entityId === picked?.entityId) return;
+    set({ selectionCounterpart: picked });
+  },
+
   setSelectionLocator: (locator) => {
     // Same guard as hover, and for a sharper reason: clicking a second entity that carries the
     // same value outlines the identical set on the other sheet, so repainting both canvases
@@ -152,34 +216,89 @@ export const createManualCheckSlice: StateCreator<
     set({ selectionLocator: locator });
   },
 
-  setPendingPairRef: (picked) => set({ pendingPairRef: picked }),
+  // Both fields in ONE `set`, so the half and what it will become cannot drift apart. Two
+  // setters would allow a pair carrying the previous gesture's verb — a MATCHED completing as a
+  // CHANGED, which is a wrong record rather than a visible fault.
+  setPendingPairRef: (picked, tool = "changed") =>
+    set({ pendingPairRef: picked, pendingPairTool: picked ? tool : "changed" }),
 
   openStamp: (stamp: PendingStamp | null) => set({ pendingStamp: stamp }),
 
   startManualSession: async (roomId, refDrawingId, revDrawingId) => {
+    const pair = `${roomId}:${refDrawingId}:${revDrawingId}`;
+    // A second caller for the same pair while the first is still waiting is the StrictMode
+    // double-invoke, not a real second intent. Dropped rather than queued: the first request
+    // will populate the store, and running it twice can only produce a duplicate session.
+    if (openInFlight === pair) return;
+    openInFlight = pair;
     try {
       const session = await createManualCheckSession({
         room_id: roomId,
         ref_drawing_id: refDrawingId,
         rev_drawing_id: revDrawingId,
       });
-      // Reload rather than assume empty: reopening a room must show the markings already made,
-      // which is the visible half of the write-through guarantee above.
+      // Reload rather than assume empty: reopening a room must show the markings already made.
+      //
+      // This depends on the server RESUMING the open session for this pair rather than minting
+      // a fresh one — `POST /ground-truth/sessions` is idempotent per (room, pair, annotator)
+      // while the session is in progress. It was not until 2026-08-18, and the symptom was
+      // precisely here: this call returned a new empty session's id, `listMarkings` returned
+      // nothing for it, and the panel came up blank after every app reload with the engineer's
+      // work orphaned under the previous id. Pinned by
+      // `tests/test_ground_truth_submission.py::test_reopening_a_pair_resumes_the_session_already_in_progress`.
       const existing = await listMarkings(session.id);
-      set({ manualSessionId: session.id, markings: existing, pendingPairRef: null });
+      set({
+        manualSessionId: session.id,
+        manualSessionPair: pair,
+        manualSessionError: null,
+        markings: existing,
+        pendingPairRef: null,
+      });
     } catch (err: any) {
-      console.error("Failed to open manual check session:", err?.message ?? err);
-      set({ manualSessionId: null, markings: [] });
+      // Recorded, not swallowed. This used to `set({ manualSessionId: null, markings: [] })` —
+      // both already their current values, so React saw no change, the open effect never re-ran,
+      // and the panel sat empty looking exactly like a session with nothing in it. An error the
+      // user can see is the difference between "retry this" and "my work is gone".
+      const message = String(err?.message ?? err);
+      console.error("Failed to open manual check session:", message);
+      set({
+        manualSessionId: null,
+        manualSessionPair: null,
+        manualSessionError: message,
+        markings: [],
+      });
+    } finally {
+      // Released on both paths. Leaving it set after a failure would make the panel's Retry a
+      // no-op — a button that visibly does nothing, for a user already looking at an error.
+      if (openInFlight === pair) openInFlight = null;
     }
   },
 
   commitStamp: async (input: CommitStampInput) => {
-    const { manualSessionId, pendingStamp } = get();
-    if (!manualSessionId || !pendingStamp) return;
+    const { pendingStamp } = get();
+    if (!pendingStamp) return;
+    await get().recordStamp(pendingStamp, input);
+  },
+
+  /**
+   * Write one marking. The single path to the server, whether a dialog collected the details or
+   * the canvas derived them.
+   *
+   * Takes the stamp as an ARGUMENT rather than reading `pendingStamp`, which is what lets the
+   * no-dialog path work at all: `openStamp` followed by `commitStamp` would read the store
+   * before React had flushed the write, and record against whatever the previous stamp was.
+   */
+  recordStamp: async (stamp, input: CommitStampInput) => {
+    const { manualSessionId } = get();
+    if (!manualSessionId) return;
+    const pendingStamp = stamp;
 
     const payload: CreateMarkingPayload = {
       status: TOOL_STATUS[pendingStamp.tool],
       category: input.category,
+      // Says whether a person chose that category or the zone did. See
+      // `GroundTruthMarking.category_source` — an evaluator filters attribution on it.
+      category_source: input.categorySource ?? 'human',
       ref_address: toAddress(pendingStamp.ref),
       rev_address: toAddress(pendingStamp.rev),
       ref_text: input.refText,
@@ -200,6 +319,23 @@ export const createManualCheckSlice: StateCreator<
       // Left open on failure, with the engineer's typing intact. Closing the modal would
       // discard a judgement they have already made and show no sign that it was not recorded.
       console.error("Failed to record marking:", err?.message ?? err);
+
+      // The session this client is holding no longer exists on the server — it was deleted, or
+      // the database was replaced under a running app. Clearing the id is a REPAIR, not just a
+      // reset: `TwoDWorkspace`'s open effect watches `manualSessionId` and reopens as soon as it
+      // goes null, so the next attempt lands in a live session.
+      //
+      // Without this the app dead-ends. The id lives only in memory, so every retry re-sends the
+      // same dead id and the only way out is a full restart — with the engineer's unsaved
+      // judgement on screen the whole time.
+      const message = String(err?.message ?? err);
+      if (/404/.test(message) || /session not found/i.test(message)) {
+        set({ manualSessionId: null });
+        throw new Error(
+          "That check session no longer exists on the server. A new one is opening — press " +
+            "Record marking again.",
+        );
+      }
       throw err;
     }
   },

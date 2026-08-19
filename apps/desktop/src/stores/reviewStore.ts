@@ -36,6 +36,19 @@ interface ReviewState {
   toggleViolations: () => void;
   showMarkerLabels: boolean;
   toggleMarkerLabels: () => void;
+  /**
+   * The marker under the cursor, on EITHER canvas.
+   *
+   * Shared rather than per-canvas because one marker exists on both sheets — it is drawn at each
+   * side's own coordinate — and hovering it should reveal both halves at once. That is the whole
+   * value of the card while comparing: you look at one sheet and read what the other says.
+   *
+   * It was `useState` inside `useCanvasInteraction`, so each pane had its own copy and only the
+   * pane under the cursor lit up. The other one kept drawing the same marker with no card, which
+   * looked like the marker existing on one sheet only.
+   */
+  hoveredMarkerId: string | null;
+  setHoveredMarkerId: (id: string | null) => void;
   showAnnotations: boolean;
   toggleAnnotations: () => void;
   showViewOrigins: boolean;
@@ -253,6 +266,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   toggleViolations: () => set((state) => ({ showViolations: !state.showViolations })),
   showMarkerLabels: false,
   toggleMarkerLabels: () => set((state) => ({ showMarkerLabels: !state.showMarkerLabels })),
+
+  hoveredMarkerId: null,
+  setHoveredMarkerId: (id) => {
+    // Guarded: this is written from a mousemove handler, and an unconditional set would
+    // re-render BOTH canvases on every pointer pixel now that the value is shared.
+    if (get().hoveredMarkerId === id) return;
+    set({ hoveredMarkerId: id });
+  },
   showAnnotations: false,
   toggleAnnotations: () => set((state) => ({ showAnnotations: !state.showAnnotations })),
   // One marker per view, at that view's own origin. Off by default: it is a reference overlay,

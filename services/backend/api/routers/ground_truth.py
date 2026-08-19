@@ -85,6 +85,9 @@ class CreateSessionRequest(BaseModel):
 class CreateMarkingRequest(BaseModel):
     status: MarkingStatus
     category: str
+    #: See `GroundTruthMarking.category_source`. Defaults to `human` so a client that does not
+    #: send it cannot silently mark its rows as derived.
+    category_source: Literal["human", "zone"] = "human"
     ref_address: EntityAddressPayload | None = None
     rev_address: EntityAddressPayload | None = None
     ref_text: str = ""
@@ -117,6 +120,7 @@ class MarkingResponse(BaseModel):
     side: Literal["ref", "rev", "both"]
     status: str
     category: str
+    category_source: str
     ref_text: str
     rev_text: str
     text_was_edited: bool
@@ -205,6 +209,7 @@ def _marking_response(m: GroundTruthMarking) -> MarkingResponse:
         side=m.side,
         status=m.status,
         category=m.category,
+        category_source=m.category_source,
         ref_text=m.ref_text,
         rev_text=m.rev_text,
         text_was_edited=m.text_was_edited,
@@ -265,11 +270,59 @@ async def create_session(
     payload: CreateSessionRequest,
     x_session_token: Annotated[str | None, Header(alias="X-Session-Token")] = None,
 ):
+    """Open the check, or REOPEN the one already in progress over this pair.
+
+    Idempotent per (room, pair, annotator) while the session is `in_progress`. It was not, and
+    the cost was invisible: the client opens a session every time the workspace mounts, so each
+    reload minted a fresh empty session and the UI then listed *its* markings -- none. The
+    engineer's earlier work was never lost, it was orphaned under the previous session id and
+    unreachable from the only screen that reads it. A silent data-loss shape, not an error.
+
+    Scoped three ways on purpose:
+
+    * `status == "in_progress"` -- a submitted session is closed, and checking the same pair
+      again is a genuinely new pass that must not append to a finished one;
+    * `annotator` -- the session is the unit of "who checked this pair", so two engineers on the
+      same drawings get their own, and neither inherits the other's partial work;
+    * the drawing pair, not the room alone -- a room's drawings can be swapped.
+    """
+    annotator = resolve_username(x_session_token) or "unknown"
+
+    # A raw query mapping rather than Beanie's class-attribute expressions. Those resolve
+    # through descriptors that only exist after `init_beanie`, so they cannot be exercised by
+    # this router's fully-mocked tests — and an untested resume is how the bug above came back
+    # for free. The keys are pinned against `ManualCheckSession.model_fields` by
+    # `test_the_resume_query_names_only_real_session_fields`, because a mistyped key here
+    # matches nothing, silently mints a new session, and restores the empty panel exactly.
+    existing = await ManualCheckSession.find_one(
+        {
+            "room_id": payload.room_id,
+            "ref_drawing_id": payload.ref_drawing_id,
+            "rev_drawing_id": payload.rev_drawing_id,
+            "annotator": annotator,
+            "status": "in_progress",
+        },
+        # Oldest first, so the answer is deterministic where it is ambiguous. It is ambiguous
+        # only because of the defect this method fixes: every reload before 2026-08-18 left
+        # another in-progress session on the same pair, and without an explicit order Mongo
+        # would answer from natural order — a resume that could pick a different session run to
+        # run. The oldest is "the pass the engineer started"; markings stranded in the newer
+        # duplicates stay in the collection and are reachable by session id, but this endpoint
+        # will not surface them.
+        sort=[("started_at", 1)],
+    )
+    if existing is not None:
+        logger.info(
+            f"[ground_truth] Manual check resumed: session {existing.id} on room "
+            f"{existing.room_id} by {annotator} ({existing.marking_count} marking(s))"
+        )
+        return StandardResponse(success=True, data=_session_response(existing))
+
     session = ManualCheckSession(
         room_id=payload.room_id,
         ref_drawing_id=payload.ref_drawing_id,
         rev_drawing_id=payload.rev_drawing_id,
-        annotator=resolve_username(x_session_token) or "unknown",
+        annotator=annotator,
         notes=payload.notes,
     )
     await session.save()
@@ -346,6 +399,7 @@ async def create_marking(
         rev_address=await _to_address(payload.rev_address),
         status=payload.status,
         category=payload.category,
+        category_source=payload.category_source,
         ref_text=payload.ref_text,
         rev_text=payload.rev_text,
         text_was_edited=payload.text_was_edited,

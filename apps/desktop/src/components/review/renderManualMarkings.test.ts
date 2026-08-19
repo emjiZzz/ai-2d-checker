@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderManualMarkings, MARKING_STATUS_STYLE } from './renderManualMarkings';
+import { renderManualMarkings } from './renderManualMarkings';
 import { EntityHitIndex, normalizeEntityValue } from './entityPicking';
 import { getNormalization, parseBounds, worldToScreen, flipWorldY } from '../../utils/coordinateTransform';
 
@@ -67,131 +67,22 @@ const frame = (ctx: any) =>
     isNeonModeActive: false,
   }) as any;
 
-const marking = (over: Record<string, any> = {}) => ({
-  id: 'm1',
-  status: 'MATCHED',
-  is_bulk: false,
-  retracted_at: null,
-  ref_coordinates: [100, 200],
-  rev_coordinates: [500, 600],
-  ...over,
-});
 
 describe('renderManualMarkings', () => {
-  it('draws a badge exactly where the marking was recorded', () => {
-    const { ctx, arcs } = recordingCtx();
-    renderManualMarkings({
-      frame: frame(ctx),
-      markings: [marking()],
-      side: 'rev',
-      hoveredEntityId: null,
-      pendingPairRef: null,
-    });
-
-    // The stored coordinate is CAD Y-up; `worldToScreen` applies the flip. If an extra
-    // `flipWorldY` ever creeps in, this y goes to the wrong side of the centreline.
-    const expected = worldToScreen(500, 600, NORM, VIEWPORT);
-    expect(arcs.length).toBeGreaterThan(0);
-    for (const [x, y] of arcs) {
-      expect(x).toBeCloseTo(expected.x, 6);
-      expect(y).toBeCloseTo(expected.y, 6);
-    }
-  });
-
-  it('is not mirrored: two markings either side of the centreline keep their order', () => {
-    // The failure mode `renderViewOrigins` shipped — error proportional to distance from the
-    // centreline, so it looks fine in the middle of the sheet and is far out at the edges.
-    const { ctx, arcs } = recordingCtx();
-    renderManualMarkings({
-      frame: frame(ctx),
-      markings: [
-        marking({ id: 'low', rev_coordinates: [500, 0] }),
-        marking({ id: 'high', rev_coordinates: [500, 700] }),
-      ],
-      side: 'rev',
-      hoveredEntityId: null,
-      pendingPairRef: null,
-    });
-
-    const low = arcs[0][1];
-    const high = arcs[arcs.length - 1][1];
-    // Higher in CAD Y must be *smaller* in screen Y once flipped.
-    expect(high).toBeLessThan(low);
-    expect(high).toBeCloseTo(worldToScreen(500, 700, NORM, VIEWPORT).y, 6);
-  });
-
-  it('uses each sheet own coordinate for a CHANGED pair', () => {
-    // The pair takes two clicks precisely because the two sides sit at different places. Reusing
-    // one coordinate for both canvases would put the reference badge on the revision geometry.
-    const changed = marking({ status: 'CHANGED', ref_coordinates: [10, 20], rev_coordinates: [900, 700] });
-
-    const ref = recordingCtx();
-    renderManualMarkings({ frame: frame(ref.ctx), markings: [changed], side: 'ref', hoveredEntityId: null, pendingPairRef: null });
-    const rev = recordingCtx();
-    renderManualMarkings({ frame: frame(rev.ctx), markings: [changed], side: 'rev', hoveredEntityId: null, pendingPairRef: null });
-
-    expect(ref.arcs[0][0]).toBeCloseTo(worldToScreen(10, 20, NORM, VIEWPORT).x, 6);
-    expect(rev.arcs[0][0]).toBeCloseTo(worldToScreen(900, 700, NORM, VIEWPORT).x, 6);
-    expect(ref.arcs[0][0]).not.toBeCloseTo(rev.arcs[0][0], 1);
-  });
-
-  it('skips a marking that has no coordinate for this sheet', () => {
-    // An ADDED exists only on the revision; drawing it on the reference would assert a finding
-    // against geometry that has none.
-    const { ctx, arcs } = recordingCtx();
-    renderManualMarkings({
-      frame: frame(ctx),
-      markings: [marking({ status: 'ADDED', ref_coordinates: null })],
-      side: 'ref',
-      hoveredEntityId: null,
-      pendingPairRef: null,
-    });
-    expect(arcs).toHaveLength(0);
-  });
-
-  it('does not draw a retracted marking', () => {
-    const { ctx, arcs } = recordingCtx();
-    renderManualMarkings({
-      frame: frame(ctx),
-      markings: [marking({ retracted_at: '2026-08-18T00:00:00Z' })],
-      side: 'rev',
-      hoveredEntityId: null,
-      pendingPairRef: null,
-    });
-    expect(arcs).toHaveLength(0);
-  });
-
-  it('draws each status with its own glyph', () => {
-    for (const [status, style] of Object.entries(MARKING_STATUS_STYLE)) {
-      const { ctx, texts } = recordingCtx();
-      renderManualMarkings({
-        frame: frame(ctx),
-        markings: [marking({ status })],
-        side: 'rev',
-        hoveredEntityId: null,
-        pendingPairRef: null,
-      });
-      expect(texts[0][0], `${status} glyph`).toBe(style.glyph);
-    }
-  });
-
-  it('rings a bulk anchor so it does not read as a single stamp', () => {
-    const plain = recordingCtx();
-    renderManualMarkings({ frame: frame(plain.ctx), markings: [marking()], side: 'rev', hoveredEntityId: null, pendingPairRef: null });
-    const bulk = recordingCtx();
-    renderManualMarkings({ frame: frame(bulk.ctx), markings: [marking({ is_bulk: true })], side: 'rev', hoveredEntityId: null, pendingPairRef: null });
-
-    expect(bulk.arcs.length).toBeGreaterThan(plain.arcs.length);
-    expect(Math.max(...bulk.arcs.map((a) => a[2]))).toBeGreaterThan(Math.max(...plain.arcs.map((a) => a[2])));
-  });
+  // The badge tests that stood here moved to `markerStyles.test.ts` on 2026-08-18, when
+  // recorded markings started drawing through `renderViolationReticles` — the same renderer as
+  // engine findings. What they pinned is split in two now: which rows become markers and with
+  // what coordinates is `markingsToMarkers`, and how a marker is painted is the shared renderer
+  // the AI markers have always used. Asserting either here would be asserting about a function
+  // that no longer does it.
 
   it('marks the half-finished pair on the sheet it was started from, and nowhere else', () => {
     const pending = { side: 'ref', coordinates: [100, 200] as [number, number] };
 
     const onRef = recordingCtx();
-    renderManualMarkings({ frame: frame(onRef.ctx), markings: [], side: 'ref', hoveredEntityId: null, pendingPairRef: pending });
+    renderManualMarkings({ frame: frame(onRef.ctx), side: 'ref', hoveredEntityId: null, pendingPairRef: pending });
     const onRev = recordingCtx();
-    renderManualMarkings({ frame: frame(onRev.ctx), markings: [], side: 'rev', hoveredEntityId: null, pendingPairRef: pending });
+    renderManualMarkings({ frame: frame(onRev.ctx), side: 'rev', hoveredEntityId: null, pendingPairRef: pending });
 
     expect(onRef.arcs).toHaveLength(1);
     expect(onRef.arcs[0][0]).toBeCloseTo(worldToScreen(100, 200, NORM, VIEWPORT).x, 6);
@@ -210,7 +101,7 @@ describe('renderManualMarkings', () => {
     const index: any = { boundsFor: () => bounds };
     const { ctx, texts } = recordingCtx();
     renderManualMarkings({
-      frame: frame(ctx), markings: [], side: 'rev',
+      frame: frame(ctx), side: 'rev',
       hoveredEntityId: 'e1', entityHitIndex: index, pendingPairRef: null,
     });
     const label = texts.map((t) => t[0]).join(' ');
@@ -227,7 +118,7 @@ describe('renderManualMarkings', () => {
     const index: any = { boundsFor: () => bounds };
     const { ctx, texts } = recordingCtx();
     renderManualMarkings({
-      frame: frame(ctx), markings: [], side: 'rev',
+      frame: frame(ctx), side: 'rev',
       hoveredEntityId: 'e1', entityHitIndex: index, pendingPairRef: null,
     });
     const label = texts.map((t) => t[0]).join(' ');
@@ -236,17 +127,19 @@ describe('renderManualMarkings', () => {
     expect(label, 'the entity type is noise now').not.toContain('text');
   });
 
-  it('still draws the markings when the hovered entity has no value', () => {
+  it('still finishes the pass when the hovered entity has no value', () => {
     // The chip is skipped, never the pass. An early return here would silently take the
-    // recorded markings and the cross-sheet boxes with it.
+    // cross-sheet boxes and the half-finished pair with it — all drawn from different state,
+    // so nothing about the hover branch would tell you they had been lost.
     const bounds = { id: 'e1', entity: { type: 'line', properties: {} }, x0: 0, y0: 0, x1: 20, y1: 5 };
     const index: any = { boundsFor: () => bounds };
     const { ctx, arcs } = recordingCtx();
     renderManualMarkings({
-      frame: frame(ctx), markings: [{ status: 'ADDED', rev_coordinates: [100, 100] }],
-      side: 'rev', hoveredEntityId: 'e1', entityHitIndex: index, pendingPairRef: null,
+      frame: frame(ctx),
+      side: 'rev', hoveredEntityId: 'e1', entityHitIndex: index,
+      pendingPairRef: { side: 'rev', coordinates: [100, 100] },
     });
-    expect(arcs.length, 'the ADDED badge must still be drawn').toBeGreaterThan(0);
+    expect(arcs.length, 'the pending-pair ring must still be drawn').toBeGreaterThan(0);
   });
 
   it('highlights the hovered entity using the index own flipped-world bounds', () => {
@@ -259,7 +152,6 @@ describe('renderManualMarkings', () => {
     const { ctx, rects } = recordingCtx();
     renderManualMarkings({
       frame: frame(ctx),
-      markings: [],
       side: 'rev',
       hoveredEntityId: 'e1',
       entityHitIndex: index,
@@ -281,7 +173,6 @@ describe('renderManualMarkings', () => {
     const { ctx, rects } = recordingCtx();
     renderManualMarkings({
       frame: frame(ctx),
-      markings: [],
       side: 'rev',
       hoveredEntityId: null,
       entityHitIndex: index,
@@ -292,9 +183,14 @@ describe('renderManualMarkings', () => {
 
   it('flipWorldY is applied once, not twice', () => {
     // A direct statement of the invariant, so a future reader does not have to infer it: the
-    // badge's screen Y equals worldToScreen's, which already contains exactly one flip.
+    // ring's screen Y equals worldToScreen's, which already contains exactly one flip. Asserted
+    // on the pending pair now that badges draw elsewhere — same coordinate space, same hazard,
+    // and this is the last thing in this module positioned from a CAD-space point.
     const { ctx, arcs } = recordingCtx();
-    renderManualMarkings({ frame: frame(ctx), markings: [marking({ rev_coordinates: [500, 600] })], side: 'rev', hoveredEntityId: null, pendingPairRef: null });
+    renderManualMarkings({
+      frame: frame(ctx), side: 'rev', hoveredEntityId: null,
+      pendingPairRef: { side: 'rev', coordinates: [500, 600] },
+    });
 
     const onceFlipped = worldToScreen(500, 600, NORM, VIEWPORT).y;
     const twiceFlipped = worldToScreen(500, flipWorldY(600, NORM), NORM, VIEWPORT).y;
@@ -331,11 +227,12 @@ describe('cross-sheet value match', () => {
   /** A locator with plain defaults; each test overrides what it is exercising. */
   const loc = (o: Record<string, any> = {}) =>
     ({ side: 'rev' as const, value: '145', entityType: 'text', dimKind: null,
-       zone: null, zoneMeasured: false, zfx: null, zfy: null, sfx: null, sfy: null, ...o });
+       zone: null, zoneMeasured: false, zfx: null, zfy: null, cfx: null, cfy: null,
+       sfx: null, sfy: null, ...o });
 
   const run = (ctx: any, side: 'ref' | 'rev', locator: any, ix?: EntityHitIndex, zones?: any) =>
     renderManualMarkings({
-      frame: otherFrame(ctx), markings: [], side, hoveredEntityId: null,
+      frame: otherFrame(ctx), side, hoveredEntityId: null,
       pendingPairRef: null, hoverLocator: locator, entityHitIndex: ix, zones,
     });
 
@@ -519,7 +416,8 @@ describe('the selected entity pair', () => {
     ({ ctx, isExport: true, viewport: VIEWPORT, norm: OTHER, scale: 0.8, transX: 12, transY: 7 }) as any;
   const loc = (o: Record<string, any> = {}) =>
     ({ side: 'rev' as const, value: '145', entityType: 'text', dimKind: null,
-       zone: null, zoneMeasured: false, zfx: null, zfy: null, sfx: null, sfy: null, ...o });
+       zone: null, zoneMeasured: false, zfx: null, zfy: null, cfx: null, cfy: null,
+       sfx: null, sfy: null, ...o });
 
   const run = (
     ctx: any,
@@ -528,7 +426,7 @@ describe('the selected entity pair', () => {
     ix?: EntityHitIndex,
   ) =>
     renderManualMarkings({
-      frame: otherFrame(ctx), markings: [], side, hoveredEntityId: null,
+      frame: otherFrame(ctx), side, hoveredEntityId: null,
       pendingPairRef: null, hoverLocator: locators.hover ?? null,
       selectionLocator: locators.selection ?? null, entityHitIndex: ix,
     });
@@ -579,5 +477,94 @@ describe('the selected entity pair', () => {
     const { ctx, rects } = recordingCtx();
     run(ctx, 'ref', {}, ix);
     expect(rects).toHaveLength(0);
+  });
+});
+
+describe('which of several identical values is the counterpart', () => {
+  // The case the owner caught on `M745204N01`: three `60°` angular dimensions per sheet, and
+  // selecting the reference's LEFT one outlined the revision's TOP one. Both sheets draw the
+  // same view, at different scales and in different places, so the nearest sheet fraction is
+  // simply not the corresponding dimension — it is whichever one the layout happens to put
+  // closest.
+  const OTHER = getNormalization(parseBounds([-21.0, -14.85, 441.0, 311.85]))!;
+  const otherFrame = (ctx: any) =>
+    ({ ctx, isExport: true, viewport: VIEWPORT, norm: OTHER, scale: 1, transX: 0, transY: 0 }) as any;
+
+  /** The revision's three `60°`, placed as they sit on that sheet. */
+  const target = () => {
+    const ix = new EntityHitIndex();
+    const at = (id: string, x: number, y: number) =>
+      ix.record({ id, type: 'dimension', properties: { text: '60°', dim_type: 2 } },
+                { x0: x, y0: y, x1: x + 40, y1: y + 20 });
+    at('top', 1005, 165);
+    at('left', 830, 270);
+    at('right', 1170, 255);
+    return ix;
+  };
+
+  const loc = (o: Record<string, any> = {}) =>
+    ({ side: 'ref' as const, value: '60°', entityType: 'dimension', dimKind: 2,
+       zone: null, zoneMeasured: false, zfx: null, zfy: null, cfx: null, cfy: null,
+       sfx: null, sfy: null, ...o });
+
+  const run = (ctx: any, locator: any, ix: EntityHitIndex) =>
+    renderManualMarkings({
+      frame: otherFrame(ctx), side: 'rev', hoveredEntityId: null,
+      pendingPairRef: null, selectionLocator: locator, entityHitIndex: ix,
+    });
+
+  /** Outlines are box-height; the chip is not. Returns each outline's left edge. */
+  const outlineXs = (rects: number[][]) =>
+    rects.filter((r) => Math.abs(r[3] - 20) < 1e-6).map((r) => r[0]);
+
+  it('picks the counterpart by where it sits AMONG the other copies of its value', () => {
+    // The reference's own three `60°` span x 85..555, y 44..190; its left-hand one is centred at
+    // (105, 180), i.e. 4% across and 93% down that group. The revision's left-hand one is the
+    // only candidate anywhere near those fractions.
+    const { ctx, rects } = recordingCtx();
+    run(ctx, loc({ cfx: 20 / 470, cfy: 136 / 146 }), target());
+
+    expect(outlineXs(rects)).toEqual([830]);
+  });
+
+  it('is not fooled by the two sheets drawing that view at different scales', () => {
+    // Same source fractions, target scaled 3x and shifted far away. Fractions are invariant to
+    // both, which is the entire reason this beats an absolute position.
+    const ix = new EntityHitIndex();
+    const at = (id: string, x: number, y: number) =>
+      ix.record({ id, type: 'dimension', properties: { text: '60°', dim_type: 2 } },
+                { x0: x, y0: y, x1: x + 120, y1: y + 60 });
+    at('top', 5015, 495);
+    at('left', 4490, 810);
+    at('right', 5510, 765);
+
+    const { ctx, rects } = recordingCtx();
+    run(ctx, loc({ cfx: 20 / 470, cfy: 136 / 146 }), ix);
+    expect(rects.filter((r) => Math.abs(r[3] - 60) < 1e-6).map((r) => r[0])).toEqual([4490]);
+  });
+
+  it('picks the TOP one when that is genuinely the one selected', () => {
+    // The reference's top `60°` is centred at (320, 54): 50% across, 7% down. The check that the
+    // test above is measuring the tie-break rather than a constant.
+    const { ctx, rects } = recordingCtx();
+    run(ctx, loc({ cfx: 235 / 470, cfy: 10 / 146 }), target());
+    expect(outlineXs(rects)).toEqual([1005]);
+  });
+
+  it('outlines every candidate when the group fraction is absent', () => {
+    // `groupFractionOf` returns null for a value appearing once, and a locator built before this
+    // field existed carries undefined. Neither may be read as a position — the honest answer is
+    // all three, which is what the overlay did before any tie-break existed.
+    const { ctx, rects } = recordingCtx();
+    run(ctx, loc(), target());
+    expect(outlineXs(rects)).toHaveLength(3);
+  });
+
+  it('treats an undefined fraction as absent, not as a number', () => {
+    // A null check would pass `undefined` through and poison every distance with NaN, which
+    // looks exactly like a tie-break that ran and found nothing.
+    const { ctx, rects } = recordingCtx();
+    run(ctx, loc({ cfx: undefined, cfy: undefined }), target());
+    expect(outlineXs(rects)).toHaveLength(3);
   });
 });

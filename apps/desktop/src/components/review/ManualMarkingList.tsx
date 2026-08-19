@@ -1,6 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { Undo2, CheckCircle2, ClipboardCheck } from 'lucide-react';
+import { MARKER_STYLES, markerStyle } from './markerStyles';
+import { ChecklistSection } from './ChecklistSection';
+import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
+import { useThemeStore } from '../../stores/themeStore';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Trash2, CheckCircle2, ClipboardCheck } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
 import { CATEGORY_KEYS, categoryLabel } from './manualCheckCategories';
 
@@ -22,18 +27,34 @@ import { CATEGORY_KEYS, categoryLabel } from './manualCheckCategories';
 // Shared with the canvas badges rather than restated: a list dot and its badge disagreeing
 // about what ADDED looks like is small, silent and exactly the drift this codebase keeps paying
 // for. One map, imported by both.
-import { MARKING_STATUS_STYLE } from './renderManualMarkings';
 
 export const ManualMarkingList: React.FC = () => {
   const isManualCheckRoom = useIsManualCheckRoom();
+  const theme = useThemeStore((s) => s.theme);
 
   const markings = useWorkspaceStore((s) => s.markings);
   const manualSessionId = useWorkspaceStore((s) => s.manualSessionId);
+  const manualSessionError = useWorkspaceStore((s) => s.manualSessionError);
+  const startManualSession = useWorkspaceStore((s) => s.startManualSession);
+
+  // Retry re-runs the open with the SAME identity the effect would have used. It does not clear
+  // the error first: if the second attempt fails too, the message must not flicker away and
+  // leave the empty invitation behind, which is the very confusion this block exists to end.
+  const retryOpen = useCallback(() => {
+    const room = useRoomStore.getState().activeRoom;
+    const ws = useWorkspaceStore.getState();
+    if (!room?.id || !ws.oldDrawing?.id || !ws.newDrawing?.id) return;
+    startManualSession(String(room.id), String(ws.oldDrawing.id), String(ws.newDrawing.id));
+  }, [startManualSession]);
   const pendingPairRef = useWorkspaceStore((s) => s.pendingPairRef);
+  const pendingPairTool = useWorkspaceStore((s) => s.pendingPairTool);
   const retractManualMarking = useWorkspaceStore((s) => s.retractManualMarking);
   const submitManualSession = useWorkspaceStore((s) => s.submitManualSession);
 
   const [submitting, setSubmitting] = useState(false);
+  // Open by default: this panel is short and the engineer is reading their own work, not
+  // triaging someone else's. Collapsed-by-default would hide the thing they came here for.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
 
   const grouped = useMemo(() => {
@@ -109,108 +130,159 @@ export const ManualMarkingList: React.FC = () => {
             padding: '7px 12px',
             fontSize: 11,
             lineHeight: 1.45,
-            color: '#f97316',
+            color: MARKER_STYLES.CHANGED.color,
             background: 'rgba(249,115,22,0.1)',
             borderBottom: '1px solid var(--border-color)',
           }}
         >
-          Pairing “{pendingPairRef.text || pendingPairRef.entityType}” — right-click its
-          counterpart on the revision.
+          Pairing “{pendingPairRef.text || pendingPairRef.entityType}” as{' '}
+          {pendingPairTool.replace(/_/g, ' ')} — select its counterpart on the{' '}
+          {pendingPairRef.side === 'ref' ? 'revision' : 'reference'}.
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px 12px' }}>
-        {markings.length === 0 && (
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '8px 8px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        {/*
+          A failed load and an empty session used to look identical — both showed the invitation
+          below, so "the server did not answer" read as "you have recorded nothing". That is the
+          worst possible confusion for this panel: it is the only place an engineer can see their
+          own work, and it says the work is not there.
+        */}
+        {manualSessionError && (
+          <div
+            style={{
+              fontSize: 11,
+              lineHeight: 1.6,
+              padding: '8px',
+              marginBottom: 8,
+              color: MARKER_STYLES.MISMATCHED.color,
+              background: 'rgba(255,40,80,0.08)',
+              border: `1px solid ${MARKER_STYLES.MISMATCHED.color}55`,
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>Could not open this check.</div>
+            <div style={{ color: 'var(--text-muted)', margin: '4px 0 8px' }}>
+              Your recorded markings are on the server, not lost — this pane just could not read
+              them. {manualSessionError}
+            </div>
+            <button
+              type="button"
+              onClick={retryOpen}
+              style={{
+                fontSize: 11,
+                padding: '3px 10px',
+                cursor: 'pointer',
+                color: 'var(--text-primary)',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Once per panel, not per card — one <style> element per row is what the checklist
+            learned to avoid. */}
+        <ComparisonGridStyles />
+
+        {markings.length === 0 && !manualSessionError && (
           <p style={{ fontSize: 11, lineHeight: 1.6, color: 'var(--text-muted)', padding: '4px 4px' }}>
-            Right-click an entity on either sheet to record a finding. Nothing here is produced by
-            the engine — this list is only what you have recorded.
+            Left-click an entity on either sheet to select it, then choose a status. Nothing here
+            is produced by the engine — this list is only what you have recorded.
           </p>
         )}
 
         {CATEGORY_KEYS.map((key) => {
           const rows = grouped[key] ?? [];
           if (!rows.length) return null;
+          // The same card the engine's checklist uses. It was a bold caption over bare rows,
+          // which made this panel look like a different product sitting in the same slot — and
+          // an engineer switching between an AI room and a manual one had to relearn the page.
+          // Only the chrome is shared; the rows below are this panel's own, because recording a
+          // judgement and correcting the engine's are different acts with different destinations.
+          const allMatched = rows.every((m) => m.status === 'MATCHED');
           return (
-            <div key={key} style={{ marginBottom: 12 }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-secondary)',
-                  padding: '0 4px 5px',
-                }}
-              >
-                {categoryLabel(key)} · {rows.length}
-              </div>
-              {rows.map((m) => (
-                <div
-                  key={m.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 7,
-                    padding: '7px 8px',
-                    marginBottom: 4,
-                    borderRadius: 8,
-                    background: 'var(--bg-dark)',
-                    border: '1px solid var(--border-color)',
-                  }}
-                >
-                  <span
-                    style={{
-                      marginTop: 4,
-                      width: 6,
-                      height: 6,
-                      borderRadius: 999,
-                      flexShrink: 0,
-                      background: MARKING_STATUS_STYLE[m.status]?.color ?? '#a1a1aa',
-                    }}
-                  />
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
-                      {m.status.replace(/_/g, ' ')}
-                      {m.is_bulk && <span style={{ color: 'var(--text-muted)' }}> · bulk</span>}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'ui-monospace, monospace',
-                        fontSize: 11,
-                        color: 'var(--text-primary)',
-                        wordBreak: 'break-word',
-                        marginTop: 2,
-                      }}
-                    >
-                      {m.status === 'CHANGED'
-                        ? `${m.ref_text || '∅'} → ${m.rev_text || '∅'}`
-                        : m.rev_text || m.ref_text || '—'}
-                    </div>
+            <ChecklistSection
+              key={key}
+              label={categoryLabel(key)}
+              statusLabel={String(rows.length)}
+              statusColor={
+                allMatched ? MARKER_STYLES.MATCHED.color : MARKER_STYLES.CHANGED.color
+              }
+              statusIsMatched={allMatched}
+              expanded={expanded[key] ?? true}
+              onToggle={() =>
+                setExpanded((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
+              }
+            >
+              {rows.map((m) => {
+                // The card's own heading. A checklist row names a FIELD; a marking has no field,
+                // so it heads with the value the engineer marked — the revision's spelling where
+                // there is one, since that is the sheet being checked.
+                const title = m.rev_text || m.ref_text || '—';
+                return (
+                  <FindingCard
+                    key={m.id}
+                    statusLabel={`${m.status.replace(/_/g, ' ')}${m.is_bulk ? ' · bulk' : ''}`}
+                    statusColor={markerStyle(m.status).color}
+                    actions={
+                      /* Labelled "Remove" because that is what it means to the engineer using
+                         it. The tooltip still states what happens on the server, because the two
+                         differ and the difference matters if anyone ever needs a marking back:
+                         nothing is deleted, the row is stamped `retracted_at` and hidden. */
+                      <button
+                        type="button"
+                        title="Remove from this check — the record is kept on the server, marked as withdrawn"
+                        onClick={() => retractManualMarking(m.id)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: MARKER_STYLES.MISMATCHED.color,
+                          cursor: 'pointer',
+                          fontSize: '0.65rem',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          padding: 0,
+                        }}
+                      >
+                        <Trash2 size={11} />
+                        <span>Remove</span>
+                      </button>
+                    }
+                  >
+                    <ComparisonValues
+                      title={title}
+                      // Straight through. A `markingValueView` helper used to decide whether to
+                      // show one value or two — a rule the compact row needed and this grid does
+                      // not: two labelled columns are always drawn, and an absent side prints
+                      // `-`, which for an ADDED or a REMOVED is the finding rather than a gap.
+                      original={m.ref_text ?? ''}
+                      revision={m.rev_text ?? ''}
+                      struck={m.status === 'CHANGED' || m.status === 'REMOVED'}
+                      matched={m.status === 'MATCHED'}
+                      theme={theme}
+                    />
                     {m.notes && (
-                      <div style={{ fontSize: 10, lineHeight: 1.45, color: 'var(--text-muted)', marginTop: 3 }}>
+                      <div style={{ fontSize: 10, lineHeight: 1.45, color: 'var(--text-muted)' }}>
                         {m.notes}
                       </div>
                     )}
-                  </div>
-                  <button
-                    type="button"
-                    title="Retract — the record is marked, never deleted"
-                    onClick={() => retractManualMarking(m.id)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--text-muted)',
-                      padding: 0,
-                      display: 'flex',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Undo2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
+                  </FindingCard>
+                );
+              })}
+            </ChecklistSection>
           );
         })}
       </div>

@@ -19,6 +19,7 @@ import { mergeSidesForTemplate, zonesToTemplatePayload } from "../../utils/zoneF
 import { useReviewStore, type RegionFractions } from "../../stores/reviewStore";
 import { recordHistoryGroup, type HistoryEntry } from "../../stores/historyStore";
 import { useRoomStore } from "../../stores/roomStore";
+import { shouldOpenManualSession } from "../../stores/workspace/slices/createManualCheckSlice";
 import {
   isRoomSyncedWithDrawings,
   isZoneGateOpen,
@@ -235,7 +236,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   // Manual engineer check. `isManualCheckMode` is view state (reviewStore, beside every other
   // mode toggle); the markings it produces are records and live in the workspace store.
   const isManualCheckMode = useIsManualCheckRoom();
-  const manualSessionId = useWorkspaceStore(s => s.manualSessionId);
+  const manualSessionPair = useWorkspaceStore(s => s.manualSessionPair);
   const startManualSession = useWorkspaceStore(s => s.startManualSession);
   const toggleViewOrigins = useReviewStore(s => s.toggleViewOrigins);
 
@@ -247,14 +248,31 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const oldDrawingForZones = useWorkspaceStore(s => s.oldDrawing);
   const newDrawingForZones = useWorkspaceStore(s => s.newDrawing);
 
-  // Opening a session is idempotent per pair: `startManualSession` reloads any markings already
-  // recorded, so switching the mode off and on does not orphan earlier work or duplicate it.
+  // Runs on every mount, which is exactly why the server side of this has to be idempotent:
+  // an app reload lands here with no session and re-opens it. Resuming rather than restarting is
+  // what makes the markings survive a refresh — see `createManualCheckSlice.startManualSession`.
+  //
+  // ⚠ The condition is "is a session open FOR THIS PAIR", not "is a session open". It was the
+  // latter, and that is one of the two ways this panel came up empty after a reload: the
+  // workspace restores its drawings from IndexedDB before `openRoom` overwrites them with the
+  // server's, so a session opened in that window belongs to the previous pair — and the same
+  // guard that stopped a duplicate open also stopped the correction. The panel then listed a
+  // different pair's markings, which is to say none.
+  //
+  // `activeRoomId` is subscribed rather than read through `getState()` for the same reason: the
+  // room id is part of the identity of the session, so a change in it has to re-run this.
+  const activeRoomId = useRoomStore(s => s.activeRoom?.id);
+  const sessionPair =
+    activeRoomId && oldDrawing?.id && newDrawing?.id
+      ? `${activeRoomId}:${oldDrawing.id}:${newDrawing.id}`
+      : null;
   useEffect(() => {
-    if (!isManualCheckMode || manualSessionId) return;
-    const room = useRoomStore.getState().activeRoom;
-    if (!room?.id || !oldDrawing?.id || !newDrawing?.id) return;
-    startManualSession(String(room.id), String(oldDrawing.id), String(newDrawing.id));
-  }, [isManualCheckMode, manualSessionId, oldDrawing?.id, newDrawing?.id, startManualSession]);
+    // A failed open leaves `manualSessionPair` null, so this stays true — but the deps do not
+    // change, so it waits for the panel's Retry rather than hammering a server that just refused.
+    if (!shouldOpenManualSession(isManualCheckMode, manualSessionPair, sessionPair)) return;
+    const [roomId, refId, revId] = sessionPair!.split(':');
+    startManualSession(roomId, refId, revId);
+  }, [isManualCheckMode, sessionPair, manualSessionPair, startManualSession]);
 
   // A selection belongs to the pair it was made on. Cleared here rather than in the renderer
   // because this is the only place that knows BOTH drawing ids — a canvas pane knows its own
@@ -266,10 +284,14 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   // is indistinguishable from a confident answer.
   const setSelectedEntities = useWorkspaceStore(s => s.setSelectedEntities);
   const setSelectionLocator = useWorkspaceStore(s => s.setSelectionLocator);
+  const setSelectionMenu = useWorkspaceStore(s => s.setSelectionMenu);
   useEffect(() => {
     setSelectedEntities([]);
     setSelectionLocator(null);
-  }, [oldDrawing?.id, newDrawing?.id, setSelectedEntities, setSelectionLocator]);
+    // Its menu goes with it — it is keyed on a drawing id that is no longer on screen, and it
+    // reads its contents from the selection this same effect just emptied.
+    setSelectionMenu(null);
+  }, [oldDrawing?.id, newDrawing?.id, setSelectedEntities, setSelectionLocator, setSelectionMenu]);
 
   const isRoiEditModeEnabled = useReviewStore(s => s.isRoiEditModeEnabled);
   const setRoiEditMode = useReviewStore(s => s.setRoiEditMode);

@@ -271,6 +271,13 @@ export interface AnnotationsSlice {
 
 /** A stamped entity, captured at click time from the picking index. */
 export interface PickedEntity {
+  /**
+   * The semantic zone the entity sits in, or null where none was measured.
+   *
+   * Carried so a marking can derive its category without a dialog. Null means ASK — the engineer
+   * still chooses — rather than "unclassified"; see `categoryForZone`.
+   */
+  zone?: string | null;
   drawingId: string;
   side: "ref" | "rev";
   entityId: string;
@@ -359,6 +366,8 @@ export interface PendingStamp {
 
 export interface CommitStampInput {
   category: string;
+  /** Where the category came from. Omitted means a person chose it. */
+  categorySource?: 'human' | 'zone';
   refText: string;
   revText: string;
   textWasEdited: boolean;
@@ -381,17 +390,65 @@ export interface NavSlice {
  * marking is already persisted server-side by the time it lands in `markings`. The mode flag
  * itself lives in `reviewStore` beside every other mode toggle.
  *
- * `pendingPairRef` is the half-finished CHANGED pair. It exists as explicit state rather than
- * as a closure inside the mouse handler so the toolbar can show that a pairing is in flight —
- * a click that silently does nothing until the second click is how a user concludes the tool
- * is broken.
+ * `pendingPairRef` is the half-finished CHANGED pair — whichever half was picked FIRST, which
+ * since 2026-08-18 may be either sheet's; its own `side` says which, and the pair is assembled
+ * from that rather than from click order. (The name predates the symmetry and is kept because
+ * renaming state that several components read is not worth a docstring.) It exists as explicit
+ * state rather than as a closure inside the mouse handler so the toolbar can show that a
+ * pairing is in flight — a click that silently does nothing until the second click is how a
+ * user concludes the tool is broken.
  */
 export interface ManualCheckSlice {
   manualSessionId: string | null;
+  /**
+   * The drawing pair the open session belongs to, as `room:ref:rev`.
+   *
+   * Without it the open effect can only ask "is a session open?", which is the wrong question:
+   * on an app reload the workspace restores its drawings from IndexedDB and then `openRoom`
+   * overwrites them with the server's, so a session opened in that window is bound to the
+   * previous pair — and the guard that stops a second open also stops the correction. The panel
+   * then lists a different pair's markings, which is usually none.
+   */
+  manualSessionPair: string | null;
+  /**
+   * Why the last open failed, or null.
+   *
+   * Recorded because the failure was silent: the catch reset `manualSessionId` to the null it
+   * already held, so nothing re-rendered and nothing retried, and the panel showed
+   * "0 markings recorded" — indistinguishable from a session that really is empty.
+   */
+  manualSessionError: string | null;
   markings: GroundTruthMarking[];
   pendingPairRef: PickedEntity | null;
+  /**
+   * What the half-finished pair will become when its counterpart is picked.
+   *
+   * CHANGED was the only two-click status until 2026-08-18. MATCHED joined it because automatic
+   * pairing genuinely cannot always answer: on `M745204N01` the reference reads `2 ロール：4
+   * (2x2台)` and the revision `2ロール：4（2×6台）` — different VALUES, not different spellings,
+   * so the matcher is right to refuse and only a person can say they correspond. Without a manual
+   * route that judgement was unrecordable.
+   */
+  pendingPairTool: StampTool;
   /** The entity under the cursor, or null. Drives the hover highlight only. */
   hoveredEntityId: string | null;
+  /**
+   * Where to float the selection's own menu, in canvas pixels, and which canvas owns it.
+   *
+   * In the store rather than in `DrawingCanvas` because there are TWO canvases and only one menu
+   * may be open: local state would leave the other pane's menu standing after a click over here.
+   * `drawingId` is what each pane compares against to decide whether the menu is its own.
+   */
+  selectionMenu: { x: number; y: number; drawingId: string } | null;
+  /**
+   * The OTHER sheet's entity for the current selection, when exactly one was resolved.
+   *
+   * Published by the pane that resolved it — the counterpart lives in that canvas's pick index,
+   * and the pane showing the selection cannot see it. `null` whenever the match was ambiguous
+   * (several candidates carry the value and nothing separates them), which is the case a
+   * MATCHED must not silently guess through.
+   */
+  selectionCounterpart: PickedEntity | null;
   /** Same value, other sheet, following the cursor. See `EntityLocator`. */
   hoverLocator: EntityLocator | null;
   /**
@@ -424,10 +481,13 @@ export interface ManualCheckSlice {
   setHoveredEntityId: (id: string | null) => void;
   setHoverLocator: (locator: EntityLocator | null) => void;
   setSelectionLocator: (locator: EntityLocator | null) => void;
-  setPendingPairRef: (picked: PickedEntity | null) => void;
+  setSelectionMenu: (menu: { x: number; y: number; drawingId: string } | null) => void;
+  setSelectionCounterpart: (picked: PickedEntity | null) => void;
+  setPendingPairRef: (picked: PickedEntity | null, tool?: StampTool) => void;
   openStamp: (stamp: PendingStamp | null) => void;
   startManualSession: (roomId: string, refDrawingId: string, revDrawingId: string) => Promise<void>;
   commitStamp: (input: CommitStampInput) => Promise<void>;
+  recordStamp: (stamp: PendingStamp, input: CommitStampInput) => Promise<void>;
   retractManualMarking: (markingId: string) => Promise<void>;
   submitManualSession: () => Promise<void>;
 }

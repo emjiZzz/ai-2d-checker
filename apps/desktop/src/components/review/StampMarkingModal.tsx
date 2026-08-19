@@ -1,3 +1,4 @@
+import { markerStyle } from './markerStyles';
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
@@ -33,13 +34,14 @@ const STATUS_LABEL: Record<string, string> = {
   not_a_finding: 'NOT A FINDING',
 };
 
-const STATUS_ACCENT: Record<string, string> = {
-  matched: '#10b981',
-  added: '#3b82f6',
-  removed: '#ef4444',
-  changed: '#f97316',
-  not_a_finding: '#a1a1aa',
-};
+/**
+ * Derived, not restated. The accent on this modal is the colour the badge will be drawn in, and
+ * a fifth copy of the taxonomy's palette is a fifth chance for the modal to promise one thing
+ * and the canvas to draw another.
+ */
+const STATUS_ACCENT: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_LABEL).map(([tool, label]) => [tool, markerStyle(label.replace(/ /g, '_')).color]),
+);
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -67,6 +69,7 @@ export const StampMarkingModal: React.FC = () => {
   const pendingStamp = useWorkspaceStore((s) => s.pendingStamp);
   const openStamp = useWorkspaceStore((s) => s.openStamp);
   const commitStamp = useWorkspaceStore((s) => s.commitStamp);
+  const setPendingPairRef = useWorkspaceStore((s) => s.setPendingPairRef);
 
   const [category, setCategory] = useState('');
   const [refText, setRefText] = useState('');
@@ -117,6 +120,12 @@ export const StampMarkingModal: React.FC = () => {
   const textWasEdited = refText !== rawRef || revText !== rawRev;
   const canSave = Boolean(category) && !busy;
   const accent = STATUS_ACCENT[pendingStamp.tool] ?? 'var(--accent-cyan)';
+
+  // Only MATCHED can be "unpaired" in a way worth warning about. ADDED and REMOVED have one side
+  // by definition, and CHANGED cannot reach this modal without both — it is opened by the click
+  // that completes the pair.
+  const unpaired = pendingStamp.tool === 'matched' && !(pendingStamp.ref && pendingStamp.rev);
+  const missingSide = pendingStamp.ref ? 'revision' : 'reference';
 
   const save = async () => {
     if (!canSave) return;
@@ -295,6 +304,59 @@ export const StampMarkingModal: React.FC = () => {
             />
           </div>
 
+          {/*
+            A MATCHED with one side is a claim about a pair, recorded with half of it missing.
+
+            It is allowed, because the engineer can be right where the matcher is not — but it
+            was previously indistinguishable from a paired one at the moment of recording, and
+            only visible later as a `-` in the panel's ORIGINAL column. Saying so here, with the
+            manual pairing one click away, is the difference between a considered one-sided
+            record and an accident.
+
+            Deliberately NOT a block. The corpus wants the engineer's judgement, and a modal that
+            refuses it teaches them to file it under something else.
+          */}
+          {unpaired && (
+            <div
+              style={{
+                fontSize: 11,
+                lineHeight: 1.55,
+                color: 'var(--text-primary)',
+                background: 'rgba(255,150,0,0.10)',
+                border: '1px solid rgba(255,150,0,0.40)',
+                padding: '8px 10px',
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 3 }}>No counterpart found</div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                Nothing on the {missingSide} matches this value, so this would be recorded as
+                MATCHED with only one side. If the two are the same item spelled differently, pair
+                them by hand instead.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  // Hands the gesture over: the modal closes and the entity becomes the waiting
+                  // half, so the next click on the other sheet completes it as a MATCHED.
+                  setPendingPairRef(pendingStamp.ref ?? pendingStamp.rev ?? null, 'matched');
+                  openStamp(null);
+                }}
+                style={{
+                  marginTop: 7,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '3px 10px',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  background: 'transparent',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                Pick counterpart on the {missingSide}
+              </button>
+            </div>
+          )}
+
           {error && (
             <div
               style={{
@@ -352,7 +414,7 @@ export const StampMarkingModal: React.FC = () => {
               cursor: canSave ? 'pointer' : 'not-allowed',
             }}
           >
-            {busy ? 'Recording…' : 'Record marking'}
+            {busy ? 'Recording…' : unpaired ? 'Record without a pair' : 'Record marking'}
           </button>
         </div>
       </div>

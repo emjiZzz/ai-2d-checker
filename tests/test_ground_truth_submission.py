@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from services.backend.api.routers import ground_truth as gt
 from services.backend.domain.models.ground_truth import (
@@ -286,3 +287,169 @@ async def test_markings_persist_before_submit_is_ever_called():
         gt.CreateMarkingRequest(status="ADDED", category="notes_section", rev_address=_address()),
     )
     gt.GroundTruthMarking.save.assert_awaited()
+
+
+# ── reopening a pair must resume, not restart ────────────────────────────────────────
+
+
+def _open_request(room="room1", ref="ref1", rev="rev1"):
+    return gt.CreateSessionRequest(room_id=room, ref_drawing_id=ref, rev_drawing_id=rev)
+
+
+async def test_reopening_a_pair_resumes_the_session_already_in_progress(monkeypatch):
+    """The defect the owner hit: markings vanished from the panel after every app reload.
+
+    The client opens a session whenever the manual-check workspace mounts, and this handler
+    unconditionally inserted a new one. So each reload minted an empty session, the UI listed
+    *its* markings -- none -- and the engineer's work sat orphaned under the previous id. Nothing
+    errored and nothing was deleted; the only symptom was an empty panel.
+    """
+    existing = _session()
+    existing.marking_count = 3
+    monkeypatch.setattr(
+        gt.ManualCheckSession, "find_one", AsyncMock(return_value=existing), raising=False
+    )
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    result = await gt.create_session(_open_request())
+
+    assert result.success
+    assert result.data.marking_count == 3
+    gt.ManualCheckSession.save.assert_not_awaited()
+
+
+async def test_a_pair_with_nothing_open_starts_a_new_session(monkeypatch):
+    monkeypatch.setattr(
+        gt.ManualCheckSession, "find_one", AsyncMock(return_value=None), raising=False
+    )
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    result = await gt.create_session(_open_request())
+
+    assert result.success
+    assert result.data.annotator == "imrysn"
+    assert result.data.marking_count == 0
+    gt.ManualCheckSession.save.assert_awaited_once()
+
+
+async def test_the_resume_is_scoped_to_pair_annotator_and_open_status(monkeypatch):
+    """Each clause of the filter is load-bearing, and dropping one is silent.
+
+    Without `status`, reopening a room would append to a session already submitted, so a
+    finished pass would keep growing. Without `annotator`, a second engineer would inherit the
+    first's partial work and the session would stop meaning "who checked this pair". Without the
+    two drawing ids, swapping a room's drawings would resume a check of the previous pair.
+    """
+    find_one = AsyncMock(return_value=None)
+    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    await gt.create_session(_open_request())
+
+    query = find_one.await_args.args[0]
+    assert query == {
+        "room_id": "room1",
+        "ref_drawing_id": "ref1",
+        "rev_drawing_id": "rev1",
+        "annotator": "imrysn",
+        "status": "in_progress",
+    }
+
+
+async def test_the_resume_query_names_only_real_session_fields(monkeypatch):
+    """A raw query dict has no field-name checking, and a typo fails in the quiet direction.
+
+    `{"anotator": ...}` matches no document, so every open would mint a new session and the
+    empty-panel defect would be back with nothing to show for it — no error, no log, just an
+    engineer's markings orphaned again.
+    """
+    find_one = AsyncMock(return_value=None)
+    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    await gt.create_session(_open_request())
+
+    assert set(find_one.await_args.args[0]) <= set(ManualCheckSession.model_fields)
+
+
+async def test_an_unidentified_caller_does_not_inherit_another_engineers_session(monkeypatch):
+    """`resolve_username` returning None falls back to "unknown", which is a real annotator key.
+
+    It has to be passed to the lookup like any other, or every unauthenticated open would share
+    one session — and the markings inside it would carry no usable attribution.
+    """
+    find_one = AsyncMock(return_value=None)
+    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: None)
+
+    result = await gt.create_session(_open_request())
+
+    assert result.data.annotator == "unknown"
+    assert find_one.await_args.args[0]["annotator"] == "unknown"
+
+
+async def test_the_repair_tool_groups_sessions_the_same_way_this_endpoint_resumes(monkeypatch):
+    """`tools/merge_duplicate_check_sessions.py` consolidates onto the session this resumes.
+
+    If the two ever disagree about what identifies a check, the repair moves an engineer's
+    markings onto a session this endpoint will never ask for — and the empty-panel defect it was
+    written to fix survives the fix, with the data now in a third place. Neither side can catch
+    that alone, so the agreement is asserted here where the real query is observable.
+    """
+    from tools.merge_duplicate_check_sessions import GROUP_KEYS
+
+    find_one = AsyncMock(return_value=None)
+    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    await gt.create_session(_open_request())
+
+    assert set(find_one.await_args.args[0]) == set(GROUP_KEYS) | {"status"}
+
+
+# ── where a category came from is part of the record ─────────────────────────────────
+
+
+async def test_a_category_the_engineer_chose_is_recorded_as_theirs():
+    """The default has to be `human`, because every row written before this field existed was.
+
+    A default of `zone` would retroactively relabel the entire corpus as derived, which is the
+    one thing that cannot be undone by inspection: nothing in an old row says who chose it.
+    """
+    result = await gt.create_marking(
+        "sess1",
+        gt.CreateMarkingRequest(status="ADDED", category="drawing_views", rev_address=_address()),
+    )
+    assert result.data.category_source == "human"
+
+
+async def test_a_category_taken_from_the_zone_says_so():
+    """The reason this field exists at all.
+
+    The mutation corpus's attribution figure is a known tautology — its labels come from
+    `zone_detector`, and moving the zone boxes shifted attribution 0.81 → 0.74 with no engine
+    change. The human pairs were the first attribution numbers that were not tautologies. That
+    survives derivation only if an evaluator can tell the two kinds of row apart.
+    """
+    result = await gt.create_marking(
+        "sess1",
+        gt.CreateMarkingRequest(
+            status="MATCHED",
+            category="bill_of_materials",
+            category_source="zone",
+            rev_address=_address(),
+        ),
+    )
+    assert result.data.category_source == "zone"
+
+
+async def test_an_invented_category_source_is_refused():
+    # A free-form string would let a third value appear and be counted as neither, quietly
+    # shrinking whichever set an evaluator filtered for.
+    with pytest.raises(ValidationError):
+        gt.CreateMarkingRequest(
+            status="MATCHED",
+            category="drawing_views",
+            category_source="guessed",
+            rev_address=_address(),
+        )

@@ -77,6 +77,13 @@ if (!window.__reactRoot) {
   window.__reactRoot = ReactDOM.createRoot(container);
 }
 
+// Disable default browser context menu across the desktop app (Back, Refresh, Print, Inspect, etc.)
+// Custom in-app context menus (like CAD canvas) will continue to open as they manage their own UI.
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+});
+
 // On every load (initial + HMR), call render() on the existing root.
 window.__reactRoot.render(app);
+
 

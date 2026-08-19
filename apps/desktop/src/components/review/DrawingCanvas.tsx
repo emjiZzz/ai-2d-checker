@@ -7,6 +7,7 @@ import { useCanvasInteraction } from './useCanvasInteraction';
 import { useEntityPicking } from './useEntityPicking';
 import { CanvasRenderer } from './CanvasRenderer';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import { SelectionMenu } from './SelectionMenu';
 import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -50,6 +51,8 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
     // it's a pure projection of `annotations`.
     const annotationBadgeMap = useMemo(() => getAnnotationBadgeMap(annotations), [annotations]);
     const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
+    const selectionMenu = useWorkspaceStore((s) => s.selectionMenu);
+    const setSelectionMenu = useWorkspaceStore((s) => s.setSelectionMenu);
     const theme = useThemeStore((s) => s.theme);
 
     const [redrawTrigger, setRedrawTrigger] = useState(0);
@@ -212,6 +215,20 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             }}
             onClose={() => setContextMenu(null)}
             setRedrawTrigger={setRedrawTrigger}
+          />
+        )}
+
+        {/* The selection's own menu, opened by the left-click that made the selection. Rendered
+            only by the pane that owns it — `selectionMenu` is store state precisely so the other
+            canvas does not keep a second copy open. */}
+        {selectionMenu && drawing?.id && selectionMenu.drawingId === String(drawing.id) && (
+          <SelectionMenu
+            x={selectionMenu.x}
+            y={selectionMenu.y}
+            canvasWidth={width}
+            canvasHeight={height}
+            theme={theme}
+            onClose={() => setSelectionMenu(null)}
           />
         )}
 

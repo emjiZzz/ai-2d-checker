@@ -7,8 +7,10 @@ import { getTaxonomyWithOther, OTHER_FEATURE_KEY, DEFERRED_FEATURE_KEYS } from "
 import { CorrectionControls } from "./CorrectionControls";
 import { ReviewControls } from "./ReviewControls";
 import { SummaryPanel } from "./SummaryPanel";
+import { ChecklistSection } from "./ChecklistSection";
+import { ComparisonGridStyles, ComparisonValues } from "./FindingCard";
+import { markerTypeOf, markerUi } from "./markerStyles";
 import { isPersistedViolationId, reviewableViolationId } from "../../utils/violationIdentity";
-import { cleanCadText } from "./renderEntities";
 import { useThemeStore } from "../../stores/themeStore";
 
 interface ChecklistPanelProps {
@@ -88,26 +90,23 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
     if (!row) return null;
     const isLight = theme === 'hc-light';
     const statusUp = (row.status || "").toUpperCase();
-    let cellBadgeColor = isLight ? "#047857" : "#10b981"; // green = MATCHED default
-    let cellBadgeBg = isLight ? "rgba(4, 120, 87, 0.12)" : "rgba(16, 185, 129, 0.14)";
+
+    // Status first, colour second. The two used to be decided together in one ternary chain per
+    // branch, which is how the same finding ended up a different orange in its card and in its
+    // summary chip — and why a MATCHED pill never matched its own canvas marker.
     let statusText = row.status || "MATCHED";
+    if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) statusText = "CHANGED";
+    else if (statusUp.includes("ADD")) statusText = "ADDED";
+    else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) statusText = "REMOVED";
 
-    if (statusUp.includes("CHANGE") || statusUp.includes("MIS")) {
-      cellBadgeColor = isLight ? "#c2410c" : "#f97316"; cellBadgeBg = isLight ? "rgba(194, 65, 12, 0.12)" : "rgba(249, 115, 22, 0.14)"; statusText = "CHANGED";
-    } else if (statusUp.includes("ADD")) {
-      cellBadgeColor = isLight ? "#1d4ed8" : "#3b82f6"; cellBadgeBg = isLight ? "rgba(29, 78, 216, 0.12)" : "rgba(59, 130, 246, 0.14)"; statusText = "ADDED";
-    } else if (statusUp.includes("REMOV") || statusUp.includes("MISS")) {
-      cellBadgeColor = isLight ? "#b91c1c" : "#ef4444"; cellBadgeBg = isLight ? "rgba(185, 28, 28, 0.12)" : "rgba(239, 68, 68, 0.14)"; statusText = "REMOVED";
-    }
-
+    // A matched marker overrides the parsed table: the engine's own verdict beats the LLM's
+    // rendering of it. Resolved by the shared reader now that `ai_red` means the same thing on
+    // both sides — this panel had it right and the canvas had it wrong.
     if (matchingViolation) {
-      const pt = matchingViolation.pen_type || "";
-      if (pt === "ai_orange") { cellBadgeColor = isLight ? "#c2410c" : "#f97316"; statusText = "CHANGED"; cellBadgeBg = isLight ? "rgba(194, 65, 12, 0.12)" : "rgba(249, 115, 22, 0.14)"; }
-      else if (pt === "checker_blue") { cellBadgeColor = isLight ? "#1d4ed8" : "#3b82f6"; statusText = "ADDED"; cellBadgeBg = isLight ? "rgba(29, 78, 216, 0.12)" : "rgba(59, 130, 246, 0.14)"; }
-      else if (pt === "ai_red") { cellBadgeColor = isLight ? "#b91c1c" : "#ef4444"; statusText = "REMOVED"; cellBadgeBg = isLight ? "rgba(185, 28, 28, 0.12)" : "rgba(239, 68, 68, 0.14)"; }
-      else if (pt === "resolved_green" || pt === "ai_green") { cellBadgeColor = isLight ? "#047857" : "#10b981"; statusText = "MATCHED"; cellBadgeBg = isLight ? "rgba(4, 120, 87, 0.12)" : "rgba(16, 185, 129, 0.14)"; }
-      else if (pt === "ai_conflict") { cellBadgeColor = isLight ? "#7e22ce" : "#a855f7"; statusText = "CONFLICT"; cellBadgeBg = isLight ? "rgba(126, 34, 206, 0.12)" : "rgba(168, 85, 247, 0.14)"; }
+      statusText = markerTypeOf(matchingViolation) ?? statusText;
     }
+
+    const { color: cellBadgeColor, background: cellBadgeBg } = markerUi(statusText, isLight);
 
     // Feature snapshot attached to every correction so the backend model can rebuild this
     // finding's training features. text_similarity/match_distance/is_numericish are recomputed
@@ -148,7 +147,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         style={{
           background: isSelected ? "rgba(37, 99, 235, 0.08)" : "var(--bg-card)",
           border: isSelected ? "1.5px solid var(--accent-cyan)" : "1px solid var(--border-color)",
-          borderRadius: "14px",
+          borderRadius: 0,
           padding: "14px",
           display: "flex",
           flexDirection: "column",
@@ -305,36 +304,18 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         {/* Comparison Grid. Layout and type scale deliberately live in the .cmp-grid stylesheet
             rather than here: inline styles outrank stylesheet rules, so the container query could
             never override a value declared inline. Only status-dependent styling stays inline. */}
-        <div className="cmp-grid cmp-grid-diff" style={{ background: theme === 'hc-light' ? "#f1f5f9" : "var(--sidebar-item-hover)", border: "1px solid var(--border-color)", borderRadius: "2px" }}>
-          {/* Field Title */}
-          <div className="cmp-title" style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "2px", textTransform: "uppercase", textAlign: "left", letterSpacing: "0.02em" }}>
-            {cleanCadText(row.field)}
-          </div>
-
-          {/* Column Headers */}
-          <div className="cmp-h-ref" style={{ fontWeight: 700, color: "var(--text-secondary)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Original
-          </div>
-          <div className="cmp-h-rev" style={{ fontWeight: 700, color: "var(--accent-cyan)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Revision
-          </div>
-
-          {/* Values */}
-          <div className="cmp-v-ref" style={{
-            color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace",
-            textDecoration: (statusText.toUpperCase().includes("CHANGE") || statusText.toUpperCase().includes("REMOVE") || statusText.toUpperCase().includes("MIS")) ? "line-through" : "none",
-            wordBreak: "break-word"
-          }}>
-            {cleanCadText(row.original) || "-"}
-          </div>
-          <div className="cmp-v-rev" style={{
-            color: statusText.toUpperCase() === "MATCHED" ? (theme === 'hc-light' ? "#047857" : "#10b981") : "var(--text-primary)",
-            fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
-            wordBreak: "break-word"
-          }}>
-            {cleanCadText(row.kmti) || "-"}
-          </div>
-        </div>
+        <ComparisonValues
+          title={row.field}
+          original={row.original}
+          revision={row.kmti}
+          struck={
+            statusText.toUpperCase().includes("CHANGE") ||
+            statusText.toUpperCase().includes("REMOVE") ||
+            statusText.toUpperCase().includes("MIS")
+          }
+          matched={statusText.toUpperCase() === "MATCHED"}
+          theme={theme}
+        />
 
         {/* Supervisor verdict, on findings only. This is the write that fills the `lessons`
             collection.
@@ -365,37 +346,13 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexGrow: 1, paddingBottom: "24px", minWidth: 0 }}>
-      {/* Rendered once here, not inside renderDiffRowCard — that runs per finding and would emit
-          one duplicate <style> element per row. */}
-      <style>{`
-        .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
-        .cmp-grid > * { min-width: 0; overflow-wrap: anywhere; }
-        .cmp-grid-diff { text-align: center; padding: 12px; }
-        .cmp-grid-diff > .cmp-title { grid-column: 1 / -1; }
-        .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.62rem; }
-        .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.8rem; }
-
-        /* These stay TWO COLUMNS at every width, on purpose. Stacking would fit the panel more
-           comfortably, but it destroys what the grid is for: you cannot compare two values that
-           are not beside each other. What the query buys back instead is horizontal room --
-           tighter padding, gap and type -- so the pair stays legible rather than becoming two
-           slivers. Overflow is not a risk either way: overflow-wrap above makes long values wrap.
-
-           The query container is the finding card for .cmp-grid-diff and the category body for
-           the plain two-up grid; both set container-type: inline-size. A viewport media query
-           would measure the wrong box -- this panel is a flexlayout tabset the user drags, so its
-           width has nothing to do with the window's. */
-        @container (max-width: 260px) {
-          .cmp-grid { gap: 6px; }
-          .cmp-grid-diff { padding: 8px; }
-          .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.55rem; letter-spacing: 0.02em; }
-          .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.72rem; }
-        }
-      `}</style>
+      {/* Rendered once here, not inside renderDiffRowCard — that runs per finding and would
+          emit one duplicate <style> element per row. */}
+      <ComparisonGridStyles />
       <div style={{
         background: "linear-gradient(135deg, var(--bg-sidebar) 0%, var(--bg-card) 100%)",
         border: "1px solid var(--border-color)",
-        borderRadius: "14px",
+        borderRadius: 0,
         padding: "14px",
         boxShadow: "0 2px 10px rgba(24,24,27,0.06)",
         backdropFilter: "blur(15px)",
@@ -418,10 +375,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
           ].map(({ key, label }) => {
             const res = aiChecklistResults[key];
             if (!res) return null;
-            let color = "#10b981";
-            if (res.status === "CHANGED") color = "#f59e0b";
-            else if (res.status === "ADDED") color = "#3b82f6";
-            else if (res.status === "REMOVED" || res.status === "MISSING") color = "#ef4444";
+            // `MISSING` is the LLM's word for REMOVED; the table has no entry under that name.
+            const { color } = markerUi(res.status === "MISSING" ? "REMOVED" : res.status, theme === 'hc-light');
             return (
               <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--sidebar-item-hover)", padding: "5px 8px", borderRadius: "5px", border: "1px solid var(--border-color)" }}>
                 <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 400 }}>{label}</span>
@@ -500,10 +455,10 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
         const isExpanded = expandedChecklistPanels[key];
 
-        let badgeColor = "#10b981";
-        if (result.status === "ADDED") badgeColor = "#3b82f6";
-        else if (result.status === "CHANGED") badgeColor = "#f59e0b";
-        else if (result.status === "REMOVED" || result.status === "MISSING") badgeColor = "#ef4444";
+        const badgeColor = markerUi(
+          result.status === "MISSING" ? "REMOVED" : result.status,
+          theme === 'hc-light',
+        ).color;
 
         const pKey = key.toLowerCase().replace(/_/g, "");
 
@@ -602,74 +557,22 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         const allHidden = categoryViolationIds.length > 0 && categoryViolationIds.every(id => hiddenViolationIds[id]);
 
         return (
-          <div
+          <ChecklistSection
             key={key}
-            style={{
-              background: "var(--bg-card)",
-              border: "1px solid var(--border-color)",
-              borderRadius: "14px",
-              overflow: "hidden",
-              boxShadow: "0 2px 8px rgba(24,24,27,0.06)"
+            label={label}
+            statusLabel={result.status}
+            statusColor={badgeColor}
+            statusIsMatched={result.status === "MATCHED"}
+            expanded={isExpanded}
+            onToggle={() => toggleChecklistPanel(key)}
+            eye={{
+              hidden: allHidden,
+              enabled: categoryViolationIds.length > 0,
+              onToggle: () => setViolationsVisibility(categoryViolationIds, !allHidden),
             }}
           >
-            <div
-              onClick={() => toggleChecklistPanel(key)}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "12px 14px",
-                cursor: "pointer",
-                userSelect: "none",
-                flexWrap: "wrap",
-                gap: "8px",
-                minWidth: 0,
-                background: isExpanded ? "var(--sidebar-item-hover)" : "transparent",
-                borderBottom: isExpanded ? "1px solid var(--border-color)" : "none"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: "1 1 auto" }}>
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (categoryViolationIds.length > 0) {
-                      setViolationsVisibility(categoryViolationIds, !allHidden);
-                    }
-                  }}
-                  style={{
-                    cursor: categoryViolationIds.length > 0 ? "pointer" : "default",
-                    color: categoryViolationIds.length > 0 ? (allHidden ? "var(--text-muted)" : "var(--accent-cyan)") : "var(--border-color)",
-                    display: "flex",
-                    alignItems: "center",
-                    flexShrink: 0
-                  }}
-                >
-                  {allHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                </div>
-                <span style={{ fontSize: "0.92rem", fontWeight: 500, color: "var(--text-primary)", letterSpacing: "0.03em", textTransform: "uppercase", minWidth: 0 }}>
-                  {label}
-                </span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-                <span style={{
-                  display: "flex", alignItems: "center", gap: "5px",
-                  fontSize: "0.72rem", fontWeight: 700, padding: "4px 11px", borderRadius: "999px",
-                  color: badgeColor, background: `${badgeColor}14`,
-                  letterSpacing: "0.04em", textTransform: "uppercase"
-                }}>
-                  {result.status === "MATCHED" && (
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="1.5 6.5 4.5 9.5 10.5 2.5" />
-                    </svg>
-                  )}
-                  {result.status}
-                </span>
-                {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
-              </div>
-            </div>
+            <>
 
-            {isExpanded && (
-              <div style={{ padding: "14px 16px", background: "var(--bg-dark)", display: "flex", flexDirection: "column", gap: "14px", minWidth: 0, containerType: "inline-size" }}>
 
                 {/* ── MATCHED: All-Clear confirmation block ── */}
                 {result.status === "MATCHED" && (
@@ -695,12 +598,12 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                         alignItems: "center",
                         justifyContent: "center",
                       }}>
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={markerUi('MATCHED', theme === 'hc-light').color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="2 7.5 5.5 11 12 3" />
                         </svg>
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#10b981", marginBottom: "4px", letterSpacing: "0.04em" }}>
+                        <div style={{ fontSize: "0.8rem", fontWeight: 600, color: markerUi('MATCHED', theme === 'hc-light').color, marginBottom: "4px", letterSpacing: "0.04em" }}>
                           ✓ VERIFIED — NO DISCREPANCIES
                         </div>
                       </div>
@@ -737,17 +640,20 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
                             // Worst-status color across the bucket's rows, same severity
                             // ranking as elsewhere in this file (REMOVED/CONFLICT > CHANGED > ADDED > MATCHED).
-                            let subBadgeColor = "#10b981";
+                            // Severity ranking stays here — it is this panel's rule, not the
+                            // table's — but the colour it resolves to comes from the table.
+                            let worst = "MATCHED";
                             let severity = 0;
                             for (const { row, violation } of group.rows) {
-                              const pt = violation?.pen_type;
-                              const s = pt === "ai_red" ? "REMOVED" : pt === "ai_conflict" ? "CONFLICT"
-                                : pt === "ai_orange" ? "CHANGED" : pt === "checker_blue" ? "ADDED"
-                                  : (row.status || "").toUpperCase();
-                              if ((s.includes("REMOV") || s === "CONFLICT") && severity < 3) { severity = 3; subBadgeColor = s === "CONFLICT" ? "#a855f7" : "#ef4444"; }
-                              else if (s.includes("CHANGE") && severity < 2) { severity = 2; subBadgeColor = "#f97316"; }
-                              else if (s.includes("ADD") && severity < 1) { severity = 1; subBadgeColor = "#3b82f6"; }
+                              // One reader for "what kind of finding is this", shared with the
+                              // canvas and the hit test. This was a fourth private pen chain and
+                              // it disagreed with them about `ai_red` until 2026-08-18.
+                              const s = (violation && markerTypeOf(violation)) || (row.status || "").toUpperCase();
+                              if ((s.includes("REMOV") || s === "CONFLICT") && severity < 3) { severity = 3; worst = s === "CONFLICT" ? "CONFLICT" : "REMOVED"; }
+                              else if (s.includes("CHANGE") && severity < 2) { severity = 2; worst = "CHANGED"; }
+                              else if (s.includes("ADD") && severity < 1) { severity = 1; worst = "ADDED"; }
                             }
+                            const subBadgeColor = markerUi(worst, theme === 'hc-light').color;
 
                             return (
                               <div key={panelKey} style={{ border: "1px solid var(--border-color)", borderRadius: "6px", overflow: "hidden" }}>
@@ -776,17 +682,37 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                                     {hasRows && (isOpen ? <ChevronDown size={12} color="var(--text-muted)" /> : <ChevronRight size={12} color="var(--text-muted)" />)}
                                   </div>
                                 </div>
-                                {isDeferred ? (
+                                {/* Rows FIRST, deferred second.
+                                    This was the other way round, and its own definition in
+                                    `comparisonTaxonomy.ts` warned about it: "Membership here
+                                    HIDES rows — a deferred key that ever carries findings drops
+                                    them silently." It did. `line_name` is deferred and sits in
+                                    the title block, which HAS a classifier
+                                    (`classify_title_ul_feature`), so a finding it labelled would
+                                    have vanished from this panel with nothing to show it ever
+                                    existed.
+                                    "Not yet supported" is a statement about an EMPTY bucket —
+                                    "nothing was checked here, do not read this as clean". A
+                                    bucket with findings in it was evidently checked by
+                                    something, and the findings are the product of record. */}
+                                {hasRows ? (
+                                  isOpen ? (
+                                    <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "8px", background: "var(--bg-dark)" }}>
+                                      {isDeferred && (
+                                        <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                                          This sub-item has no automatic producer yet — these arrived from somewhere else.
+                                        </div>
+                                      )}
+                                      {group.rows.map(({ row, idx, violation }) => renderDiffRowCard(row, violation, `${key}-${idx}`, key))}
+                                    </div>
+                                  ) : null
+                                ) : isDeferred ? (
                                   <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "var(--text-muted)", fontStyle: "italic", background: "var(--bg-card)" }}>
                                     Not yet supported for automatic checking.
                                   </div>
                                 ) : !hasRows ? (
                                   <div style={{ padding: "10px 12px", fontSize: "0.7rem", color: "var(--text-muted)", background: "var(--bg-card)" }}>
                                     No changes detected.
-                                  </div>
-                                ) : isOpen ? (
-                                  <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "8px", background: "var(--bg-dark)" }}>
-                                    {group.rows.map(({ row, idx, violation }) => renderDiffRowCard(row, violation, `${key}-${idx}`, key))}
                                   </div>
                                 ) : null}
                               </div>
@@ -830,8 +756,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                     <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "6px", letterSpacing: "0.05em" }}>PROFESSIONAL SUGGESTION</div>
                     <div style={{
                       fontSize: "0.85rem",
-                      color: result.status === "MATCHED" ? "#10b981" : "#ef4444",
-                      background: result.status === "MATCHED" ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+                      color: markerUi(result.status === "MATCHED" ? "MATCHED" : "MISMATCHED", theme === 'hc-light').color,
+                      background: markerUi(result.status === "MATCHED" ? "MATCHED" : "MISMATCHED", theme === 'hc-light').background,
                       borderLeft: `4px solid ${badgeColor}`,
                       padding: "8px 12px",
                       borderRadius: "0 6px 6px 0",
@@ -900,7 +826,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                                 width: "6px",
                                 height: "6px",
                                 borderRadius: "50%",
-                                background: v.pen_type === "ai_red" ? "#ef4444" : v.pen_type === "ai_orange" ? "#f97316" : v.pen_type === "checker_blue" ? "#3b82f6" : "#10b981",
+                                background: markerUi(markerTypeOf(v) ?? "MATCHED", theme === 'hc-light').color,
                                 flexShrink: 0
                               }} />
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -912,9 +838,8 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-          </div>
+            </>
+          </ChecklistSection>
         );
       })}
 

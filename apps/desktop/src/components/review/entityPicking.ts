@@ -105,6 +105,23 @@ const DXF_OVERRIDES: [RegExp, string][] = [
 /** Marks the two sides spell differently for the same dimension, so they cannot be compared. */
 const DIAMETER_MARKS = /[⌀øØφϕф]/g;
 
+/**
+ * Multiplication signs, folded onto the letter `x`.
+ *
+ * ⚠ **NFKC does not do this.** It folds the revision's full-width digits, parens and colon onto
+ * the reference's half-width ones, so `４ロール：１２（２×６台）` and `4 ロール：12 (2x6台)` come
+ * within one character of each other and then differ forever on U+00D7 versus the letter — the
+ * only surviving difference in a string a person reads as identical.
+ *
+ * ⚠ **The backend already folded these; this layer did not.** `spatial_differ._normalize_text`
+ * has done `× ✕ ✖ ⨯ → x` for as long as it has existed, and `infrastructure/utils/text.py`
+ * folds `[xX×ラｘＸ]` (the `ラ` is a CP932 mis-decode of the same glyph). So the engine paired
+ * this row and the manual-check overlay did not — two implementations of one rule, one of which
+ * learned something. Pinned against the backend's set by
+ * `entityPicking.test.ts`'s "the multiplication fold matches the backend's".
+ */
+const MULTIPLY_MARKS = /[×✕✖⨯⨉ｘ]/g;
+
 /** MTEXT inline formatting: `\A1;` alignment, `\P` paragraph break, `{...}` grouping. */
 const MTEXT_CODES = /\\[A-Za-z][^;\\]*;|\\P|[{}]/g;
 
@@ -116,6 +133,10 @@ export function normalizeEntityValue(raw: unknown): string {
   // NFKC is what folds the revision's full-width digits onto the reference's half-width ones.
   v = v.normalize('NFKC');
   v = v.replace(DIAMETER_MARKS, '');
+  // After NFKC: the full-width `ｘ` is folded by it, but `×` and the dingbat crosses are not.
+  v = v.replace(MULTIPLY_MARKS, 'x');
+  // `\s` misses the ideographic space U+3000 in some engines, and a Japanese sheet is full of
+  // them — NFKC maps it to U+0020, so this runs after that and not before.
   return v.replace(/\s+/g, '').toUpperCase();
 }
 
@@ -160,6 +181,21 @@ export function entityDisplayText(ent: any): string {
 }
 
 /** The readable value of an entity, or `''` for pure geometry that carries none. */
+/**
+ * What a chip shows: the entity's value as the sheet prints it, truncated to fit.
+ *
+ * Lives here rather than in one renderer because three overlays label a value — the hover chip,
+ * the cross-sheet match and the selection — and they must not disagree about a value they have
+ * just agreed on. `entityDisplayText` reads `render_text`, the string the CAD application
+ * actually composited, so `⌀110` on a sheet applying the diameter standard shows as `⌀110` while
+ * the sheet that does not shows `110`. That difference is real and the two still MATCH, because
+ * the comparison key folds the diameter mark away and the display does not.
+ */
+export function displayValueOf(ent: any): string {
+  const raw = entityDisplayText(ent);
+  return raw.length > 22 ? `${raw.slice(0, 22)}...` : raw;
+}
+
 export function entityValueOf(ent: any): string {
   return normalizeEntityValue(preferredRawText(ent));
 }
@@ -738,7 +774,10 @@ export class EntityHitIndex {
     // against `typed` rather than `candidates` so both sheets normalise against the same thing —
     // the source applied no zone filter when it built its own fraction, and a bounding box taken
     // over a filtered subset would be a different box, silently comparing two different spaces.
-    if (spec.cfx !== null && spec.cfy !== null) {
+    // `Number.isFinite`, not `!== null`: a locator built before these fields existed carries
+    // `undefined`, which passes a null check and then poisons every distance with NaN — a
+    // tie-break that silently stops discriminating while still looking like it ran.
+    if (Number.isFinite(spec.cfx) && Number.isFinite(spec.cfy)) {
       const group = groupBounds(typed);
       if (group) {
         const best = nearest(candidates, (b) => {
@@ -750,7 +789,7 @@ export class EntityHitIndex {
     }
 
     // Weakest tie-break: position on the sheet. Orders equals; establishes nothing.
-    if (spec.sfx !== null && spec.sfy !== null) {
+    if (Number.isFinite(spec.sfx) && Number.isFinite(spec.sfy)) {
       const best = nearest(candidates, (b) => {
         const q = r.sheetPos(b);
         return q ? [q.sfx - (spec.sfx as number), q.sfy - (spec.sfy as number)] : null;

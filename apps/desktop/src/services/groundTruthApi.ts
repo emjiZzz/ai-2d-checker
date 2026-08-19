@@ -39,6 +39,7 @@ export interface EntityAddressPayload {
 export interface CreateMarkingPayload {
   status: MarkingStatus;
   category: string;
+  category_source?: 'human' | 'zone';
   ref_address?: EntityAddressPayload | null;
   rev_address?: EntityAddressPayload | null;
   ref_text?: string;
@@ -49,6 +50,7 @@ export interface CreateMarkingPayload {
 }
 
 export interface GroundTruthMarking {
+  category_source?: 'human' | 'zone';
   id: string;
   session_id: string;
   side: 'ref' | 'rev' | 'both';

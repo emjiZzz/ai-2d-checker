@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
@@ -19,6 +19,7 @@ import {
   isStampClick,
 } from './entityPicking';
 import type { EntityLocator, PickedEntity } from '../../stores/workspace/types';
+import { findMarkingForEntity } from './manualCheckCategories';
 
 /**
  * Manual-check picking, layered over the existing canvas handlers.
@@ -73,9 +74,13 @@ export function useEntityPicking(params: {
   const setSelectedEntities = useWorkspaceStore((s) => s.setSelectedEntities);
   const setHoverLocator = useWorkspaceStore((s) => s.setHoverLocator);
   const setSelectionLocator = useWorkspaceStore((s) => s.setSelectionLocator);
+  const setSelectionMenu = useWorkspaceStore((s) => s.setSelectionMenu);
+  const setSelectionCounterpart = useWorkspaceStore((s) => s.setSelectionCounterpart);
+  const selectionLocator = useWorkspaceStore((s) => s.selectionLocator);
   // This sheet's own zones. Zone membership is what stops a value in the BOM matching the
   // same value in a view; it is read per-drawing because the boxes are per-drawing.
   const zoneRegions = useWorkspaceStore((s) => s.zoneRegions);
+  const markings = useWorkspaceStore((s) => s.markings);
 
   // One index per canvas, rebuilt each render by `renderEntities`. A ref rather than state:
   // it is written during the render loop, which must not trigger another render.
@@ -122,7 +127,27 @@ export function useEntityPicking(params: {
       const canvas = canvasRef.current;
       if (!canvas) return null;
       const rect = canvas.getBoundingClientRect();
-      const world = screenToWorld(clientX - rect.left, clientY - rect.top, norm, viewport);
+
+      // The ENTITY's centre, not the cursor's position.
+      //
+      // A marking is a statement about an entity, so its coordinate belongs to that entity, and
+      // the dot has to land in the same place on every value or it reads as sloppy rather than
+      // as a mark. Recording the click point put it wherever the pointer happened to be inside
+      // the hit box: high on one value, off the left edge of the next, never twice the same.
+      //
+      // Bounds come from the pick index, which stores FLIPPED world units; `flipWorldY` is its
+      // own inverse, so one call returns the CAD-space point the renderer expects. The cursor
+      // is the fallback for an entity the index could not measure — better a placed mark than
+      // none, and `entityWorldBounds` covering everything drawable is what keeps that rare.
+      const box = indexRef.current.boundsFor(String(entity.id));
+      // The zone this entity sits in, resolved the same way `buildLocator` resolves it — one
+      // rule for "where is this on the sheet", whether the answer is used to find a counterpart
+      // or to derive a category.
+      const zones = drawing?.id ? zoneRegions[String(drawing.id)] : null;
+      const zone = box ? zoneKeyForBox(zones, box, (y) => flipWorldY(y, norm)) : null;
+      const world = box
+        ? { x: (box.x0 + box.x1) / 2, y: flipWorldY((box.y0 + box.y1) / 2, norm) }
+        : screenToWorld(clientX - rect.left, clientY - rect.top, norm, viewport);
 
       return {
         drawingId: String(drawing.id),
@@ -140,9 +165,10 @@ export function useEntityPicking(params: {
           entity.geometry?.text ?? entity.geometry?.content ?? entity.properties?.text ?? '',
         ),
         coordinates: [world.x, world.y],
+        zone,
       };
     },
-    [canvasRef, drawing?.id, norm, side, viewport],
+    [canvasRef, drawing?.id, norm, side, viewport, zoneRegions],
   );
 
   /**
@@ -199,22 +225,115 @@ export function useEntityPicking(params: {
     [side, drawing?.id, zoneRegions, norm],
   );
 
+  /**
+   * Has this entity already been marked?
+   *
+   * Reads the raw hit rather than a `PickedEntity`, because the hover path never builds one —
+   * and the answer is needed before deciding whether to advertise the entity as markable.
+   */
+  const alreadyMarked = useCallback(
+    (hit: any): boolean =>
+      Boolean(
+        findMarkingForEntity(markings, {
+          side,
+          handle: hit?.handle ?? hit?.properties?.handle ?? null,
+        }),
+      ),
+    [markings, side],
+  );
+
+  /**
+   * Resolve the selection's counterpart on THIS sheet, for the pane that is not the source.
+   *
+   * The counterpart lives in this canvas's pick index, and the pane showing the selection has no
+   * access to it — so the answer has to be published rather than asked for. This is the same
+   * `findMatches` call the cross-sheet outline uses, so what gets recorded is exactly the entity
+   * the engineer can see outlined and labelled while they choose a status.
+   *
+   * ⚠ **Only when there is exactly ONE.** Where several candidates carry the value and nothing
+   * separates them the overlay outlines them all with an `xN` chip, and this publishes nothing:
+   * a MATCHED that silently picked one of three would be a fabricated pair wearing the same
+   * badge as a real one.
+   */
+  useEffect(() => {
+    if (!isManualCheckMode) return;
+    if (!selectionLocator) {
+      setSelectionCounterpart(null);
+      return;
+    }
+    // The source sheet holds the selection itself, not its counterpart.
+    if (selectionLocator.side === side) return;
+
+    const flipY = (y: number) => flipWorldY(y, norm);
+    const zones = drawing?.id ? zoneRegions[String(drawing.id)] : null;
+    const matches = indexRef.current.findMatches(selectionLocator, {
+      zoneOf: (b) => zoneKeyForBox(zones, b, flipY),
+      zoneMeasured: (zone) => isZoneMeasured(zones, zone),
+      zonePos: (b, zone) => zoneRelativePos(zones, zone, b, flipY),
+      sheetPos: (b) => sheetRelativePos(b, norm),
+    });
+    if (matches.length !== 1) {
+      setSelectionCounterpart(null);
+      return;
+    }
+
+    // `toPicked` derives the coordinate from the entity itself, so the counterpart needs no
+    // special case — the cursor arguments go unused for anything the index can measure.
+    setSelectionCounterpart(toPicked(matches[0].entity, 0, 0));
+  }, [
+    isManualCheckMode,
+    selectionLocator,
+    side,
+    norm,
+    drawing?.id,
+    zoneRegions,
+    setSelectionCounterpart,
+    toPicked,
+  ]);
+
   const onMouseMove = useCallback(
     (e: React.MouseEvent) => {
       handlers.onMouseMove?.(e);
       const hit = pickAt(e.clientX, e.clientY);
-      setHoveredEntityId(hit ? String(hit.id) : null);
-      setHoverLocator(hit ? buildLocator(hit) : null);
+
+      // An entity that already carries a marking gets NO picking highlight — no corner
+      // brackets, no value chip, no cross-sheet outline.
+      //
+      // Those say "you can mark this", and it is already marked. What appears instead is the
+      // marker's own detail card, from the same renderer an engine finding uses, driven by the
+      // separate marker hit-test in `useCanvasInteraction`. Both used to fire at once, stacking
+      // two hover treatments on one entity and offering an action that no longer applies.
+      const markable = hit && !alreadyMarked(hit);
+      setHoveredEntityId(markable ? String(hit.id) : null);
+      setHoverLocator(markable ? buildLocator(hit) : null);
     },
-    [handlers, pickAt, setHoveredEntityId, setHoverLocator, buildLocator],
+    [handlers, pickAt, setHoveredEntityId, setHoverLocator, buildLocator, alreadyMarked],
   );
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       handlers.onMouseDown?.(e);
       pressRef.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+      // A middle-button pan is starting. The selection menu is anchored in canvas pixels, so
+      // the drawing would slide out from under it and leave it pointing at nothing.
+      if (e.button !== 0) setSelectionMenu(null);
     },
-    [handlers],
+    [handlers, setSelectionMenu],
+  );
+
+  /**
+   * Zooming closes the menu, for the same reason panning does.
+   *
+   * Wrapped here even though `CanvasRenderer` pulls `onWheel` out of the handler object and
+   * registers it natively — it registers whichever function this hook hands back, so the wrap
+   * survives. Left-clicking again reopens it at the new position.
+   */
+  const onWheel = useCallback(
+    (e: any) => {
+      handlers.onWheel?.(e);
+      setSelectionMenu(null);
+    },
+    [handlers, setSelectionMenu],
   );
 
   /**
@@ -232,15 +351,44 @@ export function useEntityPicking(params: {
       if (!isStampClick(e.button, press, { x: e.clientX, y: e.clientY })) return;
 
       const hit = pickAt(e.clientX, e.clientY);
-      const picked = hit ? toPicked(hit, e.clientX, e.clientY) : null;
+      // Same rule as hover: an already-marked entity is not selectable. Selecting it would draw
+      // the solid selection outline while `SelectionMenu` declines to open — a box on the sheet
+      // with nothing behind it, which reads as the menu having failed rather than as a
+      // deliberate refusal. Its record is on screen already, as the hover card.
+      const picked = hit && !alreadyMarked(hit) ? toPicked(hit, e.clientX, e.clientY) : null;
       // Clicking blank canvas clears, which is the only way to get back to nothing selected.
       setSelectedEntities(picked ? [picked] : []);
       // …and publish the same locator hover does, so the OTHER sheet outlines the counterpart
       // and keeps it outlined. Hover cannot serve this: it clears the moment the cursor leaves,
       // and comparing a pair means looking at both sheets with the mouse somewhere else.
-      setSelectionLocator(hit ? buildLocator(hit) : null);
+      // Keyed on `picked`, not on `hit`: an already-marked entity was filtered out above, and
+      // publishing its locator would still outline a counterpart on the other sheet for a
+      // selection that does not exist.
+      setSelectionLocator(picked ? buildLocator(hit) : null);
+
+      // The selection carries its OWN menu, floated at the click.
+      //
+      // Separate from the right-click menu since 2026-08-18: that one is the canvas's tools —
+      // annotation pins, labels, marker filters — and the marking taxonomy was a guest in it.
+      // Two menus with different subjects sharing one gesture is how an engineer ends up
+      // hunting for the marking actions among the view controls.
+      //
+      // Manual rooms only, matching where recording is possible at all. Elsewhere a left-click
+      // selects and nothing opens.
+      if (!isManualCheckMode || !picked || !drawing?.id) {
+        setSelectionMenu(null);
+      } else {
+        const canvas = canvasRef.current;
+        const rect = canvas?.getBoundingClientRect();
+        setSelectionMenu(
+          rect
+            ? { x: e.clientX - rect.left, y: e.clientY - rect.top, drawingId: String(drawing.id) }
+            : null,
+        );
+      }
     },
-    [handlers, pickAt, toPicked, setSelectedEntities, setSelectionLocator, buildLocator],
+    [handlers, pickAt, toPicked, setSelectedEntities, setSelectionLocator, buildLocator,
+     setSelectionMenu, isManualCheckMode, drawing?.id, canvasRef, alreadyMarked],
   );
 
   /**
@@ -252,8 +400,12 @@ export function useEntityPicking(params: {
   const onContextMenu = useCallback(
     (e: React.MouseEvent) => {
       handlers.onContextMenu?.(e);
+      // The tools menu is opening; the selection's menu would otherwise sit underneath it. The
+      // SELECTION itself is untouched — right-clicking away from it must not silently empty it,
+      // and the tools menu still acts on whatever is selected.
+      setSelectionMenu(null);
     },
-    [handlers],
+    [handlers, setSelectionMenu],
   );
 
   // The index is built in EVERY room, not just manual ones. Selecting an entity is now part of
@@ -274,6 +426,7 @@ export function useEntityPicking(params: {
       onMouseDown,
       onClick,
       onMouseMove,
+      onWheel,
       onContextMenu,
       // Without this the ghost strands on the other sheet after the cursor leaves, pointing at
       // a place nobody is looking.

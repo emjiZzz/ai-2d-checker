@@ -1,4 +1,5 @@
 import { getNormalization, worldToScreen, screenToWorldUnflipped, parseBounds } from '../../utils/coordinateTransform';
+import { MARKER_SIDE, markerTypeOf } from './markerStyles';
 
 export interface HitTestParams {
   mx: number;
@@ -9,6 +10,8 @@ export interface HitTestParams {
   showViolations: boolean;
   viewport: { x: number; y: number; scale: number };
   markerPositions?: Record<string, { x: number, y: number }>;
+  /** Manual markings, already in marker shape. Hit-tested whatever `showViolations` says. */
+  markings?: any[];
 }
 
 export const hitTestMarker = ({
@@ -19,10 +22,9 @@ export const hitTestMarker = ({
   oldDrawing,
   showViolations,
   viewport,
-  markerPositions
+  markerPositions,
+  markings = [],
 }: HitTestParams): string | null => {
-  if (!showViolations) return null;
-
   const isOldDrawing = oldDrawing && drawing?.id === oldDrawing.id;
   const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
 
@@ -36,9 +38,25 @@ export const hitTestMarker = ({
     return getPriority(b.pen_type || 'ai_red') - getPriority(a.pen_type || 'ai_red');
   });
 
-  for (const v of sortedViolations) {
-    if (isOldDrawing && v.pen_type === 'checker_blue') continue;
-    if (!isOldDrawing && v.pen_type === 'ai_red') continue;
+  // Manual markings are hit-tested FIRST and are not gated by `showViolations`.
+  //
+  // That flag is about the engine's conclusions — a manual-check room forces it off so the
+  // checker stays an independent observer — and it used to short-circuit this whole function, so
+  // a recorded marking was drawn on the canvas and un-hoverable. The engine's detail card and
+  // the marking's are the same card from the same renderer; only the hover that reveals it was
+  // missing, which is why the two modes felt different.
+  const candidates = [
+    ...markings.map((m: any) => ({ marker: m, gated: false })),
+    ...(showViolations ? sortedViolations.map((v: any) => ({ marker: v, gated: true })) : []),
+  ];
+
+  for (const { marker: v } of candidates) {
+    // One side rule for drawing and for hit-testing. `MARKER_SIDE` also answers for REMOVED,
+    // which the two hard-coded `pen_type` tests here never did.
+    const type = markerTypeOf(v);
+    const belongsOn = type ? MARKER_SIDE[type] : null;
+    if (belongsOn === 'rev' && isOldDrawing) continue;
+    if (belongsOn === 'ref' && !isOldDrawing) continue;
 
     const coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
     if (!coords) continue;

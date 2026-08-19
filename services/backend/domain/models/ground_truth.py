@@ -149,6 +149,22 @@ class GroundTruthMarking(Document):
     #: `tests/test_ground_truth_submission.py` pins that the two lists agree.
     category: str = Field(...)
 
+    #: Whether a human chose the category or it was derived from the entity's zone.
+    #:
+    #: Load-bearing for what this corpus is FOR. The mutation corpus's attribution figure is a
+    #: known tautology -- its labels come from `zone_detector`, and changing the zone boxes moved
+    #: attribution 0.81 -> 0.74 with no engine change at all. The human pairs were the first
+    #: attribution numbers here that were not tautologies (0.92), and that holds only while the
+    #: engineer's category is independent of the detector.
+    #:
+    #: Deriving it removes a real click, so it is allowed -- but it must be VISIBLE, or the
+    #: independent rows and the circular ones become indistinguishable and the whole figure
+    #: reverts to measuring `zone_detector` against itself. An evaluator filters on this.
+    #:
+    #: Defaults to `human`: every row written before 2026-08-18 was chosen by a person, so the
+    #: default has to be the one that is true of the existing data rather than the new path's.
+    category_source: Literal["human", "zone"] = Field("human")
+
     ref_text: str = Field("", description="Verbatim reference-side text; empty where absent")
     rev_text: str = Field("", description="Verbatim revision-side text; empty where absent")
     #: True when the engineer overrode the auto-read value. The raw entity text stays in the

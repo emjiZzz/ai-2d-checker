@@ -453,7 +453,8 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   ctx.restore();
 };
 
-import { EntityHitIndex, entityWorldBounds } from './entityPicking';
+import { EntityHitIndex, entityWorldBounds, displayValueOf } from './entityPicking';
+import { markerStyle, markerTypeOf, MARKER_SIDE } from './markerStyles';
 
 export interface RenderFrame {
   ctx: CanvasRenderingContext2D;
@@ -971,6 +972,16 @@ export interface RenderViolationReticlesParams {
   visibleMarkerTypes: Record<string, boolean>;
 }
 
+/**
+ * The dot's radius, in screen pixels before the viewport scale.
+ *
+ * UNIFORM across categories (owner's call, 2026-08-18). It used to be 4 in `drawing_views` and
+ * 2.5 elsewhere, on the reasoning that a table cell has less room — but a mark whose size varies
+ * by where it landed reads as two different marks, and the engineer has to notice the difference
+ * to know it means nothing.
+ */
+const MARKER_DOT_PX = 5.5;
+
 export const renderViolationReticles = ({
   frame,
   violations,
@@ -1013,19 +1024,23 @@ export const renderViolationReticles = ({
   });
 
   sortedViolationsWithIndex.forEach(({ v, i: idx }) => {
-    const penType = v.pen_type || 'ai_red';
-    if (penType !== 'ai_red' && penType !== 'ai_orange' && penType !== 'checker_blue' && penType !== 'ai_green' && penType !== 'resolved_green' && penType !== 'ai_conflict') return;
+    // Two vocabularies reach this renderer. A stored violation carries `pen_type`; a manual
+    // marking carries its `status` directly, because the pen vocabulary has no REMOVED and
+    // routing one through `ai_red` labelled it MISMATCHED on its own card. `status` wins where
+    // both are present — it is the more specific statement.
+    const markerType = markerTypeOf(v);
+    if (!markerType) return;
 
-    if (isOldDrawing && penType === 'checker_blue') return;
-    if (!isOldDrawing && penType === 'ai_red') return;
+    // Which sheet this type belongs on. Was two hard-coded `pen_type` tests that between them
+    // covered only ADDED and MISMATCHED; the table also answers for REMOVED, which a manual
+    // check produces and which must not appear on the revision it is absent from.
+    const belongsOn = MARKER_SIDE[markerType];
+    if (belongsOn === 'rev' && isOldDrawing) return;
+    if (belongsOn === 'ref' && !isOldDrawing) return;
 
-    let markerType = 'MISMATCHED';
-    if (penType === 'ai_orange') markerType = 'CHANGED';
-    else if (penType === 'checker_blue') markerType = 'ADDED';
-    else if (penType === 'ai_green' || penType === 'resolved_green') markerType = 'MATCHED';
-    else if (penType === 'ai_conflict') markerType = 'CONFLICT';
-
-    if (!visibleMarkerTypes[markerType]) return;
+    // Absent means visible. A filter map written before a type existed would otherwise hide it
+    // completely, which is indistinguishable from the marking never having been recorded.
+    if (visibleMarkerTypes[markerType] === false) return;
 
     // Level-of-Detail (LOD): Skip entirely if zoomed way out, unless it's the actively selected violation
     if (viewport.scale < 0.1 && selectedViolation?.id !== v.id) return;
@@ -1037,8 +1052,8 @@ export const renderViolationReticles = ({
     const screenPos = worldToScreen(vx, raw_vy, norm, viewport);
     const isSelected = selectedViolation?.id === v.id;
 
-    const bulletColor = penType === 'ai_red' ? '#ff2850' : penType === 'ai_orange' ? '#ff9600' : penType === 'checker_blue' ? '#00ffff' : penType === 'ai_conflict' ? '#c084fc' : '#39ff14';
-    const statusLabel = penType === 'ai_red' ? 'MISMATCHED' : penType === 'ai_orange' ? 'CHANGED' : penType === 'checker_blue' ? 'ADDED' : penType === 'ai_conflict' ? 'CONFLICT' : 'MATCHED';
+    const bulletColor = markerStyle(markerType).color;
+    const statusLabel = markerType;
 
     let screenX = screenPos.x;
     let screenY = screenPos.y;
@@ -1172,7 +1187,15 @@ export const renderViolationReticles = ({
       }
     } // <-- Added missing closing brace
 
-    const radius = (v.category === 'drawing_views' ? 4 : 2.5) * resolutionMultiplier * viewport.scale;
+    // Marker size, in one place. A drawing-views marker is larger because it sits over geometry
+    // rather than inside a ruled table cell, where a bigger dot would cover the neighbouring
+    // value it is not about.
+    //
+    // ⚠ Scaled by `viewport.scale`, so the dot tracks the sheet rather than the screen — zoom out
+    // far enough and it shrinks with the geometry it marks. That is deliberate for the DOT (it
+    // belongs to a place on the drawing) and deliberately NOT true of the check below, which is
+    // a statement about that place and stays legible at any zoom.
+    const radius = MARKER_DOT_PX * resolutionMultiplier * viewport.scale;
 
     if (statusLabel === 'MATCHED') {
       ctx.beginPath();
@@ -1198,14 +1221,20 @@ export const renderViolationReticles = ({
         ctx.setLineDash([]);
       }
     } else {
+      // A plain translucent dot. No outline, no gradient.
+      //
+      // The stroke gave it a hard border that ink does not have; the gradient that replaced the
+      // stroke read as blur. What is wanted is neither — one flat colour at partial opacity, so
+      // the mark sits over the value without hiding it and without drawing an edge.
+      //
+      // One colour from the table, alpha applied by the context. The old ternary listed five
+      // colours a third time, and a sixth marker type would have silently inherited green.
+      ctx.globalAlpha = isSelected ? 0.75 : 0.55;
+      ctx.fillStyle = bulletColor;
       ctx.beginPath();
-      ctx.fillStyle = isSelected
-        ? (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.7)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.7)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.7)' : penType === 'ai_conflict' ? 'rgba(192, 132, 252, 0.7)' : 'rgba(57, 255, 20, 0.7)')
-        : (penType === 'ai_red' ? 'rgba(255, 40, 80, 0.4)' : penType === 'ai_orange' ? 'rgba(255, 150, 0, 0.4)' : penType === 'checker_blue' ? 'rgba(0, 255, 255, 0.4)' : penType === 'ai_conflict' ? 'rgba(192, 132, 252, 0.4)' : 'rgba(57, 255, 20, 0.4)');
-
-      // Draw the neon dot centered at the exact coordinate
       ctx.arc(screenX, screenY, radius, 0, 2 * Math.PI);
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       if (isSelected) {
         ctx.beginPath();
@@ -1218,6 +1247,16 @@ export const renderViolationReticles = ({
       }
     }
 
+    // A bulk marking: one editorial act standing for a group. Ringed so it does not read as a
+    // single stamp — the corpus reports bulk counts separately, and an engineer reconciling the
+    // panel against the sheet has no other way to tell forty entities from one.
+    if (v.is_bulk) {
+      ctx.beginPath();
+      ctx.strokeStyle = bulletColor;
+      ctx.lineWidth = 1.2 * resolutionMultiplier;
+      ctx.arc(screenX, screenY, 11 * resolutionMultiplier, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
 
     ctx.restore();
   });
@@ -1641,11 +1680,11 @@ export const renderZoneEditor = ({
     const handles: Array<{ id: string; x: number; y: number }> = polygon
       ? screenPoints.map((p, i) => ({ id: `node:${i}`, x: p.x, y: p.y }))
       : [
-          { id: 'top-left', x: left, y: top },
-          { id: 'top-right', x: right, y: top },
-          { id: 'bottom-left', x: left, y: bottom },
-          { id: 'bottom-right', x: right, y: bottom },
-        ];
+        { id: 'top-left', x: left, y: top },
+        { id: 'top-right', x: right, y: top },
+        { id: 'bottom-left', x: left, y: bottom },
+        { id: 'bottom-right', x: right, y: bottom },
+      ];
     handles.forEach((c) => {
       ctx.fillStyle = hoveredHandleId === c.id ? '#ffffff' : color;
       ctx.strokeStyle = '#0b0f19';
@@ -1691,6 +1730,47 @@ export const renderZoneEditor = ({
 };
 
 /**
+ * The little value chip that labels an outlined entity.
+ *
+ * One drawer for all three overlays that label a value — hover, the cross-sheet match, and the
+ * selection. They were two hand-written copies that had already drifted (13px tall against 14,
+ * and two different ways of spelling the same 4px padding); a third copy for the selection would
+ * have made the same box look like a different feature depending on which gesture drew it.
+ *
+ * Expects SCREEN pixels and the caller's own transform — every one of these overlays paints
+ * under `setTransform(dpr,…)` rather than the world matrix, so a chip stays legible at any zoom.
+ */
+export const drawValueChip = ({
+  ctx,
+  label,
+  x,
+  boxTop,
+  boxBottom,
+}: {
+  ctx: CanvasRenderingContext2D;
+  label: string;
+  x: number;
+  boxTop: number;
+  boxBottom: number;
+}) => {
+  if (!label) return;
+  ctx.font = '600 10px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const padX = 4;
+  const chipH = 14;
+  // Above the box, unless that would leave the canvas, in which case below it.
+  const chipY = boxTop - chipH - 3 < 0 ? boxBottom + 3 : boxTop - chipH - 3;
+
+  // Solid, never translucent: a see-through chip over dense green geometry left the label
+  // unreadable, which defeats the point of labelling the match at all.
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillRect(x, chipY, ctx.measureText(label).width + padX * 2, chipH);
+  ctx.fillStyle = '#06222a';
+  ctx.fillText(label, x + padX, chipY + chipH - 4);
+};
+
+/**
  * The current selection, outlined on the sheet.
  *
  * Without this a selection is invisible: the click resolves correctly and writes to the store,
@@ -1705,6 +1785,9 @@ export const renderZoneEditor = ({
  * A SOLID outline where hover uses corner brackets — two states of the same cyan, so a pointer
  * resting on an already-selected entity still reads as one thing.
  */
+/** Screen-pixel outset on a selection box, so it stands off the glyph it describes. */
+const SELECTION_PAD_PX = 3;
+
 export const renderSelectionHighlight = ({
   frame,
   entityIds,
@@ -1721,9 +1804,7 @@ export const renderSelectionHighlight = ({
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  ctx.strokeStyle = '#22d3ee';
   ctx.lineWidth = 1.5;
-  ctx.fillStyle = 'rgba(34,211,238,0.10)';
 
   for (const id of entityIds) {
     const b = entityHitIndex.boundsFor(id);
@@ -1734,18 +1815,35 @@ export const renderSelectionHighlight = ({
     // Already flipped-world, so it converts with the frame's own scale and translation — the
     // same arithmetic the hover highlight uses, and the reason neither goes back through
     // worldToScreen and risks disagreeing about the Y direction.
-    const x0 = b.x0 * scale + transX;
-    const y0 = b.y0 * scale + transY;
-    const w = b.x1 * scale + transX - x0;
-    const h = b.y1 * scale + transY - y0;
+    const rawX = b.x0 * scale + transX;
+    const rawY = b.y0 * scale + transY;
+    const rawW = b.x1 * scale + transX - rawX;
+    const rawH = b.y1 * scale + transY - rawY;
 
     // A zero-height box is a horizontal line; outlining it as-is draws nothing visible. The
     // 2px floor is the smallest outline that still reads as a rectangle rather than a stroke.
-    const pw = Math.abs(w) < 2 ? 2 : w;
-    const ph = Math.abs(h) < 2 ? 2 : h;
+    const w = Math.abs(rawW) < 2 ? 2 : rawW;
+    const h = Math.abs(rawH) < 2 ? 2 : rawH;
 
+    // Outset by a few pixels. An outline sitting exactly on a glyph's bounds reads as cramped
+    // and, on a short value like `4`, as barely there at all — the box has to be findable on a
+    // dense sheet, which is the entire job of a selection you have moved the cursor away from.
+    // Hover does not need this: its corner brackets stand off the bounds by their own geometry.
+    const pad = SELECTION_PAD_PX;
+    const x0 = rawX - pad;
+    const y0 = rawY - pad;
+    const pw = w + pad * 2;
+    const ph = h + pad * 2;
+
+    ctx.strokeStyle = '#22d3ee';
+    ctx.fillStyle = 'rgba(34,211,238,0.10)';
     ctx.fillRect(x0, y0, pw, ph);
     ctx.strokeRect(x0, y0, pw, ph);
+
+    // The value, on the box the engineer is looking AT. It was drawn only on the hover box and
+    // the cross-sheet match, so the one box that persists — the selection — was the one with no
+    // label, and comparing a pair meant reading the value off the geometry underneath it.
+    drawValueChip({ ctx, label: displayValueOf(b.entity), x: x0, boxTop: y0, boxBottom: y0 + ph });
   }
 
   ctx.restore();

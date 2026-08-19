@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CATEGORY_KEYS, CATEGORY_OPTIONS, categoryLabel } from './manualCheckCategories';
+import { CATEGORY_KEYS, CATEGORY_OPTIONS, categoryLabel, findMarkingForEntity, categoryForZone } from './manualCheckCategories';
 import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
 
 /**
@@ -37,5 +37,90 @@ describe('manual check categories', () => {
   it('exposes options in taxonomy order with matching labels', () => {
     expect(CATEGORY_OPTIONS.map((o) => o.key)).toEqual([...CATEGORY_KEYS]);
     expect(CATEGORY_OPTIONS.every((o) => o.label.length > 0)).toBe(true);
+  });
+});
+
+describe('findMarkingForEntity — one entity, one judgement', () => {
+  const m = (over: Record<string, any> = {}) => ({
+    id: 'm1',
+    status: 'MATCHED',
+    retracted_at: null,
+    ref_handle: 'A1',
+    rev_handle: 'B2',
+    ...over,
+  });
+
+  it('finds the marking already recorded against this entity', () => {
+    // The menu reports instead of offering when this returns something. Without it the same
+    // value could be filed MATCHED and then ADDED — two live human statements contradicting
+    // each other, which is worse than none because nothing downstream can tell them apart.
+    expect(findMarkingForEntity([m()], { side: 'ref', handle: 'A1' })?.id).toBe('m1');
+    expect(findMarkingForEntity([m()], { side: 'rev', handle: 'B2' })?.id).toBe('m1');
+  });
+
+  it('does not confuse the two sheets', () => {
+    // The same handle can exist on both drawings, and a marking on the reference says nothing
+    // about the revision's entity of that name.
+    expect(findMarkingForEntity([m()], { side: 'rev', handle: 'A1' })).toBeNull();
+  });
+
+  it('ignores a retracted marking, so the entity can be marked again', () => {
+    // Removing a record is how an engineer changes their mind. If the retracted row still
+    // blocked the entity, the correction would be impossible and the button pointless.
+    expect(
+      findMarkingForEntity([m({ retracted_at: '2026-08-18T00:00:00Z' })], { side: 'ref', handle: 'A1' }),
+    ).toBeNull();
+  });
+
+  it('treats an entity with no handle as unmarked rather than guessing', () => {
+    // A block-exploded child carries no handle. Matching on absence would make every such entity
+    // match every other one — one marking would lock out the whole block.
+    expect(findMarkingForEntity([m({ ref_handle: null })], { side: 'ref', handle: null })).toBeNull();
+    expect(findMarkingForEntity([m({ ref_handle: null })], { side: 'ref', handle: undefined })).toBeNull();
+  });
+
+  it('matches on HANDLE, which is what survives a re-extraction', () => {
+    // `/reextract` mints new entity ids; handles persist. Keying on id would stop finding
+    // anything the first time a drawing was re-extracted, and the double-marking this prevents
+    // would come back with no visible cause.
+    const withoutHandles = [m({ ref_handle: null, rev_handle: null })];
+    expect(findMarkingForEntity(withoutHandles, { side: 'ref', handle: 'A1' })).toBeNull();
+  });
+});
+
+describe('categoryForZone — deriving a category from where the entity sits', () => {
+  it('maps the four zones that correspond to a category', () => {
+    expect(categoryForZone('views')).toBe('drawing_views');
+    expect(categoryForZone('notes')).toBe('notes_section');
+    expect(categoryForZone('bom')).toBe('bill_of_materials');
+    expect(categoryForZone('iso')).toBe('isometric_view');
+  });
+
+  it('treats both title blocks as the title block', () => {
+    // `title_upper_left` is a second title block on some sheets, not a different kind of thing.
+    expect(categoryForZone('title')).toBe('title_block');
+    expect(categoryForZone('title_upper_left')).toBe('title_block');
+  });
+
+  it('declines to guess for a zone the taxonomy has no category for', () => {
+    // `other_engineering_references` means "unclassified", so filing a tolerance table there
+    // would be a claim rather than an absence — and a wrong claim is worse than a question.
+    expect(categoryForZone('tolerance')).toBeNull();
+    expect(categoryForZone('shim')).toBeNull();
+  });
+
+  it('declines when the entity is in no zone at all', () => {
+    expect(categoryForZone(null)).toBeNull();
+    expect(categoryForZone(undefined)).toBeNull();
+    expect(categoryForZone('')).toBeNull();
+  });
+
+  it('only ever returns a category the taxonomy still has', () => {
+    // The guard that matters after a backend rename: a marking filed under a category the engine
+    // has never heard of is not a corrupt row, it is an INVISIBLE one — every downstream
+    // group-by drops it silently.
+    for (const zone of ['views', 'notes', 'bom', 'title', 'title_upper_left', 'iso']) {
+      expect(CATEGORY_KEYS).toContain(categoryForZone(zone));
+    }
   });
 });

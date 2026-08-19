@@ -16,6 +16,7 @@ interface ConnectionState {
   error: string | null;
   pollingIntervalId: number | null;
   apiToken: string | null;
+  failedAttempts: number;
 
   // Actions
   setBackendUrl: (url: string) => void;
@@ -34,11 +35,12 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   error: null,
   pollingIntervalId: null,
   apiToken: (typeof window !== "undefined" && !(window as any).__TAURI_INTERNALS__) ? localStorage.getItem("ai_2d_api_token") : null,
+  failedAttempts: 0,
   setBackendUrl: (url: string) => {
     // Sanitize trailing slash
     const sanitizedUrl = url.endsWith("/") ? url.slice(0, -1) : url;
     localStorage.setItem("ai_2d_backend_url", sanitizedUrl);
-    set({ backendUrl: sanitizedUrl, status: "connecting", error: null });
+    set({ backendUrl: sanitizedUrl, status: "connecting", error: null, failedAttempts: 0 });
     get().checkHealth();
   },
 
@@ -69,7 +71,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   },
 
   checkHealth: async () => {
-    const { backendUrl, status, apiToken } = get();
+    const { backendUrl, status, apiToken, failedAttempts } = get();
 
     // Auto-fetch token on mount if not retrieved yet
     let activeToken = apiToken;
@@ -77,7 +79,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       activeToken = await get().fetchApiToken();
     }
 
-    // Set status to reconnecting only if we were offline
+    // Set status to reconnecting only if we were confirmed offline (>= 3 consecutive failures)
     if (status === "offline") {
       set({ status: "reconnecting" });
     } else if (status !== "reconnecting" && status !== "online") {
@@ -86,7 +88,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout for local headroom
 
       const headers: Record<string, string> = { "Accept": "application/json" };
       if (activeToken) {
@@ -101,10 +103,18 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        const nextFailed = failedAttempts + 1;
+        if (nextFailed < 3 && status === "online") {
+          // Grace period: ignore transient 1st or 2nd spike without dropping UI to offline
+          set({ failedAttempts: nextFailed, lastChecked: Date.now() });
+          return false;
+        }
+
         set({
           status: "failed",
           error: `HTTP Error: ${response.status} - ${response.statusText}`,
           lastChecked: Date.now(),
+          failedAttempts: nextFailed,
         });
         return false;
       }
@@ -117,17 +127,32 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           version: data.version || "1.0.0",
           error: null,
           lastChecked: Date.now(),
+          failedAttempts: 0,
         });
         return true;
       } else {
+        const nextFailed = failedAttempts + 1;
+        if (nextFailed < 3 && status === "online") {
+          set({ failedAttempts: nextFailed, lastChecked: Date.now() });
+          return false;
+        }
+
         set({
           status: "invalid",
           error: "Invalid health payload received from backend.",
           lastChecked: Date.now(),
+          failedAttempts: nextFailed,
         });
         return false;
       }
     } catch (err: any) {
+      const nextFailed = failedAttempts + 1;
+      if (nextFailed < 3 && status === "online") {
+        // Grace period: keep current online status on isolated timeout / busy tick
+        set({ failedAttempts: nextFailed, lastChecked: Date.now() });
+        return false;
+      }
+
       const errorMsg = err.name === "AbortError"
         ? "Connection timeout. Backend service unresponsive."
         : "Failed to connect to local standalone backend.";
@@ -136,6 +161,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         status: "offline",
         error: errorMsg,
         lastChecked: Date.now(),
+        failedAttempts: nextFailed,
       });
       return false;
     }

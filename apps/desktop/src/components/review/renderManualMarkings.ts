@@ -1,11 +1,12 @@
 import { worldToScreen } from '../../utils/coordinateTransform';
 import type { RenderFrame } from './renderEntities';
+import { drawValueChip } from './renderEntities';
 import {
   zoneKeyForBox,
   zoneRelativePos,
   sheetRelativePos,
   isZoneMeasured,
-  entityDisplayText,
+  displayValueOf,
   type EntityHitIndex,
 } from './entityPicking';
 import { flipWorldY } from '../../utils/coordinateTransform';
@@ -52,13 +53,12 @@ const BADGE_RADIUS = 9;
 
 export interface RenderManualMarkingsParams {
   frame: RenderFrame;
-  markings: any[];
   /** Which sheet this canvas shows; decides which of the two stored coordinates to use. */
   side: 'ref' | 'rev';
   /** Highlighted while the cursor is over it, so a stamp is aimed rather than guessed. */
   hoveredEntityId: string | null;
   entityHitIndex?: EntityHitIndex;
-  /** The reference half of a CHANGED pair still waiting for its counterpart. */
+  /** Whichever half of a CHANGED pair was picked first, still waiting for its counterpart. */
   pendingPairRef: { side: string; coordinates: [number, number] } | null;
   /**
    * The value under the cursor on the OTHER sheet.
@@ -78,24 +78,8 @@ export interface RenderManualMarkingsParams {
   zones?: DrawingZonesResponse | null;
 }
 
-/**
- * What the chip shows: the entity's value as the sheet prints it, truncated to fit.
- *
- * Shared by the hover chip and the cross-sheet match chip so the two cannot disagree about a
- * value they have just agreed on. `entityDisplayText` reads `render_text` — the string the CAD
- * application actually composited — so `⌀110` on a sheet that applies the diameter standard
- * shows as `⌀110`, while the sheet that does not shows `110`. That difference is real and the
- * two still MATCH, because the comparison key folds the diameter mark away and the display does
- * not.
- */
-const displayValue = (ent: any): string => {
-  const raw = entityDisplayText(ent);
-  return raw.length > 22 ? `${raw.slice(0, 22)}...` : raw;
-};
-
 export const renderManualMarkings = ({
   frame,
-  markings,
   side,
   hoveredEntityId,
   entityHitIndex,
@@ -106,12 +90,6 @@ export const renderManualMarkings = ({
 }: RenderManualMarkingsParams) => {
   const { ctx, isExport, viewport, norm, scale, transX, transY } = frame;
 
-  // Canvas drawing does not pick up CSS variables, so the live theme is read off the attribute
-  // once per pass — same approach as `renderViolationReticles`.
-  const isLight =
-    typeof document !== 'undefined' &&
-    document.documentElement.getAttribute('data-theme') === 'hc-light';
-  const haloColor = isLight ? 'rgba(255,255,255,0.95)' : 'rgba(15,17,22,0.9)';
 
   if (frame.isNeonModeActive && !isExport) ctx.filter = 'none';
 
@@ -168,22 +146,7 @@ export const renderManualMarkings = ({
     // Only the chip is skipped when there is no value, never the rest of the pass — the
     // recorded markings and the cross-sheet boxes below are drawn from different state and an
     // early return here would silently take them with it.
-    const label = displayValue(hovered.entity);
-    if (label) {
-      ctx.font = '600 10px system-ui, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-      const padX = 4;
-      const tw = ctx.measureText(label).width;
-      const chipH = 14;
-      // Above the box, unless that would leave the canvas, in which case below it.
-      const chipY = y0 - chipH - 3 < 0 ? y1 + 3 : y0 - chipH - 3;
-
-      ctx.fillStyle = '#22d3ee';
-      ctx.fillRect(x0, chipY, tw + padX * 2, chipH);
-      ctx.fillStyle = '#06222a';
-      ctx.fillText(label, x0 + padX, chipY + chipH - 4);
-    }
+    drawValueChip({ ctx, label: displayValueOf(hovered.entity), x: x0, boxTop: y0, boxBottom: y1 });
   }
 
   // ── the same VALUE on the other sheet ─────────────────────────────────────────────
@@ -266,22 +229,15 @@ export const renderManualMarkings = ({
     // `normalizeEntityValue` upper-cases it and strips whitespace and the diameter mark. Showing
     // the key would print `6-12キリ` as its folded form and a lower-case `t` as `T`, so the two
     // chips would disagree about a value they had just agreed on.
-    const matchText = displayValue(first.entity) || locator.value;
+    const matchText = displayValueOf(first.entity) || locator.value;
     const label = matches.length > 1 ? `${matchText} x${matches.length}` : matchText;
-    ctx.font = '600 10px system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    const lx = first.x0 * scale + transX;
-    const ly0 = first.y0 * scale + transY;
-    const ly1 = first.y1 * scale + transY;
-    const chipH = 13;
-    const chipY = ly0 - chipH - 3 < 0 ? ly1 + 3 : ly0 - chipH - 3;
-    // Solid, matching the hover chip: a translucent chip over green geometry left the label
-    // unreadable, which defeats the point of labelling the match at all.
-    ctx.fillStyle = '#22d3ee';
-    ctx.fillRect(lx, chipY, ctx.measureText(label).width + 8, chipH);
-    ctx.fillStyle = '#06222a';
-    ctx.fillText(label, lx + 4, chipY + chipH - 4);
+    drawValueChip({
+      ctx,
+      label,
+      x: first.x0 * scale + transX,
+      boxTop: first.y0 * scale + transY,
+      boxBottom: first.y1 * scale + transY,
+    });
   };
 
   // Selection first, hover second: when the cursor happens to rest on the counterpart of what is
@@ -289,50 +245,14 @@ export const renderManualMarkings = ({
   drawMatches(selectionLocator, { dashed: false });
   drawMatches(hoverLocator, { dashed: true });
 
-  // ── recorded markings ─────────────────────────────────────────────────────────────
-  for (const m of markings) {
-    if (m.retracted_at) continue;
+  // ── recorded markings are NOT drawn here ─────────────────────────────────────────
+  // They go through `renderViolationReticles`, the same path as engine findings, so a marking
+  // and a finding look like the same kind of object on the sheet. See `markingsToMarkers`.
+  //
+  // What stays in this module is everything that has no engine equivalent: the hover highlight,
+  // the cross-sheet value match, and the half-finished pair below. Those describe a gesture in
+  // progress rather than a recorded fact.
 
-    // A CHANGED marking is drawn on BOTH sheets, at each side's own coordinate. The two are
-    // genuinely different points — that is why the pair takes two clicks — so there is no single
-    // position that would be correct on both canvases.
-    const coords = side === 'ref' ? m.ref_coordinates : m.rev_coordinates;
-    if (!coords || coords.length < 2) continue;
-
-    const style = STATUS_STYLE[m.status] ?? STATUS_STYLE.NOT_A_FINDING;
-    const pos = worldToScreen(coords[0], coords[1], norm, viewport);
-
-    // Halo first, so a badge stays legible over dense green geometry.
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, BADGE_RADIUS + 1.5, 0, Math.PI * 2);
-    ctx.fillStyle = haloColor;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, BADGE_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = style.color;
-    ctx.fill();
-
-    if (m.is_bulk) {
-      // A bulk anchor stands for several entities, so it reads differently from a single stamp.
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, BADGE_RADIUS + 3.5, 0, Math.PI * 2);
-      ctx.strokeStyle = style.color;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '700 11px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(style.glyph, pos.x, pos.y + 0.5);
-  }
-
-  // ── the half-finished pair ────────────────────────────────────────────────────────
-  // Shown on the reference canvas while the engineer goes looking for the counterpart. Without
-  // it the first click of a CHANGED pair leaves no trace on the drawing, and the sheet they are
-  // now scanning gives no reminder of what they were pairing.
   if (pendingPairRef && pendingPairRef.side === side && pendingPairRef.coordinates) {
     const [px, py] = pendingPairRef.coordinates;
     const pos = worldToScreen(px, py, norm, viewport);

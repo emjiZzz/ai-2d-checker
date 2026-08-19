@@ -17,6 +17,8 @@ import { getNormalization, screenToWorld, screenToWorldUnflipped, screenDeltaToW
 // cannot drift apart about what counts as a click.
 import { shouldSuppressNextMenu } from './entityPicking';
 import { hitTestMarker, getRoiDragPercentages } from './canvasInteraction';
+import { markingsToMarkers } from './markerStyles';
+import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
 
 interface UseCanvasInteractionProps {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -121,7 +123,10 @@ export function useCanvasInteraction({
 
   // Draggable Markers State
   const [dragMarkerId, setDragMarkerId] = useState<string | null>(null);
-  const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+  // Shared across both canvases, so hovering a marker on one sheet reveals its card on the
+  // other too — the pair is one marker drawn at two coordinates. See `reviewStore`.
+  const hoveredMarkerId = useReviewStore((s) => s.hoveredMarkerId);
+  const setHoveredMarkerId = useReviewStore((s) => s.setHoveredMarkerId);
   const [hoveredAnnotationId, setHoveredAnnotationId] = useState<string | null>(null);
   const [dragMarkerStartPos, setDragMarkerStartPos] = useState<[number, number] | null | undefined>(null);
   const [dragMarkerMouseStart, setDragMarkerMouseStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
@@ -171,6 +176,19 @@ export function useCanvasInteraction({
    * that same gesture, where a batched state update would not reliably have landed.
    */
   const preventNextContextMenuRef = useRef(false);
+
+  /**
+   * Recorded markings in marker shape, so the hover hit-test can find them.
+   *
+   * Memoised because it is rebuilt from the store's marking list and read on every pointer move;
+   * without this a sweep across the sheet would re-map every marking per pixel.
+   */
+  const manualMarkings = useWorkspaceStore((s) => s.markings);
+  const isManualCheckMode = useIsManualCheckRoom();
+  const hoverableMarkings = useMemo(
+    () => (isManualCheckMode ? markingsToMarkers(manualMarkings) : []),
+    [isManualCheckMode, manualMarkings],
+  );
 
   const [isHoveringMarkerState, setIsHoveringMarkerState] = useState(false);
 
@@ -519,7 +537,9 @@ export function useCanvasInteraction({
           oldDrawing,
           showViolations,
           viewport: currentViewport,
-          markerPositions: markerPositionsRef.current
+          // Deliberately WITHOUT `markings`: this path starts a marker drag, and a marking's
+          // coordinate belongs to the entity it addresses, not to wherever someone dropped it.
+          markerPositions: markerPositionsRef.current,
         });
 
         if (clickedViolationId) {
@@ -736,7 +756,11 @@ export function useCanvasInteraction({
         oldDrawing,
         showViolations,
         viewport: currentViewport,
-        markerPositions: markerPositionsRef.current
+        markerPositions: markerPositionsRef.current,
+        // Hovering a recorded marking shows the SAME detail card the engine's findings use —
+        // `renderViolationReticles` draws it whenever the marker is hovered, and this is the
+        // only thing that was missing for a manual room.
+        markings: hoverableMarkings,
       });
       if (clickedViolationId) {
         isHoveringMarker = true;
