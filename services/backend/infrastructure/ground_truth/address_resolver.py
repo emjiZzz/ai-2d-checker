@@ -27,12 +27,14 @@ marking resolved, which is what makes "how far do handles actually carry us" mea
 than assumed.
 """
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional, Sequence
 
 from ...domain.models.ground_truth import EntityAddress
 from ...logger import logger
+from ..audit.bom.zone_detector import _entity_points
 from ..audit.comparison.spatial_differ import SpatialDiffer
 
 #: How close a coordinate has to be, in drawing units, before tier 4 will claim a match.
@@ -81,7 +83,11 @@ def _entity_text(entity: Any) -> str:
 
 
 def _entity_point(entity: Any) -> tuple[float, float] | None:
-    """Best available (x, y) for an entity, from whichever geometry key it carries."""
+    """Best available (x, y) for an entity, from whichever geometry key it carries.
+
+    Retained as the last-resort fallback for an entity that contributes no drawable geometry
+    at all. **It is not what tier 4 measures against** -- see `_entity_distance`.
+    """
     geometry = getattr(entity, "geometry", None) or {}
     for key in ("insert", "text_point", "def_point", "start", "center"):
         raw = geometry.get(key)
@@ -91,6 +97,107 @@ def _entity_point(entity: Any) -> tuple[float, float] | None:
             except (TypeError, ValueError):
                 continue
     return None
+
+
+def _xy(raw: Any) -> tuple[float, float] | None:
+    if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+        try:
+            return float(raw[0]), float(raw[1])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _point_to_segment(
+    point: tuple[float, float], a: tuple[float, float], b: tuple[float, float]
+) -> float:
+    """Distance from `point` to the segment `a`-`b`, not to its endpoints."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    if dx == 0.0 and dy == 0.0:
+        return math.hypot(point[0] - a[0], point[1] - a[1])
+    t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / (dx * dx + dy * dy)
+    t = max(0.0, min(1.0, t))
+    return math.hypot(point[0] - (a[0] + t * dx), point[1] - (a[1] + t * dy))
+
+
+def _entity_distance(entity: Any, target: tuple[float, float]) -> float | None:
+    """How far `target` is from the geometry this entity actually DRAWS.
+
+    ## Why this is not `distance(target, _entity_point(entity))`
+
+    `EntityAddress.point` is **where the engineer clicked** -- `useEntityPicking` sends the
+    pointer's world position verbatim. `_entity_point` returns the entity's *canonical anchor*
+    (`start` for a line, `center` for an arc). For text and inserts those nearly coincide,
+    which is why nothing surfaced this: measured 2026-08-20 over 3611 real reference entities,
+    every one of the 1541 TEXT entities resolved correctly.
+
+    For a line they diverge without limit. Clicking the middle of an 831-unit border line puts
+    the click 415 units from that line's own `start`, so the entity the engineer actually
+    picked fails `COORDINATE_TOLERANCE` and is not even a candidate -- while any unrelated line
+    whose `start` happens to sit near the click is returned instead. On `M745204N01` one such
+    click resolved to the wrong line at **distance 0.0**: the strongest possible match, and the
+    wrong entity. 31 of 33 mis-resolutions measured had exactly this shape.
+
+    This is the same defect the vault records for zone scoping in
+    "A Dimension Scoped by Its Span Midpoint" -- collapsing an entity to one derived point
+    produces a phantom location where nothing is drawn. There it dropped a dimension from the
+    comparison pool; here it silently attributes a person's judgement to the wrong entity.
+
+    So: measure to the drawn geometry. A click lands *on* what it selected, by definition.
+
+    WARNING: an arc is measured to its full circumference. The payload carries only `center`
+    and `radius` -- no angular sweep -- so a click on the empty side of an arc reads as on it.
+    Over-permissive by exactly the span the file does not record; the ambiguity refusal in
+    `_nearest` is what keeps that from becoming a wrong answer.
+    """
+    geometry = getattr(entity, "geometry", None) or {}
+    best: float | None = None
+
+    def offer(value: float | None) -> None:
+        nonlocal best
+        if value is not None and (best is None or value < best):
+            best = value
+
+    # Segments: an explicit start/end pair, and every polyline-shaped run of points. A
+    # dimension's `render_paths` is included because that is the geometry it puts on the sheet.
+    start, end = _xy(geometry.get("start")), _xy(geometry.get("end"))
+    if start and end:
+        offer(_point_to_segment(target, start, end))
+
+    runs: list[Any] = []
+    for key in ("points", "vertices", "fit_points", "boundary_points", "control_points"):
+        sequence = geometry.get(key)
+        if isinstance(sequence, list):
+            runs.append(sequence)
+    paths = geometry.get("render_paths")
+    if isinstance(paths, list):
+        runs.extend(path for path in paths if isinstance(path, list))
+
+    for run in runs:
+        points = [p for p in (_xy(raw) for raw in run) if p is not None]
+        for first, second in zip(points, points[1:], strict=False):
+            offer(_point_to_segment(target, first, second))
+        if len(points) == 1:
+            offer(math.hypot(target[0] - points[0][0], target[1] - points[0][1]))
+
+    # Curves: distance to the circumference, not to the centre. Clicking a circle means
+    # clicking its outline, and for a large circle the centre is nowhere near it.
+    center, radius = _xy(geometry.get("center")), geometry.get("radius")
+    if center is not None and radius is not None:
+        try:
+            offer(abs(math.hypot(target[0] - center[0], target[1] - center[1]) - float(radius)))
+        except (TypeError, ValueError):
+            pass
+
+    if best is not None:
+        return best
+
+    # Nothing drawable. Fall back to every point the entity contributes -- `_entity_points`
+    # rather than a second opinion about which keys carry coordinates, because that helper
+    # already had to learn the exotic ones (ellipses and splines) the hard way.
+    for point in (p for p in (_xy(raw) for raw in _entity_points(entity)) if p is not None):
+        offer(math.hypot(target[0] - point[0], target[1] - point[1]))
+    return best
 
 
 def _same_shape(entity: Any, address: EntityAddress) -> bool:
@@ -171,21 +278,47 @@ def resolve(address: EntityAddress, entities: Sequence[Any]) -> Resolution:
     return Resolution(None, MatchTier.UNRESOLVED)
 
 
+#: Two candidates whose distances differ by less than this are treated as indistinguishable
+#: rather than ranked. Ties here are not floating-point noise -- they are real coincident
+#: geometry (three concentric arcs of a corner round, two border lines meeting at a corner),
+#: where the stored address genuinely does not say which one the engineer meant.
+_DISTANCE_EPSILON = 1e-9
+
+
 def _nearest(candidates: Sequence[Any], address: EntityAddress) -> Optional[Any]:
-    """Closest candidate to the address's stored point, or None if none is within tolerance."""
+    """The one candidate the click identifies, or None if none does -- or if several do.
+
+    **A tie is refused, not broken.** Ranking by `<` alone silently returned whichever
+    coincident entity came first in payload order, which is a guess wearing the costume of a
+    measurement. Measured 2026-08-20 across the eight human pairs: 101 of 1737 coordinate-tier
+    resolutions were ambiguous, and order-breaking got 44 of them wrong.
+
+    Refusing costs the 57 that order-breaking happened to get right. That is the trade this
+    module's docstring already committed to -- an unresolved marking is a known, countable gap;
+    a mis-resolved one corrupts the dataset in a way nothing downstream can detect.
+    """
     if not candidates or address.point is None:
         return None
 
     target = (address.point.x, address.point.y)
-    best: tuple[float, Any] | None = None
+    best: float | None = None
+    winner: Any = None
+    tied = False
     for entity in candidates:
-        point = _entity_point(entity)
-        if point is None:
+        distance = _entity_distance(entity, target)
+        if distance is None:
             continue
-        distance = ((point[0] - target[0]) ** 2 + (point[1] - target[1]) ** 2) ** 0.5
-        if best is None or distance < best[0]:
-            best = (distance, entity)
+        if best is None or distance < best - _DISTANCE_EPSILON:
+            best, winner, tied = distance, entity, False
+        elif abs(distance - best) <= _DISTANCE_EPSILON:
+            tied = True
 
-    if best is None or best[0] > COORDINATE_TOLERANCE:
+    if best is None or best > COORDINATE_TOLERANCE:
         return None
-    return best[1]
+    if tied:
+        logger.debug(
+            f"[ground_truth] several entities are equally close to the stored point on drawing "
+            f"{address.drawing_id}; refusing to guess which was meant."
+        )
+        return None
+    return winner

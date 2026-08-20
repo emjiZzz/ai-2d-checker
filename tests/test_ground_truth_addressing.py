@@ -249,6 +249,104 @@ def test_extracted_entity_shape_is_mirrored():
         assert hasattr(FakeEntity(), attr), f"FakeEntity has stopped mirroring `{attr}`"
 
 
+# -- the click is not the anchor ------------------------------------------------------
+
+
+def _line(start, end, layer="0"):
+    """A LINE with both endpoints, which `FakeEntity`'s single-point geometry cannot express."""
+    entity = FakeEntity(entity_type="line", text="", point=None)
+    entity.geometry = {"start": [start[0], start[1], 0.0], "end": [end[0], end[1], 0.0]}
+    return entity
+
+
+def _circle(center, radius, layer="0"):
+    entity = FakeEntity(entity_type="circle", text="", point=None)
+    entity.geometry = {"center": [center[0], center[1], 0.0], "radius": radius}
+    return entity
+
+
+def test_a_click_on_a_line_resolves_to_that_line_not_to_a_stranger_near_its_anchor():
+    """The defect this pins is a *confidently* wrong answer, which is the worst kind here.
+
+    `EntityAddress.point` is where the engineer clicked -- `useEntityPicking` sends the pointer
+    position verbatim. Tier 4 used to compare that against `_entity_point`, the entity's
+    canonical ANCHOR (`start` for a line). Those are different quantities, and for a line they
+    diverge without limit.
+
+    So clicking the middle of a long line put the click 400 units from that line's own `start`:
+    the entity the engineer actually picked failed `COORDINATE_TOLERANCE` and was not even a
+    candidate, while `stranger` -- an unrelated line that merely begins near the click -- was
+    returned instead. Measured on the real corpus 2026-08-20, one such click resolved to the
+    wrong line at distance **0.0**, the strongest possible match.
+
+    Distance is now measured to the geometry the entity DRAWS, so a click lands on what it
+    selected, which is what selecting something means.
+    """
+    clicked = _line((0.0, 0.0), (800.0, 0.0))
+    stranger = _line((400.5, 0.5), (400.5, 100.0))
+    far = _line((0.0, 500.0), (800.0, 500.0))
+
+    result = resolve(address(entity_type="line", text="", point=(400.0, 0.0)),
+                     [stranger, far, clicked])
+
+    assert result.ok
+    assert result.tier is MatchTier.COORDINATE
+    assert result.entity is clicked, "resolved to the line whose anchor was near the click"
+
+
+def test_a_click_on_a_circle_measures_to_its_outline_not_its_centre():
+    """You select a circle by clicking the curve; its centre is empty paper.
+
+    Anchoring on `center` meant a large circle's own click point was `radius` away from its
+    anchor -- out of tolerance -- while anything sitting at the centre won instead.
+    """
+    clicked = _circle((0.0, 0.0), 50.0)
+    at_the_centre = _circle((50.0, 0.0), 200.0)
+
+    result = resolve(address(entity_type="circle", text="", point=(50.0, 0.0)),
+                     [at_the_centre, clicked])
+
+    assert result.ok
+    assert result.entity is clicked
+
+
+def test_coincident_geometry_is_refused_rather_than_broken_by_payload_order():
+    """Two entities the address cannot tell apart must resolve to nothing.
+
+    Ranking by `<` alone returned whichever came first in the payload -- a guess wearing the
+    costume of a measurement, and one that no downstream check could detect. Measured across
+    the eight human pairs: 101 of 1737 coordinate-tier resolutions were ambiguous and order
+    got 44 of them wrong.
+
+    Refusing also costs the ones order happened to get right. That is the trade
+    `address_resolver`'s module docstring already committed to.
+    """
+    # Both lines BEGIN at the click, so they are indistinguishable under the old anchor rule
+    # and under the new geometry rule alike -- which is the point. The address carries nothing
+    # that separates them, so there is no answer to give.
+    result = resolve(
+        address(entity_type="line", text="", point=(400.0, 0.0)),
+        [_line((400.0, 0.0), (800.0, 0.0)), _line((400.0, 0.0), (400.0, 900.0))],
+    )
+
+    assert not result.ok
+    assert result.tier is MatchTier.UNRESOLVED
+
+
+def test_a_click_beyond_tolerance_still_resolves_to_nothing():
+    """Measuring to the geometry widens what tier 4 can *reach*; it must not widen how far.
+
+    Without this, "distance to the drawn geometry" could quietly turn `COORDINATE_TOLERANCE`
+    into a hit radius around an entire 800-unit line rather than around a point.
+    """
+    result = resolve(
+        address(entity_type="line", text="", point=(400.0, COORDINATE_TOLERANCE * 10)),
+        [_line((0.0, 0.0), (800.0, 0.0))],
+    )
+
+    assert not result.ok
+
+
 @pytest.mark.parametrize("tier", list(MatchTier))
 def test_every_tier_is_reachable_in_this_file(tier):
     """A tier nothing exercises is a tier nothing checks.

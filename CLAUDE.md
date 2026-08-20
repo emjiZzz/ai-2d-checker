@@ -1,17 +1,23 @@
 # AI-2D-Checker — Agent Instructions
 
-> [!IMPORTANT] 🔴 Current priority, set 2026-08-17 — **label. Next is `M745230A01`.**
+> [!IMPORTANT] 🔴 Current priority, re-measured 2026-08-20 — **label. Next is `M7452A1N01`.**
 >
 > This is the next session's task. Read the **"🧭 What's next"** section of
 > `docs/vault/00 - AI Maturity Status.md` for it in full — that file is the authority and this is
 > only a pointer to it, deliberately. Do not act on the summary below without reading it; a
 > restatement that drifts from the ledger is the phantom constraint 5 exists to prevent.
 >
-> ⚠ **The "2 of 8" this block used to state is stale — measure it, do not quote it.**
-> `tools/eval_corpus.py status` at 2026-08-18 reports **4 / 8 labelled, 7 registered, 1 of 3 held
-> out**: `M745230A01` (21 findings) and `M745203N01` (16) landed after this block was written, so
-> the queue's head is now **`M7452A1N01`**, then `M7452A2N01`. The engine measurement below still
-> stands as the figure over the first two pairs.
+> ⚠ **Measure the count, do not quote it — this block has already carried a stale one.**
+> `tools/eval_corpus.py status` at **2026-08-20** reports **5 / 8 labelled, 8 / 8 registered, 1 of
+> 3 held out**. `M745230A01` (21 findings) and `M745203N01` (16) landed after this block was first
+> written — which is why its header named an already-labelled pair until 2026-08-20 — then
+> `M745204N01` (5), the first pair labelled from an app Manual Check session via
+> `tools/eval_corpus.py from-manual-check` rather than by hand. The queue is **`M7452A1N01`**, then
+> `M7452A2N01`. The engine measurement below still stands as the figure over the first two pairs.
+>
+> ⚠ **Registration is no longer the binding constraint — held-out is.** 0b needs **3 held out** and
+> has **1**, and no amount of labelling closes that: a held-out pair must be exported before any
+> comparison has run on it.
 >
 > In one line: the corpus is measuring the engine — **R 0.60 templated / 0.65 detection-only**
 > over the 20 findings in `M7452A0N01` + `M745227N01`, attribution 0.92. Being short of eight
@@ -28,9 +34,14 @@
 > unreported, then the **isometric view missed on both pairs** (zero text/dimension in the `iso`
 > box, so unreachable by tuning). See the ledger before touching any of these.
 >
-> ⚠ **The queue is `M745230A01` → `M7452A1N01` → `M7452A2N01`. `M745203N01` is parked** until a
-> 1.361-aspect template is hand-aligned (owner's call, 2026-08-10), so Stage 0b tops out at
-> **5 / 8** until that changes. Do not re-litigate the ordering.
+> ⚠ **The queue is `M7452A1N01` → `M7452A2N01`.** `M745230A01` is labelled (21 findings). Do not
+> re-litigate the ordering.
+>
+> ⚠ **This block recorded `M745203N01` as parked** until a 1.361-aspect template is hand-aligned
+> (owner's call, 2026-08-10), *"so Stage 0b tops out at 5 / 8 until that changes"*. At 2026-08-20
+> `tools/eval_corpus.py status` reports it **labelled, 16 findings**. Measurement over restatement:
+> the park either lifted or was labelled through, and **this file is not the place that would
+> record which** — check the ledger's work log before relying on either reading.
 >
 > ✅ **The corpus has now closed its first defect, not just found one.** A fabricated title-block
 > field (`ME17227N24`, present on neither drawing) was published and diffed into a finding;
@@ -118,7 +129,7 @@ defect from scratch as a result.
 5. **Keep `docs/vault/00 - AI Maturity Status.md` current, and read it rather than this summary.**
    It is the single canonical answer to "which rung is this system on" — currently **0**, under the
    ADR-007 definition, because `rung_evidence: none` and the corpus is short of eight
-   human-labelled pairs — **4 of 8**, measured 2026-08-18 with `tools/eval_corpus.py status`.
+   human-labelled pairs — **5 of 8**, re-measured 2026-08-20 with `tools/eval_corpus.py status`.
    Re-run that command rather than quoting this line: it read "0 of 8" while four pairs were
    already labelled, which is the drift this very constraint warns about below. Rung 0 means
    *pre-measurement*, not "safely deterministic"; do not report it as a feature. Read the ledger

@@ -27,6 +27,29 @@ export const createNavSlice: StateCreator<WorkspaceState, [], [], NavSlice> = (s
       deletedViolationsStack: [],
       selectedViolation: null,
       auditError: null,
+
+      // Manual check. Absent here until 2026-08-20, and the omission was not cosmetic: this runs
+      // from `roomStore.leaveRoom`, so room A's session id and markings survived into room B.
+      // Until B's own session resolved, B's canvas rendered A's badges, and `findMarkingForEntity`
+      // — which matches on handle and side, not on drawing — refused to let the engineer mark any
+      // entity of B's whose handle collided with one of A's, with no explanation on screen.
+      //
+      // `markings` is safe to drop because it is a mirror, never the record: every marking was
+      // written through to the server before it was added here, and `startManualSession` reloads
+      // the list from `listMarkings` on the way in.
+      manualSessionId: null,
+      manualSessionPair: null,
+      manualSessionError: null,
+      markingError: null,
+      markings: [],
+      pendingPairRef: null,
+      pendingPairTool: "changed",
+      selectedEntities: [],
+      selectionLocator: null,
+      selectionMenu: null,
+      selectionCounterpart: null,
+      hoverLocator: null,
+      hoveredEntityId: null,
     });
   },
 });

@@ -3,7 +3,6 @@ import {
   CommitStampInput,
   EntityLocator,
   ManualCheckSlice,
-  PendingStamp,
   PickedEntity,
   StampTool,
   WorkspaceState,
@@ -24,7 +23,7 @@ import {
  *
  * ## Every marking is written through, not batched
  *
- * `commitStamp` posts immediately and only then updates local state. A session on a dense sheet
+ * `recordStamp` posts immediately and only then updates local state. A session on a dense sheet
  * is an hour of work (`M745230A01` carries 68 addressable rows); holding it in memory until a
  * submit button means one crash, one closed laptop or one dropped websocket loses all of it,
  * and an annotator who has lost an hour does not come back. `submitManualSession` finalises a
@@ -33,10 +32,32 @@ import {
  * The consequence, accepted deliberately: a stamp is not instant. That is the right trade for a
  * tool whose entire output is the records it keeps.
  *
+ * ## No write may fail silently — `markingError`
+ *
+ * Write-through is only worth anything if a failed write is *visible*. All three write actions
+ * used to swallow: `SelectionMenu` caught `recordStamp`'s rejection in a bare `.catch(() => {})`
+ * on the comment that "the store surfaces it" (it did not), and retract and submit caught their
+ * own here. The results were, in order of cost:
+ *
+ *  - a failed stamp produced no UI at all, leaving the entity unmarked and looking like a
+ *    mis-click;
+ *  - a failed retraction dropped the row from the panel while the server kept it LIVE — and
+ *    `eval_corpus.py from-manual-check` then converts a marking the engineer believes they
+ *    withdrew into committed ground truth. 31 of 38 markings in the session behind
+ *    `M745204N01` were retractions, so this is the busiest path in the feature;
+ *  - a failed submit still rendered "Check submitted".
+ *
+ * Every write now reports through `markingError`, which `ManualMarkingList` renders. Retract and
+ * submit return a boolean rather than throwing, because their callers need to know whether to
+ * update the UI, not to handle an exception.
+ *
  * ## This slice never touches the comparison engine
  *
  * No violations, no audit, no learned model. Markings land in their own collections and stop
  * there.
+ *
+ * ⚠ **`textWasEdited`, `isBulk` and `notes` are never populated** — no UI writes them. See
+ * `CommitStampInput` in `../types` for why, and for what it means downstream.
  */
 
 const TOOL_STATUS: Record<StampTool, MarkingStatus> = {
@@ -170,7 +191,7 @@ export const createManualCheckSlice: StateCreator<
   selectionMenu: null,
   selectionCounterpart: null,
   selectedEntities: [],
-  pendingStamp: null,
+  markingError: null,
 
   setSelectedEntities: (picked) => {
     // Identity matters: the renderer and the context menu both subscribe, and a fresh empty
@@ -222,7 +243,10 @@ export const createManualCheckSlice: StateCreator<
   setPendingPairRef: (picked, tool = "changed") =>
     set({ pendingPairRef: picked, pendingPairTool: picked ? tool : "changed" }),
 
-  openStamp: (stamp: PendingStamp | null) => set({ pendingStamp: stamp }),
+  clearMarkingError: () => {
+    if (get().markingError === null) return;
+    set({ markingError: null });
+  },
 
   startManualSession: async (roomId, refDrawingId, revDrawingId) => {
     const pair = `${roomId}:${refDrawingId}:${revDrawingId}`;
@@ -251,6 +275,8 @@ export const createManualCheckSlice: StateCreator<
         manualSessionId: session.id,
         manualSessionPair: pair,
         manualSessionError: null,
+        // A write error from the previous session cannot describe this one.
+        markingError: null,
         markings: existing,
         pendingPairRef: null,
       });
@@ -274,23 +300,25 @@ export const createManualCheckSlice: StateCreator<
     }
   },
 
-  commitStamp: async (input: CommitStampInput) => {
-    const { pendingStamp } = get();
-    if (!pendingStamp) return;
-    await get().recordStamp(pendingStamp, input);
-  },
-
   /**
-   * Write one marking. The single path to the server, whether a dialog collected the details or
-   * the canvas derived them.
+   * Write one marking. The single path to the server.
    *
-   * Takes the stamp as an ARGUMENT rather than reading `pendingStamp`, which is what lets the
-   * no-dialog path work at all: `openStamp` followed by `commitStamp` would read the store
+   * Takes the stamp as an ARGUMENT rather than from store state, which is what lets the
+   * no-dialog path work at all: setting the stamp and then reading it back would read the store
    * before React had flushed the write, and record against whatever the previous stamp was.
    */
   recordStamp: async (stamp, input: CommitStampInput) => {
     const { manualSessionId } = get();
-    if (!manualSessionId) return;
+    if (!manualSessionId) {
+      // Not silent. The panel already says "Opening session…", but a stamp made in that window
+      // is a judgement the engineer believes they recorded.
+      set({
+        markingError:
+          "No check session is open yet, so that marking was not recorded. Wait for the " +
+          "session to open and stamp it again.",
+      });
+      return;
+    }
     const pendingStamp = stamp;
 
     const payload: CreateMarkingPayload = {
@@ -312,12 +340,12 @@ export const createManualCheckSlice: StateCreator<
       const saved = await createMarking(manualSessionId, payload);
       set((state) => ({
         markings: [...state.markings, saved],
-        pendingStamp: null,
         pendingPairRef: null,
+        // Cleared only by a write that actually succeeded. A stale error standing over a panel
+        // that is recording fine is its own kind of lie.
+        markingError: null,
       }));
     } catch (err: any) {
-      // Left open on failure, with the engineer's typing intact. Closing the modal would
-      // discard a judgement they have already made and show no sign that it was not recorded.
       console.error("Failed to record marking:", err?.message ?? err);
 
       // The session this client is holding no longer exists on the server — it was deleted, or
@@ -326,38 +354,84 @@ export const createManualCheckSlice: StateCreator<
       // goes null, so the next attempt lands in a live session.
       //
       // Without this the app dead-ends. The id lives only in memory, so every retry re-sends the
-      // same dead id and the only way out is a full restart — with the engineer's unsaved
-      // judgement on screen the whole time.
+      // same dead id and the only way out is a full restart.
+      //
+      // ⚠ Plain `/404/`, with no word-boundary escapes, deliberately.
+      //
+      // This test was written with word-boundary escapes until 2026-08-20 and they had been
+      // mangled into two literal BACKSPACE bytes (0x08) by whatever wrote the file. The regex
+      // therefore matched only a message containing a backspace character — i.e. never — so
+      // the repair below had not run once since it was written, and the app dead-ended on a
+      // dead session id exactly as the comment above says it must not. `unwrap` in
+      // `groundTruthApi` builds the message as `... failed (404): ...`, so there is nothing
+      // here that needs bounding. Keep it escape-free: this file is the one place in the repo
+      // that has already been bitten by that mangling.
       const message = String(err?.message ?? err);
-      if (/404/.test(message) || /session not found/i.test(message)) {
-        set({ manualSessionId: null });
-        throw new Error(
-          "That check session no longer exists on the server. A new one is opening — press " +
-            "Record marking again.",
-        );
+      if (/404/.test(message) || /session not found/i.test(message)) {
+        set({
+          manualSessionId: null,
+          markingError:
+            "That check session no longer exists on the server, so this marking was NOT " +
+            "recorded. A new session is opening — select the entity and stamp it again.",
+        });
+        return;
       }
-      throw err;
+      set({ markingError: `That marking was NOT recorded — stamp it again. ${message}` });
     }
   },
 
+  /**
+   * Retract, and drop the row locally ONLY once the server has confirmed it.
+   *
+   * The ordering is the whole point. Dropping first and reconciling on failure would leave the
+   * engineer looking at a panel that agrees with them and a database that does not — and the
+   * export path reads the database. `from-manual-check` filters on `retracted_at`, so a
+   * retraction the server never applied comes back as a LIVE marking and is converted into a
+   * finding the engineer explicitly withdrew. That is fabricated ground truth, and nothing
+   * downstream could tell. 31 of the 38 markings behind `M745204N01` were retractions.
+   */
   retractManualMarking: async (markingId) => {
     try {
       await retractMarking(markingId);
-      // Dropped from the local list, but the server keeps the row marked rather than deleted —
-      // the collection is the audit trail of who asserted what.
-      set((state) => ({ markings: state.markings.filter((m) => m.id !== markingId) }));
+      // The server keeps the row marked rather than deleted — the collection is the audit trail
+      // of who asserted what. Only the local view drops it.
+      set((state) => ({
+        markings: state.markings.filter((m) => m.id !== markingId),
+        markingError: null,
+      }));
+      return true;
     } catch (err: any) {
-      console.error("Failed to retract marking:", err?.message ?? err);
+      const message = String(err?.message ?? err);
+      console.error("Failed to retract marking:", message);
+      set({
+        markingError:
+          "That marking was NOT retracted and is still recorded on the server — try again. " +
+          message,
+      });
+      return false;
     }
   },
 
   submitManualSession: async () => {
     const { manualSessionId } = get();
-    if (!manualSessionId) return;
+    if (!manualSessionId) {
+      set({ markingError: "No check session is open, so there was nothing to finish." });
+      return false;
+    }
     try {
       await submitSession(manualSessionId);
+      set({ markingError: null });
+      return true;
     } catch (err: any) {
-      console.error("Failed to submit manual check:", err?.message ?? err);
+      const message = String(err?.message ?? err);
+      console.error("Failed to submit manual check:", message);
+      set({
+        markingError:
+          "This check was NOT submitted — your markings are still saved, but the session is " +
+          "not finished. Try again. " +
+          message,
+      });
+      return false;
     }
   },
 });

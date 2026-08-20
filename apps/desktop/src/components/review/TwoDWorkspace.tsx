@@ -35,7 +35,6 @@ import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
 import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
-import { StampMarkingModal } from "./StampMarkingModal";
 import { SavedTemplatesModal } from "./SavedTemplatesModal";
 
 /**
@@ -1111,8 +1110,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               onAction={handleAction}
             />
           </div>
-
-          <StampMarkingModal />
 
           <SavedTemplatesModal
             isOpen={isTemplatesModalOpen}

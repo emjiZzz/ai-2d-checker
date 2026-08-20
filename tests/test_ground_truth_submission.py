@@ -453,3 +453,183 @@ async def test_an_invented_category_source_is_refused():
             category_source="guessed",
             rev_address=_address(),
         )
+
+
+# ── a submitted session is a record, not a container ─────────────────────────────────
+#
+# Added 2026-08-20 with the readiness review. None of the four rules below held before it, and
+# each one changes what a corpus label was derived from AFTER the derivation — which is the
+# expensive shape here, because nothing downstream can see it happen.
+
+
+def _submitted_session():
+    session = _session()
+    session.status = "submitted"
+    session.submitted_at = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    return session
+
+
+async def test_a_submitted_session_refuses_a_new_marking(monkeypatch):
+    """`submit` is the moment a pass becomes the thing `from-manual-check` converts.
+
+    Appending afterwards rewrites the record a label was taken from. `create_session` mints a
+    fresh session for a genuinely new pass, so refusing here blocks nothing legitimate.
+    """
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=_submitted_session()))
+
+    with pytest.raises(HTTPException) as err:
+        await gt.create_marking(
+            "sess1",
+            gt.CreateMarkingRequest(
+                status="ADDED", category="drawing_views", rev_address=_address()
+            ),
+        )
+
+    assert err.value.status_code == 409
+    assert "closed" in err.value.detail
+
+
+async def test_a_submitted_session_refuses_an_edit_to_its_markings(monkeypatch):
+    marking = GroundTruthMarking(
+        session_id="sess1",
+        side="rev",
+        rev_address=EntityAddress(drawing_id="rev1", handle="1B2A", entity_type="text"),
+        status="ADDED",
+        category="drawing_views",
+        annotator="imrysn",
+    )
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=marking))
+    monkeypatch.setattr(gt, "_session_of", AsyncMock(return_value=_submitted_session()))
+
+    with pytest.raises(HTTPException) as err:
+        await gt.update_marking("m1", gt.UpdateMarkingRequest(category="notes_section"))
+
+    assert err.value.status_code == 409
+
+
+async def test_submitting_twice_keeps_the_first_timestamp(monkeypatch):
+    """Same rule as `retract_marking`, for the same reason.
+
+    `submitted_at` is a claim about when an engineer finished. A double click, or a retry after a
+    timeout that had actually succeeded, would move it to the moment of the retry — and re-run
+    `_recount` over a session an export may already have been taken from.
+    """
+    session = _submitted_session()
+    first = session.submitted_at
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=session))
+    recount = AsyncMock()
+    monkeypatch.setattr(gt, "_recount", recount)
+
+    result = await gt.submit_session("sess1")
+
+    assert result.data.submitted_at == first
+    recount.assert_not_awaited()
+
+
+async def test_an_open_session_still_submits(monkeypatch):
+    # The guard above must not make submit itself a no-op.
+    session = _session()
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=session))
+
+    result = await gt.submit_session("sess1")
+
+    assert result.data.status == "submitted"
+    assert result.data.submitted_at is not None
+
+
+# ── the session-open race ────────────────────────────────────────────────────────────
+
+
+async def test_a_racing_open_resumes_the_session_that_won(monkeypatch):
+    """The partial unique index turns a silent duplicate into a `DuplicateKeyError`.
+
+    Before the index there was nothing between the resume query's miss and the insert, so two
+    clients that both missed both inserted — visible in the collection as sessions in PAIRS,
+    milliseconds apart, which is what `tools/merge_duplicate_check_sessions.py` was written to
+    clean up. The only correct answer to losing that race is to read the session that won, which
+    is what the caller asked for to begin with.
+    """
+    winner = _session()
+    winner.marking_count = 4
+    # Misses first (so the insert is attempted), then finds the winner on the retry.
+    find_one = AsyncMock(side_effect=[None, winner])
+    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    monkeypatch.setattr(
+        gt.ManualCheckSession,
+        "save",
+        AsyncMock(side_effect=gt.DuplicateKeyError("dup")),
+        raising=False,
+    )
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    result = await gt.create_session(_open_request())
+
+    assert result.data.marking_count == 4
+    assert find_one.await_count == 2
+
+
+async def test_a_race_that_leaves_nothing_open_is_reported_not_guessed(monkeypatch):
+    # The index rejected the insert but nothing in-progress is there to read. Retrying would
+    # loop, and inventing a session would attach an engineer's work to the wrong record.
+    monkeypatch.setattr(
+        gt.ManualCheckSession, "find_one", AsyncMock(return_value=None), raising=False
+    )
+    monkeypatch.setattr(
+        gt.ManualCheckSession,
+        "save",
+        AsyncMock(side_effect=gt.DuplicateKeyError("dup")),
+        raising=False,
+    )
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    with pytest.raises(HTTPException) as err:
+        await gt.create_session(_open_request())
+
+    assert err.value.status_code == 409
+
+
+# ── a malformed stored session id must not 500 ───────────────────────────────────────
+
+
+async def test_a_marking_naming_an_unloadable_session_still_retracts(monkeypatch):
+    """`session_id` is a plain string, so nothing guarantees it parses as an ObjectId.
+
+    `retract_marking` called `ManualCheckSession.get()` directly, which is exactly the failure
+    `get_or_404` exists to stop — documented at length in `api/dependencies.py` and then
+    reintroduced here. The caller is acting on the MARKING, which exists; an unloadable session
+    must not fail the retraction of a row that is right there.
+    """
+    marking = GroundTruthMarking(
+        session_id="not-an-object-id",
+        side="rev",
+        rev_address=EntityAddress(drawing_id="rev1", handle="1B2A", entity_type="text"),
+        status="ADDED",
+        category="drawing_views",
+        annotator="imrysn",
+    )
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=marking))
+    monkeypatch.setattr(
+        gt.ManualCheckSession,
+        "get",
+        AsyncMock(side_effect=Exception("InvalidId")),
+        raising=False,
+    )
+
+    result = await gt.retract_marking("m1")
+
+    assert result.data.retracted_at is not None
+
+
+# ── not pinned here, deliberately ────────────────────────────────────────────────────
+#
+# `list_markings` now pushes the `retracted_at` filter into the query so the
+# `(session_id, retracted_at)` compound index is used on the panel's read. There is no test for
+# it in this module and that is not an oversight: the handler builds its query from Beanie
+# class-attribute expressions (`GroundTruthMarking.session_id == ...`), which resolve through
+# descriptors that only exist after `init_beanie`. This harness is fully mocked and never calls
+# it, so the expression raises `AttributeError` before the assertion can be reached.
+#
+# It is the same constraint `create_session` records above its resume query, and the reason that
+# query is written as a raw mapping instead. `list_markings` is not worth the same contortion —
+# it has no invariant to protect, only an index to use — so the cost is recorded here rather
+# than paid.

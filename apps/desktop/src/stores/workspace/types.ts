@@ -285,7 +285,7 @@ export interface PickedEntity {
   parentHandle: string | null;
   entityType: string;
   layer: string;
-  /** Verbatim entity text. Read, never typed — see StampMarkingModal. */
+  /** Verbatim entity text. Read, never typed — nothing in the UI can edit it. */
   text: string;
   coordinates: [number, number];
 }
@@ -357,13 +357,37 @@ export interface EntityLocator {
 
 export type StampTool = "matched" | "added" | "removed" | "changed" | "not_a_finding";
 
-/** A stamp awaiting the engineer's category and notes. */
+/**
+ * One stamp, as the canvas assembled it. The argument to `recordStamp`.
+ *
+ * It was once "a stamp awaiting the engineer's category and notes", held in store state while a
+ * modal collected them. That modal was deleted on 2026-08-20 — see `CommitStampInput` — so this
+ * is now a plain argument type and never store state.
+ */
 export interface PendingStamp {
   tool: StampTool;
   ref: PickedEntity | null;
   rev: PickedEntity | null;
 }
 
+/**
+ * Everything `recordStamp` needs beyond the stamp itself.
+ *
+ * ⚠ **`textWasEdited`, `isBulk` and `notes` are structurally always `false` / `false` / `''`.**
+ * They are on the wire model and on `GroundTruthMarking` because the capture schema is a
+ * deliberate superset of what a corpus label needs, but the only surface that writes a marking
+ * is `SelectionMenu`, and it has no field for any of the three.
+ *
+ * `StampMarkingModal` was the UI that collected them, and it was dead code: `openStamp` had five
+ * call sites and every one passed `null`, so `pendingStamp` was permanently null and the modal
+ * never rendered. Deleted 2026-08-20 rather than revived, so that the emptiness is visible here
+ * instead of looking like data nobody happened to fill in.
+ *
+ * The downstream consequence, which is the part that matters: `ExpectedFinding.is_bulk` is
+ * therefore always `false`, and the eval manifest's `bulk_count` is always `0`. Do not read
+ * either as a measurement. See
+ * `docs/vault/06 - Gotchas & Debugging Lessons/Gotcha - Manual Check Wrote Through And Still Lost Work.md`.
+ */
 export interface CommitStampInput {
   category: string;
   /** Where the category came from. Omitted means a person chose it. */
@@ -474,8 +498,16 @@ export interface ManualCheckSlice {
    * sources of truth for "what am I about to record against", so there is only the list.
    */
   selectedEntities: PickedEntity[];
-  /** Set while a stamp modal is open, so the canvas does not start a second one. */
-  pendingStamp: PendingStamp | null;
+  /**
+   * Why the last WRITE failed, or null. Distinct from `manualSessionError`, which is about
+   * opening the session.
+   *
+   * Recorded because all three write actions used to fail silently: `SelectionMenu` swallowed
+   * `recordStamp`'s rejection in a bare `.catch(() => {})`, and retract and submit swallowed
+   * theirs in the store. A failed stamp left the entity unmarked with no UI at all —
+   * indistinguishable from a mis-click — and a failed submit still rendered "Check submitted".
+   */
+  markingError: string | null;
 
   setSelectedEntities: (picked: PickedEntity[]) => void;
   setHoveredEntityId: (id: string | null) => void;
@@ -484,12 +516,13 @@ export interface ManualCheckSlice {
   setSelectionMenu: (menu: { x: number; y: number; drawingId: string } | null) => void;
   setSelectionCounterpart: (picked: PickedEntity | null) => void;
   setPendingPairRef: (picked: PickedEntity | null, tool?: StampTool) => void;
-  openStamp: (stamp: PendingStamp | null) => void;
+  clearMarkingError: () => void;
   startManualSession: (roomId: string, refDrawingId: string, revDrawingId: string) => Promise<void>;
-  commitStamp: (input: CommitStampInput) => Promise<void>;
   recordStamp: (stamp: PendingStamp, input: CommitStampInput) => Promise<void>;
-  retractManualMarking: (markingId: string) => Promise<void>;
-  submitManualSession: () => Promise<void>;
+  /** Resolves true when the server confirmed the retraction. Never throws. */
+  retractManualMarking: (markingId: string) => Promise<boolean>;
+  /** Resolves true when the server confirmed the submit. Never throws. */
+  submitManualSession: () => Promise<boolean>;
 }
 
 export type WorkspaceState = ComparisonSlice & UploadSlice & AuditSlice & ClientSlice & UndoSlice & NavSlice & AnnotationsSlice & ManualCheckSlice;

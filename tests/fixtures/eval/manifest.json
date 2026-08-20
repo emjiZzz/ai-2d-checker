@@ -30,6 +30,44 @@
       }
     },
     {
+      "bulk_count": 0,
+      "category_counts": {
+        "bill_of_materials": 0,
+        "drawing_views": 1,
+        "isometric_view": 0,
+        "notes_section": 4,
+        "other_engineering_references": 0,
+        "title_block": 0
+      },
+      "finding_count": 5,
+      "held_out": false,
+      "label_state": "labelled",
+      "labels": "labels/M745204N01.json",
+      "notes": "exported 2026-08-20 from the drawings Manual Check session 6a83aeabcc0c4a5453e2d988 was authored against; labels converted via from-manual-check",
+      "pair_id": "M745204N01",
+      "provenance": "human",
+      "ref": {
+        "drawing_id": "6a83ae90cc0c4a5453e2d5a0",
+        "drawing_sha256": "e3a64c54f2570bc4c85aa957eba63c9d90802e366858ab5b0f9d6ac026d0a6cd",
+        "entities_sha256": "d48912329de087465604a3cb1955df2a57bb9b11373ff08a301d96d2027d70b7",
+        "entity_count": 402,
+        "file_hash": "891358bb38f17f468930f60c787620958c0fd451635b60b8213a27a6e0601854",
+        "file_name": "M745204N01_reference.dxf",
+        "ocr_sha256": "",
+        "zone_signature": "aspect-1.414"
+      },
+      "rev": {
+        "drawing_id": "6a83ae99cc0c4a5453e2d5a2",
+        "drawing_sha256": "64af2f98cbb3ccaa2c7f07dd9eedaa4d1d8d43b9ecacc22b7a41dd0e15fb1769",
+        "entities_sha256": "26c7dbbadc2353a3488d6f7a9d153cbcca5f58d27bf896ee56dd0bdb3a1611b7",
+        "entity_count": 594,
+        "file_hash": "7fee66acfd69973810a6d702eac729f630d16f4588e60b1bb5de435d85c53c1f",
+        "file_name": "M745204N01_FSRS2_kmti.dxf",
+        "ocr_sha256": "",
+        "zone_signature": "aspect-1.414"
+      }
+    },
+    {
       "held_out": true,
       "label_state": "unlabelled",
       "labels": null,

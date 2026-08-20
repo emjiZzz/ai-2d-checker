@@ -27,6 +27,7 @@ from typing import Annotated, Literal, get_args
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+from pymongo.errors import DuplicateKeyError
 
 from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.ground_truth import (
@@ -244,6 +245,48 @@ def _session_response(s: ManualCheckSession) -> SessionResponse:
     )
 
 
+async def _session_of(marking: GroundTruthMarking) -> ManualCheckSession | None:
+    """The marking's owning session, or None if it cannot be loaded.
+
+    `session_id` is a plain string, not a DBRef, so nothing guarantees it parses as an ObjectId.
+    `ManualCheckSession.get()` on a malformed one raises out of the handler as a 500 -- the exact
+    failure `get_or_404` was written to stop, documented at length in `api/dependencies.py`, and
+    then reintroduced here by calling `.get()` directly. Tolerated rather than 404'd: the caller
+    is acting on the MARKING, which exists, and a session that cannot be loaded must not fail the
+    retraction of a row that is right there.
+    """
+    try:
+        return await ManualCheckSession.get(marking.session_id)
+    except Exception as exc:  # noqa: BLE001 - see docstring; a bad id is not a request failure
+        logger.warning(
+            f"[ground_truth] marking {marking.id} names session {marking.session_id!r}, "
+            f"which could not be loaded: {exc}"
+        )
+        return None
+
+
+def _require_open(session: ManualCheckSession) -> ManualCheckSession:
+    """Refuse to write into a session an engineer has already declared finished.
+
+    `submit` is the moment a pass becomes a record: it is what `from-manual-check` converts, and
+    what a reviewer reads when a label is disputed. Appending to it afterwards rewrites history
+    -- `tools/merge_duplicate_check_sessions.py` states the same rule for the same reason -- and
+    silently changes what a corpus label was derived from, after the derivation.
+
+    Neither create nor update checked this until 2026-08-20. Checking the same pair again is a
+    genuinely new pass, and `create_session` already mints one, so nothing legitimate is blocked.
+    """
+    if session.status == "submitted":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Manual check session {session.id} was submitted at {session.submitted_at} and "
+                "is closed. Open a new check over this pair to record more."
+            ),
+        )
+    return session
+
+
 async def _recount(session: ManualCheckSession) -> None:
     """Recompute `marking_count` from the live rows rather than incrementing.
 
@@ -288,29 +331,32 @@ async def create_session(
     """
     annotator = resolve_username(x_session_token) or "unknown"
 
-    # A raw query mapping rather than Beanie's class-attribute expressions. Those resolve
-    # through descriptors that only exist after `init_beanie`, so they cannot be exercised by
-    # this router's fully-mocked tests — and an untested resume is how the bug above came back
-    # for free. The keys are pinned against `ManualCheckSession.model_fields` by
-    # `test_the_resume_query_names_only_real_session_fields`, because a mistyped key here
-    # matches nothing, silently mints a new session, and restores the empty panel exactly.
-    existing = await ManualCheckSession.find_one(
-        {
-            "room_id": payload.room_id,
-            "ref_drawing_id": payload.ref_drawing_id,
-            "rev_drawing_id": payload.rev_drawing_id,
-            "annotator": annotator,
-            "status": "in_progress",
-        },
-        # Oldest first, so the answer is deterministic where it is ambiguous. It is ambiguous
-        # only because of the defect this method fixes: every reload before 2026-08-18 left
-        # another in-progress session on the same pair, and without an explicit order Mongo
-        # would answer from natural order — a resume that could pick a different session run to
-        # run. The oldest is "the pass the engineer started"; markings stranded in the newer
-        # duplicates stay in the collection and are reachable by session id, but this endpoint
-        # will not surface them.
-        sort=[("started_at", 1)],
-    )
+    async def _resume() -> ManualCheckSession | None:
+        # A raw query mapping rather than Beanie's class-attribute expressions. Those resolve
+        # through descriptors that only exist after `init_beanie`, so they cannot be exercised by
+        # this router's fully-mocked tests — and an untested resume is how the bug above came back
+        # for free. The keys are pinned against `ManualCheckSession.model_fields` by
+        # `test_the_resume_query_names_only_real_session_fields`, because a mistyped key here
+        # matches nothing, silently mints a new session, and restores the empty panel exactly.
+        return await ManualCheckSession.find_one(
+            {
+                "room_id": payload.room_id,
+                "ref_drawing_id": payload.ref_drawing_id,
+                "rev_drawing_id": payload.rev_drawing_id,
+                "annotator": annotator,
+                "status": "in_progress",
+            },
+            # Oldest first, so the answer is deterministic where it is ambiguous. It is ambiguous
+            # only because of the defect this method fixes: every reload before 2026-08-18 left
+            # another in-progress session on the same pair, and without an explicit order Mongo
+            # would answer from natural order — a resume that could pick a different session run
+            # to run. The oldest is "the pass the engineer started"; markings stranded in the
+            # newer duplicates stay in the collection and are reachable by session id, but this
+            # endpoint will not surface them.
+            sort=[("started_at", 1)],
+        )
+
+    existing = await _resume()
     if existing is not None:
         logger.info(
             f"[ground_truth] Manual check resumed: session {existing.id} on room "
@@ -325,7 +371,36 @@ async def create_session(
         annotator=annotator,
         notes=payload.notes,
     )
-    await session.save()
+    try:
+        await session.save()
+    except DuplicateKeyError:
+        # Someone else inserted between our miss and our write. The partial unique index on
+        # `ManualCheckSession` turned what used to be a silent duplicate into this, so the only
+        # correct response is to go and read the session that won -- which is exactly what the
+        # resume above does, and what the caller asked for in the first place.
+        #
+        # Two clients racing here is ordinary, not exotic: the workspace opens a session on every
+        # mount, and before the index existed the collection accumulated sessions in PAIRS,
+        # milliseconds apart. `tools/merge_duplicate_check_sessions.py` was written to clean up
+        # after precisely this.
+        raced = await _resume()
+        if raced is None:
+            # The index rejected the insert but nothing in-progress is there to read. A session
+            # submitted in the same instant is the only shape that produces this, and retrying
+            # would loop, so report it rather than guess.
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A concurrent request took this check session and it is no longer open. "
+                    "Reopen the workspace to start a new pass."
+                ),
+            ) from None
+        logger.info(
+            f"[ground_truth] Manual check open raced; resumed session {raced.id} on room "
+            f"{raced.room_id} by {annotator} ({raced.marking_count} marking(s))"
+        )
+        return StandardResponse(success=True, data=_session_response(raced))
+
     logger.info(
         f"[ground_truth] Manual check opened: session {session.id} on room {session.room_id} "
         f"by {session.annotator}"
@@ -356,10 +431,17 @@ async def list_sessions(room_id: str | None = Query(None)):
     dependencies=[Depends(get_auth_token)],
 )
 async def list_markings(session_id: str, include_retracted: bool = Query(False)):
+    # Filtered in the QUERY, not in Python afterwards. This is the panel's read on every
+    # workspace mount, and the `(session_id, retracted_at)` compound index exists precisely for
+    # it -- filtering after `to_list()` fetched every retracted row too, leaving that index
+    # unused on the hottest read in the feature. 31 of the 38 markings in the session behind
+    # `M745204N01` are retracted, so it was fetching roughly five times what it returned.
     query = GroundTruthMarking.find(GroundTruthMarking.session_id == session_id)
-    markings = await query.sort(+GroundTruthMarking.created_at).to_list()
     if not include_retracted:
-        markings = [m for m in markings if m.retracted_at is None]
+        query = query.find(
+            GroundTruthMarking.retracted_at == None  # noqa: E711 — Beanie query, not a bool
+        )
+    markings = await query.sort(+GroundTruthMarking.created_at).to_list()
     return StandardResponse(success=True, data=[_marking_response(m) for m in markings])
 
 
@@ -374,8 +456,10 @@ async def create_marking(
     payload: CreateMarkingRequest,
     x_session_token: Annotated[str | None, Header(alias="X-Session-Token")] = None,
 ):
-    session = await get_or_404(
-        ManualCheckSession, session_id, f"Manual check session not found: {session_id}"
+    session = _require_open(
+        await get_or_404(
+            ManualCheckSession, session_id, f"Manual check session not found: {session_id}"
+        )
     )
     _require_category(payload.category)
 
@@ -424,6 +508,9 @@ async def update_marking(marking_id: str, payload: UpdateMarkingRequest):
     marking = await get_or_404(
         GroundTruthMarking, marking_id, f"Marking not found: {marking_id}"
     )
+    session = await _session_of(marking)
+    if session is not None:
+        _require_open(session)
     if payload.category is not None:
         _require_category(payload.category)
 
@@ -456,7 +543,7 @@ async def retract_marking(marking_id: str):
         marking.retracted_at = datetime.now(UTC)
         await marking.save()
 
-        session = await ManualCheckSession.get(marking.session_id)
+        session = await _session_of(marking)
         if session:
             await _recount(session)
 
@@ -470,10 +557,24 @@ async def retract_marking(marking_id: str):
     dependencies=[Depends(get_auth_token)],
 )
 async def submit_session(session_id: str):
-    """Close the session. The markings are already saved; this records that it is finished."""
+    """Close the session. The markings are already saved; this records that it is finished.
+
+    Idempotent, like `retract_marking` above and for the same reason: `submitted_at` is a claim
+    about WHEN an engineer finished, and a duplicate POST -- a double click, a retry after a
+    timeout that actually succeeded -- would move it to the moment of the retry. It would also
+    re-run `_recount` over a closed session, which is how a count written after the fact starts
+    disagreeing with the export that was taken from it.
+    """
     session = await get_or_404(
         ManualCheckSession, session_id, f"Manual check session not found: {session_id}"
     )
+    if session.status == "submitted":
+        logger.info(
+            f"[ground_truth] Manual check {session.id} already submitted at "
+            f"{session.submitted_at}; returning it unchanged."
+        )
+        return StandardResponse(success=True, data=_session_response(session))
+
     await _recount(session)
     session.status = "submitted"
     session.submitted_at = datetime.now(UTC)

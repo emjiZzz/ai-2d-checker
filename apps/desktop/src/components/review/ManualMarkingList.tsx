@@ -50,6 +50,8 @@ export const ManualMarkingList: React.FC = () => {
   const pendingPairTool = useWorkspaceStore((s) => s.pendingPairTool);
   const retractManualMarking = useWorkspaceStore((s) => s.retractManualMarking);
   const submitManualSession = useWorkspaceStore((s) => s.submitManualSession);
+  const markingError = useWorkspaceStore((s) => s.markingError);
+  const clearMarkingError = useWorkspaceStore((s) => s.clearMarkingError);
 
   const [submitting, setSubmitting] = useState(false);
   // Open by default: this panel is short and the engineer is reading their own work, not
@@ -66,11 +68,20 @@ export const ManualMarkingList: React.FC = () => {
 
   if (!isManualCheckRoom) return null;
 
+  /*
+    `submitted` is set from the SERVER's answer, never unconditionally.
+
+    It read `await submitManualSession(); setSubmitted(true)` until 2026-08-20, and the store
+    swallowed its own failure — so a submit that never reached the database rendered "Check
+    submitted" and the engineer walked away from a session still marked `in_progress`. The store
+    now returns whether the server confirmed it, and writes the reason to `markingError` when it
+    did not.
+  */
   const submit = async () => {
     setSubmitting(true);
-    await submitManualSession();
+    const ok = await submitManualSession();
     setSubmitting(false);
-    setSubmitted(true);
+    if (ok) setSubmitted(true);
   };
 
   const canSubmit = Boolean(manualSessionId) && markings.length > 0 && !submitting;
@@ -187,6 +198,47 @@ export const ManualMarkingList: React.FC = () => {
               }}
             >
               Retry
+            </button>
+          </div>
+        )}
+
+        {/*
+          A WRITE that failed, as opposed to the open failure above. Separate blocks because they
+          say opposite things about the engineer's work: the open error says "your markings are
+          safe, this pane just could not read them", and this one says "what you just did was not
+          recorded". Collapsing the two into one banner would make the reassuring wording appear
+          over a lost stamp.
+
+          Dismissible rather than auto-clearing on a timer: the next successful write clears it,
+          and until then it is the only evidence that something did not land.
+        */}
+        {markingError && (
+          <div
+            style={{
+              fontSize: 11,
+              lineHeight: 1.6,
+              padding: '8px',
+              marginBottom: 8,
+              color: MARKER_STYLES.MISMATCHED.color,
+              background: 'rgba(255,40,80,0.08)',
+              border: `1px solid ${MARKER_STYLES.MISMATCHED.color}55`,
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>Not recorded.</div>
+            <div style={{ color: 'var(--text-muted)', margin: '4px 0 8px' }}>{markingError}</div>
+            <button
+              type="button"
+              onClick={clearMarkingError}
+              style={{
+                fontSize: 11,
+                padding: '3px 10px',
+                cursor: 'pointer',
+                color: 'var(--text-primary)',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              Dismiss
             </button>
           </div>
         )}

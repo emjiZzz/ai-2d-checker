@@ -114,6 +114,37 @@ class ManualCheckSession(Document):
             IndexModel([("annotator", ASCENDING)]),
             IndexModel([("status", ASCENDING)]),
             IndexModel([("started_at", DESCENDING)]),
+            # ── the resume index ─────────────────────────────────────────────────────────
+            # `create_session` resumes an in-progress session by exactly these four fields, and
+            # until 2026-08-20 that was a read-then-insert with nothing enforcing the invariant:
+            # two clients that both miss both insert. That is not hypothetical — it is why
+            # `tools/merge_duplicate_check_sessions.py` exists, and why the resume query has to
+            # sort by `started_at` to pick deterministically among duplicates that should not be
+            # able to exist. The client's `openInFlight` guard covers React StrictMode's double
+            # invoke; it cannot cover two windows, two machines, or a retry.
+            #
+            # **Partial, on `status: "in_progress"`, and that is required rather than tidy.** A
+            # pair legitimately accumulates many SUBMITTED sessions over time — each is a
+            # separate pass, which is the whole reason `create_session` scopes its resume to
+            # in-progress. A non-partial unique index would reject the second honest check of a
+            # drawing.
+            #
+            # ⚠ Beanie builds indexes at `init_beanie`, so this fails LOUDLY at startup against
+            # a collection that already holds duplicates. Run
+            # `tools/merge_duplicate_check_sessions.py` against every environment first —
+            # including Atlas, since these collections are not in
+            # `sync_manager.SYNC_COLLECTIONS` and so exist only there.
+            IndexModel(
+                [
+                    ("room_id", ASCENDING),
+                    ("ref_drawing_id", ASCENDING),
+                    ("rev_drawing_id", ASCENDING),
+                    ("annotator", ASCENDING),
+                ],
+                name="one_in_progress_session_per_pair_per_annotator",
+                unique=True,
+                partialFilterExpression={"status": "in_progress"},
+            ),
         ]
 
 

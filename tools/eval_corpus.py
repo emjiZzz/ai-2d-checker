@@ -683,6 +683,259 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def require_named_annotator(raw: str, session_id: str) -> str:
+    """The annotator, or refuse. Ground truth is attributable work.
+
+    Two rejections, not one. Emptiness is the obvious case and `label` would catch it downstream
+    anyway; **`"unknown"` is the one that mattered**, and it used to pass straight through.
+
+    It is not a name an annotator can enter. It is the literal fallback `create_session` writes
+    when a manual check is opened with no `X-Session-Token` -- an app that is running but not
+    signed in. A check-for-empty does not catch it, so it reached a committed label file as the
+    `annotator`, where it is indistinguishable from a person and there is no other record of who
+    did the work.
+
+    Extracted from `cmd_from_manual_check` so the rule is testable without a Mongo connection
+    and a loaded corpus pair, the same way `_require_category` sits apart from its route.
+    """
+    annotator = raw.strip()
+    if not annotator:
+        raise SystemExit(
+            "The session names no annotator and --annotator was not given. Ground truth is "
+            "attributable work; `label` would refuse this draft anyway."
+        )
+    if annotator.lower() == "unknown":
+        raise SystemExit(
+            f"Session {session_id} is attributed to 'unknown' -- it was opened without a "
+            "signed-in user, so the server could not name the annotator. Ground truth has to be "
+            "attributable to a person. Pass --annotator <name> to say who did this check."
+        )
+    return annotator
+
+
+def _print_bridge_summary(pair_id: str, session_id: str, live: int, result: Any) -> None:
+    """What the conversion did, in the terms a reviewer needs before installing.
+
+    Split out of `cmd_from_manual_check` because the command was doing two jobs: deciding what
+    converts, and explaining it. The counts here are the only place an annotator learns that
+    their N markings became fewer than N labels.
+    """
+    print(f"\n{pair_id} <- session {session_id}")
+    print(f"  live markings      {live}")
+    print(f"  -> findings        {len(result.labels.findings)}")
+    print(f"  -> not_findings    {len(result.labels.not_findings)}")
+    if result.tier_counts:
+        tiers = ", ".join(f"{k} {v}" for k, v in sorted(result.tier_counts.items()))
+        print(f"  resolved by        {tiers}")
+    if result.labels.findings:
+        print(
+            f"  handle-anchored    {result.labels.handle_anchored_count}"
+            f" / {len(result.labels.findings)}"
+        )
+        for category, count in sorted(result.labels.category_counts.items()):
+            if count:
+                print(f"    {category}: {count}")
+    if result.zone_derived:
+        print(
+            f"\n  [warn] {result.zone_derived} finding(s) carry a zone-derived category, "
+            f"tagged `[category:zone]` in their notes.\n"
+            f"         Attribution measured over these is circular -- it compares "
+            f"zone_detector with itself.\n"
+            f"         Review them before installing; see manual_check_bridge.py."
+        )
+
+
+def cmd_from_manual_check(args: argparse.Namespace) -> int:
+    """Convert a Manual Check session into a corpus label draft.
+
+    The bridge between this project's two ground-truth stores. The app writes
+    `ground_truth_markings` to Mongo; Stage 0b counts only `tests/fixtures/eval/labels/`. An
+    engineer using the only UI that exists was therefore producing work that `status` could not
+    see -- measured 2026-08-20 at three sessions and 7 live markings against a corpus reading
+    4 / 8.
+
+    **This writes a draft and stops.** Installing is still `label`, which still demands a named
+    annotator and a current guideline version. The conversion is lossy in ways only a person can
+    adjudicate -- see `infrastructure/eval/manual_check_bridge.py` for exactly where -- so the
+    draft is a proposal to review, not a result to trust.
+    """
+    from bson import ObjectId
+    from pymongo import MongoClient
+
+    from services.backend.infrastructure.eval.manual_check_bridge import (
+        build_labels,
+        check_session_matches_pair,
+    )
+
+    corpus = _load_for_management(
+        include_held_out=args.include_held_out,
+        held_out_reason=args.reason,
+    )
+    pair = corpus.by_id(args.pair_id)
+    if pair is None:
+        raise SystemExit(
+            f"No pair {args.pair_id!r} in the loaded corpus. Held-out pairs need "
+            f"--include-held-out with a --reason."
+        )
+
+    # Defaults to the app's configured MONGO_URI, NOT this tool's localhost default. Measured
+    # 2026-08-20: local Mongo holds 0 manual-check sessions and 0 markings while Atlas holds 3
+    # and 38 — those two collections are not in `sync_manager`'s synced set. `export` is right
+    # to default to local (payloads are exported from whatever store you point it at); this
+    # command is only ever reading what the running app wrote, so its default follows the app.
+    uri = args.mongo_uri
+    if not uri:
+        from services.backend.config import settings
+
+        uri = settings.MONGO_URI
+    db = MongoClient(uri, serverSelectionTimeoutMS=8000)[args.mongo_db]
+    sessions = db["manual_check_sessions"]
+    markings = db["ground_truth_markings"]
+    drawings = db["drawing_documents"]
+
+    def file_hashes(session_doc: dict[str, Any]) -> tuple[str, str]:
+        """`(ref_hash, rev_hash)` for a session's two drawings, empty where not found."""
+        out = []
+        for key in ("ref_drawing_id", "rev_drawing_id"):
+            doc = None
+            try:
+                doc = drawings.find_one({"_id": ObjectId(str(session_doc.get(key)))})
+            except Exception:  # noqa: BLE001 - a bad id is simply an absent hash
+                doc = None
+            out.append(str((doc or {}).get("file_hash") or ""))
+        return out[0], out[1]
+
+    # Without an explicit session, offer the ones that actually describe this pair rather than
+    # making the caller hunt ObjectIds. Matching on both drawing ids is the same check that
+    # guards the conversion below, so the list can never suggest a session it would then refuse.
+    if not args.session_id:
+        candidates = []
+        for doc in sessions.find({}):
+            ref_hash, rev_hash = file_hashes(doc)
+            problems, _ = check_session_matches_pair(
+                pair,
+                ref_drawing_id=str(doc.get("ref_drawing_id")),
+                rev_drawing_id=str(doc.get("rev_drawing_id")),
+                ref_file_hash=ref_hash,
+                rev_file_hash=rev_hash,
+            )
+            if not problems:
+                candidates.append(doc)
+        if not candidates:
+            raise SystemExit(
+                f"No manual-check session covers {args.pair_id} "
+                f"(ref {pair.ref.drawing_id}, rev {pair.rev.drawing_id}). "
+                f"A session must name the same two drawings the pair was exported from."
+            )
+        print(f"Sessions covering {args.pair_id}:\n")
+        for doc in candidates:
+            live = markings.count_documents(
+                {"session_id": str(doc["_id"]), "retracted_at": None}
+            )
+            print(
+                f"  {doc['_id']}  annotator={doc.get('annotator')!r} "
+                f"status={doc.get('status')!r} live_markings={live}"
+            )
+        print("\nRe-run with --session-id <id>.")
+        return 1
+
+    session = sessions.find_one({"_id": ObjectId(args.session_id)})
+    if session is None:
+        raise SystemExit(f"No manual-check session {args.session_id!r}.")
+
+    ref_hash, rev_hash = file_hashes(session)
+    problems, identity_notes = check_session_matches_pair(
+        pair,
+        ref_drawing_id=str(session.get("ref_drawing_id")),
+        rev_drawing_id=str(session.get("rev_drawing_id")),
+        ref_file_hash=ref_hash,
+        rev_file_hash=rev_hash,
+    )
+    if problems:
+        raise SystemExit(
+            "This session does not describe this pair:\n  "
+            + "\n  ".join(problems)
+            + "\n\nLabels attached to the wrong pair resolve against the wrong payload and "
+            "read as perfectly ordinary ground truth. Refusing."
+        )
+    for note in identity_notes:
+        # Not a warning: a re-upload is the normal case, and the pair's payload is frozen by
+        # sha256 regardless of which DrawingDocument it came from. Printed so the caller can
+        # see which extraction the markings were authored against.
+        print(f"  [note] {note}")
+
+    # `retracted_at: None` is applied in the query as well as in the bridge. Belt and braces on
+    # purpose: 31 of the 38 markings in the session that prompted this feature are retracted,
+    # so a converter that let them through would manufacture findings the engineer took back.
+    live = list(markings.find({"session_id": args.session_id, "retracted_at": None}))
+    if not live:
+        raise SystemExit(
+            f"Session {args.session_id} has no live markings "
+            f"(retracted ones do not count). Nothing to convert."
+        )
+
+    _, _, ref_entities, rev_entities = pair.load()
+
+    annotator = require_named_annotator(
+        args.annotator or session.get("annotator") or "", args.session_id
+    )
+
+    dates = sorted(str(m.get("created_at") or "")[:10] for m in live if m.get("created_at"))
+    annotated_at = dates[-1] if dates and dates[-1] else datetime.now(UTC).date().isoformat()
+
+    provenance = (
+        f"Converted from manual-check session {args.session_id} "
+        f"({len(live)} live marking(s), annotator {annotator!r})."
+    )
+    session_notes = str(session.get("notes") or "").strip()
+
+    result = build_labels(
+        pair_id=pair.pair_id,
+        markings=live,
+        ref_entities=ref_entities,
+        rev_entities=rev_entities,
+        annotator=annotator,
+        annotated_at=annotated_at,
+        notes=f"{provenance} {session_notes}".strip(),
+    )
+
+    _print_bridge_summary(args.pair_id, args.session_id, len(live), result)
+
+    if result.unresolved:
+        print(f"\n  [!] {len(result.unresolved)} marking(s) did NOT convert:")
+        for item in result.unresolved:
+            text = f" {item.text[:36]!r}" if item.text else ""
+            print(f"      {item.marking_id} {item.status}/{item.category}{text}")
+            print(f"        {item.reason}")
+        if not args.allow_unresolved:
+            raise SystemExit(
+                "\nRefusing to write a partial draft. Every unconverted marking is a human "
+                "judgement that would silently not be in the corpus, and the draft gives no "
+                "hint that it is short. Fix the addresses, or pass --allow-unresolved to "
+                "accept the loss deliberately."
+            )
+        print("\n  [warn] --allow-unresolved: writing anyway, short by the rows above.")
+
+    out_dir = default_payload_dir().parent / "worksheets"
+    # A distinct filename from `worksheet`'s own draft. Overwriting that silently would destroy
+    # hand-annotation with machine output, and the provenance belongs in the name.
+    draft_path = Path(args.out) if args.out else (
+        out_dir / f"{pair.pair_id}.from-manual-check.labels.draft.json"
+    )
+    if draft_path.exists() and not args.force:
+        raise SystemExit(f"{draft_path} exists. Pass --force to overwrite.")
+    write_text_stable(
+        draft_path, json.dumps(result.labels.to_dict(), ensure_ascii=False, indent=2) + "\n"
+    )
+    print(f"\n  draft: {draft_path}")
+    print(
+        f"\nReview it, then:\n"
+        f"  tools/eval_corpus.py validate --pair-id {pair.pair_id} --from {draft_path}\n"
+        f"  tools/eval_corpus.py label    --pair-id {pair.pair_id} --from {draft_path}"
+    )
+    return 0
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     """Check a draft in place, without installing it.
 
@@ -1280,6 +1533,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_ws.add_argument("--reason", default="")
     p_ws.add_argument("--force", action="store_true", help="overwrite an existing draft")
     p_ws.set_defaults(func=cmd_worksheet)
+
+    p_bridge = sub.add_parser(
+        "from-manual-check",
+        help="convert an app Manual Check session into a label draft",
+    )
+    p_bridge.add_argument("--pair-id", required=True)
+    p_bridge.add_argument(
+        "--session-id", default="", help="omit to list the sessions covering this pair"
+    )
+    p_bridge.add_argument(
+        "--mongo-uri",
+        default="",
+        help="default: the app's configured MONGO_URI (manual-check data is not synced local)",
+    )
+    p_bridge.add_argument("--mongo-db", default=MONGO_DB_DEFAULT)
+    p_bridge.add_argument("--annotator", default="", help="override the session's annotator")
+    p_bridge.add_argument("--out", default="", help="draft path (default: worksheets dir)")
+    p_bridge.add_argument("--include-held-out", action="store_true")
+    p_bridge.add_argument("--reason", default="")
+    p_bridge.add_argument("--force", action="store_true", help="overwrite an existing draft")
+    p_bridge.add_argument(
+        "--allow-unresolved",
+        action="store_true",
+        help="write the draft even though some markings did not convert",
+    )
+    p_bridge.set_defaults(func=cmd_from_manual_check)
 
     p_validate = sub.add_parser(
         "validate", help="check a draft in place without installing it"

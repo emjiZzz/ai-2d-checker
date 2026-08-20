@@ -181,11 +181,24 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
       categorySource: source,
       refText: stamp.ref?.text ?? '',
       revText: stamp.rev?.text ?? '',
+      // Structurally always false/false/'' — nothing in the UI collects them. See
+      // `CommitStampInput`; this is not a default that a caller elsewhere overrides.
       textWasEdited: false,
       isBulk: false,
       notes: '',
-      // The store logs and surfaces a failure; the menu's job is only not to swallow it.
-    }).catch(() => {});
+    });
+    /*
+      No `.catch` here, and that is the fix rather than an omission.
+
+      This read `.catch(() => {})` until 2026-08-20, on the comment "the store logs and surfaces
+      a failure". The store logged; nothing surfaced. So a failed POST — a stopped backend, a
+      dropped connection, a 422 — produced no UI whatsoever: the menu closed, the entity stayed
+      unmarked, and it was indistinguishable from a mis-click. On a 68-row sheet that is silent
+      data loss in the one tool whose entire output is the records it keeps.
+
+      `recordStamp` now settles rather than rejects, writing the reason to `markingError`, which
+      `ManualMarkingList` renders beside the engineer's own work. There is nothing left to catch.
+    */
   };
 
   const rowClass = `flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${
