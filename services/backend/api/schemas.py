@@ -3,6 +3,7 @@ from typing import Any, List, Optional, TypeVar, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from ..domain.models.cad_point import CadPoint, CoordinateSpace
+from ..domain.models.extracted_entity import EXTRACTION_SCHEMA_VERSION
 from ..domain.models.room_mode import AI_COMPARISON, RoomMode, normalize_room_mode
 from ..domain.models.comparison_method import (
     DETERMINISTIC,
@@ -64,8 +65,56 @@ class DrawingResponse(BaseModel):
     # reference/revision pair that is not a pair. Defaulted, so drawings ingested before
     # this field existed deserialize as "no judgement possible" rather than failing.
     drawing_numbers: list[str] = []
+    # Which extraction schema this drawing's entities were written under, and whether that is
+    # behind the current one. `render_paths`, dimension text anchors, leader hooklines and
+    # arrowheads, MTEXT rotation and the angular-dimension degree conversion are all computed
+    # at EXTRACTION time, so a stale drawing renders wrong and keeps rendering wrong until
+    # `POST /drawings/{id}/reextract` — and it looks like a drawing the whole time.
+    #
+    # `extraction_is_stale` is computed server-side rather than by comparing the two numbers in
+    # the client. The rule belongs beside `EXTRACTION_SCHEMA_VERSION`; there is no runtime type
+    # sharing between Python and TypeScript here, so a second copy of the comparison is a
+    # second thing to forget when the constant moves. Both numbers are still sent because the
+    # badge shows them ("v2 of v7"), which a boolean cannot express.
+    #
+    # Defaulted, so a drawing ingested before this field existed deserializes as "no judgement
+    # possible" rather than failing — the same reasoning as `drawing_numbers` above.
+    extraction_schema_version: int = 0
+    current_extraction_schema_version: int = 0
+    extraction_is_stale: bool = False
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def from_document(cls, drawing: Any) -> "DrawingResponse":
+        """The wire response for one `DrawingDocument`.
+
+        One constructor because there are three call sites -- upload, list and get -- which
+        held byte-identical field literals. Adding a field to two of the three is not an error
+        in Python; it is a response that carries the field on some endpoints and silently omits
+        it on others, and the client cannot tell the difference from a drawing that genuinely
+        lacks it. That is the drift this repo keeps paying for, so there is one site.
+        """
+        # `0` is what a never-stamped row deserializes to (the document field defaults to 0),
+        # so it is treated as "older than anything current" rather than as a real version.
+        stored = int(getattr(drawing, "extraction_schema_version", 0) or 0)
+        return cls(
+            id=str(drawing.id),
+            file_name=drawing.file_name,
+            file_path=drawing.file_path,
+            file_hash=drawing.file_hash,
+            file_size_bytes=drawing.file_size_bytes,
+            format=drawing.format,
+            status=drawing.status,
+            entity_counts=drawing.entity_counts,
+            metadata=drawing.metadata,
+            drawing_numbers=drawing.drawing_numbers,
+            extraction_schema_version=stored,
+            current_extraction_schema_version=EXTRACTION_SCHEMA_VERSION,
+            extraction_is_stale=stored < EXTRACTION_SCHEMA_VERSION,
+            created_at=drawing.created_at,
+            updated_at=drawing.updated_at,
+        )
 
 class JobResponse(BaseModel):
     id: str

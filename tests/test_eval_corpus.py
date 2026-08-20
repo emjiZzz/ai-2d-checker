@@ -657,3 +657,99 @@ def test_management_commands_can_still_load_a_stale_corpus():
         "a tolerant load must preserve the stale version rather than silently restamping it "
         "— restamping would relabel by fiat, which is the corruption the guard exists to stop"
     )
+
+
+# ── extraction provenance ─────────────────────────────────────────────────────────────
+#
+# A corpus payload freezes whatever the extractor produced on the day it was captured.
+# Extraction-time fixes are baked in, so "which extractor made this?" is part of a pair's
+# provenance — and until 2026-08-20 nothing recorded it, so the only way to ask was to read
+# entity values and infer. These pin the field and, more importantly, the thing that reads it.
+
+
+def test_a_payload_without_the_field_reads_as_unknown_not_as_version_zero():
+    """Every pair committed before the field existed lacks it, and must still load.
+
+    `0` is the unknown marker. The distinction matters at the point of use: an unknown
+    capture and a capture from a genuinely ancient extractor need different messages, and
+    presenting `0` as a real schema version would invent provenance that was never recorded.
+    """
+    from services.backend.infrastructure.eval.serialize import EvalDrawing
+
+    legacy = EvalDrawing.from_dict(
+        {"id": "x", "file_name": "f.dxf", "file_hash": "h", "entity_counts": {}}
+    )
+    assert legacy.extraction_schema_version == 0
+
+
+def test_the_version_survives_the_payload_round_trip():
+    from services.backend.infrastructure.eval.serialize import EvalDrawing
+
+    drawing = EvalDrawing(
+        id="x", file_name="f.dxf", file_hash="h", extraction_schema_version=5
+    )
+    assert EvalDrawing.from_dict(drawing.to_dict()).extraction_schema_version == 5
+
+
+def test_the_manifest_side_carries_it_too():
+    """So "was this pair captured from a stale drawing?" is answerable without a payload read."""
+    from services.backend.infrastructure.eval.corpus import PairSide
+
+    side = PairSide(
+        drawing_id="d",
+        file_name="f.dxf",
+        file_hash="h",
+        drawing_sha256="a",
+        entities_sha256="b",
+        entity_count=1,
+        extraction_schema_version=6,
+    )
+    assert PairSide.from_dict(side.to_dict()).extraction_schema_version == 6
+    assert PairSide.from_dict({"drawing_id": "d"}).extraction_schema_version == 0
+
+
+def test_exporting_a_current_extraction_says_nothing():
+    """The silence is the point: a warning that fires on every export is one nobody reads."""
+    from services.backend.domain.models.extracted_entity import EXTRACTION_SCHEMA_VERSION
+    from services.backend.infrastructure.eval.serialize import EvalDrawing
+    from tools.eval_corpus import warn_if_stale_extraction
+
+    current = EvalDrawing(
+        id="x",
+        file_name="f.dxf",
+        file_hash="h",
+        extraction_schema_version=EXTRACTION_SCHEMA_VERSION,
+    )
+    assert warn_if_stale_extraction("ref", current) == []
+
+
+def test_exporting_a_stale_extraction_names_both_versions():
+    """A field nothing reads is the gap this repo just spent a session closing elsewhere.
+
+    Export is the last cheap moment: afterwards the payload is sha256-frozen and its labels
+    are authored against it, so a stale capture found later costs a re-export and a re-label.
+    """
+    from services.backend.infrastructure.eval.serialize import EvalDrawing
+    from tools.eval_corpus import warn_if_stale_extraction
+
+    lines = warn_if_stale_extraction(
+        "rev",
+        EvalDrawing(id="x", file_name="f.dxf", file_hash="h", extraction_schema_version=2),
+    )
+    assert len(lines) == 1
+    assert "v2" in lines[0]
+    assert "rev" in lines[0]
+
+
+def test_an_unrecorded_extraction_gets_its_own_message():
+    """Unknown is not the same claim as old, and the fix differs — say so."""
+    from services.backend.infrastructure.eval.serialize import EvalDrawing
+    from tools.eval_corpus import warn_if_stale_extraction
+
+    lines = warn_if_stale_extraction(
+        "ref",
+        EvalDrawing(id="x", file_name="f.dxf", file_hash="h", extraction_schema_version=0),
+    )
+    assert len(lines) == 1
+    assert "no extraction schema version" in lines[0]
+    assert "v0" not in lines[0], "0 is the unknown marker, never a version to report back"

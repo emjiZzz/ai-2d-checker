@@ -12,6 +12,12 @@ export interface Drawing {
   status: string;
   entity_counts: Record<string, number>;
   metadata: Record<string, any>;
+  // Extraction-schema provenance. Optional because a backend predating these fields does not
+  // send them, and absent means "cannot judge", not "current". The staleness decision is the
+  // server's — see `DrawingItem` in stores/workspace/types.ts for why it is not recomputed here.
+  extraction_schema_version?: number;
+  current_extraction_schema_version?: number;
+  extraction_is_stale?: boolean;
   created_at: string;
   updated_at: string;
 }

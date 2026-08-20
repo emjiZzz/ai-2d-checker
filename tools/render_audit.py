@@ -647,6 +647,38 @@ def anchor_reference(
 # ---------------------------------------------------------------------------
 
 
+def census_of(payload_entities: list[dict[str, Any]]) -> dict[str, Any]:
+    """The `drawn/total` census for one sheet's serializer payload.
+
+    Split out of `build_report` so `--sweep` can take the census without paying for the text
+    oracle, which renders the whole sheet through ezdxf's `Frontend` and dominates the runtime.
+
+    One implementation on purpose: a sweep and a single-sheet run that each classified entities
+    their own way could disagree about what was culled, and the sweep exists precisely to catch
+    a change in that number.
+    """
+    # Needs the whole sheet, so it cannot live inside the per-entity `classify`. Only a verdict
+    # that would otherwise be `drawn` is overridden, mirroring the renderer's own order: the
+    # `outside_viewport` cull runs first, and a non-drawable record never reaches this at all.
+    callouts = section_callout_ids(payload_entities)
+
+    census: Counter = Counter()
+    by_type: dict[str, Counter] = defaultdict(Counter)
+    for ent in payload_entities:
+        verdict = classify(ent)
+        if verdict == "drawn" and id(ent) in callouts:
+            verdict = "section-callout"
+        census[verdict] += 1
+        by_type[(ent.get("entity_type") or "?").lower()][verdict] += 1
+
+    return {
+        "drawn": census["drawn"],
+        "total": len(payload_entities),
+        "buckets": dict(census),
+        "by_type": {k: dict(v) for k, v in sorted(by_type.items())},
+    }
+
+
 def build_report(dxf_path: Path) -> dict[str, Any]:
     entities, layers, counts, metadata = DXFParser().parse_file(dxf_path)
 
@@ -657,19 +689,7 @@ def build_report(dxf_path: Path) -> dict[str, Any]:
     # Needs the whole sheet, so it cannot live inside the per-entity `classify`. Only a verdict
     # that would otherwise be `drawn` is overridden, mirroring the renderer's own order: the
     # `outside_viewport` cull runs first, and a non-drawable record never reaches this at all.
-    callouts = section_callout_ids(payload_entities)
-
-    census = Counter()
-    by_type: dict[str, Counter] = defaultdict(Counter)
-    for ent in payload_entities:
-        verdict = classify(ent)
-        if verdict == "drawn" and id(ent) in callouts:
-            verdict = "section-callout"
-        census[verdict] += 1
-        by_type[(ent.get("entity_type") or "?").lower()][verdict] += 1
-
-    drawn = census["drawn"]
-    total = len(payload_entities)
+    census_block = census_of(payload_entities)
 
     truth, truth_records, text_facts, layout_name = record_ground_truth(dxf_path)
     cap_ratio = cap_height_ratio()
@@ -824,12 +844,7 @@ def build_report(dxf_path: Path) -> dict[str, Any]:
         "dxf": str(dxf_path),
         "render_layout": layout_name,
         "extraction_counts": dict(counts),
-        "census": {
-            "drawn": drawn,
-            "total": total,
-            "buckets": dict(census),
-            "by_type": {k: dict(v) for k, v in sorted(by_type.items())},
-        },
+        "census": census_block,
         "font": {"name": CANVAS_FONT, "cap_height_over_em": round(cap_ratio, 4)},
         "text_oracle": {
             "measured": len(rows),
@@ -920,12 +935,135 @@ def print_report(report: dict[str, Any], top: int) -> None:
     print()
 
 
+#: What CLAUDE.md records for the section-callout cull across `storage/uploads`, so a drift is
+#: visible in the output rather than needing a human to remember the figure. These are a
+#: reference point, NOT a pass/fail gate: adding a drawing legitimately moves the denominator.
+DOCUMENTED_CULL = {"drawings": 32, "cull_nothing": 23, "max_per_sheet": 10}
+
+
+def sweep_cull(directory: Path) -> dict[str, Any]:
+    """Census every DXF under `directory`, reporting how many entities each sheet culls.
+
+    ## Why this exists
+
+    CLAUDE.md mandates this sweep before landing any change to the section-callout rule, and
+    quotes its result: *"23 of 32 drawings cull nothing, 9 cull 8-10 entities each, and the
+    maximum on any sheet is 10. Re-run that sweep if you touch the rule -- a jump in those
+    numbers is the failure mode, and it does not show up as a test failure."*
+
+    Until now nothing produced those numbers. `main()` took a single DXF, so the documented
+    pre-landing check had no producer -- the same shape as
+    `Gotcha - A Checklist Item With No Producer Reported Clean`, one layer over.
+
+    A sheet that fails to parse is **reported, not skipped silently**: a sweep that quietly
+    drops the drawing which would have shown the regression is worse than no sweep.
+    """
+    rows: list[dict[str, Any]] = []
+    failures: list[tuple[str, str]] = []
+
+    for dxf_path in sorted(directory.glob("*.dxf")):
+        try:
+            entities, layers, _counts, _metadata = DXFParser().parse_file(dxf_path)
+            block = census_of(entities + layers)
+        except Exception as err:  # noqa: BLE001 - an unparseable sheet is a reportable row
+            failures.append((dxf_path.name, f"{type(err).__name__}: {err}"))
+            continue
+        rows.append(
+            {
+                "file": dxf_path.name,
+                "culled": block["buckets"].get("section-callout", 0),
+                "drawn": block["drawn"],
+                "total": block["total"],
+            }
+        )
+
+    culls = [r["culled"] for r in rows]
+    return {
+        "directory": str(directory),
+        "drawings": len(rows),
+        "cull_nothing": sum(1 for c in culls if c == 0),
+        "max_per_sheet": max(culls) if culls else 0,
+        "histogram": {str(c): culls.count(c) for c in sorted(set(culls))},
+        "rows": sorted(rows, key=lambda r: (-r["culled"], r["file"])),
+        "failures": failures,
+    }
+
+
+def print_sweep(result: dict[str, Any], top: int) -> None:
+    """The two headline numbers first, then the sheets that actually cull something."""
+    print(f"\nSection-callout cull sweep -- {result['directory']}")
+    print(f"  drawings censused    {result['drawings']}")
+
+    if result["histogram"]:
+        widest = max(result["histogram"].values())
+        print("\n  entities culled per sheet:")
+        for culled, count in sorted(result["histogram"].items(), key=lambda kv: int(kv[0])):
+            bar = "#" * max(1, round(count * 28 / widest))
+            print(f"    {culled:>3} culled   {bar:<28} {count}")
+
+    doc = DOCUMENTED_CULL
+    print("\n  against the figure recorded in CLAUDE.md:")
+    for key, label in (
+        ("drawings", "drawings swept"),
+        ("cull_nothing", "sheets culling nothing"),
+        ("max_per_sheet", "max cull on any sheet"),
+    ):
+        got, want = result[key], doc[key]
+        verdict = "as documented" if got == want else f"DIFFERS (documented {want})"
+        print(f"    {label:<24} {got:>4}   {verdict}")
+    print(
+        "\n  A difference is not automatically a defect -- adding a drawing moves the\n"
+        "  denominator. A jump in the per-sheet maximum is the failure mode to look at."
+    )
+
+    culling = [r for r in result["rows"] if r["culled"]]
+    if culling:
+        print(f"\n  sheets that cull ({len(culling)}), worst first:")
+        print(f"    {'culled':>6}  {'drawn/total':>12}  file")
+        for row in culling[:top]:
+            print(f"    {row['culled']:>6}  {row['drawn']:>5}/{row['total']:<6}  {row['file']}")
+
+    if result["failures"]:
+        print(f"\n  [!] {len(result['failures'])} sheet(s) could not be censused:")
+        for name, err in result["failures"]:
+            print(f"      {name}: {err}")
+    print()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("dxf", type=Path, help="Path to the DXF (must live under storage/)")
+    parser.add_argument(
+        "dxf", type=Path, nargs="?", help="Path to the DXF (must live under storage/)"
+    )
+    parser.add_argument(
+        "--sweep",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Census every DXF in DIR and report the section-callout cull histogram. "
+        "Skips the text oracle, so it is fast enough to run before landing.",
+    )
     parser.add_argument("--top", type=int, default=15, help="Worst-N text rows to print")
     parser.add_argument("--json", type=Path, default=None, help="Write the full ledger here")
     args = parser.parse_args()
+
+    if args.sweep is not None:
+        sweep_dir = args.sweep if args.sweep.is_absolute() else (REPO_ROOT / args.sweep)
+        if not sweep_dir.is_dir():
+            print(f"No such directory: {sweep_dir}", file=sys.stderr)
+            return 2
+        result = sweep_cull(sweep_dir)
+        print_sweep(result, args.top)
+        if args.json is not None:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(
+                json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            print(f"Sweep written to {args.json}")
+        return 0
+
+    if args.dxf is None:
+        parser.error("give a DXF path, or --sweep DIR")
 
     dxf_path = args.dxf if args.dxf.is_absolute() else (REPO_ROOT / args.dxf)
     if not dxf_path.exists():

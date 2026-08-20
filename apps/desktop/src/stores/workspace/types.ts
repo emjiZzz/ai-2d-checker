@@ -17,6 +17,22 @@ export interface DrawingItem {
    * never "no match". See `isDrawingPairMismatch`.
    */
   drawing_numbers?: string[];
+  /**
+   * Which extraction schema this drawing's entities were written under, and whether that is
+   * behind the current one.
+   *
+   * Optional for the same reason `drawing_numbers` is: a backend predating these fields simply
+   * does not send them, and an absent `extraction_is_stale` means "cannot judge", never
+   * "current". `StaleExtractionBadge` renders nothing in that case rather than warning.
+   *
+   * ⚠ Do NOT recompute staleness by comparing the two numbers here. The server does it beside
+   * `EXTRACTION_SCHEMA_VERSION`; a second copy of the rule in TypeScript is one more thing to
+   * miss when the constant moves, with no shared types to catch it. The numbers are sent only
+   * so the badge can say "v2 of v7".
+   */
+  extraction_schema_version?: number;
+  current_extraction_schema_version?: number;
+  extraction_is_stale?: boolean;
   created_at: string;
 }
 

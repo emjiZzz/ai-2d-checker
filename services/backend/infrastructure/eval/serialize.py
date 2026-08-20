@@ -174,6 +174,18 @@ class EvalDrawing:
     status: str = "completed"
     metadata: dict[str, Any] = field(default_factory=dict)
     entity_counts: dict[str, int] = field(default_factory=dict)
+    #: `EXTRACTION_SCHEMA_VERSION` in force when these entities were extracted.
+    #:
+    #: **0 means unknown, not zero.** Every pair exported before 2026-08-20 lacks the field, so
+    #: a corpus payload can be "captured under an extraction nobody recorded" -- which is the
+    #: state this exists to stop being possible again.
+    #:
+    #: It matters because extraction-time fixes are baked into the payload: the v7 note warns
+    #: that text captured as ground truth via `EntityAddress.text` is wrong on pre-v7 rows,
+    #: where an angular dimension reads `1.05` for a sheet that says `60`-degrees. A label
+    #: authored against that is wrong in a way no downstream check can see, and until now the
+    #: only way to ask was to read entity values and infer.
+    extraction_schema_version: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -184,6 +196,7 @@ class EvalDrawing:
             "status": self.status,
             "metadata": self.metadata,
             "entity_counts": self.entity_counts,
+            "extraction_schema_version": self.extraction_schema_version,
         }
 
     @classmethod
@@ -196,6 +209,9 @@ class EvalDrawing:
             status=str(raw.get("status") or "completed"),
             metadata=raw.get("metadata") or {},
             entity_counts=raw.get("entity_counts") or {},
+            # Absent on every payload written before this field existed. 0 reads as "unknown"
+            # everywhere downstream; it must never be presented as a real schema version.
+            extraction_schema_version=int(raw.get("extraction_schema_version") or 0),
         )
 
     @classmethod
@@ -213,6 +229,9 @@ class EvalDrawing:
             status=str(getattr(doc, "status", "completed") or "completed"),
             metadata=dict(getattr(doc, "metadata", None) or {}),
             entity_counts=dict(getattr(doc, "entity_counts", None) or {}),
+            extraction_schema_version=int(
+                getattr(doc, "extraction_schema_version", 0) or 0
+            ),
         )
 
 

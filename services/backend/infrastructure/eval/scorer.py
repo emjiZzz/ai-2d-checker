@@ -134,6 +134,11 @@ class ExpectedContext:
     texts: set[str]
     coordinates: tuple[float, float] | None
     resolved: bool
+    #: CAD type of the entity this label resolved to ("line", "text", ...), or "" when the
+    #: address did not resolve. Kept because it is the only place the entity is in hand --
+    #: `Prediction` never carries one, so this is the sole side on which the subpopulation
+    #: question can be asked at all. See `ScoreReport.recall_by_entity_type`.
+    entity_type: str = ""
 
     @classmethod
     def build(
@@ -154,7 +159,13 @@ class ExpectedContext:
             anchor = entity_anchor(entity)
             if anchor and len(anchor) >= 2:
                 point = (float(anchor[0]), float(anchor[1]))
-        return cls(finding=finding, texts=texts, coordinates=point, resolved=entity is not None)
+        return cls(
+            finding=finding,
+            texts=texts,
+            coordinates=point,
+            resolved=entity is not None,
+            entity_type=str(getattr(entity, "entity_type", "") or "").lower(),
+        )
 
 
 @dataclass
@@ -446,6 +457,56 @@ class CorpusScore:
         scores = [s for s in scores if s is not None]
         return sum(scores) / len(scores) if scores else None
 
+    def recall_by_entity_type(self) -> dict[str, dict[str, Any]]:
+        """Recall split by the CAD type of the entity each expected finding addresses.
+
+        ## Why recall only, and not precision
+
+        `per_category` reports precision, recall and F1 because a `Prediction` carries its own
+        category. **It does not carry an entity type** -- the engine reports a discrepancy, not
+        the kind of CAD entity underneath it -- so a false positive cannot be attributed to a
+        type without re-resolving its handle, which is a different and lossier operation than
+        the one `ExpectedContext` already did.
+
+        So this reports `tp` / `fn` / `recall`, which come entirely from the expected side where
+        the entity is in hand, and **omits precision rather than inventing a denominator**. A
+        per-type precision computed from an unattributable numerator would read perfectly and
+        mean nothing, which is the exact failure this method exists to expose.
+
+        ## Why it exists
+
+        Categories are zone-based (`notes_section`, `title_block`), so a failure confined to an
+        entity *type* is invisible in every number the eval prints. Measured 2026-08-20, the
+        address resolver returned the wrong entity for clicks on untextured geometry while
+        **every one of 1541 TEXT entities resolved correctly** -- the aggregate read fine and
+        the per-type split made it obvious in one line.
+
+        An expectation whose address did not resolve is bucketed as `"<unresolved>"` rather than
+        dropped: it is a corpus defect, and silently excluding it would shrink the denominator
+        of whichever type it belonged to.
+        """
+        buckets: dict[str, dict[str, int]] = {}
+
+        def bucket(name: str) -> dict[str, int]:
+            return buckets.setdefault(name or "<unresolved>", {"tp": 0, "fn": 0})
+
+        for pair in self.scored:
+            for match in pair.matches:
+                bucket(match.expected.entity_type)["tp"] += 1
+            for context in pair.missed:
+                bucket(context.entity_type)["fn"] += 1
+
+        out: dict[str, dict[str, Any]] = {}
+        for name, counts in sorted(buckets.items()):
+            tp, fn = counts["tp"], counts["fn"]
+            out[name] = {
+                "tp": tp,
+                "fn": fn,
+                "n": tp + fn,
+                "recall": tp / (tp + fn) if (tp + fn) else None,
+            }
+        return out
+
     def status_confusion(self) -> Counter:
         """(expected, predicted) status pairs over matched findings.
 
@@ -495,6 +556,8 @@ class CorpusScore:
             "micro": self.metrics(),
             "macro_f1": self.macro_f1(),
             "per_category": {c: self.metrics(c) for c in CATEGORIES},
+            # Recall only -- a Prediction carries no entity type. See the method.
+            "recall_by_entity_type": self.recall_by_entity_type(),
             "status_confusion": {f"{a}->{b}": n for (a, b), n in self.status_confusion().items()},
             "category_attribution": {
                 k: (dict(v) if isinstance(v, Counter) else v)

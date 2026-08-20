@@ -398,6 +398,11 @@ class PairSide:
     # The sheet-layout key a hand-aligned zone template would be stored under. Recorded
     # because an offline run cannot resolve one — see `zone_template_risk()`.
     zone_signature: str = ""
+    # `EXTRACTION_SCHEMA_VERSION` this side's entities were extracted under, mirrored up from
+    # `{side}.drawing.json` so the question "was this pair captured from a stale drawing?" can
+    # be answered from the manifest alone, without loading a payload. **0 means unknown** --
+    # every pair exported before 2026-08-20 predates the field.
+    extraction_schema_version: int = 0
     # Digest of `{side}.ocr.json`, the captured title-block OCR reading. Empty when the
     # drawing had no cached reading at capture time. See `CorpusPair.restore_ocr_cache`.
     ocr_sha256: str = ""
@@ -427,6 +432,7 @@ class PairSide:
             "entities_sha256": self.entities_sha256,
             "entity_count": self.entity_count,
             "zone_signature": self.zone_signature,
+            "extraction_schema_version": self.extraction_schema_version,
             "ocr_sha256": self.ocr_sha256,
         }
 
@@ -451,6 +457,7 @@ class PairSide:
             entities_sha256=str(raw.get("entities_sha256") or ""),
             entity_count=int(raw.get("entity_count") or 0),
             zone_signature=str(raw.get("zone_signature") or ""),
+            extraction_schema_version=int(raw.get("extraction_schema_version") or 0),
             ocr_sha256=str(raw.get("ocr_sha256") or ""),
             # zone_template is filled in by `load_corpus` from the manifest-level map; a
             # PairSide built straight from a dict is deliberately "never captured".

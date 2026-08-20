@@ -66,8 +66,16 @@
 > and it went unchecked for the one commit in which it was false. Verify before inheriting it.
 >
 > ⚠ **A full `tools/eval.py` run no longer reproduces the committed baselines, and that is the
-> corpus growing, not a regression.** Use `--provenance mutation` for the invariant — it
-> reproduces `baseline-v48.json` exactly at P 0.9796 / R 0.8727 / F1 0.9231.
+> corpus growing, not a regression.** Use `--provenance mutation` for the invariant.
+>
+> ⚠ **Re-measured 2026-08-20: it no longer reproduces `baseline-v48.json` either.** That run now
+> reports **P 0.96 / R 0.8727 / F1 0.9143** (tp 48, fp 2, fn 7, duplicates 1) against the
+> committed v48's P 0.9796 / F1 0.9231 — the engine has moved v48 → v53. Recall is unchanged.
+> Verified as pre-existing by running it with and without that day's scorer change: byte-identical
+> counts, so the drift is the engine's, not the harness's.
+>
+> ⚠ **`--baseline <path>` WRITES that file, it does not compare against it.** Passing the
+> committed fixture overwrites it. Use `--json <scratch>` to inspect a run.
 >
 > 🔴 **`line_attribute_differ` got its first measurement from that pair and it is negative** — it
 > produced 2 of the 4 templated false positives (`CONTINUOUS 1mm x1`, `CENTER 0.5mm x1` reported
@@ -352,9 +360,40 @@ smaller `drawn`, deliberately: folding a deliberate cull into the denominator's 
 harness that exists to detect **missing geometry** stops being able to. If you add another cull,
 give it a bucket and update this number with its breakdown.
 
-The cull is swept across `storage/uploads` before landing: **23 of 32 drawings cull nothing, 9
-cull 8–10 entities each, and the maximum on any sheet is 10.** Re-run that sweep if you touch the
-rule — a jump in those numbers is the failure mode, and it does not show up as a test failure.
+The cull is swept across `storage/uploads` before landing. **That sweep now has a producer** —
+until 2026-08-20 this paragraph quoted figures no command could reproduce, because `main()` took a
+single DXF:
+
+```bash
+services/backend/.venv/Scripts/python.exe tools/render_audit.py --sweep storage/uploads
+```
+
+Measured 2026-08-20: **37 of 55 drawings cull nothing, 18 cull 1–8 entities, and the maximum on
+any sheet is 8.** Re-run it if you touch the rule — a jump in those numbers is the failure mode,
+and it does not show up as a test failure.
+
+⚠ The previous figures here read **23 of 32 … maximum 10**, and the denominator alone shows why
+they were quoted rather than measured: `storage/uploads` holds 55 drawings, not 32. The sweep
+skips the text oracle, so it is fast enough to actually run.
+
+Address resolution has the same kind of harness, for the pipeline that turns a click into
+ground truth. Run it after touching `address_resolver.py`, `manual_check_bridge.py` or
+`useEntityPicking.ts`:
+
+```bash
+services/backend/.venv/Scripts/python.exe tools/address_audit.py
+```
+
+Healthy at 2026-08-20 over the 7 non-held-out human pairs: **97.2% correct, 0 wrong, 88
+unresolved**, and a **3029 / 3029** round trip through `build_labels`. The WRONG column is the
+one that matters and its expected value is **0** — a non-zero entry means the resolver handed
+back an entity the engineer did not pick, with no error anywhere.
+
+⚠ **Read it per row, not on the total.** The defect it was built for sat at `line` 19% while
+`text` was at 100%, and the aggregate looked fine. ⚠ It probes with a **simulated click**
+(segment midpoint, point on a curve), never the entity's own anchor — anchoring is the best case
+and hides the entire defect class. Reverting `_entity_distance` must drop this to ~62% with 28
+wrong; if it does not, the harness has stopped working.
 
 This harness is now the **only** way to tell whether a sheet's extraction is complete. There is no
 raster fallback in the app to eyeball against — `renderMode` was deleted and the PNG display path
@@ -382,8 +421,24 @@ whole re-extraction.
 `EXTRACTION_SCHEMA_VERSION` (`extracted_entity.py`) says which drawings need it: it is stamped
 onto each `DrawingDocument` as `extraction_schema_version`, so a drawing predating a fix is
 identifiable without re-reading its entities. **Bump it when you add an extraction-time field**,
-with a `# vN:` note saying what a stale row is missing and how it degrades. Currently **6**.
-Nothing reads it yet — that is a gap, not permission to leave it stale.
+with a `# vN:` note saying what a stale row is missing and how it degrades. Currently **7**.
+
+**That gap is closed as of 2026-08-20** — this line read *"nothing reads it yet"* for weeks, and
+it was accurate: the field was written, copied into an `EntityAddress` and named in a docstring,
+but never queried.
+
+```bash
+services/backend/.venv/Scripts/python.exe tools/extraction_status.py
+```
+
+It groups every stored drawing by the version it was extracted at and prints what each stale one
+is missing, parsing the `# vN:` notes **out of `extracted_entity.py` itself** rather than
+restating them — a second copy would be correct until v8 and silently wrong after. Report only;
+it never re-extracts.
+
+🔴 First run: **36 of 55 stored drawings are stale, 20 of them at v2** — five versions
+behind, so their dimension text anchors, leader hooklines, arrowheads and angular-dimension
+degrees are all absent. They render wrong and have been rendering wrong.
 
 ⚠ **`_dxf_get` tells you the effective value, `_dxf_is_set` tells you whether the file said it.**
 ezdxf returns the DXF-spec default for an unset optional, so a LEADER that declares neither reads

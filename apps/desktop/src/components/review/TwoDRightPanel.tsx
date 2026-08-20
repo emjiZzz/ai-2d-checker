@@ -10,6 +10,7 @@ import { useAuditPolling } from "../../hooks/useAuditPolling";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { cleanCadText } from "./renderEntities";
+import { StaleExtractionBadge } from "./StaleExtractionBadge";
 import { CopilotPanel } from "../copilot/CopilotPanel";
 import { useCopilotStore } from "../../stores/copilotStore";
 import { sendCopilotMessage } from "../../services/copilotService";
@@ -23,6 +24,7 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
   const [severityFilter, setSeverityFilter] = useState<string>("all");
 
   const newDrawing = useWorkspaceStore((s) => s.newDrawing);
+  const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
   const auditStatus = useWorkspaceStore((s) => s.auditStatus);
   const complianceScore = useWorkspaceStore((s) => s.complianceScore);
   const violations = useWorkspaceStore((s) => s.violations);
@@ -155,6 +157,14 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
       {/* Mode 1: Stage 2 Compliance Auditor */}
       {panelMode === "auditor" && (
         <div className="flex flex-col w-full h-full overflow-y-auto min-h-0">
+          {/*
+            Above the audit trigger on purpose: an audit run against a sheet that is drawing
+            its own geometry wrong is measuring the extraction, not the drawing. Both render
+            nothing when the drawing is current, so a healthy database shows no chrome here.
+          */}
+          <StaleExtractionBadge drawing={oldDrawing} label="Reference" />
+          <StaleExtractionBadge drawing={newDrawing} label="Revision" />
+
           {/* Grounding & Trigger Box */}
           <div className="bg-bg-card border border-border-color rounded-xl p-4 backdrop-blur-md shadow-xs mb-3 shrink-0">
             <h3 className="text-xs font-bold mb-3 flex items-center gap-2 border-l-[3px] border-accent-cyan pl-2 text-text-primary uppercase tracking-wide">

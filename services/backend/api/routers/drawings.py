@@ -73,20 +73,7 @@ async def upload_drawing(file: UploadFile = File(...)):
     return StandardResponse(
         success=True,
         data=UploadResponse(
-            drawing=DrawingResponse(
-                id=str(drawing.id),
-                file_name=drawing.file_name,
-                file_path=drawing.file_path,
-                file_hash=drawing.file_hash,
-                file_size_bytes=drawing.file_size_bytes,
-                format=drawing.format,
-                status=drawing.status,
-                entity_counts=drawing.entity_counts,
-                metadata=drawing.metadata,
-                drawing_numbers=drawing.drawing_numbers,
-                created_at=drawing.created_at,
-                updated_at=drawing.updated_at
-            ),
+            drawing=DrawingResponse.from_document(drawing),
             job=job_response,
             is_duplicate=is_duplicate
         )
@@ -189,20 +176,7 @@ async def list_drawings():
         valid_docs.append(d)
 
     res = [
-        DrawingResponse(
-            id=str(d.id),
-            file_name=d.file_name,
-            file_path=d.file_path,
-            file_hash=d.file_hash,
-            file_size_bytes=d.file_size_bytes,
-            format=d.format,
-            status=d.status,
-            entity_counts=d.entity_counts,
-            metadata=d.metadata,
-            drawing_numbers=d.drawing_numbers,
-            created_at=d.created_at,
-            updated_at=d.updated_at
-        )
+        DrawingResponse.from_document(d)
         for d in valid_docs
     ]
     return StandardResponse(success=True, data=res)
@@ -240,20 +214,7 @@ async def get_drawing(id: str):
     drawing = await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
     return StandardResponse(
         success=True,
-        data=DrawingResponse(
-            id=str(drawing.id),
-            file_name=drawing.file_name,
-            file_path=drawing.file_path,
-            file_hash=drawing.file_hash,
-            file_size_bytes=drawing.file_size_bytes,
-            format=drawing.format,
-            status=drawing.status,
-            entity_counts=drawing.entity_counts,
-            metadata=drawing.metadata,
-            drawing_numbers=drawing.drawing_numbers,
-            created_at=drawing.created_at,
-            updated_at=drawing.updated_at
-        )
+        data=DrawingResponse.from_document(drawing)
     )
 
 

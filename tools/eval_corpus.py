@@ -67,6 +67,9 @@ from services.backend.infrastructure.audit.bom.zone_geometry import (  # noqa: E
     point_in_shape,
     zone_polygons,
 )
+from services.backend.domain.models.extracted_entity import (  # noqa: E402
+    EXTRACTION_SCHEMA_VERSION,
+)
 
 MONGO_URI_DEFAULT = "mongodb://127.0.0.1:27017"
 MONGO_DB_DEFAULT = "ai_2d_checker"
@@ -116,6 +119,44 @@ def _find_ocr_reading(drawing_id: str, file_hash: str) -> str | None:
     return None
 
 
+def warn_if_stale_extraction(side: str, drawing: EvalDrawing) -> list[str]:
+    """Complain, at export time, about capturing a pair from an out-of-date extraction.
+
+    The field alone would be inert. `EXTRACTION_SCHEMA_VERSION` spent weeks stamped onto every
+    `DrawingDocument` with nothing reading it -- CLAUDE.md called that "a gap, not permission to
+    leave it stale" -- and adding a second unread field to the corpus would repeat exactly that
+    mistake one layer down.
+
+    Export is the right moment because it is the last one where the problem is cheap. Once a
+    pair is exported its payload is frozen by sha256 and its labels are authored against it; a
+    stale capture discovered later means re-exporting and re-labelling by hand.
+
+    What is actually at risk is the *labels*, not the score: the v7 note records that text
+    captured as ground truth through `EntityAddress.text` is wrong on pre-v7 rows, where an
+    angular dimension reads `1.05` on a sheet that says 60 degrees. Measured 2026-08-20, the
+    committed corpus is clean -- but that had to be established by reading entity values and
+    inferring, because nothing recorded the version. That is what this stops.
+
+    Returns the warning lines rather than printing them, so the rule is testable without
+    capturing stdout.
+    """
+    stored = drawing.extraction_schema_version
+    if stored >= EXTRACTION_SCHEMA_VERSION:
+        return []
+    if stored == 0:
+        return [
+            f"  [warn] {side}: this drawing records no extraction schema version, so it cannot "
+            f"be told apart from one extracted before the field existed. Re-extract it "
+            f"(POST /drawings/{{id}}/reextract) to capture at v{EXTRACTION_SCHEMA_VERSION}."
+        ]
+    return [
+        f"  [warn] {side}: extracted at v{stored}, current is v{EXTRACTION_SCHEMA_VERSION}. "
+        f"Extraction-time fixes are baked into the payload, so this pair freezes the older "
+        f"behaviour -- and any label quoting entity text inherits it. Re-extract before "
+        f"exporting unless you specifically want the old capture."
+    ]
+
+
 def _write_side(
     pair_id: str,
     side: str,
@@ -152,6 +193,7 @@ def _write_side(
         entity_count=len(entities),
         # Pure function of render_bounds, so it is recorded without needing a database.
         zone_signature=zone_signature(drawing.metadata.get("render_bounds") or []) or "",
+        extraction_schema_version=drawing.extraction_schema_version,
         ocr_sha256=ocr_sha,
     )
 
@@ -271,6 +313,8 @@ def cmd_export(args: argparse.Namespace) -> int:
                 f"fractions of it, so zone detection will behave differently here than in "
                 f"the app."
             )
+        for line in warn_if_stale_extraction(side, drawing):
+            print(line)
         sides[side] = _write_side(args.pair_id, side, drawing, entities)
         print(f"  {side}: {drawing.file_name} ({len(entities)} entities, id={drawing_id})")
 
@@ -325,6 +369,10 @@ def cmd_export_dxf(args: argparse.Namespace) -> int:
             format=path.suffix.lstrip(".").lower() or "dxf",
             metadata=metadata,
             entity_counts=counts,
+            # This path parses the DXF here and now, with the current extractor, so the
+            # payload is current by construction. The Mongo path is the one that can hand
+            # back a stale extraction, and `warn_if_stale_extraction` catches it there.
+            extraction_schema_version=EXTRACTION_SCHEMA_VERSION,
         )
         entities = [EvalEntity.from_document(item) for item in (layers + raw_entities)]
         sides[side] = _write_side(args.pair_id, side, drawing, entities)
