@@ -5,7 +5,6 @@ import { useAuditStore } from "../../stores/auditStore";
 import { useNavStore } from "../../stores/navStore";
 import { buildHeaders, baseUrl, parseOrThrow } from "../../services/fetchUtils";
 import { useRoomStore } from "../../stores/roomStore";
-import { Button } from "../../components/ui/Button";
 
 // Sub-view component imports (Phase 1 refactor)
 import { WorkspaceView } from "./WorkspaceView";
@@ -16,6 +15,7 @@ import { RoomsView } from "./RoomsView";
 import { useDrawingsList } from "../../hooks/useDrawings";
 import { fetchDrawing } from "../../services/drawingsApi";
 import { useUploadJobPolling } from "../../hooks/useUploadJobPolling";
+import { isPrototypeMode } from "../../config/features";
 
 export const AuditWorkspace: React.FC = () => {
   // Selected workspace navigation sub-view
@@ -36,7 +36,7 @@ export const AuditWorkspace: React.FC = () => {
     updateSession
   } = useAuditStore();
 
-  const { activeRoom, leaveRoom, updateRoom } = useRoomStore();
+  const { activeRoom, updateRoom } = useRoomStore();
 
   const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
   const newDrawing = useWorkspaceStore((s) => s.newDrawing);
@@ -51,6 +51,12 @@ export const AuditWorkspace: React.FC = () => {
   // Call the polling hook for both sides
   useUploadJobPolling(activeOldJobId, "old");
   useUploadJobPolling(activeNewJobId, "new");
+
+  useEffect(() => {
+    if (isPrototypeMode()) {
+      useWorkspaceStore.setState({ hasHydrated: true });
+    }
+  }, []);
 
   useEffect(() => {
     if (activeRoom) {
@@ -170,12 +176,6 @@ export const AuditWorkspace: React.FC = () => {
           the size on re-show and no redraws run while hidden. */}
       {activeRoom && (
         <div className={`flex-col w-full h-full ${currentNav === "workspace" ? "flex" : "hidden"}`}>
-          <div className="flex items-center justify-between px-4 py-2 bg-bg-dark border-b border-border-color shrink-0">
-            <span className="text-sm font-semibold text-text-primary">
-              Room: <span className="text-accent-cyan">{activeRoom.name}</span>
-            </span>
-            <Button variant="ghost" size="sm" onClick={leaveRoom}>← Back to Rooms</Button>
-          </div>
           <WorkspaceView currentNav="workspace" />
         </div>
       )}

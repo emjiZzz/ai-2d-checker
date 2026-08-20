@@ -60,13 +60,36 @@ Wait until you see: `Uvicorn running on http://0.0.0.0:8080`
 
 ### Step 2 — Start the Desktop Window
 
-Open a **second** terminal in the project root and run:
+Open a **second** terminal in the project root and choose your mode:
 
+#### Option A: Full Development Mode (All Features)
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start_desktop.ps1
 ```
+> 💡 Includes Authentication/Login, 3D Workspace, History sessions, Standards, and AI Engine/Copilot.
 
-> ⏳ First run takes 5–10 minutes (compiling Rust). After that it's fast.
+#### Option B: Prototype Mode (Streamlined 2D CAD Only)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_prototype.ps1
+```
+*or:*
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_desktop.ps1 -Prototype
+```
+> 🚀 Bypasses Login straight to 2D CAD Workspace, hides 3D/History/Standards tabs, and runs deterministic visual/physical difference checks offline.
+
+---
+
+### Step 3 — Building the Desktop Installer (.msi / .exe)
+
+To build the standalone Windows installer pre-packaged in **Prototype Mode**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_prototype.ps1
+```
+The output installer will be generated in `apps/desktop/src-tauri/target/release/bundle/msi/`.
+
+---
 
 ### Optional — View the API Docs
 
@@ -94,7 +117,10 @@ ai-2d-checker/
 ├── storage/              ← ⚠️ Git-ignored. Holds drawings, PDFs, DB data
 ├── tools/
 │   └── scripts/          ← Setup and maintenance scripts
-├── start_desktop.ps1     ← ← ← Use this to launch the desktop app!
+├── start_desktop.ps1     ← Launch Desktop App (Full Dev Mode, or -Prototype)
+├── start_prototype.ps1   ← Launch Desktop App (Prototype Mode Shortcut)
+├── build_prototype.ps1   ← Build standalone .msi/.exe Prototype Installer
+├── start-mongo.ps1       ← Start local MongoDB Community Server
 ├── portable-msvc.py      ← Script to download MSVC linker (one-time setup)
 ├── README.md             ← You are here
 └── README_SETUP.txt      ← Full beginner setup guide
@@ -107,6 +133,12 @@ ai-2d-checker/
 ```powershell
 # Install all packages (run after cloning or after pulling new changes)
 pnpm install
+
+# Run web dev in Prototype Mode (no Tauri / browser only)
+pnpm dev:prototype
+
+# Build web bundle in Prototype Mode
+pnpm build:prototype
 
 # Check code for errors
 pnpm run lint

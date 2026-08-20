@@ -122,7 +122,7 @@ export const ManualMarkingList: React.FC = () => {
               color: 'var(--text-primary)',
             }}
           >
-            Manual Engineer Check
+            Ground Truth Markings
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
             {manualSessionId

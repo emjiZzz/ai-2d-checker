@@ -9,6 +9,7 @@ import { usePhysicalComparison } from "../../hooks/usePhysicalComparison";
 import { getComparisonStages, getComparisonMethodLabel } from "../../utils/comparisonStages";
 import { Button } from "../ui/Button";
 import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
+import { isPrototypeMode } from "../../config/features";
 
 interface TwoDLeftPanelProps {
   currentNav: string;
@@ -105,7 +106,7 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
             <Sparkles size={14} className="text-accent-cyan" />
           </div>
           <span className="tlp-title text-xs font-bold tracking-wider text-text-primary uppercase truncate">
-            AI Comparison
+            {isPrototypeMode() ? "CAD Comparison" : "AI Comparison"}
           </span>
         </div>
 
@@ -173,7 +174,9 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
                 Ready for Comparison
               </h3>
               <p className="tlp-idle-body text-[15px] text-text-muted max-w-[320px] w-full leading-loose">
-                Execute the AI Engine to analyze structural and metadata differences between the original and KMTI drawing.
+                {isPrototypeMode()
+                  ? "Execute physical CAD comparison to analyze structural and visual differences between drawings."
+                  : "Execute the AI Engine to analyze structural and metadata differences between the original and KMTI drawing."}
               </p>
             </div>
 

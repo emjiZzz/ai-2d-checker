@@ -11,8 +11,12 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useGlobalFileUpload } from "./hooks/useGlobalFileUpload";
 import { QueryErrorBoundary } from "./components/ui/QueryErrorBoundary";
 import { setupConnectionSync } from "./services/queryClient";
+import { EngineerPromptModal } from "./components/auth/EngineerPromptModal";
+
+import { isPrototypeMode } from "./config/features";
 
 function App() {
+  const isProto = isPrototypeMode();
   const { backendUrl, status: connectionStatus, startPolling, stopPolling } = useConnectionStore();
   const { initialize: initializeTheme } = useThemeStore();
   const { isAuthenticated, isInitializing, user, initialize: initializeAuth } = useAuthStore();
@@ -32,12 +36,28 @@ function App() {
   }, [initializeTheme]);
 
   useEffect(() => {
-    initializeAuth();
-  }, [initializeAuth]);
+    if (!isProto) {
+      initializeAuth();
+    }
+  }, [initializeAuth, isProto]);
 
-  // Maximize window on login, restore on logout
+  // Maximize window on login (or immediately on startup in prototype mode)
   const prevAuthenticated = useRef<boolean | null>(null);
   useEffect(() => {
+    if (isProto) {
+      if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+        (async () => {
+          try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            await getCurrentWindow().maximize();
+          } catch (err) {
+            console.warn("Window maximize failed in prototype mode:", err);
+          }
+        })();
+      }
+      return;
+    }
+
     if (isInitializing) return; // wait until session restore is complete
     const justLoggedIn = !prevAuthenticated.current && isAuthenticated;
     const justLoggedOut = prevAuthenticated.current && !isAuthenticated;
@@ -58,7 +78,7 @@ function App() {
         console.warn("Window resize after auth change failed:", err);
       }
     })();
-  }, [isAuthenticated, isInitializing]);
+  }, [isAuthenticated, isInitializing, isProto]);
 
   // Sync TanStack Query onlineManager with backend connection health status
   useEffect(() => {
@@ -68,10 +88,10 @@ function App() {
 
   // Re-verify auth session when backend connection becomes online
   useEffect(() => {
-    if (connectionStatus === "online") {
+    if (!isProto && connectionStatus === "online") {
       initializeAuth();
     }
-  }, [connectionStatus, initializeAuth]);
+  }, [connectionStatus, initializeAuth, isProto]);
 
   // Poll connection on component mount
   useEffect(() => {
@@ -80,6 +100,11 @@ function App() {
   }, [backendUrl, startPolling, stopPolling]);
 
   const renderContent = () => {
+    // In prototype mode, skip login and render workspace directly
+    if (isProto) {
+      return <AuditWorkspace />;
+    }
+
     // Session restore now reads from Tauri's encrypted secure storage (Phase 10),
     // which is inherently async — gate on isInitializing so LoginPage doesn't
     // flash before a valid persisted session has had a chance to resolve.
@@ -140,6 +165,8 @@ function App() {
           </div>
         </div>
       )}
+      {/* Prototype Engineer Identity Prompt */}
+      {isProto && <EngineerPromptModal />}
     </div>
   );
 }

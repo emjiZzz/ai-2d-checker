@@ -17,6 +17,7 @@ import {
   type EntityAddressPayload,
   type MarkingStatus,
 } from "../../../services/groundTruthApi";
+import { useEngineerStore } from "../../engineerStore";
 
 /**
  * Manual engineer check — ground-truth capture.
@@ -256,10 +257,12 @@ export const createManualCheckSlice: StateCreator<
     if (openInFlight === pair) return;
     openInFlight = pair;
     try {
+      const annotator = useEngineerStore.getState().engineerName || undefined;
       const session = await createManualCheckSession({
         room_id: roomId,
         ref_drawing_id: refDrawingId,
         rev_drawing_id: revDrawingId,
+        annotator,
       });
       // Reload rather than assume empty: reopening a room must show the markings already made.
       //

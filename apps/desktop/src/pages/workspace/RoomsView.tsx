@@ -1,86 +1,196 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { Plus, X, Trash2, ArrowRight, FileText, Layers, ShieldCheck, FolderGit2, Search, ArrowUpDown, Clock } from "lucide-react";
 import { useRoomStore, type RoomMode } from "../../stores/roomStore";
 import { useRooms } from "../../hooks/useRooms";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
+import { ConfirmModal } from "../../components/ui/ConfirmModal";
+import { isPrototypeMode } from "../../config/features";
 
-// The create form used to carry a four-way COMPARISON ENGINE picker behind a DEV badge.
-// `rag_ai`, `ai_vision` and `hybrid` were removed (ADR-006), and a chooser with one option
-// is not a choice — so the whole section is gone rather than reduced to a single button.
-// `comparison_method` is no longer sent on create; the server defaults it to "deterministic".
+type StatusFilter = "all" | "ready" | "unassigned";
+type SortOption = "recent" | "name" | "created";
+
+const ITEMS_PER_PAGE = 12;
 
 export const RoomsView: React.FC = () => {
-  // useRooms() owns the server state: list, loading, optimistic mutations.
   const { rooms, isLoading, createRoom, deleteRoom } = useRooms();
-
-  // openRoom() stays in Zustand: it orchestrates a multi-step waterfall of
-  // sequential API calls that hydrate workspaceStore — not a simple query.
   const { openRoom } = useRoomStore();
 
   const [isCreating, setIsCreating] = useState(false);
-
-  // Form state (pure client state — correct home is useState, not the cache)
   const [name, setName] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [description, setDescription] = useState("");
-  // What the room is for. Chosen here and fixed for the room's life: the two workflows are
-  // non-overlapping by construction, so an AI room never shows stamping tools and a manual room
-  // never shows engine findings.
-  const [roomMode, setRoomMode] = useState<RoomMode>("ai_comparison");
+  const [roomMode, setRoomMode] = useState<RoomMode>(isPrototypeMode() ? "manual_check" : "ai_comparison");
+
+  // Deletion confirmation modal state
+  const [deletingRoom, setDeletingRoom] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Search, Filter & Sort State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("recent");
+  const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Prototype isolation
+  const baseRooms = useMemo(() => {
+    return isPrototypeMode()
+      ? rooms.filter((r) => r.room_mode === "manual_check")
+      : rooms;
+  }, [rooms]);
+
+  // Global Keyboard Shortcut: '/' to focus search, 'Escape' to blur/clear
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isCreating) return;
+      if (e.key === "/" && document.activeElement !== searchInputRef.current && !(document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
+        if (searchQuery) {
+          setSearchQuery("");
+        } else {
+          searchInputRef.current?.blur();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCreating, searchQuery]);
+
+  // Filtered & Sorted Rooms Pipeline
+  const filteredRooms = useMemo(() => {
+    return baseRooms.filter((room) => {
+      // 1. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = room.name.toLowerCase().includes(q);
+        const matchesClient = room.client_name?.toLowerCase().includes(q);
+        const matchesDesc = room.description?.toLowerCase().includes(q);
+        const matchesOld = room.active_old_drawing_name?.toLowerCase().includes(q);
+        const matchesNew = room.active_new_drawing_name?.toLowerCase().includes(q);
+        if (!matchesName && !matchesClient && !matchesDesc && !matchesOld && !matchesNew) {
+          return false;
+        }
+      }
+
+      // 2. Status Filter
+      if (statusFilter === "ready") {
+        if (!room.active_old_drawing_name || !room.active_new_drawing_name) return false;
+      } else if (statusFilter === "unassigned") {
+        if (room.active_old_drawing_name && room.active_new_drawing_name) return false;
+      }
+
+      return true;
+    }).sort((a, b) => {
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortBy === "created") {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeB - timeA;
+      }
+      // default: "recent" (last_opened_at or updated_at)
+      const timeA = a.last_opened_at ? new Date(a.last_opened_at).getTime() : (a.updated_at ? new Date(a.updated_at).getTime() : 0);
+      const timeB = b.last_opened_at ? new Date(b.last_opened_at).getTime() : (b.updated_at ? new Date(b.updated_at).getTime() : 0);
+      return timeB - timeA;
+    });
+  }, [baseRooms, searchQuery, statusFilter, sortBy]);
+
+  // Reset pagination limit on filter/search change
+  useEffect(() => {
+    setDisplayLimit(ITEMS_PER_PAGE);
+  }, [searchQuery, statusFilter, sortBy]);
+
+  // Lazy Loading Sentinel (IntersectionObserver)
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && displayLimit < filteredRooms.length) {
+          setDisplayLimit((prev) => Math.min(prev + ITEMS_PER_PAGE, filteredRooms.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" }
+    );
+
+    const currentSentinel = sentinelRef.current;
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+    return () => {
+      if (currentSentinel) observer.unobserve(currentSentinel);
+    };
+  }, [displayLimit, filteredRooms.length]);
+
+  const visibleRooms = useMemo(() => {
+    return filteredRooms.slice(0, displayLimit);
+  }, [filteredRooms, displayLimit]);
+
+  // Counts for filter pills
+  const counts = useMemo(() => {
+    const readyCount = baseRooms.filter((r) => r.active_old_drawing_name && r.active_new_drawing_name).length;
+    return {
+      all: baseRooms.length,
+      ready: readyCount,
+      unassigned: baseRooms.length - readyCount,
+    };
+  }, [baseRooms]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     try {
-      const newRoom = await createRoom({ name, description, client_name: clientName, room_mode: roomMode });
+      const newRoom = await createRoom({
+        name: name.trim(),
+        description: "",
+        client_name: "",
+        room_mode: isPrototypeMode() ? "manual_check" : roomMode
+      });
       setIsCreating(false);
       setName("");
-      setClientName("");
-      setDescription("");
-      setRoomMode("ai_comparison");
-      // openRoom is a Zustand action that hydrates the workspace — called after
-      // the Query mutation resolves so we have the real server-generated ID.
+      setRoomMode(isPrototypeMode() ? "manual_check" : "ai_comparison");
       openRoom(newRoom.id);
     } catch {
-      // createRoom throws on failure; the optimistic row was already rolled back
-      // by useRooms' onError handler, so no manual state cleanup needed here.
+      // rollback handled by useRooms
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, roomId: string) => {
-    e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this room?")) {
-      await deleteRoom(roomId);
+  const handleConfirmDelete = async () => {
+    if (!deletingRoom) return;
+    setIsDeleting(true);
+    try {
+      await deleteRoom(deletingRoom.id);
+      setDeletingRoom(null);
+    } catch {
+      // rollback handled by useRooms
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  // isFetching (not isLoading) distinguishes a background SWR refetch from
-  // an initial cold load. We only show the skeleton on first load.
-  if (isLoading && rooms.length === 0) {
+  if (isLoading && baseRooms.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto p-10 w-full bg-bg-dark min-h-full relative selection:bg-accent-cyan/30">
-        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-accent-cyan/5 rounded-full blur-[120px] pointer-events-none"></div>
-        <div className="max-w-5xl mx-auto relative z-10">
-          <div className="flex items-end justify-between mb-10 mt-4">
+      <div className="flex-1 overflow-y-auto p-8 w-full bg-bg-dark min-h-full">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-end justify-between mb-8 pb-4 border-b border-border-color">
             <div>
-              <h1 className="text-4xl font-black text-text-primary m-0 tracking-tight">Test Area</h1>
-              <p className="text-sm text-text-muted mt-2 font-medium tracking-wide">Manage your audit rooms and test sessions.</p>
+              <Skeleton className="h-4 w-36 mb-2 rounded-none" />
+              <Skeleton className="h-8 w-64 rounded-none" />
             </div>
-            <Skeleton className="h-11 w-36 rounded-lg" />
+            <Skeleton className="h-10 w-36 rounded-none" />
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-bg-card border border-border-color rounded-2xl p-6 flex items-start gap-5">
-                <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
-                <div className="flex-1 min-w-0 pt-1">
-                  <Skeleton className="h-5 w-48 rounded-md mb-3" />
-                  <Skeleton className="h-3 w-72 rounded-md mb-6" />
-                  <div className="pt-4 border-t border-border-color flex gap-4">
-                    <Skeleton className="h-6 w-full rounded-md" />
-                  </div>
+          <div className="grid grid-cols-1 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-bg-card border border-border-color p-5 flex items-center gap-5 rounded-none">
+                <Skeleton className="w-12 h-12 rounded-none shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <Skeleton className="h-5 w-48 mb-2 rounded-none" />
+                  <Skeleton className="h-3 w-72 rounded-none" />
                 </div>
               </div>
             ))}
@@ -91,392 +201,354 @@ export const RoomsView: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-start flex-1 overflow-y-auto p-6 md:p-8 pb-12 w-full bg-bg-dark min-h-full relative selection:bg-accent-cyan/30">
-      {/* Ambient background glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[300px] bg-accent-cyan/[0.03] rounded-full blur-[140px] pointer-events-none"></div>
+    <div className="flex flex-col items-center justify-start flex-1 overflow-y-auto p-6 md:p-10 pb-16 w-full bg-bg-dark min-h-full select-none">
+      <div className="w-full max-w-6xl flex flex-col flex-1">
 
-      <div className="w-full max-w-[1400px] relative z-10 flex flex-col flex-1 min-h-[calc(100vh-140px)]">
         {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6 pb-5 border-b border-border-color/60">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-border-color">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 text-accent-cyan text-[11px] font-bold tracking-wider uppercase mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
-              AI Compliance Workspaces
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 border border-accent-cyan/30 bg-accent-cyan/10 text-accent-cyan text-[11px] font-mono font-bold tracking-wider uppercase mb-2 rounded-none">
+              <ShieldCheck size={13} className="text-accent-cyan" />
+              {isPrototypeMode() ? "CAD Ground Truth Workspaces" : "AI Compliance Workspaces"}
             </div>
-            <h1 className="text-3xl md:text-4xl font-black text-text-primary m-0 tracking-tight">
-              Test Rooms
+            <h1 className="text-2xl md:text-3xl font-black font-mono text-text-primary m-0 tracking-tight uppercase">
+              {isPrototypeMode() ? "Inspection Rooms" : "Test Rooms"}
             </h1>
-            <p className="text-sm text-text-muted mt-1.5 font-medium leading-relaxed">
-              Initialize CAD revision comparison sessions, assign reference drawings, and trigger automated AI compliance checks.
+            <p className="text-xs md:text-sm text-text-muted mt-1 font-sans">
+              {isPrototypeMode()
+                ? "Manage 2D CAD inspection rooms, link reference and revision drawing pairs, and record ground truth discrepancy markings."
+                : "Initialize CAD revision comparison sessions, assign reference drawings, and trigger automated AI compliance checks."}
             </p>
           </div>
-          {rooms.length > 0 && (
-            <div className="flex items-center gap-3 shrink-0">
-              <Button
-                variant="primary"
-                className="rounded-xl shadow-lg shadow-accent-cyan/20 hover:shadow-accent-cyan/30 transition-all font-bold text-xs sm:text-sm px-7 h-11 inline-flex items-center justify-center text-center gap-2 min-w-[160px]"
-                onClick={() => setIsCreating(true)}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-                <span className="text-center font-bold">Create Room</span>
-              </Button>
-            </div>
-          )}
+
+          <div className="flex items-center gap-3 shrink-0">
+            <Button
+              variant="primary"
+              className="rounded-none font-mono font-bold text-xs px-6 h-10 inline-flex items-center justify-center gap-2 cursor-pointer transition-all uppercase tracking-wider"
+              onClick={() => setIsCreating(true)}
+            >
+              <Plus size={16} />
+              <span>Create Room</span>
+            </Button>
+          </div>
         </div>
 
-        {/* ── Fully custom Create Room dialog ── */}
-        {isCreating && createPortal(
-          <div
-            style={{
-              position: "fixed", inset: 0, zIndex: 9999,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              backgroundColor: "rgba(0,0,0,0.55)",
-              backdropFilter: "blur(6px)",
-              padding: "16px",
-            }}
-            onMouseDown={(e) => { if (e.target === e.currentTarget) setIsCreating(false); }}
-          >
-            <div style={{
-              width: "100%", maxWidth: "560px",
-              backgroundColor: "var(--bg-card)",
-              borderRadius: "24px",
-              boxShadow: "0 25px 60px rgba(0,0,0,0.25)",
-              overflow: "hidden",
-              display: "flex", flexDirection: "column",
-              maxHeight: "90vh",
-            }}>
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "28px 32px 24px", borderBottom: "1px solid var(--border-color)" }}>
-                <div style={{
-                  width: 56, height: 56, borderRadius: 16, flexShrink: 0,
-                  background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  boxShadow: "0 8px 20px rgba(124,58,237,0.35)",
-                }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.2 }}>Initialize New Room</h2>
-                  <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--text-muted)", fontWeight: 400 }}>Set up a comparison workspace</p>
-                </div>
+        {/* ── Search, Status Filters & Sort Controls ── */}
+        {baseRooms.length > 0 && (
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 mb-6 p-3 bg-bg-card border border-border-color">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search rooms, drawings, clients... (Press '/' to focus)"
+                className="w-full bg-bg-dark border border-border-color focus:border-accent-cyan pl-9 pr-8 py-1.5 text-xs text-text-primary outline-none rounded-none font-mono placeholder:text-text-muted/60 transition-colors"
+              />
+              {searchQuery && (
                 <button
-                  onClick={() => setIsCreating(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                  aria-label="Close"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                  title="Clear search"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Filter Pills & Sort Select */}
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {/* Status Filter Buttons */}
+              <div className="flex items-center border border-border-color bg-bg-dark p-0.5 text-xs font-mono">
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className={`px-2.5 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${statusFilter === "all"
+                    ? "bg-bg-card text-accent-cyan border border-border-color"
+                    : "text-text-muted hover:text-text-primary"
+                    }`}
+                >
+                  All ({counts.all})
+                </button>
+                <button
+                  onClick={() => setStatusFilter("ready")}
+                  className={`px-2.5 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${statusFilter === "ready"
+                    ? "bg-bg-card text-emerald-400 border border-border-color"
+                    : "text-text-muted hover:text-text-primary"
+                    }`}
+                >
+                  Linked ({counts.ready})
+                </button>
+                <button
+                  onClick={() => setStatusFilter("unassigned")}
+                  className={`px-2.5 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${statusFilter === "unassigned"
+                    ? "bg-bg-card text-amber-400 border border-border-color"
+                    : "text-text-muted hover:text-text-primary"
+                    }`}
+                >
+                  Draft ({counts.unassigned})
                 </button>
               </div>
 
+              {/* Sort Selector */}
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-bg-dark border border-border-color text-xs font-mono text-text-secondary">
+                <ArrowUpDown size={12} className="text-text-muted" />
+                <span className="text-[10px] text-text-muted uppercase">Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="bg-transparent text-xs text-text-primary font-mono outline-none cursor-pointer pr-1"
+                >
+                  <option value="recent" className="bg-bg-card text-text-primary">Recently Opened</option>
+                  <option value="name" className="bg-bg-card text-text-primary">Name (A–Z)</option>
+                  <option value="created" className="bg-bg-card text-text-primary">Newest Created</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Create Room Modal (Matches EngineerPromptModal Enterprise Layout) ── */}
+        {isCreating && createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop p-6 animate-in fade-in duration-150 select-none"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setIsCreating(false); }}
+          >
+            <div className="bg-bg-card border-2 border-border-color shadow-2xl w-full max-w-xl p-8 md:p-10 text-text-primary flex flex-col gap-6 relative rounded-none animate-in zoom-in-95 duration-150">
+              {/* Top-Right Red Close Button */}
+              <button
+                onClick={() => setIsCreating(false)}
+                className="absolute top-5 right-5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 p-1.5 transition-colors cursor-pointer rounded-none"
+                title="Close"
+              >
+                <X size={22} />
+              </button>
+
+              {/* Header */}
+              <div className="flex items-center gap-4 border-b border-border-color pb-5">
+                <div className="w-12 h-12 bg-accent-cyan/10 border border-accent-cyan/30 flex items-center justify-center text-accent-cyan shrink-0 rounded-none">
+                  <FolderGit2 size={24} />
+                </div>
+                <div className="flex flex-col">
+                  <h2 className="text-lg md:text-xl font-black tracking-wider uppercase text-text-primary font-mono">
+                    Initialize Inspection Room
+                  </h2>
+                  <p className="text-sm text-text-muted mt-0.5">
+                    Set up drawing comparison &amp; ground-truth workspace
+                  </p>
+                </div>
+              </div>
+
               {/* Body */}
-              <form id="create-room-form" onSubmit={handleCreate} style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
+              <form id="create-room-form" onSubmit={handleCreate} className="flex flex-col gap-6">
                 {/* Room Name */}
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
-                    ROOM NAME <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs md:text-sm font-bold uppercase tracking-wider text-text-secondary font-mono">
+                      Room Name / DWG No.
+                    </label>
+                    <span className="text-xs font-normal text-accent-cyan uppercase tracking-wider font-mono">
+                      Required
+                    </span>
+                  </div>
+
                   <input
                     autoFocus
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Architectural Phase 1 vs Phase 2"
+                    placeholder="Enter room name or dwg no."
                     required
-                    style={{
-                      width: "100%", boxSizing: "border-box",
-                      background: "var(--bg-dark)", border: "1.5px solid var(--border-color)",
-                      borderRadius: 16, padding: "14px 20px",
-                      fontSize: 14, color: "var(--text-primary)",
-                      outline: "none", transition: "border-color 0.15s",
-                    }}
-                    onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
+                    className="w-full bg-transparent border border-border-color px-4 py-3.5 text-sm md:text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-text-primary transition-colors rounded-none font-medium"
                   />
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Give this evaluation session a clean name to organize your CAD drawing pair.
+                  </p>
                 </div>
 
-                {/* Room mode — chosen here, fixed for the room's life.
-
-                    Deliberately NOT part of `comparison_method`: that field names which engine
-                    compares two drawings and is a Literal of one, and ADR-006 deleted the picker
-                    that used to offer alternatives. A manual check runs no engine at all, so it
-                    is a separate axis rather than a fourth method. */}
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
-                    ROOM TYPE <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    {([
-                      {
-                        mode: "ai_comparison" as RoomMode,
-                        title: "AI Comparison",
-                        blurb: "Run the deterministic engine and review what it finds.",
-                        accent: "#7c3aed",
-                      },
-                      {
-                        mode: "manual_check" as RoomMode,
-                        title: "Manual Engineer Check",
-                        blurb: "Stamp findings by hand. No engine output is shown.",
-                        accent: "#10b981",
-                      },
-                    ]).map((opt) => {
-                      const active = roomMode === opt.mode;
-                      return (
-                        <button
-                          key={opt.mode}
-                          type="button"
-                          onClick={() => setRoomMode(opt.mode)}
-                          style={{
-                            textAlign: "left",
-                            background: active ? `${opt.accent}1a` : "var(--bg-dark)",
-                            border: `1.5px solid ${active ? opt.accent : "var(--border-color)"}`,
-                            borderRadius: 16,
-                            padding: "14px 16px",
-                            cursor: "pointer",
-                            transition: "border-color 0.15s, background 0.15s",
-                          }}
-                        >
-                          <div style={{ fontSize: 13, fontWeight: 700, color: active ? opt.accent : "var(--text-primary)", marginBottom: 4 }}>
-                            {opt.title}
-                          </div>
-                          <div style={{ fontSize: 11, lineHeight: 1.4, color: "var(--text-muted)" }}>
-                            {opt.blurb}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {roomMode === "manual_check" && (
-                    <p style={{ fontSize: 11, lineHeight: 1.5, color: "var(--text-muted)", marginTop: 10 }}>
-                      This room collects ground truth. The engine is never run here, so your
-                      findings are recorded independently of anything it would have said.
-                    </p>
-                  )}
+                {/* Centered Large PROCEED Button */}
+                <div className="flex items-center justify-center pt-2">
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    form="create-room-form"
+                    disabled={!name.trim()}
+                    className="rounded-none font-mono font-bold text-sm tracking-wider uppercase w-full max-w-[240px] py-3.5 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-accent-cyan/15 hover:shadow-accent-cyan/25"
+                  >
+                    <span>CREATE &amp; OPEN</span>
+                    <ArrowRight size={16} />
+                  </Button>
                 </div>
-
-                {/* Client */}
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
-                    CLIENT <span style={{ fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-muted)" }}>optional</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="e.g. Acme Corp"
-                    style={{
-                      width: "100%", boxSizing: "border-box",
-                      background: "var(--bg-dark)", border: "1.5px solid var(--border-color)",
-                      borderRadius: 16, padding: "14px 20px",
-                      fontSize: 14, color: "var(--text-primary)",
-                      outline: "none", transition: "border-color 0.15s",
-                    }}
-                    onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
-                  />
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
-                    DESCRIPTION <span style={{ fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-muted)" }}>optional</span>
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Add notes, context, or goals for this testing session..."
-                    rows={4}
-                    style={{
-                      width: "100%", boxSizing: "border-box",
-                      background: "var(--bg-dark)", border: "1.5px solid var(--border-color)",
-                      borderRadius: 16, padding: "14px 20px",
-                      fontSize: 14, color: "var(--text-primary)",
-                      outline: "none", resize: "none", transition: "border-color 0.15s",
-                      fontFamily: "inherit",
-                    }}
-                    onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; e.target.style.boxShadow = "none"; }}
-                  />
-                </div>
-
               </form>
-
-              {/* Footer */}
-              <div style={{ padding: "20px 32px", borderTop: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => setIsCreating(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "var(--text-muted)", padding: "10px 20px", borderRadius: 12 }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  form="create-room-form"
-                  disabled={!name.trim()}
-                  style={{
-                    background: name.trim() ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "var(--border-color)",
-                    color: "#ffffff",
-                    border: "none", cursor: name.trim() ? "pointer" : "not-allowed",
-                    fontSize: 15, fontWeight: 700,
-                    padding: "12px 28px",
-                    borderRadius: 99,
-                    boxShadow: name.trim() ? "0 4px 16px rgba(124,58,237,0.35)" : "none",
-                    display: "flex", alignItems: "center", gap: 8,
-                    transition: "all 0.15s",
-                  }}
-                >
-                  Create &amp; Open
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
             </div>
           </div>,
           document.body
         )}
 
-        {/* FULL WIDTH SPACIOUS INTEGRATED EMPTY STATE */}
-        {!isCreating && rooms.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center w-full animate-in fade-in duration-500 min-h-[calc(100vh-220px)] py-10">
-            {/* Centered Hero Graphic & Intro Text */}
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="relative mb-5">
-                <div className="w-20 h-20 rounded-3xl bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center shadow-xl shadow-accent-cyan/15 relative">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                  </svg>
-                </div>
-              </div>
-
-              <h2 className="text-3xl lg:text-4xl font-black text-text-primary mb-3 tracking-tight">
-                No Test Rooms Created Yet
-              </h2>
-              <p className="text-base lg:text-lg text-text-muted max-w-xl leading-relaxed font-medium mb-7">
-                Create a workspace room to upload reference and revision drawings (DWG, DXF, STEP, PDF) and execute AI compliance checks.
-              </p>
-
-              {/* Centered Primary Call to Action Button */}
-              <Button
-                variant="primary"
-                onClick={() => setIsCreating(true)}
-                className="rounded-xl shadow-lg shadow-accent-cyan/25 hover:shadow-accent-cyan/40 transition-all font-extrabold px-10 h-12 text-sm sm:text-base inline-flex items-center justify-center text-center gap-2.5 min-w-[180px] cursor-pointer hover:-translate-y-0.5"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-                <span className="text-center font-extrabold">Create Room</span>
-              </Button>
+        {/* Global Empty State (Zero Rooms created yet) */}
+        {!isCreating && baseRooms.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center w-full py-16 text-center border-2 border-dashed border-border-color bg-bg-card/40 my-4">
+            <div className="w-16 h-16 bg-accent-cyan/10 border border-accent-cyan/30 flex items-center justify-center text-accent-cyan mb-4 rounded-none">
+              <Layers size={32} />
             </div>
+            <h2 className="text-xl font-mono font-bold text-text-primary uppercase tracking-wide mb-2">
+              No Inspection Rooms Created Yet
+            </h2>
+            <p className="text-xs md:text-sm text-text-muted max-w-md mb-6 leading-relaxed">
+              Create your first inspection room to load CAD drawing pairs (DXF, DWG) and record ground truth markings.
+            </p>
+            <Button
+              variant="primary"
+              onClick={() => setIsCreating(true)}
+              className="rounded-none font-mono font-bold text-xs px-6 h-10 inline-flex items-center gap-2 uppercase tracking-wider cursor-pointer"
+            >
+              <Plus size={16} />
+              <span>Create Inspection Room</span>
+            </Button>
           </div>
         )}
 
-        <div className="flex flex-col gap-4 w-full pb-16">
-          {rooms.map((room) => (
-            <div
-              key={room.id}
-              onClick={() => openRoom(room.id)}
-              className="group relative bg-bg-card border border-border-color hover:bg-sidebar-item-hover hover:border-accent-cyan/30 rounded-2xl p-5 cursor-pointer transition-all duration-500 ease-out hover:-translate-y-1 hover:shadow-[0_16px_40px_-12px_rgba(34,211,238,0.2)] flex flex-col sm:flex-row items-center gap-5 backdrop-blur-md overflow-hidden animate-in fade-in slide-in-from-bottom-4 w-full"
+        {/* Search / Filter Zero Results State */}
+        {!isCreating && baseRooms.length > 0 && filteredRooms.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center w-full py-12 text-center border border-border-color bg-bg-card/30 my-4">
+            <Search size={28} className="text-text-muted mb-3" />
+            <h3 className="text-sm font-mono font-bold text-text-primary uppercase tracking-wide mb-1">
+              No Matching Rooms Found
+            </h3>
+            <p className="text-xs text-text-muted max-w-sm mb-4">
+              No inspection rooms match "{searchQuery}" with the current filters.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("");
+                setStatusFilter("all");
+              }}
+              className="rounded-none font-mono text-xs uppercase"
             >
-              {/* Subtle hover glow inside card */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-accent-cyan/10 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+              Clear Filters
+            </Button>
+          </div>
+        )}
 
-              {/* Icon block - shifted slightly right for visual centering */}
-              <div className="ml-3 w-12 h-12 rounded-xl bg-bg-sidebar border border-border-color flex items-center justify-center shrink-0 shadow-inner group-hover:border-accent-cyan/30 transition-all duration-500">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted group-hover:text-accent-cyan transition-colors duration-500">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <path d="M9 15h6"></path>
-                  <path d="M9 11h6"></path>
-                </svg>
-              </div>
-
-              {/* Main Content */}
-              <div className="flex-1 min-w-0 flex flex-col justify-center">
-                <div className="flex items-center gap-3 mb-1 flex-wrap">
-                  <h3 className="text-lg font-bold text-text-primary transition-colors truncate tracking-tight">
-                    {room.name}
-                  </h3>
-                  {room.client_name && (
-                    <span className="inline-flex items-center text-xs font-bold text-accent-cyan bg-accent-cyan/10 px-3 py-1 rounded-full border border-accent-cyan/20 shrink-0 uppercase tracking-widest">
-                      {room.client_name}
-                    </span>
-                  )}
-                  {/* Unconditional: there is one engine, and a room that predates the field
-                      runs it too, so gating on the value would hide the badge on old rooms. */}
-                  <span className="inline-flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-widest shrink-0">
-                    Deterministic
-                  </span>
-                </div>
-
-                <p className="text-sm text-text-muted transition-colors font-medium">
-                  {room.description || "No description provided."}
-                </p>
-
-                {/* Drawings separated structurally */}
-                {(room.active_old_drawing_name || room.active_new_drawing_name) && (
-                  <div className="mt-4 pt-4 border-t border-border-color flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 w-full">
-
-                    {/* Reference Drawing */}
-                    <div className="flex flex-col gap-2 w-full sm:w-[45%] text-left">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted ml-1">Reference</span>
-                      <div className="flex items-center gap-3 overflow-hidden bg-bg-dark px-4 py-3 rounded-xl border border-border-color">
-                        <div className="w-7 h-7 rounded-md bg-bg-card flex items-center justify-center shrink-0 border border-border-color">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                        </div>
-                        <span className="text-sm text-text-secondary truncate font-medium" title={room.active_old_drawing_name || "None"}>
-                          {room.active_old_drawing_name || "Unassigned"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Connector */}
-                    <div className="hidden sm:flex shrink-0 items-center justify-center w-8 self-end mb-4">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted group-hover:text-accent-cyan transition-colors duration-500"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
-                    </div>
-
-                    {/* Revision Drawing */}
-                    <div className="flex flex-col gap-2 w-full sm:w-[45%] text-left">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-accent-cyan ml-1">Revision</span>
-                      <div className="flex items-center gap-3 overflow-hidden bg-accent-cyan/5 px-4 py-3 rounded-xl border border-accent-cyan/20">
-                        <div className="w-7 h-7 rounded-md bg-accent-cyan/10 flex items-center justify-center shrink-0">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                        </div>
-                        <span className="text-sm text-accent-cyan truncate font-medium" title={room.active_new_drawing_name || "None"}>
-                          {room.active_new_drawing_name || "Unassigned"}
-                        </span>
-                      </div>
-                    </div>
-
-                  </div>
-                )}
-              </div>
-
-              {/* Right Side Actions */}
-              <div className="flex flex-col items-end justify-between self-stretch shrink-0 pl-2">
-                <button
-                  onClick={(e) => handleDelete(e, room.id)}
-                  className="text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-xl p-2.5 opacity-0 group-hover:opacity-100 transition-all duration-300 transform group-hover:scale-100 scale-90"
-                  title="Delete Room"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                </button>
-                <div className="flex flex-col items-end gap-1 mt-auto">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Last Opened</span>
-                  <span className="text-xs text-text-muted font-medium">
-                    {room.last_opened_at ? new Date(room.last_opened_at).toLocaleDateString() : 'Never'}
-                  </span>
-                </div>
-              </div>
+        {/* Rooms Grid / List */}
+        {visibleRooms.length > 0 && (
+          <div className="flex flex-col gap-3.5 w-full">
+            <div className="flex items-center justify-between text-[11px] font-mono text-text-muted px-1">
+              <span>Showing {visibleRooms.length} of {filteredRooms.length} room{filteredRooms.length === 1 ? "" : "s"}</span>
             </div>
-          ))}
-        </div>
+
+            <div className="grid grid-cols-1 gap-3 w-full">
+              {visibleRooms.map((room) => (
+                <div
+                  key={room.id}
+                  onClick={() => openRoom(room.id)}
+                  className="group bg-bg-card border border-border-color hover:border-accent-cyan/60 rounded-none p-5 cursor-pointer transition-all duration-150 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                >
+                  {/* Left Column: Icon & Room Info */}
+                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-bg-sidebar border border-border-color group-hover:border-accent-cyan/40 flex items-center justify-center shrink-0 text-text-muted group-hover:text-accent-cyan transition-colors">
+                      <FileText size={20} />
+                    </div>
+
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h3 className="text-sm md:text-base font-bold font-mono text-text-primary group-hover:text-accent-cyan transition-colors truncate">
+                          {room.name}
+                        </h3>
+
+                        {room.client_name && (
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 bg-accent-cyan/10 border border-accent-cyan/25 text-accent-cyan">
+                            {room.client_name}
+                          </span>
+                        )}
+                      </div>
+
+
+
+                      {/* Drawing Pair Summary (if drawings loaded) */}
+                      {(room.active_old_drawing_name || room.active_new_drawing_name) && (
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-color/60 text-xs font-mono">
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-bg-dark border border-border-color text-text-secondary max-w-[220px] truncate">
+                            <span className="text-[10px] text-text-muted uppercase">REF:</span>
+                            <span className="truncate">{room.active_old_drawing_name || "Unassigned"}</span>
+                          </div>
+                          <span className="text-text-muted text-xs">➔</span>
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-accent-cyan/5 border border-accent-cyan/20 text-accent-cyan max-w-[220px] truncate">
+                            <span className="text-[10px] text-accent-cyan/70 uppercase">REV:</span>
+                            <span className="truncate font-bold">{room.active_new_drawing_name || "Unassigned"}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Timestamps & Actions */}
+                  <div className="flex md:flex-col items-center md:items-end justify-between w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-border-color/50 gap-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingRoom({ id: room.id, name: room.name });
+                        }}
+                        className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors cursor-pointer"
+                        title="Delete Room"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                      <div className="flex items-center gap-1 text-xs font-mono font-bold text-accent-cyan opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>Open</span>
+                        <ArrowRight size={14} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-[11px] font-mono text-text-muted">
+                      <Clock size={11} />
+                      <span>
+                        {room.last_opened_at
+                          ? `Opened ${new Date(room.last_opened_at).toLocaleDateString()}`
+                          : (room.created_at ? `Created ${new Date(room.created_at).toLocaleDateString()}` : "New")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Lazy Loading Sentinel Element */}
+            {displayLimit < filteredRooms.length && (
+              <div ref={sentinelRef} className="py-6 flex items-center justify-center text-xs font-mono text-text-muted">
+                <div className="w-4 h-4 border-2 border-accent-cyan border-t-transparent animate-spin mr-2" />
+                <span>Loading more rooms...</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Global Confirmation Modal for Deletions ── */}
+        <ConfirmModal
+          isOpen={!!deletingRoom}
+          onClose={() => !isDeleting && setDeletingRoom(null)}
+          onConfirm={handleConfirmDelete}
+          title="Delete Inspection Room"
+          message={
+            <div className="flex flex-col gap-2">
+              <p>
+                Are you sure you want to delete <span className="font-mono font-bold text-text-primary">"{deletingRoom?.name}"</span>?
+              </p>
+              <p className="text-xs text-text-muted">
+                All associated CAD drawing pairs, ground truth markings, and review history in this room will be permanently removed.
+              </p>
+            </div>
+          }
+          confirmText="DELETE ROOM"
+          cancelText="CANCEL"
+          variant="danger"
+          isLoading={isDeleting}
+        />
+
       </div>
     </div>
   );

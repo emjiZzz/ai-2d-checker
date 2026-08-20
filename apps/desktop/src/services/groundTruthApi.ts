@@ -102,6 +102,7 @@ export async function createManualCheckSession(payload: {
   room_id: string;
   ref_drawing_id: string;
   rev_drawing_id: string;
+  annotator?: string;
   notes?: string;
 }): Promise<ManualCheckSession> {
   const res = await fetchWithAuth('/api/v1/ground-truth/sessions', jsonPost(payload));

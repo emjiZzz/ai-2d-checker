@@ -14,6 +14,7 @@ import { StaleExtractionBadge } from "./StaleExtractionBadge";
 import { CopilotPanel } from "../copilot/CopilotPanel";
 import { useCopilotStore } from "../../stores/copilotStore";
 import { sendCopilotMessage } from "../../services/copilotService";
+import { isPrototypeMode } from "../../config/features";
 
 interface TwoDRightPanelProps {
   currentNav: string;
@@ -128,31 +129,33 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
   return (
     <div className="flex flex-col w-full h-full p-3 overflow-hidden box-border bg-bg-sidebar">
       {/* Top Mode Navigation Switcher */}
-      <div className="flex items-center gap-1.5 p-1 bg-bg-dark border border-border-color rounded-lg mb-3 shrink-0">
-        <button
-          onClick={() => setPanelMode("auditor")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
-            panelMode === "auditor"
-              ? "bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan shadow-xs"
-              : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover border border-transparent"
-          }`}
-        >
-          <ShieldCheck size={14} />
-          <span>Stage 2 Auditor</span>
-        </button>
+      {!isPrototypeMode() && (
+        <div className="flex items-center gap-1.5 p-1 bg-bg-dark border border-border-color rounded-lg mb-3 shrink-0">
+          <button
+            onClick={() => setPanelMode("auditor")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+              panelMode === "auditor"
+                ? "bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan shadow-xs"
+                : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover border border-transparent"
+            }`}
+          >
+            <ShieldCheck size={14} />
+            <span>Stage 2 Auditor</span>
+          </button>
 
-        <button
-          onClick={() => setPanelMode("copilot")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
-            panelMode === "copilot"
-              ? "bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan shadow-xs"
-              : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover border border-transparent"
-          }`}
-        >
-          <Bot size={14} />
-          <span>AI Copilot</span>
-        </button>
-      </div>
+          <button
+            onClick={() => setPanelMode("copilot")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+              panelMode === "copilot"
+                ? "bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan shadow-xs"
+                : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover border border-transparent"
+            }`}
+          >
+            <Bot size={14} />
+            <span>AI Copilot</span>
+          </button>
+        </div>
+      )}
 
       {/* Mode 1: Stage 2 Compliance Auditor */}
       {panelMode === "auditor" && (
@@ -386,17 +389,19 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
                       <span className="text-text-muted">
                         Confidence: {(v.confidence * 100).toFixed(0)}%
                       </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAskCopilotAboutViolation(v);
-                        }}
-                        className="flex items-center gap-1 text-accent-cyan hover:underline font-semibold cursor-pointer bg-accent-cyan/10 hover:bg-accent-cyan/20 px-2 py-0.5 rounded border border-accent-cyan/30 transition-all"
-                        title="Ask Engineering Copilot about this violation"
-                      >
-                        <MessageSquareCode size={11} />
-                        <span>Ask Copilot →</span>
-                      </button>
+                      {!isPrototypeMode() && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAskCopilotAboutViolation(v);
+                          }}
+                          className="flex items-center gap-1 text-accent-cyan hover:underline font-semibold cursor-pointer bg-accent-cyan/10 hover:bg-accent-cyan/20 px-2 py-0.5 rounded border border-accent-cyan/30 transition-all"
+                          title="Ask Engineering Copilot about this violation"
+                        >
+                          <MessageSquareCode size={11} />
+                          <span>Ask Copilot →</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

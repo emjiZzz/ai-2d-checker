@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, MoreVertical, Check, Move, LayoutTemplate, Crosshair, ClipboardCheck } from "lucide-react";
+import { Maximize, Download, MoreVertical, Check, Move, LayoutTemplate, Crosshair, ArrowLeft } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -36,6 +36,7 @@ import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
 import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
 import { SavedTemplatesModal } from "./SavedTemplatesModal";
+import { isPrototypeMode } from "../../config/features";
 
 /**
  * Zones whose position is fixed by the printed sheet template, so an alignment made on one
@@ -232,6 +233,12 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const setReviewViewport = useReviewStore(s => s.setViewport);
   const showViewOrigins = useReviewStore(s => s.showViewOrigins);
 
+  useEffect(() => {
+    if (isPrototypeMode() && !hasHydrated) {
+      useWorkspaceStore.setState({ hasHydrated: true });
+    }
+  }, [hasHydrated]);
+
   // Manual engineer check. `isManualCheckMode` is view state (reviewStore, beside every other
   // mode toggle); the markings it produces are records and live in the workspace store.
   const isManualCheckMode = useIsManualCheckRoom();
@@ -260,7 +267,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   //
   // `activeRoomId` is subscribed rather than read through `getState()` for the same reason: the
   // room id is part of the identity of the session, so a change in it has to re-run this.
-  const activeRoomId = useRoomStore(s => s.activeRoom?.id);
+  const activeRoom = useRoomStore(s => s.activeRoom);
+  const leaveRoom = useRoomStore(s => s.leaveRoom);
+  const activeRoomId = activeRoom?.id;
   const sessionPair =
     activeRoomId && oldDrawing?.id && newDrawing?.id
       ? `${activeRoomId}:${oldDrawing.id}:${newDrawing.id}`
@@ -294,7 +303,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
 
   const isRoiEditModeEnabled = useReviewStore(s => s.isRoiEditModeEnabled);
   const setRoiEditMode = useReviewStore(s => s.setRoiEditMode);
-  const activeRoom = useRoomStore(s => s.activeRoom);
   const updateRoom = useRoomStore(s => s.updateRoom);
   const selectedComparisonRegion = useReviewStore(s => s.selectedComparisonRegion);
   const setSelectedComparisonRegion = useReviewStore(s => s.setSelectedComparisonRegion);
@@ -680,6 +688,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     // of truth for one tab is what made the previous show/hide behaviour hard to reason
     // about. LEFT_TABSET_WEIGHT is re-applied when the effect adds the tab.
 
+    const rightTabName = isPrototypeMode() ? "Compliance Checklist" : "AI Auditor & Copilot";
+
     if (activeLayoutPreset === 'left') {
       layoutNode = {
         type: "row",
@@ -687,7 +697,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     } else if (activeLayoutPreset === 'right') {
@@ -697,7 +707,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     } else {
@@ -708,7 +718,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         children: [
           { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
           { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }] }] : [])
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
     }
@@ -786,17 +796,19 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     const node = model.getNodeById("rightPanelTab");
     const isVisible = isRightPanelVisible;
 
+    const rightTabName = isPrototypeMode() ? "Compliance Checklist" : "AI Auditor & Copilot";
+
     if (isInitialRightLoadRef.current) {
       isInitialRightLoadRef.current = false;
       if (!isVisible && node) {
         model.doAction(Actions.deleteTab("rightPanelTab"));
       } else if (isVisible && !node) {
-        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
       }
     } else {
       const wasVisible = prevRightVisibleRef.current;
       if (!wasVisible && isVisible && !node) {
-        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: "AI Auditor & Copilot", component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
       } else if (wasVisible && !isVisible && node) {
         model.doAction(Actions.deleteTab("rightPanelTab"));
       }
@@ -838,7 +850,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     }
   };
 
-  if (!hasHydrated || !model) {
+  if ((!hasHydrated && !isPrototypeMode()) || !model) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-bg-dark text-text-muted">
         <div className="flex flex-col items-center gap-3">
@@ -854,8 +866,27 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       {currentNav === "workspace" && (
         <div className="flex flex-grow h-full overflow-hidden min-w-0 flex-col">
           <div className="flex items-center justify-between bg-bg-topbar border-b border-border-color py-1 px-3 h-8 shrink-0 w-full z-10 select-none">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-text-primary uppercase tracking-wide">2D Review Workspace</span>
+            <div className="flex items-center gap-2.5">
+              {activeRoom && (
+                <button
+                  onClick={leaveRoom}
+                  className="flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold text-text-primary hover:text-accent-cyan bg-bg-card hover:bg-accent-cyan/10 border border-border-color hover:border-accent-cyan/30 rounded-none transition-colors cursor-pointer"
+                  title="Return to Inspection Rooms Dashboard"
+                >
+                  <ArrowLeft size={13} />
+                  <span>Rooms</span>
+                </button>
+              )}
+              <span className="text-xs font-bold text-text-primary uppercase tracking-wide">
+                {activeRoom ? (
+                  <>
+                    <span className="text-text-muted font-normal">Room:</span>{" "}
+                    <span className="text-accent-cyan font-mono">{activeRoom.name}</span>
+                  </>
+                ) : (
+                  "2D Review Workspace"
+                )}
+              </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Button
@@ -899,22 +930,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                 </Button>
               )}
               {/*
-                A manual-check room is labelled, not toggled. The mode is a property of the room
-                chosen at creation (`room_mode`), so there is nothing here to switch — a toggle
-                would be a second source of truth that can disagree with the room, and the
-                disagreement is silent in the expensive direction: a manual room that thinks it
-                is an AI room shows the engine's findings and destroys the independence the
-                markings exist for.
+                A manual-check room is labelled, not toggled.
               */}
-              {isManualCheckMode && (
-                <span
-                  className="h-6 px-2 inline-flex items-center gap-1 text-[11px] rounded-sm border border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                  title="This room collects human ground truth. The comparison engine is never run here."
-                >
-                  <ClipboardCheck size={12} />
-                  Manual Engineer Check
-                </span>
-              )}
               <Button
                 variant="outline"
                 size="sm"

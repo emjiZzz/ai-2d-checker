@@ -20,6 +20,8 @@ SYNC_COLLECTIONS = [
     "annotations",
     "audit_violations",
     "extracted_entities",
+    "manual_check_sessions",
+    "ground_truth_markings",
 ]
 
 

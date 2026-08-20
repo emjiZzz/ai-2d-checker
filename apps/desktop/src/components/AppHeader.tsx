@@ -8,6 +8,7 @@ import { useReviewStore } from "../stores/reviewStore";
 import { useRoomStore } from "../stores/roomStore";
 import { ClusterUpgradeModal } from "./admin/ClusterUpgradeModal";
 import { fetchDatabaseStatus, DatabaseStatusResponse } from "../services/databaseApi";
+import { isPrototypeMode } from "../config/features";
 
 type NavKey = "workspace" | "3d-workspace" | "standards" | "history" | "settings";
 
@@ -128,7 +129,7 @@ export const AppHeader: React.FC = () => {
         data-tauri-drag-region
         className="flex-1 h-full flex items-center justify-center gap-1"
       >
-        {isAuthenticated && (
+        {!isPrototypeMode() && isAuthenticated && (
           <div
             role="tablist"
             aria-label="Workspace Navigation"
@@ -147,7 +148,7 @@ export const AppHeader: React.FC = () => {
 
       {/* RIGHT: User Info & Actions */}
       <div className="flex items-center h-full">
-        {isAuthenticated && (
+        {!isPrototypeMode() && isAuthenticated && (
           <div className="flex items-center gap-3 h-6 pr-4 mr-2 border-r border-border-color">
             {/* Layout Toggles (Only show in workspace when a room is active) */}
             {currentNav === "workspace" && activeRoom && (

@@ -80,6 +80,7 @@ class CreateSessionRequest(BaseModel):
     room_id: str
     ref_drawing_id: str
     rev_drawing_id: str
+    annotator: str | None = None
     notes: str = ""
 
 
@@ -329,7 +330,7 @@ async def create_session(
       same drawings get their own, and neither inherits the other's partial work;
     * the drawing pair, not the room alone -- a room's drawings can be swapped.
     """
-    annotator = resolve_username(x_session_token) or "unknown"
+    annotator = payload.annotator or resolve_username(x_session_token) or "unknown"
 
     async def _resume() -> ManualCheckSession | None:
         # A raw query mapping rather than Beanie's class-attribute expressions. Those resolve

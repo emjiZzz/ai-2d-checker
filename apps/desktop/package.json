@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:prototype": "vite --mode prototype",
     "build": "tsc && vite build",
+    "build:prototype": "tsc && vite build --mode prototype",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
+    "preview:prototype": "vite preview --mode prototype",
     "tauri": "tauri",
     "test": "vitest run",
     "lint": "eslint ."

@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md animate-fade-in p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center modal-backdrop animate-fade-in p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !disableDismiss) onClose();
       }}

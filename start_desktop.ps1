@@ -1,8 +1,21 @@
+param(
+    [switch]$Prototype
+)
+
 $ErrorActionPreference = "Stop"
 
+$modeLabel = if ($Prototype) { "PROTOTYPE (2D Workspace Only)" } else { "FULL DEVELOPMENT" }
+
 Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "      AI-2D-Checker Tauri Desktop Launcher      " -ForegroundColor Cyan
+Write-Host "      AI-2D-Checker Tauri Desktop Launcher           " -ForegroundColor Cyan
+Write-Host "      Mode: $modeLabel                               " -ForegroundColor $(if ($Prototype) { "Magenta" } else { "Green" })
 Write-Host "=====================================================" -ForegroundColor Cyan
+
+if ($Prototype) {
+    $env:VITE_PROTOTYPE_MODE = "true"
+} else {
+    $env:VITE_PROTOTYPE_MODE = "false"
+}
 
 # 1. Inject Rust Cargo Path
 $cargoPath = "$env:USERPROFILE\.cargo\bin"
