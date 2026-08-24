@@ -57,7 +57,6 @@ export const saveWorkspaceState = async (roomId: string): Promise<void> => {
     panY: state.panY,
     zoom: state.zoom,
     activeLayers: state.activeLayers,
-    annotations: state.annotations,
   };
   await idbStorage.setItem(`workspace-${roomId}`, JSON.stringify(partial));
 };
@@ -76,6 +75,7 @@ export const loadWorkspaceState = async (roomId: string): Promise<void> => {
       const partial = JSON.parse(data);
       useWorkspaceStore.setState({
         ...partial,
+        annotations: [],
         manualSessionPair: null,
         manualSessionId: null,
         hasHydrated: true,

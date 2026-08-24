@@ -3,7 +3,7 @@ import { ChecklistSection } from './ChecklistSection';
 import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
 import { useThemeStore } from '../../stores/themeStore';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Trash2, CheckCircle2, ClipboardCheck, Download } from 'lucide-react';
+import { Trash2, CheckCircle2, ClipboardCheck, Download, RotateCcw } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
@@ -55,6 +55,7 @@ export const ManualMarkingList: React.FC = () => {
   const pendingPairTool = useWorkspaceStore((s) => s.pendingPairTool);
   const retractManualMarking = useWorkspaceStore((s) => s.retractManualMarking);
   const submitManualSession = useWorkspaceStore((s) => s.submitManualSession);
+  const reopenManualSession = useWorkspaceStore((s) => s.reopenManualSession);
   const markingError = useWorkspaceStore((s) => s.markingError);
   const clearMarkingError = useWorkspaceStore((s) => s.clearMarkingError);
 
@@ -293,21 +294,28 @@ export const ManualMarkingList: React.FC = () => {
                   <button
                     type="button"
                     title="Delete annotation"
-                    onClick={() => deleteAnnotationById(ann.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteAnnotationById(ann.id);
+                    }}
                     style={{
                       background: 'transparent',
-                      border: 'none',
-                      color: MARKER_STYLES.MISMATCHED.color,
+                      border: '1px solid transparent',
+                      borderRadius: '4px',
+                      color: '#f43f5e',
                       cursor: 'pointer',
-                      fontSize: '0.65rem',
+                      fontSize: '0.75rem',
                       fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '3px',
-                      padding: 0,
+                      gap: '4px',
+                      padding: '3px 6px',
+                      position: 'relative',
+                      zIndex: 10,
+                      pointerEvents: 'auto',
                     }}
                   >
-                    <Trash2 size={11} />
+                    <Trash2 size={13} />
                     <span>Remove</span>
                   </button>
                 }
@@ -454,6 +462,32 @@ export const ManualMarkingList: React.FC = () => {
               title="Download Compliance Audit Report PDF"
             >
               <Download size={14} /> {isExporting ? 'Building report…' : 'Export PDF Report'}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                setSubmitted(false);
+                clearMarkingError();
+                await reopenManualSession();
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: 'transparent',
+                border: '1.5px solid var(--border-color)',
+                color: 'var(--text-main)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <RotateCcw size={14} /> Re-open / Edit Check
             </button>
           </>
         ) : (

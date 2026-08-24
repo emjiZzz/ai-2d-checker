@@ -157,15 +157,17 @@ describe('the checkmark on the printed page', () => {
     expect(spanMm).toBeLessThan(3.5);
   });
 
-  it('steps up off the value on paper, and stays put on screen', () => {
+  it('steps up off the value on paper, and shifts to the right of the data', () => {
     // The coordinate is the entity's bounding-box CENTRE — the middle of the glyphs on a single
-    // line of text. On screen that is where the pointer expects the hit target; on paper it means
-    // the value cannot be read under its own checkmark.
+    // line of text. The checkmark is shifted to the right so it never obscures the value.
     const onPage = recordingCtx();
     draw(frameFor(onPage.ctx, true), 'MATCHED');
     const anchorY = worldToCanvas(500, 600, NORM, PAGE).y;
+    const anchorX = worldToCanvas(500, 600, NORM, PAGE).x;
+    const drawnCentreX = onPage.strokes[0].points[1][0];
     const drawnCentreY = onPage.strokes[0].points[1][1];
     const size = MARK_PAINT.print.checkPx * EXPORT_MULTIPLIER;
+    expect(drawnCentreX).toBeGreaterThan(anchorX);
     expect(drawnCentreY).toBeCloseTo(
       anchorY - MARK_PAINT.print.checkRisePx * EXPORT_MULTIPLIER + size * 0.6,
       6,
@@ -174,7 +176,10 @@ describe('the checkmark on the printed page', () => {
     const onScreen = recordingCtx();
     draw(frameFor(onScreen.ctx, false), 'MATCHED');
     const screenAnchorY = worldToCanvas(500, 600, NORM, SCREEN).y;
+    const screenAnchorX = worldToCanvas(500, 600, NORM, SCREEN).x;
+    const screenDrawnX = onScreen.strokes[0].points[1][0];
     const screenSize = MARK_PAINT.canvas.checkPx;
+    expect(screenDrawnX).toBeGreaterThan(screenAnchorX);
     expect(MARK_PAINT.canvas.checkRisePx).toBe(0);
     expect(onScreen.strokes[0].points[1][1]).toBeCloseTo(screenAnchorY + screenSize * 0.6, 6);
   });

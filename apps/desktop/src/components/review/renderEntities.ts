@@ -64,7 +64,7 @@ export const getPrintColor = (_color: string): string => PRINT_INK;
  * resolve to the same glyphs or every width measurement disagrees between them.
  */
 const CAD_FONT_STACK =
-  '"Yu Mincho Light", "Yu Mincho", "游明朝", "Century", "Cambria", "Times New Roman", "MS PMincho", "ＭＳ Ｐ明朝", "MS Mincho", "ＭＳ 明朝", "BIZ UDPMincho", serif';
+  '"Yu Mincho", "游明朝", "MS Mincho", "ＭＳ 明朝", "Century", "Cambria", "Times New Roman", "MS PMincho", "ＭＳ Ｐ明朝", "BIZ UDPMincho", serif';
 
 /**
  * Cap-height/em fallback, used when the canvas cannot measure — jsdom's canvas mock returns 0
@@ -368,8 +368,8 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   } = opts;
   if (!text || capHeightPx <= 0) return;
 
-  // Scaled (0.88x) so text fits comfortably within table cells without unwanted line breaks.
-  const emPx = (capHeightPx * 0.88) / getCapHeightRatio(ctx, CAD_FONT_STACK);
+  // Scaled (0.80x) so text fits comfortably within table cells without unwanted line breaks or column collisions.
+  const emPx = (capHeightPx * 0.80) / getCapHeightRatio(ctx, CAD_FONT_STACK);
 
   const anchor = attachmentAnchor(attachmentPoint);
   const align = opts.align ?? anchor.align;
@@ -390,7 +390,8 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   const horizontalScale = Number.isFinite(wf) && wf > 0 ? wf : 1;
 
   ctx.save();
-  ctx.fillStyle = color;
+  ctx.globalAlpha = 1.0;
+  ctx.fillStyle = isExport ? '#000000' : color;
   // On physical print export, use solid normal (400) weight with pure #000000 ink for maximum contrast and zero dither blur.
   const fontWeight = isExport ? 'normal' : '300';
   ctx.font = `${fontWeight} ${emPx}px ${CAD_FONT_STACK}`;
@@ -1054,8 +1055,8 @@ const MARKER_DOT_PX = 5.5;
  * its hit target is a different bug in the same place.
  */
 export const MARK_PAINT = {
-  canvas: { checkPx: 6, strokePx: 3, checkRisePx: 0, alpha: 1 },
-  print: { checkPx: 3.2, strokePx: 0.60, checkRisePx: 1.8, alpha: 0.9 },
+  canvas: { checkPx: 6, strokePx: 3, checkRisePx: 0, checkShiftRightPx: 12, alpha: 1 },
+  print: { checkPx: 3.2, strokePx: 0.60, checkRisePx: 1.8, checkShiftRightPx: 5, alpha: 0.9 },
 } as const;
 
 export const renderViolationReticles = ({
@@ -1298,7 +1299,8 @@ export const renderViolationReticles = ({
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       const size = paint.checkPx * resolutionMultiplier;
-      const cx = screenX;
+      const shiftX = (paint.checkShiftRightPx ?? 0) * (isExport ? resolutionMultiplier : 1);
+      const cx = screenX + shiftX;
       // Up off the value, by a fraction of the tick's own size, so it scales with the mark.
       const cy = screenY - paint.checkRisePx * resolutionMultiplier;
       ctx.moveTo(cx - size * 0.8, cy - size * 0.1);

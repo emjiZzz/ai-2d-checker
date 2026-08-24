@@ -22,6 +22,31 @@ import { ZodType } from "zod";
  *
  * @param extra - Optional additional headers to merge in (e.g. Content-Type).
  */
+export async function resolveApiToken(): Promise<string | null> {
+  let token = useConnectionStore.getState().apiToken;
+  if (!token) {
+    token = await useConnectionStore.getState().fetchApiToken();
+  }
+  return token;
+}
+
+export async function buildHeadersAsync(extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  const apiToken = await resolveApiToken();
+  const sessionToken = useAuthStore.getState().sessionToken;
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    Pragma: "no-cache",
+    ...extra,
+  };
+
+  if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+  if (sessionToken) headers["X-Session-Token"] = sessionToken;
+
+  return headers;
+}
+
 export function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const apiToken = useConnectionStore.getState().apiToken;
   const sessionToken = useAuthStore.getState().sessionToken;

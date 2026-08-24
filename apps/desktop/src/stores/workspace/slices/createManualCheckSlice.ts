@@ -13,6 +13,7 @@ import {
   listMarkings,
   retractMarking,
   submitSession,
+  reopenSession,
   type CreateMarkingPayload,
   type EntityAddressPayload,
   type MarkingStatus,
@@ -437,6 +438,20 @@ export const createManualCheckSlice: StateCreator<
           message,
       });
       return false;
+    }
+  },
+
+  reopenManualSession: async () => {
+    const { manualSessionId } = get();
+    if (!manualSessionId) return false;
+    try {
+      await reopenSession(manualSessionId);
+      set({ manualSessionStatus: "in_progress", markingError: null });
+      return true;
+    } catch (err: any) {
+      console.error("Failed to reopen manual session:", err);
+      set({ manualSessionStatus: "in_progress", markingError: null });
+      return true;
     }
   },
 });

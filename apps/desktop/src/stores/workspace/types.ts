@@ -540,6 +540,8 @@ export interface ManualCheckSlice {
   retractManualMarking: (markingId: string) => Promise<boolean>;
   /** Resolves true when the server confirmed the submit. Never throws. */
   submitManualSession: () => Promise<boolean>;
+  /** Reopen a submitted session for editing. Never throws. */
+  reopenManualSession: () => Promise<boolean>;
 }
 
 export type WorkspaceState = ComparisonSlice & UploadSlice & AuditSlice & ClientSlice & UndoSlice & NavSlice & AnnotationsSlice & ManualCheckSlice;

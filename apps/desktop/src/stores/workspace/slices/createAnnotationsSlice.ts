@@ -66,12 +66,13 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
   deleteAnnotationById: async (id) => {
     try {
       await deleteAnnotationApi(id);
+    } catch (err: any) {
+      console.error(`Failed to delete annotation ${id}:`, err.message);
+    } finally {
       set((state) => ({
         annotations: state.annotations.filter((a) => a.id !== id),
         selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
       }));
-    } catch (err: any) {
-      console.error(`Failed to delete annotation ${id}:`, err.message);
     }
   },
 

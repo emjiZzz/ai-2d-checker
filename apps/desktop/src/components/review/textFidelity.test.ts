@@ -213,8 +213,8 @@ describe('CAD text metrics', () => {
     // height 10 at scale 2 is 20 CSS px of CAP height, so the em must be larger than that.
     const match = fillTexts[0].font.match(/([\d.]+)px/);
     const emPx = match ? parseFloat(match[1]) : parseFloat(fillTexts[0].font);
-    expect(emPx).toBeCloseTo((10 * SCALE * 0.88) / CAP_RATIO, 3);
-    expect(emPx).toBeGreaterThan(10 * SCALE * 0.88);
+    expect(emPx).toBeCloseTo((10 * SCALE * 0.80) / CAP_RATIO, 3);
+    expect(emPx).toBeGreaterThan(10 * SCALE * 0.80);
   });
 
   it('applies width_factor as a horizontal scale', () => {

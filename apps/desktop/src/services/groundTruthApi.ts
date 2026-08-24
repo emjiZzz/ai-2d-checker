@@ -168,3 +168,12 @@ export async function submitSession(sessionId: string): Promise<ManualCheckSessi
   );
   return unwrap<ManualCheckSession>(res, 'Submitting the manual check');
 }
+
+export async function reopenSession(sessionId: string): Promise<ManualCheckSession> {
+  const res = await fetchWithAuth(
+    `/api/v1/ground-truth/sessions/${encodeURIComponent(sessionId)}/reopen`,
+    jsonPost({}),
+  );
+  return unwrap<ManualCheckSession>(res, 'Reopening the manual check');
+}
+

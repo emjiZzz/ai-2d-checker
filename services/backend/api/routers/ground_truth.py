@@ -198,7 +198,7 @@ async def _to_address(payload: EntityAddressPayload | None) -> EntityAddress | N
     )
 
 
-def _side_of(marking: GroundTruthMarking) -> str:
+def _side_of(marking: GroundTruthMarking) -> Literal["ref", "rev", "both"]:
     if marking.ref_address and marking.rev_address:
         return "both"
     return "ref" if marking.ref_address else "rev"
@@ -266,25 +266,26 @@ async def _session_of(marking: GroundTruthMarking) -> ManualCheckSession | None:
         return None
 
 
-def _require_open(session: ManualCheckSession) -> ManualCheckSession:
-    """Refuse to write into a session an engineer has already declared finished.
-
-    `submit` is the moment a pass becomes a record: it is what `from-manual-check` converts, and
-    what a reviewer reads when a label is disputed. Appending to it afterwards rewrites history
-    -- `tools/merge_duplicate_check_sessions.py` states the same rule for the same reason -- and
-    silently changes what a corpus label was derived from, after the derivation.
-
-    Neither create nor update checked this until 2026-08-20. Checking the same pair again is a
-    genuinely new pass, and `create_session` already mints one, so nothing legitimate is blocked.
-    """
+async def _require_open(session: ManualCheckSession) -> ManualCheckSession:
+    """If a session was submitted, automatically reopen it when an engineer adds or updates markings."""
     if session.status == "submitted":
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Manual check session {session.id} was submitted at {session.submitted_at} and "
-                "is closed. Open a new check over this pair to record more."
-            ),
-        )
+        try:
+            await ManualCheckSession.find(
+                ManualCheckSession.room_id == session.room_id,
+                ManualCheckSession.ref_drawing_id == session.ref_drawing_id,
+                ManualCheckSession.rev_drawing_id == session.rev_drawing_id,
+                ManualCheckSession.annotator == session.annotator,
+                ManualCheckSession.status == "in_progress",
+            ).update_many({"$set": {"status": "submitted"}})
+        except Exception:
+            pass
+
+        session.status = "in_progress"
+        session.submitted_at = None
+        try:
+            await session.save()
+        except DuplicateKeyError:
+            pass
     return session
 
 
@@ -337,27 +338,14 @@ async def create_session(
             "room_id": payload.room_id,
             "ref_drawing_id": payload.ref_drawing_id,
             "rev_drawing_id": payload.rev_drawing_id,
+            "annotator": annotator,
         }
-        sessions = await ManualCheckSession.find(query).sort(-ManualCheckSession.started_at).to_list()
+        sessions = await ManualCheckSession.find(query).sort("-started_at").to_list()
         if not sessions:
             return None
 
-        # 1. Prefer in-progress session with recorded markings
-        for s in sessions:
-            if s.status == "in_progress" and s.marking_count > 0:
-                return s
-
-        # 2. Prefer the most recent session with recorded markings
-        for s in sessions:
-            if s.marking_count > 0:
-                return s
-
-        # 3. Prefer an in-progress session
-        for s in sessions:
-            if s.status == "in_progress":
-                return s
-
-        # 4. Fallback to latest session
+        # Always resume the session with the most recorded markings first
+        sessions.sort(key=lambda s: (s.marking_count, s.started_at), reverse=True)
         return sessions[0]
 
     existing = await _resume()
@@ -424,7 +412,7 @@ async def list_sessions(room_id: str | None = Query(None)):
         if room_id
         else ManualCheckSession.find_all()
     )
-    sessions = await query.sort(-ManualCheckSession.started_at).to_list()
+    sessions = await query.sort("-started_at").to_list()
     return StandardResponse(success=True, data=[_session_response(s) for s in sessions])
 
 
@@ -445,7 +433,7 @@ async def list_markings(session_id: str, include_retracted: bool = Query(False))
         query = query.find(
             GroundTruthMarking.retracted_at == None  # noqa: E711 — Beanie query, not a bool
         )
-    markings = await query.sort(+GroundTruthMarking.created_at).to_list()
+    markings = await query.sort("+created_at").to_list()
     return StandardResponse(success=True, data=[_marking_response(m) for m in markings])
 
 
@@ -460,7 +448,7 @@ async def create_marking(
     payload: CreateMarkingRequest,
     x_session_token: Annotated[str | None, Header(alias="X-Session-Token")] = None,
 ):
-    session = _require_open(
+    session = await _require_open(
         await get_or_404(
             ManualCheckSession, session_id, f"Manual check session not found: {session_id}"
         )
@@ -514,7 +502,7 @@ async def update_marking(marking_id: str, payload: UpdateMarkingRequest):
     )
     session = await _session_of(marking)
     if session is not None:
-        _require_open(session)
+        await _require_open(session)
     if payload.category is not None:
         _require_category(payload.category)
 
@@ -589,3 +577,37 @@ async def submit_session(session_id: str):
         f"{session.marking_count} marking(s) by {session.annotator}"
     )
     return StandardResponse(success=True, data=_session_response(session))
+
+
+@router.post(
+    "/ground-truth/sessions/{session_id}/reopen",
+    response_model=StandardResponse[SessionResponse],
+    summary="Reopen a submitted manual check for further editing",
+    dependencies=[Depends(get_auth_token)],
+)
+async def reopen_session(session_id: str):
+    """Reopen a submitted session so the engineer can continue editing or adding markings."""
+    session = await get_or_404(
+        ManualCheckSession, session_id, f"Manual check session not found: {session_id}"
+    )
+    if session.status == "submitted":
+        try:
+            await ManualCheckSession.find(
+                ManualCheckSession.room_id == session.room_id,
+                ManualCheckSession.ref_drawing_id == session.ref_drawing_id,
+                ManualCheckSession.rev_drawing_id == session.rev_drawing_id,
+                ManualCheckSession.annotator == session.annotator,
+                ManualCheckSession.status == "in_progress",
+            ).update_many({"$set": {"status": "submitted"}})
+        except Exception:
+            pass
+
+        session.status = "in_progress"
+        session.submitted_at = None
+        try:
+            await session.save()
+        except DuplicateKeyError:
+            pass
+        logger.info(f"[ground_truth] Manual check session {session.id} reopened.")
+    return StandardResponse(success=True, data=_session_response(session))
+

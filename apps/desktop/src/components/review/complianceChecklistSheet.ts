@@ -72,8 +72,8 @@ const COLORS = {
   band: '#f0f0f5',
   rowAlt: '#f8f8fa',
   border: '#d4d4d8',
-  primary: '#18181b',
-  muted: '#71717a',
+  primary: '#000000',
+  muted: '#27272a',
   accent: '#0f766e',
 };
 

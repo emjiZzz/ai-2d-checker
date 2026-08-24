@@ -1,8 +1,4 @@
-/**
- * annotationsApi.ts — Network layer for review annotations/pins (SRP: no React, no cache)
- */
-
-import { buildHeaders, baseUrl, parseOrThrow } from "./fetchUtils";
+import { buildHeadersAsync, baseUrl, parseOrThrow } from "./fetchUtils";
 import type { AnnotationItem, AnnotationSeverity, AnnotationPenType } from "../stores/workspace/types";
 import { cadPointToPair, type CadPoint } from "../utils/coordinateTransform";
 
@@ -55,8 +51,9 @@ export interface UpdateAnnotationPayload {
 
 /** GET /api/v1/annotations?drawing_id= — annotations pinned to a drawing. */
 export async function fetchAnnotations(drawingId: string, signal?: AbortSignal): Promise<AnnotationItem[]> {
+  const headers = await buildHeadersAsync();
   const res = await fetch(`${baseUrl()}/api/v1/annotations?drawing_id=${encodeURIComponent(drawingId)}`, {
-    headers: buildHeaders(),
+    headers,
     signal,
   });
   const items = await parseOrThrow<AnnotationWire[]>(res);
@@ -65,9 +62,10 @@ export async function fetchAnnotations(drawingId: string, signal?: AbortSignal):
 
 /** POST /api/v1/annotations — create a pin. author_id is derived server-side. */
 export async function createAnnotation(payload: CreateAnnotationPayload): Promise<AnnotationItem> {
+  const headers = await buildHeadersAsync({ "Content-Type": "application/json" });
   const res = await fetch(`${baseUrl()}/api/v1/annotations`, {
     method: "POST",
-    headers: buildHeaders({ "Content-Type": "application/json" }),
+    headers,
     body: JSON.stringify(payload),
   });
   return fromWire(await parseOrThrow<AnnotationWire>(res));
@@ -75,9 +73,10 @@ export async function createAnnotation(payload: CreateAnnotationPayload): Promis
 
 /** PATCH /api/v1/annotations/:id — partial update (content, status, etc.). */
 export async function updateAnnotation(id: string, payload: Partial<UpdateAnnotationPayload>): Promise<AnnotationItem> {
+  const headers = await buildHeadersAsync({ "Content-Type": "application/json" });
   const res = await fetch(`${baseUrl()}/api/v1/annotations/${id}`, {
     method: "PATCH",
-    headers: buildHeaders({ "Content-Type": "application/json" }),
+    headers,
     body: JSON.stringify(payload),
   });
   return fromWire(await parseOrThrow<AnnotationWire>(res));
@@ -85,9 +84,10 @@ export async function updateAnnotation(id: string, payload: Partial<UpdateAnnota
 
 /** DELETE /api/v1/annotations/:id */
 export async function deleteAnnotation(id: string): Promise<void> {
+  const headers = await buildHeadersAsync();
   const res = await fetch(`${baseUrl()}/api/v1/annotations/${id}`, {
     method: "DELETE",
-    headers: buildHeaders(),
+    headers,
   });
   await parseOrThrow<{ deleted: boolean }>(res);
 }
