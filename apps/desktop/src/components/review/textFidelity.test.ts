@@ -211,9 +211,10 @@ describe('CAD text metrics', () => {
     run([textEntity({ height: 10 })], ctx);
 
     // height 10 at scale 2 is 20 CSS px of CAP height, so the em must be larger than that.
-    const emPx = parseFloat(fillTexts[0].font);
-    expect(emPx).toBeCloseTo((10 * SCALE) / CAP_RATIO, 3);
-    expect(emPx).toBeGreaterThan(10 * SCALE);
+    const match = fillTexts[0].font.match(/([\d.]+)px/);
+    const emPx = match ? parseFloat(match[1]) : parseFloat(fillTexts[0].font);
+    expect(emPx).toBeCloseTo((10 * SCALE * 0.88) / CAP_RATIO, 3);
+    expect(emPx).toBeGreaterThan(10 * SCALE * 0.88);
   });
 
   it('applies width_factor as a horizontal scale', () => {

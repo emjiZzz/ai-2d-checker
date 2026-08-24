@@ -440,6 +440,7 @@ export interface NavSlice {
  */
 export interface ManualCheckSlice {
   manualSessionId: string | null;
+  manualSessionStatus: "in_progress" | "submitted" | "completed" | null;
   /**
    * The drawing pair the open session belongs to, as `room:ref:rev`.
    *

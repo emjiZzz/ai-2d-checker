@@ -57,6 +57,7 @@ export const saveWorkspaceState = async (roomId: string): Promise<void> => {
     panY: state.panY,
     zoom: state.zoom,
     activeLayers: state.activeLayers,
+    annotations: state.annotations,
   };
   await idbStorage.setItem(`workspace-${roomId}`, JSON.stringify(partial));
 };
@@ -73,14 +74,21 @@ export const loadWorkspaceState = async (roomId: string): Promise<void> => {
   if (data) {
     try {
       const partial = JSON.parse(data);
-      useWorkspaceStore.setState({ ...partial, hasHydrated: true });
+      useWorkspaceStore.setState({
+        ...partial,
+        manualSessionPair: null,
+        manualSessionId: null,
+        hasHydrated: true,
+      });
       
       const state = useWorkspaceStore.getState();
       if (state.oldDrawing) {
         state.fetchLayers(state.oldDrawing.id, "old");
+        state.fetchAnnotations(state.oldDrawing.id);
       }
       if (state.newDrawing) {
         state.fetchLayers(state.newDrawing.id, "new");
+        state.fetchAnnotations(state.newDrawing.id);
       }
       state.recalculateCompatibility();
     } catch (err) {

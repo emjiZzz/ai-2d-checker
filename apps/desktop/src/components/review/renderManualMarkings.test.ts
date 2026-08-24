@@ -55,15 +55,31 @@ function recordingCtx() {
   return { ctx, arcs, rects, texts, fills, dashes };
 }
 
+/**
+ * A frame whose transform is DERIVED from the viewport, exactly as `CanvasRenderer` derives it.
+ *
+ * It used to carry `scale: 0.8, transX: 12, transY: 7` — three arbitrary numbers alongside a
+ * viewport they had nothing to do with. Every assertion in this file measures against
+ * `worldToScreen(..., VIEWPORT)`, so the fixture was quietly asserting that the renderer ignored
+ * the frame it was handed. It did, and that was the bug: on export the frame's transform is the
+ * fit-to-page one and the viewport is stale, so every mark landed in the corner of the sheet.
+ *
+ * Deriving them here means these tests now pin the equivalence the fix depends on — that
+ * `worldToCanvas` against a screen frame is `worldToScreen` against its viewport.
+ */
+const SCREEN_TRANSFORM = {
+  scale: VIEWPORT.scale * NORM.normScale,
+  transX: VIEWPORT.x - NORM.xmin * VIEWPORT.scale * NORM.normScale,
+  transY: VIEWPORT.y - NORM.ymin * VIEWPORT.scale * NORM.normScale,
+};
+
 const frame = (ctx: any) =>
   ({
     ctx,
     isExport: true, // keeps dpr at 1 so screen coords are comparable
     viewport: VIEWPORT,
     norm: NORM,
-    scale: 0.8,
-    transX: 12,
-    transY: 7,
+    ...SCREEN_TRANSFORM,
     isNeonModeActive: false,
   }) as any;
 
@@ -161,11 +177,15 @@ describe('renderManualMarkings', () => {
     // The region fill sits exactly on the entity's bounds — no padding, so the highlight
     // cannot overstate how large the entity is.
     expect(rects.length).toBeGreaterThan(0);
-    const region = rects.find((r) => Math.abs(r[2] - 40 * 0.8) < 1e-6)!;
+    // Expressed through the fixture's own transform, not against three literals copied from it:
+    // the numbers are the frame's, and a fixture whose transform changes must not silently stop
+    // matching the thing it is asserting about.
+    const { scale: s, transX: tx, transY: ty } = SCREEN_TRANSFORM;
+    const region = rects.find((r) => Math.abs(r[2] - 40 * s) < 1e-6)!;
     expect(region, 'no rect matched the entity extent').toBeDefined();
-    expect(region[0]).toBeCloseTo(100 * 0.8 + 12, 6);
-    expect(region[1]).toBeCloseTo(50 * 0.8 + 7, 6);
-    expect(region[3]).toBeCloseTo(12 * 0.8, 6);
+    expect(region[0]).toBeCloseTo(100 * s + tx, 6);
+    expect(region[1]).toBeCloseTo(50 * s + ty, 6);
+    expect(region[3]).toBeCloseTo(12 * s, 6);
   });
 
   it('draws no highlight when nothing is hovered', () => {
@@ -223,6 +243,9 @@ describe('cross-sheet value match', () => {
 
   const otherFrame = (ctx: any) =>
     ({ ctx, isExport: true, viewport: VIEWPORT, norm: OTHER, scale: 0.8, transX: 12, transY: 7 }) as any;
+  // Deliberately unrelated to VIEWPORT, unlike the `frame` above. These tests are about the
+  // cross-sheet match, and a transform the viewport cannot reproduce is what proves the code
+  // reads the frame it was handed rather than the pan and zoom behind it.
 
   /** A locator with plain defaults; each test overrides what it is exercising. */
   const loc = (o: Record<string, any> = {}) =>
@@ -414,6 +437,9 @@ describe('the selected entity pair', () => {
   const val = (id: string, text: string) => ({ id, type: 'text', properties: { text } });
   const otherFrame = (ctx: any) =>
     ({ ctx, isExport: true, viewport: VIEWPORT, norm: OTHER, scale: 0.8, transX: 12, transY: 7 }) as any;
+  // Deliberately unrelated to VIEWPORT, unlike the `frame` above. These tests are about the
+  // cross-sheet match, and a transform the viewport cannot reproduce is what proves the code
+  // reads the frame it was handed rather than the pan and zoom behind it.
   const loc = (o: Record<string, any> = {}) =>
     ({ side: 'rev' as const, value: '145', entityType: 'text', dimKind: null,
        zone: null, zoneMeasured: false, zfx: null, zfy: null, cfx: null, cfy: null,

@@ -119,6 +119,45 @@ export function worldToScreen(
   };
 }
 
+/** The affine part of a canvas pass: what `ctx.translate(transX, transY); ctx.scale(s, s)` set. */
+export interface CanvasTransform {
+  scale: number;
+  transX: number;
+  transY: number;
+}
+
+/**
+ * World -> canvas pixels using the transform the frame is ACTUALLY painting with.
+ *
+ * ## Why this exists next to `worldToScreen`
+ *
+ * `worldToScreen` derives its transform from the live `viewport` — the user's pan and zoom. That
+ * is right for hit-testing a click and wrong for anything inside a render pass, because the
+ * export pass does not use the viewport: `CanvasRenderer` replaces `scale`/`transX`/`transY` with
+ * a fit-to-page transform and leaves `viewport` untouched.
+ *
+ * Every marker, checkmark and annotation pin was placed with `worldToScreen`. On screen the two
+ * agree exactly — `scale === viewport.scale * normScale` and `transX === viewport.x - xmin *
+ * scale`, so the algebra is identical, which is why this went unnoticed. On export they do not:
+ * the geometry was fitted to the page while every mark was drawn at the pixel position it
+ * happened to occupy in the app's panel, so the whole set landed in the top-left corner of the
+ * sheet — a report whose checkmarks pointed at nothing.
+ *
+ * ⚠ **Inside a render pass, use this. `worldToScreen` is for the pointer.** The two are
+ * interchangeable right up until someone renders at a size that is not the screen's.
+ */
+export function worldToCanvas(
+  wx: number,
+  wy: number,
+  norm: NormalizationResult,
+  transform: CanvasTransform,
+): { x: number; y: number } {
+  return {
+    x: wx * transform.scale + transform.transX,
+    y: flipWorldY(wy, norm) * transform.scale + transform.transY,
+  };
+}
+
 /**
  * The Y mirror alone: CAD Y-up into the canvas's Y-down world, with no scale or pan.
  *

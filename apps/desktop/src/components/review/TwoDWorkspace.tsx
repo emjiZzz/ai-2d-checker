@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, MoreVertical, Check, Move, LayoutTemplate, Crosshair, ArrowLeft } from "lucide-react";
+import { Maximize, Download, MoreVertical, Check, Move, ArrowLeft } from "lucide-react";
 import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -28,6 +28,7 @@ import {
 } from "../../utils/zoneGate";
 import { useAuditStore } from "../../stores/auditStore";
 import { useComplianceReportExport } from "../../hooks/useComplianceReportExport";
+import { registerExportCanvas } from "./canvasExportRegistry";
 import { downloadRedlineDxf } from "../../services/reportsApi";
 import { DrawingCanvas } from "./DrawingCanvas";
 import { UploadZone } from "./UploadZone";
@@ -72,7 +73,7 @@ const STABLE_ZONES = ["title_upper_left", "bom", "title", "tolerance", "views"] 
  * was saved to a key nothing ever read and silently lost on reload. Bump this when the
  * layout schema changes in a way that makes stored models unreadable.
  */
-const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v16";
+const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v17";
 
 /** Width of the Comparison Results tabset, matching what the layout seed used to apply. */
 const LEFT_TABSET_WEIGHT = 15;
@@ -225,13 +226,11 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const oldDrawing = useWorkspaceStore(s => s.oldDrawing);
   const newDrawing = useWorkspaceStore(s => s.newDrawing);
   const complianceScore = useWorkspaceStore(s => s.complianceScore);
-  const violations = useWorkspaceStore(s => s.violations);
   const aiScanProgress = useWorkspaceStore(s => s.aiScanProgress);
   const isPhysicalComparisonEnabled = useReviewStore(s => s.isPhysicalComparisonEnabled);
   const isRightPanelVisible = complianceScore !== null || aiScanProgress === "completed" || isPhysicalComparisonEnabled;
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
-  const showViewOrigins = useReviewStore(s => s.showViewOrigins);
 
   useEffect(() => {
     if (isPrototypeMode() && !hasHydrated) {
@@ -244,7 +243,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const isManualCheckMode = useIsManualCheckRoom();
   const manualSessionPair = useWorkspaceStore(s => s.manualSessionPair);
   const startManualSession = useWorkspaceStore(s => s.startManualSession);
-  const toggleViewOrigins = useReviewStore(s => s.toggleViewOrigins);
 
   // Zone bbox debug overlay. Lives on workspaceStore rather than reviewStore (where the
   // other view toggles are) because the cached boxes are keyed by drawing id and belong
@@ -597,6 +595,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   // that window both drawings are present while activeRoom is still the previous room, and
   // this would flash the editor open over a room that is already confirmed.
   useEffect(() => {
+    if (isPrototypeMode()) return;
     if (!hasHydrated || !roomSynced || !activeRoom || !pairKey) return;
     if (zonesGateOpen) return;
     const key = `${activeRoom.id}|${pairKey}`;
@@ -615,13 +614,19 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const drawingCanvasRefOld = useRef<any>(null);
   const drawingCanvasRefNew = useRef<any>(null);
 
-  const { exportToPDF } = useComplianceReportExport({
-    oldDrawing,
-    newDrawing,
-    violations,
-    complianceScore,
-    canvasRefs: { old: drawingCanvasRefOld, new: drawingCanvasRefNew }
-  });
+  // Published so the PDF export can reach these sheets from anywhere — the manual-check room's
+  // own export button lives in `ManualMarkingList`, four components away, and had no way to ask
+  // for the drawing it was reporting on. See `canvasExportRegistry`.
+  useEffect(() => {
+    registerExportCanvas('ref', drawingCanvasRefOld);
+    registerExportCanvas('rev', drawingCanvasRefNew);
+    return () => {
+      registerExportCanvas('ref', null);
+      registerExportCanvas('rev', null);
+    };
+  }, []);
+
+  const { exportToPDF, isExporting } = useComplianceReportExport();
 
   const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
 
@@ -695,8 +700,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         type: "row",
         weight: 100,
         children: [
-          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
+          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
           ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
@@ -705,8 +710,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         type: "row",
         weight: 100,
         children: [
-          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
+          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
           ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
@@ -716,8 +721,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         type: "row",
         weight: 100,
         children: [
-          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "Original Drawing", component: "originalCanvas" }] },
-          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "KMTI Drawing", component: "kmtiCanvas" }] },
+          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
+          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
           ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
         ]
       };
@@ -735,11 +740,15 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     if (!model) return;
     const oldNode = model.getNodeById("originalCanvasTab");
     if (oldNode) {
-      model.doAction(Actions.renameTab("originalCanvasTab", oldFileNameStr || "Original Drawing"));
+      model.doAction(Actions.renameTab("originalCanvasTab", oldFileNameStr || "REFERENCE DRAWING"));
     }
     const newNode = model.getNodeById("kmtiCanvasTab");
     if (newNode) {
-      model.doAction(Actions.renameTab("kmtiCanvasTab", newFileNameStr || "KMTI Drawing"));
+      model.doAction(Actions.renameTab("kmtiCanvasTab", newFileNameStr || "REVISED DRAWING"));
+    }
+    const leftNode = model.getNodeById("leftPanelTab");
+    if (leftNode && (leftNode as TabNode).getName() !== "Checklist") {
+      model.doAction(Actions.renameTab("leftPanelTab", "Checklist"));
     }
   }, [model, oldFileNameStr, newFileNameStr]);
 
@@ -768,7 +777,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       model.doAction(Actions.deleteTab("leftPanelTab"));
     } else if (bothUploaded && !leftNode) {
       const added = model.doAction(Actions.addNode(
-        { type: "tab", id: "leftPanelTab", name: "Comparison Results", component: "leftPanel", enableClose: true },
+        { type: "tab", id: "leftPanelTab", name: "Checklist", component: "leftPanel", enableClose: true },
         model.getRootRow().getId(),
         DockLocation.LEFT,
         -1
@@ -889,18 +898,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setReviewViewport({ x: 0, y: 0, scale: 1 })}
-                className="h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 text-text-muted hover:text-text-primary"
-                title="Reset Viewport"
-              >
-                <Maximize size={14} />
-              </Button>
               {newDrawing && (
-                <Button variant="outline" size="sm" onClick={exportToPDF} className="h-6 px-2 text-[11px] rounded-sm border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1" title="Export drawing pair as PDF">
-                  <Download size={12} /> PDF
+                <Button variant="outline" size="sm" onClick={exportToPDF} disabled={isExporting} className="h-6 px-2 text-[11px] rounded-sm border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1" title="Export the revision drawing and its checklist as a PDF">
+                  <Download size={12} /> {isExporting ? "Building…" : "PDF"}
                 </Button>
               )}
               {activeSession?.id && (
@@ -929,19 +929,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   <span>Redline DXF</span>
                 </Button>
               )}
-              {/*
-                A manual-check room is labelled, not toggled.
-              */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsTemplatesModalOpen(true)}
-                className="h-6 px-2 text-[11px] rounded-sm border-amber-500/40 text-amber-500 hover:bg-amber-500/20 gap-1"
-                title="Manage Saved Sheet Templates"
-              >
-                <LayoutTemplate size={12} />
-                <span>Templates</span>
-              </Button>
               <div className="flex items-center gap-1">
                 {/* 3-Dots View Controls Menu */}
                 <div ref={viewMenuRef} className="relative">
@@ -951,54 +938,31 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                     onClick={() => setIsViewMenuOpen(!isViewMenuOpen)}
                     title="More Options"
                     className={`h-6 w-6 rounded-sm focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors ${isViewMenuOpen
-                        ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10"
-                        : "text-text-muted hover:text-text-primary border-transparent hover:bg-sidebar-item-hover"
+                      ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10"
+                      : "text-text-muted hover:text-text-primary border-transparent hover:bg-sidebar-item-hover"
                       }`}
                   >
                     <MoreVertical size={14} />
                   </Button>
 
                   {isViewMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-60 glass-panel rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 border border-border-color bg-bg-card animate-fade-in">
-
-                      {/* One marker per view, at that view's own ORIGIN — computed by
-                          `viewDatums.ts`, not read off the viewport window (which is what this
-                          drew until 2026-08-12, 22.2 units from the front view's real datum).
-                          Solid = stated by the file; dashed = inferred from the view's own
-                          centrelines or concentric geometry, because the DXF carries only one
-                          origin per sheet. Only appears on sheets that HAVE viewports: a
-                          drawing exported DWG->DXF keeps everything in model space. */}
-                      <button
-                        onClick={() => { toggleViewOrigins(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${showViewOrigins
-                            ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
-                            : "text-text-primary hover:bg-sidebar-item-hover"
-                          }`}
-                        title="Each view's own origin, as iCAD SX shows it. SOLID = stated by the DXF (its UCS origin projected) — only one view per sheet gets that. DASHED = inferred from the view's own centrelines or concentric geometry, because the export drops per-view origins. A view with neither is left unmarked rather than guessed."
-                      >
-                        <div className="flex items-center gap-2">
-                          <Crosshair size={16} />
-                          <span>{showViewOrigins ? "Hide View Origins" : "Show View Origins"}</span>
-                        </div>
-                        {showViewOrigins && <Check size={14} className="text-accent-cyan" />}
-                      </button>
-
-                      <button
-                        onClick={() => { toggleZoneEditing(); setIsViewMenuOpen(false); }}
-                        className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${isRoiEditModeEnabled
+                    <div className="absolute right-0 top-full mt-2 w-48 glass-panel rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 border border-border-color bg-bg-card animate-fade-in">
+                      {!isPrototypeMode() && (
+                        <button
+                          onClick={() => { toggleZoneEditing(); setIsViewMenuOpen(false); }}
+                          className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${isRoiEditModeEnabled
                             ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                             : "text-text-primary hover:bg-sidebar-item-hover"
-                          }`}
-                        title="Drag and resize the zone boxes to align them to this sheet"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Move size={16} />
-                          <span>{isRoiEditModeEnabled ? "Stop Editing Zones" : "Edit Zone Boxes"}</span>
-                        </div>
-                        {isRoiEditModeEnabled && <Check size={14} className="text-amber-400" />}
-                      </button>
-
-                      <div className="h-px bg-border-color my-0.5"></div>
+                            }`}
+                          title="Drag and resize the zone boxes to align them to this sheet"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Move size={16} />
+                            <span>{isRoiEditModeEnabled ? "Stop Editing Zones" : "Edit Zone Boxes"}</span>
+                          </div>
+                          {isRoiEditModeEnabled && <Check size={14} className="text-amber-400" />}
+                        </button>
+                      )}
 
                       <button
                         onClick={() => { setReviewViewport({ x: 0, y: 0, scale: 1 }); setIsViewMenuOpen(false); }}
@@ -1014,7 +978,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
             </div>
           </div>
 
-          {isRoiEditModeEnabled && (
+          {!isPrototypeMode() && isRoiEditModeEnabled && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/5 border-b border-amber-500/20 flex-wrap">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                 Aligning zone
@@ -1024,8 +988,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   key={key}
                   onClick={() => selectZone(key)}
                   className={`px-2 py-1 text-[10px] font-bold uppercase rounded border transition-colors cursor-pointer ${selectedComparisonRegion === key
-                      ? "text-zinc-950 border-transparent"
-                      : "text-text-muted border-border-color hover:text-text-primary"
+                    ? "text-zinc-950 border-transparent"
+                    : "text-text-muted border-border-color hover:text-text-primary"
                     }`}
                   style={
                     selectedComparisonRegion === key
@@ -1119,7 +1083,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
             </div>
           )}
 
-          <div className="flex-grow h-full relative workspace-flexlayout-container">
+          <div className="flex-grow h-full relative workspace-flexlayout-container" data-tour="cad-canvas">
             <Layout
               model={model}
               factory={factory}

@@ -54,6 +54,7 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
   // tab — could resurrect it. Keeping the body empty means the gate cannot be bypassed into
   // START COMPARISON even if the tab leaks.
   if (
+    !isPrototypeMode() &&
     !isZoneReviewConfirmed(activeRoom, oldDrawing.id, newDrawing.id) &&
     !isZoneReviewGrandfathered(activeRoom)
   ) {
@@ -61,7 +62,7 @@ export const TwoDLeftPanel: React.FC<TwoDLeftPanelProps> = ({ currentNav }) => {
   }
 
   return (
-    <div className="tlp-root flex flex-col w-full h-full overflow-y-auto overflow-x-hidden box-border bg-bg-sidebar relative">
+    <div className="tlp-root flex flex-col w-full h-full overflow-y-auto overflow-x-hidden box-border bg-bg-sidebar relative" data-tour="marking-tools">
       {/* This panel is a flexlayout tabset the user drags, with a 220px floor and a default
           weight of 15 against siblings weighing 50+50 -- so its real share is ~12%, and none of
           the layouts below can assume a comfortable column. Tailwind's sm:/md: breakpoints are

@@ -12,6 +12,7 @@ import { HistoryView } from "./HistoryView";
 import { SettingsView } from "./SettingsView";
 import { StandardsView } from "./StandardsView";
 import { RoomsView } from "./RoomsView";
+import { InteractiveTourOverlay } from "../../components/ui/InteractiveTourOverlay";
 import { useDrawingsList } from "../../hooks/useDrawings";
 import { fetchDrawing } from "../../services/drawingsApi";
 import { useUploadJobPolling } from "../../hooks/useUploadJobPolling";
@@ -193,6 +194,9 @@ export const AuditWorkspace: React.FC = () => {
           <WorkspaceView currentNav={currentNav} />
         </div>
       )}
+
+      {/* ── Global Interactive Spotlight Tour Overlay ── */}
+      <InteractiveTourOverlay />
     </div>
   );
 };

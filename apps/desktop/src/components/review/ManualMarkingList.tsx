@@ -3,10 +3,11 @@ import { ChecklistSection } from './ChecklistSection';
 import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
 import { useThemeStore } from '../../stores/themeStore';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Trash2, CheckCircle2, ClipboardCheck } from 'lucide-react';
+import { Trash2, CheckCircle2, ClipboardCheck, Download } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
+import { useComplianceReportExport } from '../../hooks/useComplianceReportExport';
 import { CATEGORY_KEYS, categoryLabel } from './manualCheckCategories';
 
 /**
@@ -33,9 +34,13 @@ export const ManualMarkingList: React.FC = () => {
   const theme = useThemeStore((s) => s.theme);
 
   const markings = useWorkspaceStore((s) => s.markings);
+  const annotations = useWorkspaceStore((s) => s.annotations);
+  const deleteAnnotationById = useWorkspaceStore((s) => s.deleteAnnotationById);
   const manualSessionId = useWorkspaceStore((s) => s.manualSessionId);
   const manualSessionError = useWorkspaceStore((s) => s.manualSessionError);
   const startManualSession = useWorkspaceStore((s) => s.startManualSession);
+
+  const { exportToPDF, isExporting } = useComplianceReportExport();
 
   // Retry re-runs the open with the SAME identity the effect would have used. It does not clear
   // the error first: if the second attempt fails too, the message must not flicker away and
@@ -58,6 +63,8 @@ export const ManualMarkingList: React.FC = () => {
   // triaging someone else's. Collapsed-by-default would hide the thing they came here for.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
+  const manualSessionStatus = useWorkspaceStore((s) => s.manualSessionStatus);
+  const isSubmitted = submitted || manualSessionStatus === 'submitted' || manualSessionStatus === 'completed';
 
   const grouped = useMemo(() => {
     const map: Record<string, typeof markings> = {};
@@ -84,7 +91,8 @@ export const ManualMarkingList: React.FC = () => {
     if (ok) setSubmitted(true);
   };
 
-  const canSubmit = Boolean(manualSessionId) && markings.length > 0 && !submitting;
+  const totalCount = markings.length + annotations.length;
+  const canSubmit = Boolean(manualSessionId) && totalCount > 0 && !submitting && !isSubmitted;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -126,7 +134,7 @@ export const ManualMarkingList: React.FC = () => {
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
             {manualSessionId
-              ? `${markings.length} marking${markings.length === 1 ? '' : 's'} recorded`
+              ? `${totalCount} item${totalCount === 1 ? '' : 's'} recorded`
               : 'Opening session…'}
           </div>
         </div>
@@ -247,11 +255,74 @@ export const ManualMarkingList: React.FC = () => {
             learned to avoid. */}
         <ComparisonGridStyles />
 
-        {markings.length === 0 && !manualSessionError && (
+        {markings.length === 0 && annotations.length === 0 && !manualSessionError && (
           <p style={{ fontSize: 11, lineHeight: 1.6, color: 'var(--text-muted)', padding: '4px 4px' }}>
-            Left-click an entity on either sheet to select it, then choose a status. Nothing here
-            is produced by the engine — this list is only what you have recorded.
+            Left-click an entity on either sheet to select it, then choose a status. Or right-click to add annotations.
           </p>
+        )}
+
+        {annotations.length > 0 && (
+          <ChecklistSection
+            key="custom_annotations"
+            label="Annotations & Notes"
+            statusLabel={String(annotations.length)}
+            statusColor="#00e5ff"
+            statusIsMatched={false}
+            expanded={expanded['custom_annotations'] ?? true}
+            onToggle={() =>
+              setExpanded((prev) => ({
+                ...prev,
+                custom_annotations: !(prev['custom_annotations'] ?? true),
+              }))
+            }
+          >
+            {annotations.map((ann) => (
+              <FindingCard
+                key={ann.id}
+                statusLabel={ann.severity.toUpperCase()}
+                statusColor={
+                  ann.severity === 'critical'
+                    ? '#f43f5e'
+                    : ann.severity === 'high'
+                    ? '#f97316'
+                    : ann.severity === 'medium'
+                    ? '#eab308'
+                    : '#00e5ff'
+                }
+                actions={
+                  <button
+                    type="button"
+                    title="Delete annotation"
+                    onClick={() => deleteAnnotationById(ann.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: MARKER_STYLES.MISMATCHED.color,
+                      cursor: 'pointer',
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      padding: 0,
+                    }}
+                  >
+                    <Trash2 size={11} />
+                    <span>Remove</span>
+                  </button>
+                }
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
+                  {ann.content || 'Annotation Pin'}
+                </div>
+                {ann.coordinates && (
+                  <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                    CAD Pos: ({Math.round(ann.coordinates[0])}, {Math.round(ann.coordinates[1])})
+                  </div>
+                )}
+              </FindingCard>
+            ))}
+          </ChecklistSection>
         )}
 
         {CATEGORY_KEYS.map((key) => {
@@ -339,41 +410,77 @@ export const ManualMarkingList: React.FC = () => {
         })}
       </div>
 
-      <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-color)' }}>
-        {/* Submit finalises a session that already holds its data — every marking was persisted
-            as it was stamped. The wording says so: a button labelled "save" implies the opposite
-            and invites an engineer to worry about losing work they cannot lose. */}
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={submit}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            borderRadius: 8,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: canSubmit ? 'pointer' : 'not-allowed',
-            background: canSubmit ? '#059669' : 'var(--bg-dark)',
-            border: `1.5px solid ${canSubmit ? '#059669' : 'var(--border-color)'}`,
-            color: canSubmit ? '#fff' : 'var(--text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-          }}
-        >
-          {submitted ? (
-            <>
-              <CheckCircle2 size={13} /> Check submitted
-            </>
-          ) : submitting ? (
-            'Finalising…'
-          ) : (
-            'Finish check'
-          )}
-        </button>
-        <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
+      <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {isSubmitted ? (
+          <>
+            <div
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                background: 'rgba(16,185,129,0.15)',
+                border: '1.5px solid #10b981',
+                color: '#10b981',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <CheckCircle2 size={14} /> Check Submitted
+            </div>
+
+            <button
+              type="button"
+              onClick={exportToPDF}
+              disabled={isExporting}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                background: 'rgba(0, 229, 255, 0.15)',
+                border: '1.5px solid var(--accent-cyan)',
+                color: 'var(--accent-cyan)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+              title="Download Compliance Audit Report PDF"
+            >
+              <Download size={14} /> {isExporting ? 'Building report…' : 'Export PDF Report'}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={submit}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: canSubmit ? 'pointer' : 'not-allowed',
+              background: canSubmit ? '#059669' : 'var(--bg-dark)',
+              border: `1.5px solid ${canSubmit ? '#059669' : 'var(--border-color)'}`,
+              color: canSubmit ? '#fff' : 'var(--text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            {submitting ? 'Finalising…' : 'Finish check'}
+          </button>
+        )}
+        <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, textAlign: 'center' }}>
           Markings are saved as you stamp them.
         </p>
       </div>

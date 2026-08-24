@@ -38,6 +38,7 @@ export const createNavSlice: StateCreator<WorkspaceState, [], [], NavSlice> = (s
       // written through to the server before it was added here, and `startManualSession` reloads
       // the list from `listMarkings` on the way in.
       manualSessionId: null,
+      manualSessionStatus: null,
       manualSessionPair: null,
       manualSessionError: null,
       markingError: null,

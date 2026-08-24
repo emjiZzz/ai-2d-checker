@@ -109,6 +109,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   return (
     <div
       className={containerClass}
+      data-tour={side === "old" ? "upload-reference" : "upload-revision"}
       role="button"
       tabIndex={0}
       aria-label="File Upload Dropzone"

@@ -14,6 +14,8 @@
  * ResizeObserver. Mirrors the `utils/zoneFractions.ts` + `zoneFractions.test.ts` convention.
  */
 
+import { isPrototypeMode } from "../config/features";
+
 /** The subset of `Room` this module needs. Structural, so tests need no store. */
 export interface ZoneGateRoom {
   id: string;
@@ -104,6 +106,7 @@ export function isZoneGateOpen(args: {
   const pair = zonePairKey(oldDrawingId, newDrawingId);
   if (!pair) return false; // both drawings are required regardless of confirmation
 
+  if (isPrototypeMode()) return true;
   if (grandfathered) return true;
   if (locallyConfirmedPair === pair) return true;
   return isZoneReviewConfirmed(room, oldDrawingId, newDrawingId);

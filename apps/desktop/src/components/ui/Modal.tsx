@@ -70,7 +70,7 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className={cn(
-          "w-full bg-bg-card border border-border-color rounded-sm shadow-xl animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
+          "w-full bg-bg-card border border-border-color rounded-none shadow-xl animate-scale-up flex flex-col max-h-[90vh] overflow-hidden",
           maxWidthClassName,
           className
         )}
@@ -94,7 +94,7 @@ export const Modal: React.FC<ModalProps> = ({
             {!disableDismiss && (
               <button
                 onClick={onClose}
-                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-sm p-1 transition-all duration-150 shrink-0"
+                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-none p-1 transition-all duration-150 shrink-0"
                 aria-label="Close"
               >
                 <X size={14} />

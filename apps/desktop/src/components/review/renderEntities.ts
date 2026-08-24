@@ -1,4 +1,4 @@
-import { flipWorldY, getNormalization, worldToScreen } from '../../utils/coordinateTransform';
+import { flipWorldY, getNormalization, worldToCanvas } from '../../utils/coordinateTransform';
 import type { ViewDatum } from './viewDatums';
 import {
   VIEWS_EXCLUDED_ZONES,
@@ -31,58 +31,21 @@ export const cleanCadText = (text: string): string => {
   return clean.trim();
 };
 
-export const getPrintColor = (color: string): string => {
-  if (!color) return '#0f172a';
-  const cleanColor = color.trim().toLowerCase();
+/**
+ * The ink colour for DRAWING ENTITIES on export.
+ *
+ * A printed engineering drawing is black-on-white — always. The old implementation mapped
+ * each CAD-canvas colour to a different dark shade (yellow → brown, cyan → blue, green →
+ * forest), which produced a multi-coloured printout that no professional checker would
+ * accept. Now every stroke and every glyph gets the same near-black, matching a standard
+ * monochrome plot.
+ *
+ * **This is NOT used for overlay markers or annotation pins**, which carry their own
+ * surface-aware palettes through `markerInkFor` / `getAnnotationPinPrintColor`.
+ */
+const PRINT_INK = '#000000';
 
-  if (cleanColor.startsWith('#')) {
-    let hex = cleanColor;
-    if (hex.length === 4) {
-      hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
-    }
-
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-
-    if (r > 220 && g > 220 && b > 220) {
-      return '#0f172a';
-    }
-
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    if (brightness > 150) {
-      if (r > 200 && g > 200 && b < 100) {
-        return '#b45309';
-      }
-      if (r < 100 && g > 180 && b > 180) {
-        return '#0284c7';
-      }
-      if (g > 180 && r < 120 && b < 120) {
-        return '#15803d';
-      }
-      const dr = Math.round(r * 0.45);
-      const dg = Math.round(g * 0.45);
-      const db = Math.round(b * 0.45);
-      const toHex = (c: number) => c.toString(16).padStart(2, '0');
-      return `#${toHex(dr)}${toHex(dg)}${toHex(db)}`;
-    }
-    return hex;
-  }
-
-  const nameMap: Record<string, string> = {
-    'white': '#0f172a',
-    'yellow': '#b45309',
-    'cyan': '#0284c7',
-    'green': '#15803d',
-    'lime': '#166534',
-    'magenta': '#701a75',
-    'pink': '#be185d',
-    'lightgray': '#475569',
-    'gray': '#64748b'
-  };
-
-  return nameMap[cleanColor] || color;
-};
+export const getPrintColor = (_color: string): string => PRINT_INK;
 
 // ─── CAD text metrics and placement ───────────────────────────────────────────
 //
@@ -101,7 +64,7 @@ export const getPrintColor = (color: string): string => {
  * resolve to the same glyphs or every width measurement disagrees between them.
  */
 const CAD_FONT_STACK =
-  '"MS Gothic", "Yu Gothic UI", "Meiryo", "JetBrains Mono", monospace, sans-serif';
+  '"Yu Mincho Light", "Yu Mincho", "游明朝", "Century", "Cambria", "Times New Roman", "MS PMincho", "ＭＳ Ｐ明朝", "MS Mincho", "ＭＳ 明朝", "BIZ UDPMincho", serif';
 
 /**
  * Cap-height/em fallback, used when the canvas cannot measure — jsdom's canvas mock returns 0
@@ -315,7 +278,7 @@ const attachmentAnchor = (
  * `材 質` at ~4% over — renders on one line instead of two. That is the right trade: a slightly
  * wide string reads correctly, a one-character orphan reads as a broken drawing.
  */
-const MTEXT_WRAP_TOLERANCE = 1.15;
+const MTEXT_WRAP_TOLERANCE = 1.35;
 
 /**
  * Greedy wrap against an MTEXT column width, with an orphan guard.
@@ -383,6 +346,7 @@ interface CadTextOptions {
   /** Force a specific anchor, overriding `attachmentPoint` (dimension text is centred). */
   align?: CanvasTextAlign;
   vAlign?: VerticalAnchor;
+  isExport?: boolean;
 }
 
 /**
@@ -400,11 +364,12 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   const {
     x, y, text, capHeightPx, color, rotation = 0,
     attachmentPoint, widthFactor, columnWidthPx = 0,
+    isExport = false,
   } = opts;
   if (!text || capHeightPx <= 0) return;
 
-  // Convert the DXF cap height into the em size the canvas actually wants.
-  const emPx = capHeightPx / getCapHeightRatio(ctx, CAD_FONT_STACK);
+  // Scaled (0.88x) so text fits comfortably within table cells without unwanted line breaks.
+  const emPx = (capHeightPx * 0.88) / getCapHeightRatio(ctx, CAD_FONT_STACK);
 
   const anchor = attachmentAnchor(attachmentPoint);
   const align = opts.align ?? anchor.align;
@@ -426,7 +391,9 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
 
   ctx.save();
   ctx.fillStyle = color;
-  ctx.font = `${emPx}px ${CAD_FONT_STACK}`;
+  // On physical print export, use solid normal (400) weight with pure #000000 ink for maximum contrast and zero dither blur.
+  const fontWeight = isExport ? 'normal' : '300';
+  ctx.font = `${fontWeight} ${emPx}px ${CAD_FONT_STACK}`;
   ctx.textAlign = align;
   // Always 'alphabetic'. The vertical anchor is applied by hand below, from the DXF cap height
   // rather than from the font's ascent/descent — see `baselineOffsetPx`.
@@ -454,7 +421,7 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
 };
 
 import { EntityHitIndex, entityWorldBounds, displayValueOf } from './entityPicking';
-import { markerStyle, markerTypeOf, MARKER_SIDE } from './markerStyles';
+import { markerInkFor, markerTypeOf, MARKER_SIDE } from './markerStyles';
 
 export interface RenderFrame {
   ctx: CanvasRenderingContext2D;
@@ -524,12 +491,10 @@ export const renderEntities = ({
     ? sectionCalloutsForLayers(layers, cleanCadText)
     : null;
 
-  // One device pixel. This is the floor for every stroke, and it is the whole point of
-  // rendering vectors: 1.5 CSS px cannot land on the pixel grid, so it straddles two device
-  // pixels and antialiases into a pair of greys — the same soft edge the raster path produces.
-  // `1 / dpr` CSS px is exactly 1 device pixel, which is what a CAD viewer draws a hairline as
-  // at every zoom level.
-  const hairlinePx = isExport ? 1.0 : 1 / dpr;
+  // One device pixel on screen; on export, drawing geometry lines are solid visible outlines (0.60px, ~0.25mm wide line)
+  // while dimension/annotation/template lines are thin (0.30px, ~0.13mm narrow line) so they print 100% solid black without antialiasing blur.
+  const drawingHairlinePx = isExport ? 0.60 : 1 / dpr;
+  const dimHairlinePx = isExport ? 0.30 : 1 / dpr;
 
   // `$LWDISPLAY` — does this drawing want its lineweights drawn at all?
   //
@@ -546,9 +511,9 @@ export const renderEntities = ({
   /** Device-pixel width this entity's stroke will actually be painted at. */
   const deviceWidthFor = (strokeWidthMm: number): number => {
     const widthPx = showLineweights
-      ? Math.min(MAX_LINEWEIGHT_DISPLAY_PX, strokeWidthMm * LINEWEIGHT_DISPLAY_PX_PER_MM)
+      ? Math.min(MAX_LINEWEIGHT_DISPLAY_PX, strokeWidthMm * LINEWEIGHT_DISPLAY_PX_PER_MM * (isExport ? 0.60 : 1))
       : 0;
-    return Math.max(hairlinePx, widthPx) * dpr;
+    return Math.max(drawingHairlinePx, widthPx) * dpr;
   };
 
   // Pixel snapping is a screen-crispness fix and is skipped on export: that path renders at
@@ -559,7 +524,7 @@ export const renderEntities = ({
   const snapY = (wy: number, phase: number) =>
     snapEnabled ? snapWorldToDeviceGrid(wy, scale, transY, dpr, phase) : wy;
 
-  const pathBatches: Record<string, { stroke: string, width: number, dash: number[] | null, dashUnits: string, path: Path2D }> = {};
+  const pathBatches: Record<string, { stroke: string, width: number, dash: number[] | null, dashUnits: string, isAnnotation: boolean, path: Path2D }> = {};
   // Filled polygons, kept separate from the stroked batches because they need `fill()`
   // rather than `stroke()`. In practice these are dimension arrowheads.
   const fillBatches: Record<string, { color: string, path: Path2D }> = {};
@@ -602,7 +567,7 @@ export const renderEntities = ({
       if (isExport) {
         strokeColor = getPrintColor(strokeColor);
       }
-      const strokeWidth = ent.style?.strokeWidth || ent.properties?.strokeWidth || 1;
+      let strokeWidth: number = ent.style?.strokeWidth || ent.properties?.strokeWidth || 1;
       // Dash pattern joins the batch key: batching purely on colour+width merged hidden
       // and centre lines into the solid batch, so a mechanical drawing rendered every
       // construction line as continuous. That is a semantic error, not a cosmetic one.
@@ -613,7 +578,78 @@ export const renderEntities = ({
       // the batch key, or a stale entity's screen-space dashes would be applied to a
       // world-space batch.
       const dashUnits: string = dashPattern ? (ent.style?.dashUnits || 'screen') : 'none';
-      const batchKey = `${strokeColor}_${strokeWidth}_${dashPattern ? dashPattern.join(',') : 'solid'}_${dashUnits}`;
+
+      const isCenterOrDash =
+        dashPattern !== null ||
+        String(ent.properties?.linetype ?? '').toUpperCase().includes('CENTER') ||
+        String(ent.properties?.linetype ?? '').toUpperCase().includes('HIDDEN') ||
+        String(ent.properties?.linetype ?? '').toUpperCase().includes('DASH');
+
+      const normalizedLayer = String(ent.layer || layerName || '').toLowerCase().trim();
+      const isAnnotationLayer =
+        normalizedLayer === '5' ||
+        normalizedLayer === '4' ||
+        normalizedLayer === '3' ||
+        normalizedLayer === '3a' ||
+        normalizedLayer === '4a' ||
+        normalizedLayer === '7' ||
+        normalizedLayer === '7a' ||
+        normalizedLayer === '8' ||
+        normalizedLayer === '9' ||
+        normalizedLayer.includes('dim') ||
+        normalizedLayer.includes('annot') ||
+        normalizedLayer.includes('lead') ||
+        normalizedLayer.includes('symb') ||
+        normalizedLayer.includes('center') ||
+        normalizedLayer.includes('hid') ||
+        normalizedLayer.includes('draft') ||
+        normalizedLayer.includes('finish') ||
+        normalizedLayer.includes('rough') ||
+        normalizedLayer.includes('machin') ||
+        normalizedLayer.includes('surf') ||
+        normalizedLayer.includes('kigou') ||
+        normalizedLayer.includes('shiage') ||
+        normalizedLayer.includes('tokki') ||
+        normalizedLayer.includes('rahm') ||
+        normalizedLayer.includes('waku') ||
+        normalizedLayer.includes('title') ||
+        normalizedLayer.includes('table') ||
+        normalizedLayer.includes('frame') ||
+        normalizedLayer.includes('border');
+
+      const blockName = String(ent.properties?.block_name ?? '').toUpperCase();
+      const isSymbolBlock =
+        blockName.startsWith('JZB_') ||
+        blockName.startsWith('DIM_') ||
+        blockName.includes('SYMB') ||
+        blockName.includes('FINISH') ||
+        blockName.includes('ROUGH') ||
+        blockName.includes('SURF') ||
+        blockName.includes('MACHIN') ||
+        blockName.includes('TRIANGLE');
+
+      const isThinLine =
+        ent.type === 'dimension' ||
+        ent.type === 'leader' ||
+        ent.type === 'multileader' ||
+        isCenterOrDash ||
+        isAnnotationLayer ||
+        isSymbolBlock ||
+        Boolean(ent.properties?.parent_handle) ||
+        Boolean(ent.properties?.arrow_size);
+
+      // ─── Subordinate lines (dimensions, leaders, chamfers, machining symbols, centerlines): forced thin on export ──
+      //
+      // Dimensions, leaders, chamfer callout arrows, machining/finish symbols (triangles ▽),
+      // and centerlines/dashed lines are annotation & reference lines, not solid part boundaries.
+      // In technical drafting standards (ISO 128 / JIS B 0001 / JIS B 0031), these are narrow lines (~0.13-0.18mm)
+      // while solid part contours are wide lines (~0.35-0.50mm).
+      // On export, we set strokeWidth = 0 so they map to the ultra-thin dimHairlinePx floor.
+      if (isExport && isThinLine) {
+        strokeWidth = 0;
+      }
+
+      const batchKey = `${strokeColor}_${strokeWidth}_${dashPattern ? dashPattern.join(',') : 'solid'}_${dashUnits}_${isThinLine ? 'thin' : 'geo'}`;
 
       if (ent.type === 'text' && (geo.location || geo.insert)) {
         const [tx, tyRaw] = geo.location || geo.insert;
@@ -636,7 +672,7 @@ export const renderEntities = ({
         drawnEntities++;
 
         ctx.save();
-        const localDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+        const localDpr = isExport ? 1 : dpr;
         ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
 
         let textColor = ent.style?.stroke || ent.style?.fill || '#ffffff';
@@ -669,6 +705,7 @@ export const renderEntities = ({
             attachmentPoint: isMText ? ent.properties?.attachment_point : undefined,
             widthFactor: ent.properties?.width_factor,
             columnWidthPx: isMText ? (Number(ent.properties?.column_width) || 0) * scale : 0,
+            isExport,
           });
         }
         ctx.restore();
@@ -676,7 +713,14 @@ export const renderEntities = ({
       }
 
       if (!pathBatches[batchKey]) {
-        pathBatches[batchKey] = { stroke: strokeColor, width: strokeWidth as number, dash: dashPattern, dashUnits, path: new Path2D() };
+        pathBatches[batchKey] = {
+          stroke: strokeColor,
+          width: strokeWidth as number,
+          dash: dashPattern,
+          dashUnits,
+          isAnnotation: isThinLine,
+          path: new Path2D(),
+        };
       }
       const p2d = pathBatches[batchKey].path;
 
@@ -828,6 +872,7 @@ export const renderEntities = ({
               widthFactor: ent.properties?.width_factor,
               align: 'center',
               vAlign: 'middle',
+              isExport,
             });
             ctx.restore();
           }
@@ -932,10 +977,12 @@ export const renderEntities = ({
     // Converted at a fixed px-per-mm and NOT scaled by the view, because lineweight is a
     // plotting property rather than a dimension of the geometry. See
     // LINEWEIGHT_DISPLAY_PX_PER_MM for why that beats matching the raster bitmap.
-    const widthPx = showLineweights
-      ? Math.min(MAX_LINEWEIGHT_DISPLAY_PX, batch.width * LINEWEIGHT_DISPLAY_PX_PER_MM)
+    const isThin = batch.isAnnotation || Boolean(batch.dash);
+    const baseHairline = isThin ? dimHairlinePx : drawingHairlinePx;
+    const widthPx = showLineweights && !isThin
+      ? Math.min(MAX_LINEWEIGHT_DISPLAY_PX, batch.width * LINEWEIGHT_DISPLAY_PX_PER_MM * (isExport ? 0.60 : 1))
       : 0;
-    ctx.lineWidth = (Math.max(hairlinePx, widthPx) / scale) * resolutionMultiplier;
+    ctx.lineWidth = (Math.max(baseHairline, widthPx) / scale) * resolutionMultiplier;
 
     if (batch.dash) {
       // World-space dashes are already in the transform's units and pass through untouched —
@@ -982,6 +1029,35 @@ export interface RenderViolationReticlesParams {
  */
 const MARKER_DOT_PX = 5.5;
 
+/**
+ * How a mark is painted, per surface.
+ *
+ * On the dark canvas a mark is an **interaction affordance**: high-chroma, heavy enough to find
+ * at a glance and to stay legible while zoomed out, and opaque so it reads as a thing you can
+ * click. On the printed page it is an **annotation over someone else's drawing**, and it has to
+ * read as added to the sheet rather than as competing with it.
+ *
+ * The print numbers are derived from what is actually next to them on the page, not chosen by
+ * eye. At the report's A4 capture the drawing's own linework is a **0.42 mm** hairline and its
+ * title-block text is about **2.5 mm** tall — against which the screen values gave a **4.3 mm**
+ * tick drawn with a **1.25 mm** stroke in neon green. Three times the weight of the drawing, and
+ * the first thing the eye landed on.
+ *
+ * `checkRisePx` lifts the tick clear of the value it marks. The mark's coordinate is the entity's
+ * bounding-box centre — deliberately, so a mark lands in the same place on every value — which on
+ * a single line of text is exactly the middle of the glyphs. On screen that is fine and is where
+ * the pointer expects the target to be; on paper it means the value cannot be read underneath its
+ * own checkmark. Printed marks step up off the centre by roughly half a tick.
+ *
+ * ⚠ Screen values are unchanged, and `markerPositionsRef` is not lifted. The rise is export-only
+ * because the stored position is what a click is tested against — moving the drawn mark away from
+ * its hit target is a different bug in the same place.
+ */
+export const MARK_PAINT = {
+  canvas: { checkPx: 6, strokePx: 3, checkRisePx: 0, alpha: 1 },
+  print: { checkPx: 3.2, strokePx: 0.60, checkRisePx: 1.8, alpha: 0.9 },
+} as const;
+
 export const renderViolationReticles = ({
   frame,
   violations,
@@ -993,7 +1069,7 @@ export const renderViolationReticles = ({
   oldDrawing,
   visibleMarkerTypes
 }: RenderViolationReticlesParams) => {
-  const { ctx, isExport, renderWidth, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
+  const { ctx, isExport, renderWidth, scale, transX, transY, currentViewportScale, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
   // Critical constraint: explicit filter reset to clear any Neon-CAD filter applied earlier in the pass
   if (frame.isNeonModeActive && !isExport) {
@@ -1042,24 +1118,36 @@ export const renderViolationReticles = ({
     // completely, which is indistinguishable from the marking never having been recorded.
     if (visibleMarkerTypes[markerType] === false) return;
 
-    // Level-of-Detail (LOD): Skip entirely if zoomed way out, unless it's the actively selected violation
-    if (viewport.scale < 0.1 && selectedViolation?.id !== v.id) return;
+    // Level-of-Detail (LOD): Skip entirely if zoomed way out, unless it's the actively selected
+    // violation.
+    //
+    // ⚠ `currentViewportScale`, not `viewport.scale`. They are the same number on screen and not
+    // on export, where this used to read the pan/zoom the user happened to leave the app at — so
+    // a checker who zoomed out past 0.1 exported a report with no markers on it at all, and
+    // nothing said why.
+    if (currentViewportScale < 0.1 && selectedViolation?.id !== v.id) return;
 
     let coords = isOldDrawing ? v.ref_coordinates : v.coordinates;
     if (!coords) return;
 
     const [vx, raw_vy] = coords;
-    const screenPos = worldToScreen(vx, raw_vy, norm, viewport);
+    // The FRAME's transform, not the viewport's. See `worldToCanvas`.
+    const screenPos = worldToCanvas(vx, raw_vy, norm, { scale, transX, transY });
     const isSelected = selectedViolation?.id === v.id;
 
-    const bulletColor = markerStyle(markerType).color;
+    const paint = MARK_PAINT[isExport ? 'print' : 'canvas'];
+    const bulletColor = markerInkFor(markerType, isExport ? 'print' : 'canvas');
     const statusLabel = markerType;
 
     let screenX = screenPos.x;
     let screenY = screenPos.y;
 
-    // Threading marker positions ref directly for handleMouseMove click targets
-    markerPositionsRef.current[v.id] = { x: screenX, y: screenY };
+    // Threading marker positions ref directly for handleMouseMove click targets.
+    //
+    // Never from an export pass: these are the hit targets the pointer is tested against, and an
+    // export writes positions in a 3492-pixel page's coordinates. Left unguarded, exporting a
+    // report silently moved every clickable marker until the next repaint.
+    if (!isExport) markerPositionsRef.current[v.id] = { x: screenX, y: screenY };
 
     ctx.save();
     const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
@@ -1067,7 +1155,7 @@ export const renderViolationReticles = ({
 
     const isHoveredOrSelected = hoveredMarkerId === v.id || isSelected;
     // Level-of-Detail (LOD): Hide detailed text cards when zoomed out, unless explicitly hovered/selected
-    const lodSkipCard = viewport.scale < 0.3 && !isHoveredOrSelected;
+    const lodSkipCard = currentViewportScale < 0.3 && !isHoveredOrSelected;
 
     const SHOW_MARKER_TARGETS = (showMarkerLabels && !lodSkipCard) || isHoveredOrSelected;
     if (SHOW_MARKER_TARGETS) {
@@ -1195,21 +1283,29 @@ export const renderViolationReticles = ({
     // far enough and it shrinks with the geometry it marks. That is deliberate for the DOT (it
     // belongs to a place on the drawing) and deliberately NOT true of the check below, which is
     // a statement about that place and stays legible at any zoom.
-    const radius = MARKER_DOT_PX * resolutionMultiplier * viewport.scale;
+    // ⚠ `currentViewportScale` carries the resolution too, so there is no `resolutionMultiplier`
+    // here. `scale / normScale` IS `viewport.scale` on screen and the export's own fit-to-page
+    // zoom on export — one expression, correct in both, where the old product of a window-derived
+    // multiplier and the live zoom made a marker's printed size depend on how big the user
+    // happened to have the panel and how far they had zoomed in.
+    const radius = MARKER_DOT_PX * currentViewportScale;
 
     if (statusLabel === 'MATCHED') {
       ctx.beginPath();
+      ctx.globalAlpha = isSelected ? 1 : paint.alpha;
       ctx.strokeStyle = bulletColor;
-      ctx.lineWidth = 3 * resolutionMultiplier;
+      ctx.lineWidth = paint.strokePx * resolutionMultiplier;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      const size = paint.checkPx * resolutionMultiplier;
       const cx = screenX;
-      const cy = screenY;
-      const size = 6 * resolutionMultiplier;
+      // Up off the value, by a fraction of the tick's own size, so it scales with the mark.
+      const cy = screenY - paint.checkRisePx * resolutionMultiplier;
       ctx.moveTo(cx - size * 0.8, cy - size * 0.1);
       ctx.lineTo(cx - size * 0.1, cy + size * 0.6);
       ctx.lineTo(cx + size * 0.9, cy - size * 0.7);
       ctx.stroke();
+      ctx.globalAlpha = 1;
 
       if (isSelected) {
         ctx.beginPath();
@@ -1294,7 +1390,7 @@ export const renderAnnotationPins = ({
   hoveredAnnotationId,
   badgeMap: _badgeMap,
 }: RenderAnnotationPinsParams) => {
-  const { ctx, isExport, viewport, norm, resolutionMultiplier, markerPositionsRef } = frame;
+  const { ctx, isExport, scale, transX, transY, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
   if (!Array.isArray(annotations)) return;
 
@@ -1309,14 +1405,27 @@ export const renderAnnotationPins = ({
     const [ax, ay] = coords;
     if (!Number.isFinite(ax) || !Number.isFinite(ay)) return;
 
-    const screenPos = worldToScreen(ax, ay, norm, viewport);
+    // The FRAME's transform, for the same reason the markers use it: an annotation pin placed
+    // through the viewport lands wherever the app's panel had it, not where the drawing is.
+    const screenPos = worldToCanvas(ax, ay, norm, { scale, transX, transY });
     const isSelected = selectedAnnotationId === ann.id;
     const isHovered = hoveredAnnotationId === ann.id;
     const isResolved = ann.status === 'resolved';
 
-    const color = isResolved ? '#39ff14' : (PEN_COLORS[ann.pen_type] || '#00ffff');
+    // `PEN_COLORS` is a dark-canvas palette — `checker_blue` is `#00ffff`, which on the export's
+    // white page is very nearly invisible. Annotation pins are NOT drawing entities, so they keep
+    // distinct colours rather than going through `getPrintColor` (which now returns uniform black
+    // for the drawing itself). This inline map converts each neon canvas colour to a readable
+    // dark variant for white paper.
+    const rawColor = isResolved ? '#39ff14' : (PEN_COLORS[ann.pen_type] || '#00ffff');
+    const color = isExport
+      ? ({
+        '#ff4d4f': '#b91c1c', '#ffa940': '#c2410c', '#ffec3d': '#a16207',
+        '#00ffff': '#0284c7', '#39ff14': '#047857', '#ff7ab6': '#be185d',
+      }[rawColor] ?? '#1a1a1a')
+      : rawColor;
 
-    markerPositionsRef.current[`ann:${ann.id}`] = { x: screenPos.x, y: screenPos.y };
+    if (!isExport) markerPositionsRef.current[`ann:${ann.id}`] = { x: screenPos.x, y: screenPos.y };
 
     ctx.save();
     const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
@@ -1449,7 +1558,7 @@ export interface RenderZoneEditorParams {
  *
  * This is the **only** overlay in this file that stays in world space. `renderViolationReticles`,
  * `renderAnnotationPins` and `renderZoneEditor` all open with
- * `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` and place things in screen pixels via `worldToScreen`
+ * `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` and place things in canvas pixels via `worldToCanvas`
  * / `fractionsToScreenRect`, which apply the flip themselves. So "does this renderer owe the
  * mirror?" is answered by whether it resets the transform — and this one does not, because
  * dividing its sizes by `scale` is how it stays screen-constant while tracking the geometry.
@@ -1814,7 +1923,7 @@ export const renderSelectionHighlight = ({
 
     // Already flipped-world, so it converts with the frame's own scale and translation — the
     // same arithmetic the hover highlight uses, and the reason neither goes back through
-    // worldToScreen and risks disagreeing about the Y direction.
+    // worldToCanvas and risks disagreeing about the Y direction.
     const rawX = b.x0 * scale + transX;
     const rawY = b.y0 * scale + transY;
     const rawW = b.x1 * scale + transX - rawX;

@@ -127,7 +127,7 @@ export const TwoDRightPanel: React.FC<TwoDRightPanelProps> = ({ currentNav }) =>
   }
 
   return (
-    <div className="flex flex-col w-full h-full p-3 overflow-hidden box-border bg-bg-sidebar">
+    <div className="flex flex-col w-full h-full p-3 overflow-hidden box-border bg-bg-sidebar" data-tour="checklist-panel">
       {/* Top Mode Navigation Switcher */}
       {!isPrototypeMode() && (
         <div className="flex items-center gap-1.5 p-1 bg-bg-dark border border-border-color rounded-lg mb-3 shrink-0">

@@ -181,6 +181,7 @@ export const createManualCheckSlice: StateCreator<
   ManualCheckSlice
 > = (set, get) => ({
   manualSessionId: null,
+  manualSessionStatus: null,
   manualSessionPair: null,
   manualSessionError: null,
   markings: [],
@@ -276,6 +277,7 @@ export const createManualCheckSlice: StateCreator<
       const existing = await listMarkings(session.id);
       set({
         manualSessionId: session.id,
+        manualSessionStatus: (session as any).status || null,
         manualSessionPair: pair,
         manualSessionError: null,
         // A write error from the previous session cannot describe this one.
@@ -423,7 +425,7 @@ export const createManualCheckSlice: StateCreator<
     }
     try {
       await submitSession(manualSessionId);
-      set({ markingError: null });
+      set({ manualSessionStatus: "completed", markingError: null });
       return true;
     } catch (err: any) {
       const message = String(err?.message ?? err);

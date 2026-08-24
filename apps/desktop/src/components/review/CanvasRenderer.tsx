@@ -12,6 +12,14 @@ import { EntityHitIndex } from './entityPicking';
 import { renderManualMarkings } from './renderManualMarkings';
 import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
 import { markingsToMarkers } from './markerStyles';
+import {
+  computeExportFit,
+  cropIsWorthwhile,
+  findInkBounds,
+  fitSpaceFromPixels,
+  resolutionMultiplierFor,
+  type FitRect,
+} from './exportFit';
 
 interface CanvasRendererProps {
   width: number;
@@ -157,24 +165,6 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     [drawing, layers],
   );
 
-  // Expose canvasRef for interaction layer
-  useImperativeHandle(ref, () => ({
-    exportImage: (exportWidth?: number, exportHeight?: number) => {
-      const canvas = document.createElement('canvas');
-      const targetW = exportWidth || 7016;
-      const targetH = exportHeight || 4960;
-      canvas.width = targetW;
-      canvas.height = targetH;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return '';
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      renderContent(ctx, true, targetW, targetH);
-      return canvas.toDataURL('image/png');
-    },
-    getCanvasElement: () => canvasRef.current
-  }), [drawing, activeLayers, showViolations, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, showViewOrigins]);
-
   // Subscribe to viewport changes without triggering React re-renders.
   // On every setViewport call (each mouse pixel during pan), we update the ref and schedule
   // a canvas repaint directly via RAF — completely bypassing the React render pipeline.
@@ -190,7 +180,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     return unsub;
   }, []);
 
-  const renderContent = useCallback((ctx: CanvasRenderingContext2D, isExport: boolean, renderWidth: number = width, renderHeight: number = height) => {
+  const renderContent = useCallback((ctx: CanvasRenderingContext2D, isExport: boolean, renderWidth: number = width, renderHeight: number = height, fitOverride: FitRect | null = null) => {
     // Read viewport from ref — decoupled from React closure, stays fresh during pan without causing re-renders
     const viewport = viewportRef.current;
     const norm = getNormalization(parseBounds(drawing?.metadata?.render_bounds));
@@ -199,7 +189,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     const normYMin = norm.ymin;
 
     const effectiveScale = viewport.scale * normalizationScale;
-    const resolutionMultiplier = renderWidth / width;
+    const resolutionMultiplier = resolutionMultiplierFor(isExport, renderWidth, width);
 
     // 1. Clear infinite background
     if (isExport) {
@@ -214,18 +204,20 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     let transX = viewport.x - normXMin * effectiveScale;
     let transY = viewport.y - normYMin * effectiveScale;
 
-    if (isExport && drawing?.metadata?.render_bounds) {
-      const [xmin, ymin, xmax, ymax] = drawing.metadata.render_bounds;
-      const drawingW = xmax - xmin;
-      const drawingH = ymax - ymin;
-      if (drawingW > 0 && drawingH > 0) {
-        const padding = Math.max(30, Math.round(renderWidth * 0.04));
-        const scaleX = (renderWidth - 2 * padding) / drawingW;
-        const scaleY = (renderHeight - 2 * padding) / drawingH;
-        scale = Math.min(scaleX, scaleY);
-        transX = padding + (renderWidth - 2 * padding - drawingW * scale) / 2 - xmin * scale;
-        transY = padding + (renderHeight - 2 * padding - drawingH * scale) / 2 - ymin * scale;
-      }
+    // `fitOverride` is how the two-pass export crops to the ink: pass one fits `render_bounds`
+    // and measures what was actually painted, pass two comes back through here with that
+    // rectangle. Absent, this is the historical behaviour.
+    const exportRect: FitRect | null =
+      fitOverride ??
+      (isExport && drawing?.metadata?.render_bounds
+        ? (drawing.metadata.render_bounds.slice(0, 4) as FitRect)
+        : null);
+
+    if (isExport && exportRect && exportRect[2] - exportRect[0] > 0 && exportRect[3] - exportRect[1] > 0) {
+      const fit = computeExportFit(exportRect, renderWidth, renderHeight);
+      scale = fit.scale;
+      transX = fit.transX;
+      transY = fit.transY;
     }
 
     ctx.save();
@@ -401,6 +393,67 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
 
     return stats;
   }, [layers, width, height, activeLayers, showViolations, isManualCheckMode, manualMarkings, hoveredEntityId, selectedEntities, pendingPairRef, hoverLocator, selectionLocator, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, entityHitIndex, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
+
+
+  /**
+   * Expose the canvas to the interaction layer, and the sheet itself to the PDF report.
+   *
+   * ⚠ **The dependency is `renderContent` and nothing else, and it must stay that way.** This
+   * hand-listed fourteen of `renderContent`'s thirty-odd inputs — omitting `layers`,
+   * `manualMarkings`, `annotations`, `width` and `height` among others — so the handle captured
+   * whichever `renderContent` existed the last time one of those fourteen moved. Layers arrive
+   * after the drawing they belong to, which put an EMPTY-layer closure in the exported handle:
+   * the report's drawing pages rendered their white background and no geometry. A marking made
+   * after the last captured change was likewise absent, which is the same defect wearing the
+   * costume the engineer would notice — checkmarks missing from their own report.
+   *
+   * Declared below `renderContent` rather than above it because naming it in a dependency array
+   * evaluates it during render, and a `const` referenced before its own declaration is a TDZ
+   * ReferenceError, not a stale value.
+   */
+  useImperativeHandle(ref, () => ({
+    exportImage: (exportWidth?: number, exportHeight?: number) => {
+      const canvas = document.createElement('canvas');
+      const targetW = exportWidth || 3396;
+      const targetH = exportHeight || 2352;
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // Pass one: the historical `render_bounds` fit, which is what tells us where the ink is.
+      renderContent(ctx, true, targetW, targetH);
+
+      // Pass two: the same render, cropped to what pass one actually painted.
+      //
+      // At full resolution, not on a small probe. A cheaper low-res first pass would be tempting
+      // and wrong: `renderEntities` culls text below one pixel high, so a probe answers the
+      // question for a DIFFERENT set of entities than the final render draws — and the labels it
+      // drops are the small ones at the edges of the sheet, which are exactly the ones a crop
+      // must not cut off.
+      const rect = drawing?.metadata?.render_bounds?.slice(0, 4) as FitRect | undefined;
+      if (rect && rect[2] - rect[0] > 0 && rect[3] - rect[1] > 0) {
+        const firstFit = computeExportFit(rect, targetW, targetH);
+        const ink = findInkBounds(ctx, targetW, targetH);
+        if (ink && cropIsWorthwhile(ink, targetW, targetH, firstFit.padding)) {
+          const topLeft = fitSpaceFromPixels(firstFit, ink[0], ink[1]);
+          const bottomRight = fitSpaceFromPixels(firstFit, ink[2], ink[3]);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          renderContent(ctx, true, targetW, targetH, [
+            topLeft.x,
+            topLeft.y,
+            bottomRight.x,
+            bottomRight.y,
+          ]);
+        }
+      }
+
+      return canvas.toDataURL('image/png');
+    },
+    getCanvasElement: () => canvasRef.current
+  }), [renderContent, drawing]);
 
   // Redraw logic
   const drawCanvas = useCallback(() => {

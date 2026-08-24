@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getNormalization,
   worldToScreen,
+  worldToCanvas,
   screenToWorld,
   screenToWorldUnflipped,
   screenDeltaToWorldDelta,
@@ -396,5 +397,51 @@ describe('parseBounds', () => {
     expect(norm.hasBounds).toBe(true);
     if (!norm.hasBounds) return;
     expect(norm.normScale).toBe(1.0);
+  });
+});
+
+describe('worldToCanvas — the transform a render pass is actually painting with', () => {
+  const norm = getNormalization(parseBounds([-52.5, -37.125, 1102.5, 779.625]))!;
+  const viewport = { x: 40, y: 25, scale: 1.3 };
+
+  /** Exactly how `CanvasRenderer` derives its transform for an on-screen pass. */
+  const screenTransform = {
+    scale: viewport.scale * norm.normScale,
+    transX: viewport.x - norm.xmin * viewport.scale * norm.normScale,
+    transY: viewport.y - norm.ymin * viewport.scale * norm.normScale,
+  };
+
+  it('agrees with worldToScreen when the transform came from the viewport', () => {
+    // This equivalence is what makes the substitution safe on screen — and it is also why the
+    // export bug survived so long: on screen the two are the same number to the last decimal.
+    for (const [wx, wy] of [[0, 0], [500, 600], [-52.5, 779.625], [1102.5, -37.125]]) {
+      const viaViewport = worldToScreen(wx, wy, norm, viewport);
+      const viaFrame = worldToCanvas(wx, wy, norm, screenTransform);
+      expect(viaFrame.x).toBeCloseTo(viaViewport.x, 9);
+      expect(viaFrame.y).toBeCloseTo(viaViewport.y, 9);
+    }
+  });
+
+  it('follows a fit-to-page transform the viewport cannot reproduce', () => {
+    const pageFit = { scale: 3.017, transX: 158.4, transY: 112.5 };
+    const onPage = worldToCanvas(500, 600, norm, pageFit);
+    expect(onPage.x).toBeCloseTo(500 * 3.017 + 158.4, 9);
+    expect(onPage.y).toBeCloseTo(flipWorldY(600, norm) * 3.017 + 112.5, 9);
+    expect(onPage.x).not.toBeCloseTo(worldToScreen(500, 600, norm, viewport).x, 1);
+  });
+
+  it('applies the Y flip exactly once', () => {
+    // The hazard `renderViewOrigins` shipped twice: a mirror about the sheet's centreline is
+    // small near the middle and large at the edges, so it reads as "slightly off" rather than
+    // "wrong".
+    const y = worldToCanvas(0, 600, norm, screenTransform).y;
+    const flippedTwice = worldToCanvas(0, flipWorldY(600, norm), norm, screenTransform).y;
+    expect(y).toBeCloseTo(flipWorldY(600, norm) * screenTransform.scale + screenTransform.transY, 9);
+    expect(y).not.toBeCloseTo(flippedTwice, 1);
+  });
+
+  it('passes Y straight through when there are no bounds to mirror about', () => {
+    const none = getNormalization(null);
+    expect(worldToCanvas(3, 7, none, { scale: 2, transX: 1, transY: 5 })).toEqual({ x: 7, y: 19 });
   });
 });

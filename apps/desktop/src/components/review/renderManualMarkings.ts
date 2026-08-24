@@ -1,4 +1,4 @@
-import { worldToScreen } from '../../utils/coordinateTransform';
+import { worldToCanvas } from '../../utils/coordinateTransform';
 import type { RenderFrame } from './renderEntities';
 import { drawValueChip } from './renderEntities';
 import {
@@ -30,13 +30,18 @@ import type { EntityLocator } from '../../stores/workspace/types';
  * ## Coordinates
  *
  * A marking's stored coordinate is CAD (Y-up): it was captured with `screenToWorld`, which
- * applies the flip inverse. `worldToScreen` flips again on the way back, so the pair round-trips
+ * applies the flip inverse. `worldToCanvas` flips again on the way back, so the pair round-trips
  * and no extra `flipWorldY` belongs here — adding one would mirror every badge about the
  * sheet's centreline, plausibly near the middle and far out at the edges.
  *
- * The hover box and the cross-sheet value matches are different: the picking index already
- * stores FLIPPED-world bounds, so both map with the frame's own `scale`/`transX`/`transY`
- * instead. Two spaces, two conversions, and they are not interchangeable.
+ * ⚠ `worldToCanvas`, taking the FRAME's `scale`/`transX`/`transY`, **not** `worldToScreen` taking
+ * the viewport. The two are the same arithmetic on screen and diverge completely on export, where
+ * the frame carries a fit-to-page transform and the viewport is whatever pan and zoom the user
+ * left behind — which put every mark in the corner of the exported sheet.
+ *
+ * The hover box and the cross-sheet value matches are different again: the picking index already
+ * stores FLIPPED-world bounds, so both apply the frame's transform with no flip of their own.
+ * Two spaces, two conversions, and they are not interchangeable.
  *
  * Drawn in screen space with the transform reset, matching `renderViolationReticles`.
  */
@@ -88,7 +93,7 @@ export const renderManualMarkings = ({
   selectionLocator,
   zones,
 }: RenderManualMarkingsParams) => {
-  const { ctx, isExport, viewport, norm, scale, transX, transY } = frame;
+  const { ctx, isExport, norm, scale, transX, transY } = frame;
 
 
   if (frame.isNeonModeActive && !isExport) ctx.filter = 'none';
@@ -106,7 +111,7 @@ export const renderManualMarkings = ({
   const hovered = entityHitIndex?.boundsFor(hoveredEntityId);
   if (hovered) {
     // The index is already in flipped-world units, so it converts with the frame's own scale
-    // and translation rather than going back through worldToScreen.
+    // and translation rather than flipping a second time through `worldToCanvas`.
     const x0 = hovered.x0 * scale + transX;
     const y0 = hovered.y0 * scale + transY;
     const x1 = hovered.x1 * scale + transX;
@@ -255,7 +260,11 @@ export const renderManualMarkings = ({
 
   if (pendingPairRef && pendingPairRef.side === side && pendingPairRef.coordinates) {
     const [px, py] = pendingPairRef.coordinates;
-    const pos = worldToScreen(px, py, norm, viewport);
+    // The frame's transform, matching every other mark on the sheet. This one is only ever drawn
+    // on screen — a half-finished pair is a gesture in progress, not a recorded fact — but two
+    // conversions for one job is how the markers came to disagree with the geometry in the first
+    // place.
+    const pos = worldToCanvas(px, py, norm, { scale, transX, transY });
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, BADGE_RADIUS + 2, 0, Math.PI * 2);
     ctx.strokeStyle = '#f97316';

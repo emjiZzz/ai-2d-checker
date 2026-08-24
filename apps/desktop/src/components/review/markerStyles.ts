@@ -80,6 +80,21 @@ export const markerStyle = (type: string): MarkerStyle =>
   MARKER_STYLES[type as MarkerType] ?? MARKER_STYLES.MISMATCHED;
 
 /**
+ * A marker's ink for the surface it is being painted on.
+ *
+ * Three surfaces, one table. `color` is tuned for the dark CAD canvas and is high-chroma on
+ * purpose; `ui` / `uiLight` exist because — as the table above already says — `#39ff14` is
+ * "unusable on white".
+ *
+ * **The PDF export paints on white.** It had been using `color`, so every checkmark on the
+ * printed sheet was neon green over near-black linework: three times the weight of the drawing it
+ * was annotating, and the first thing the eye landed on. That is the exact problem `uiLight` was
+ * introduced to solve, so it is the same answer rather than a fourth column in the table.
+ */
+export const markerInkFor = (type: string, surface: 'canvas' | 'print'): string =>
+  surface === 'print' ? markerStyle(type).uiLight : markerStyle(type).color;
+
+/**
  * The engine's pen vocabulary, which predates this table and is what a stored violation carries.
  *
  * Kept as a translation INTO `MarkerType` rather than alongside it: a cached audit payload holds

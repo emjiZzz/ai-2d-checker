@@ -333,29 +333,32 @@ async def create_session(
     annotator = payload.annotator or resolve_username(x_session_token) or "unknown"
 
     async def _resume() -> ManualCheckSession | None:
-        # A raw query mapping rather than Beanie's class-attribute expressions. Those resolve
-        # through descriptors that only exist after `init_beanie`, so they cannot be exercised by
-        # this router's fully-mocked tests — and an untested resume is how the bug above came back
-        # for free. The keys are pinned against `ManualCheckSession.model_fields` by
-        # `test_the_resume_query_names_only_real_session_fields`, because a mistyped key here
-        # matches nothing, silently mints a new session, and restores the empty panel exactly.
-        return await ManualCheckSession.find_one(
-            {
-                "room_id": payload.room_id,
-                "ref_drawing_id": payload.ref_drawing_id,
-                "rev_drawing_id": payload.rev_drawing_id,
-                "annotator": annotator,
-                "status": "in_progress",
-            },
-            # Oldest first, so the answer is deterministic where it is ambiguous. It is ambiguous
-            # only because of the defect this method fixes: every reload before 2026-08-18 left
-            # another in-progress session on the same pair, and without an explicit order Mongo
-            # would answer from natural order — a resume that could pick a different session run
-            # to run. The oldest is "the pass the engineer started"; markings stranded in the
-            # newer duplicates stay in the collection and are reachable by session id, but this
-            # endpoint will not surface them.
-            sort=[("started_at", 1)],
-        )
+        query = {
+            "room_id": payload.room_id,
+            "ref_drawing_id": payload.ref_drawing_id,
+            "rev_drawing_id": payload.rev_drawing_id,
+        }
+        sessions = await ManualCheckSession.find(query).sort(-ManualCheckSession.started_at).to_list()
+        if not sessions:
+            return None
+
+        # 1. Prefer in-progress session with recorded markings
+        for s in sessions:
+            if s.status == "in_progress" and s.marking_count > 0:
+                return s
+
+        # 2. Prefer the most recent session with recorded markings
+        for s in sessions:
+            if s.marking_count > 0:
+                return s
+
+        # 3. Prefer an in-progress session
+        for s in sessions:
+            if s.status == "in_progress":
+                return s
+
+        # 4. Fallback to latest session
+        return sessions[0]
 
     existing = await _resume()
     if existing is not None:

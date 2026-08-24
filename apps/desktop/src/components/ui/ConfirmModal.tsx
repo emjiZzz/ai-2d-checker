@@ -21,7 +21,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   isOpen,
   onClose,
   onConfirm,
-  title = "Confirm Action",
+  title = "CONFIRM ACTION",
   message,
   confirmText = "CONFIRM",
   cancelText = "CANCEL",
@@ -52,18 +52,21 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   const iconVariants = {
     danger: {
-      icon: <AlertTriangle size={24} className="text-rose-500" />,
-      boxBg: "bg-rose-500/10 border-rose-500/30",
+      icon: <AlertTriangle size={18} className="text-rose-500" />,
+      tag: "CRITICAL ACTION",
+      tagClass: "text-rose-500 border-rose-500/30 bg-rose-500/10",
       btnClass: "bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20",
     },
     warning: {
-      icon: <AlertCircle size={24} className="text-amber-500" />,
-      boxBg: "bg-amber-500/10 border-amber-500/30",
+      icon: <AlertCircle size={18} className="text-amber-500" />,
+      tag: "WARNING",
+      tagClass: "text-amber-500 border-amber-500/30 bg-amber-500/10",
       btnClass: "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20",
     },
     info: {
-      icon: <Info size={24} className="text-accent-cyan" />,
-      boxBg: "bg-accent-cyan/10 border-accent-cyan/30",
+      icon: <Info size={18} className="text-accent-cyan" />,
+      tag: "NOTICE",
+      tagClass: "text-accent-cyan border-accent-cyan/30 bg-accent-cyan/10",
       btnClass: "bg-accent-cyan hover:bg-accent-cyan/80 text-zinc-950 shadow-accent-cyan/20",
     },
   };
@@ -72,63 +75,61 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100020] flex items-center justify-center modal-backdrop p-6 animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 z-[100020] flex items-center justify-center modal-backdrop p-4 animate-in fade-in duration-100 select-none"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isLoading) onClose();
       }}
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-bg-card border-2 border-border-color shadow-2xl w-full max-w-lg p-8 md:p-9 text-text-primary flex flex-col gap-6 relative rounded-none animate-in zoom-in-95 duration-150">
-        {/* Top-Right Red Close Button */}
-        <button
-          onClick={onClose}
-          disabled={isLoading}
-          className="absolute top-5 right-5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 p-1.5 transition-colors cursor-pointer rounded-none disabled:opacity-50"
-          title="Close"
-        >
-          <X size={20} />
-        </button>
-
-        {/* Header with Icon */}
-        <div className="flex items-center gap-4 border-b border-border-color pb-5">
-          <div
-            className={`w-12 h-12 border flex items-center justify-center shrink-0 rounded-none ${currentVariant.boxBg}`}
-          >
+      {/* Compact Industrial CAD Dialog Box */}
+      <div className="bg-bg-card border-2 border-border-color shadow-2xl w-full max-w-md text-text-primary flex flex-col rounded-none animate-in zoom-in-95 duration-100 overflow-hidden">
+        {/* Title Bar */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-bg-sidebar border-b border-border-color">
+          <div className="flex items-center gap-2">
             {currentVariant.icon}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <h2 className="text-base md:text-lg font-black tracking-wider uppercase text-text-primary font-mono truncate">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-text-primary">
               {title}
-            </h2>
-            <span className="text-[11px] font-mono uppercase tracking-widest text-text-muted">
-              Confirmation Required
             </span>
           </div>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            className="text-text-muted hover:text-rose-500 p-1 transition-colors cursor-pointer rounded-none disabled:opacity-50"
+            title="Cancel (Esc)"
+          >
+            <X size={16} />
+          </button>
         </div>
 
-        {/* Content / Message */}
-        <div className="text-sm text-text-secondary leading-relaxed font-sans">
-          {typeof message === "string" ? <p>{message}</p> : message}
+        {/* Dialog Body */}
+        <div className="p-5 flex flex-col gap-3.5">
+          <div className="inline-flex self-start items-center px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider border rounded-none">
+            <span className={currentVariant.tagClass}>{currentVariant.tag}</span>
+          </div>
+
+          <div className="text-xs text-text-secondary leading-relaxed font-sans">
+            {typeof message === "string" ? <p>{message}</p> : message}
+          </div>
         </div>
 
-        {/* Actions Footer */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-border-color">
+        {/* Action Controls */}
+        <div className="px-4 py-3 bg-bg-sidebar/50 border-t border-border-color flex items-center justify-end gap-2.5">
           <Button
             variant="outline"
             size="sm"
             onClick={onClose}
             disabled={isLoading}
-            className="rounded-none font-mono font-bold text-xs uppercase px-5 py-2.5 cursor-pointer"
+            className="rounded-none font-mono font-bold text-xs uppercase px-4 h-8 cursor-pointer"
           >
             {cancelText}
           </Button>
           <button
             onClick={onConfirm}
             disabled={isLoading}
-            className={`px-6 py-2.5 rounded-none font-mono font-bold text-xs uppercase transition-all shadow-lg flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${currentVariant.btnClass}`}
+            className={`px-5 h-8 rounded-none font-mono font-bold text-xs uppercase transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${currentVariant.btnClass}`}
           >
-            {isLoading && <Loader2 size={14} className="animate-spin" />}
+            {isLoading && <Loader2 size={13} className="animate-spin" />}
             <span>{confirmText}</span>
           </button>
         </div>
