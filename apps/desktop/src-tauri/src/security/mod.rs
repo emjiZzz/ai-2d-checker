@@ -84,17 +84,30 @@ pub fn find_storage_root() -> Result<PathBuf, String> {
     Err("Critical: Could not locate storage root folder. Ensure the services are operational.".to_string())
 }
 
-/// Per-user application data directory for this app, or `None` if the OS gives us nowhere.
+/// Per-user directory the backend publishes the API token to, or `None` if the OS gives us nowhere.
 ///
-/// ⚠ Mirrors `user_storage_root()` in `services/backend/core/security.py`, and the identifier
-/// matches `tauri.conf.json`. Three declarations in three languages with no shared constant, so
-/// `tests/test_user_token_dir.py` parses this file and fails if they drift -- the failure mode
-/// otherwise is an app that authenticates in dev and silently 401s once installed.
+/// ⚠ Mirrors `user_storage_root()` in `services/backend/core/security.py`. Two declarations in two
+/// languages with no shared constant, so `tests/test_user_token_dir.py` parses this file and fails
+/// if they drift -- the failure mode otherwise is an app that authenticates in dev and silently
+/// 401s once installed.
+///
+/// ⚠ **Not the `tauri.conf.json` identifier**, and the test asserts that too. See the constant
+/// below for what putting it there cost.
 ///
 /// **Local, not roaming**: the encryption key is derived from machine identity, so a roamed copy
 /// would not decrypt on the machine it roamed to.
 pub fn user_app_data_root() -> Option<PathBuf> {
-    const APP_IDENTIFIER: &str = "com.kmti.checker";
+    // 🔴 Deliberately NOT the bundle identifier `com.kmti.checker`, which this was until
+    // 2026-08-27. That directory is this app's OWN data directory -- WebView2 keeps its profile
+    // there and the uninstaller deletes it -- so an uninstall/reinstall cycle removed the token
+    // the backend had published, and every authenticated request 401'd until the backend was
+    // restarted. Observed in the access log: 401 on POST and GET /api/v1/rooms at 05:16, healthy
+    // again at 05:18 only because a diagnostic re-ran token initialisation. A sibling directory
+    // survives the uninstall and does not collide with the webview's storage.
+    //
+    // Mirrors TOKEN_DIR_NAME in services/backend/core/security.py; pinned by
+    // tests/test_user_token_dir.py.
+    const TOKEN_DIR_NAME: &str = "kmti-2d-checker";
 
     #[cfg(target_os = "windows")]
     let base = env::var("LOCALAPPDATA").ok().or_else(|| env::var("APPDATA").ok());
@@ -109,5 +122,5 @@ pub fn user_app_data_root() -> Option<PathBuf> {
         .ok()
         .or_else(|| env::var("HOME").ok().map(|h| format!("{}/.local/share", h)));
 
-    base.map(|b| PathBuf::from(b).join(APP_IDENTIFIER))
+    base.map(|b| PathBuf::from(b).join(TOKEN_DIR_NAME))
 }

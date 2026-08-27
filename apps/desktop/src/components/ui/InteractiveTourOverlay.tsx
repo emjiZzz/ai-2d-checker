@@ -30,6 +30,8 @@ export const InteractiveTourOverlay: React.FC = () => {
 
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  //: Why the Tutorial Room could not be created. Shown in the card; blocks the step.
+  const [roomError, setRoomError] = useState("");
   const cardRef = useRef<HTMLDivElement>(null);
 
   const step = TOUR_STEPS[currentStep];
@@ -113,10 +115,28 @@ export const InteractiveTourOverlay: React.FC = () => {
             await openRoom(newRoom.id);
           }
         }
+        setRoomError("");
         nextStep();
       } catch (err) {
-        console.error("Failed to setup Tutorial Room:", err);
-        nextStep();
+        /*
+          🔴 This used to be `console.error(...); nextStep();` -- it advanced the tour ANYWAY.
+
+          So "Enter Tutorial Room" moved to step 2 ("Upload Reference Drawing") while no room had
+          been created and the page behind still read "NO WORKSPACES YET". The tour then walked
+          the tester through five more steps against a room that did not exist. Reported from the
+          installed 0.1.2 build; the backend log shows the POST /api/v1/rooms answering 401 at the
+          exact moment the step advanced.
+
+          Advancing past a failed prerequisite is worse than a visible error: the console line was
+          real, and nobody has a console open in a packaged desktop app.
+        */
+        const message = err instanceof Error ? err.message : String(err);
+        const isAuth = /\b40[13]\b|unauthor|forbidden/i.test(message);
+        setRoomError(
+          isAuth
+            ? "Not authorised by the backend, so the Tutorial Room was not created. The app could not read its API token — check the backend service is running."
+            : `Could not create the Tutorial Room: ${message}`
+        );
       } finally {
         setIsCreatingRoom(false);
       }
@@ -252,6 +272,20 @@ export const InteractiveTourOverlay: React.FC = () => {
               {step.tips}
             </p>
           </div>
+
+          {/*
+            Why the step could not complete. The tour STAYS on this step when this is set — the
+            alternative, which shipped, was advancing to "Upload Reference Drawing" with no room
+            to upload into.
+          */}
+          {roomError && (
+            <div
+              role="alert"
+              className="px-2.5 py-2 border border-rose-500/40 bg-rose-500/10 text-[11px] leading-relaxed text-rose-300"
+            >
+              {roomError}
+            </div>
+          )}
         </div>
 
         {/* Footer with Controls */}

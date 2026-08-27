@@ -33,9 +33,23 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
         logger.warning(f"Could not restrict permissions on the API token file: {err}")
 
 
-#: Matches `identifier` in `apps/desktop/src-tauri/tauri.conf.json`, and the folder name the Rust
-#: side derives independently in `security/mod.rs`. Two languages, no shared constant -- pinned by
-#: `tests/test_user_token_dir.py`, which parses the Rust source rather than trusting this comment.
+#: Folder name under the per-user data root that the token is published to.
+#:
+#: 🔴 **Deliberately NOT the Tauri bundle identifier** (`com.kmti.checker`), which this used to be.
+#: That directory is the desktop app's OWN data directory: WebView2 stores its profile there, and
+#: the uninstaller deletes it. Publishing the credential inside it meant an uninstall/reinstall
+#: cycle removed the token -- and because it was written only at backend startup, nothing put it
+#: back. Measured from the backend access log on 2026-08-27: an installed build launched after a
+#: reinstall answered `POST /api/v1/rooms` and `GET /api/v1/rooms` with 401 at 05:16, and began
+#: succeeding at 05:18 only because a diagnostic command happened to re-run token initialisation.
+#:
+#: A sibling directory is not touched by the uninstaller and does not collide with the webview's
+#: own storage. Kept in step with the Rust side by `tests/test_user_token_dir.py`, which parses
+#: `security/mod.rs` rather than trusting this comment.
+TOKEN_DIR_NAME = "kmti-2d-checker"
+
+#: The bundle identifier, recorded only so the test above can assert the token directory is NOT
+#: it. Never join a path from this.
 APP_IDENTIFIER = "com.kmti.checker"
 
 
@@ -78,7 +92,7 @@ def user_storage_root() -> Path:
         base = os.environ.get("XDG_DATA_HOME")
         root = Path(base) if base else Path.home() / ".local" / "share"
 
-    return root / APP_IDENTIFIER
+    return root / TOKEN_DIR_NAME
 
 
 def _mirror_token_for_installed_clients(token: str) -> None:
@@ -104,6 +118,31 @@ def _mirror_token_for_installed_clients(token: str) -> None:
         logger.info(f"Published API token for installed clients at: {mirrored}")
     except Exception as err:  # noqa: BLE001 - see docstring; this must not break startup
         logger.warning(f"Could not publish the API token for installed clients: {err}")
+
+
+def ensure_token_published() -> None:
+    """Re-publish the token for installed clients if the file has gone missing.
+
+    Publishing only at startup was not enough. The file can disappear while the backend keeps
+    running -- an uninstall of the desktop app took it with the app's data directory before
+    `TOKEN_DIR_NAME` moved out of that tree, and a user clearing app data can still do it. Once
+    gone, every authenticated request from an installed client answered 401 until somebody
+    restarted the backend, with nothing pointing at the cause.
+
+    Called from `/health`, which is the one endpoint that needs no token and which the desktop
+    client already polls every few seconds -- so the repair happens before the user notices,
+    without adding a scheduler. Guarded by an `exists()` check so the common case is a stat, not
+    a write.
+    """
+    if not settings.API_TOKEN:
+        return
+    try:
+        mirrored = user_storage_root() / "secure" / TOKEN_FILE_NAME
+        if mirrored.is_file():
+            return
+    except Exception:  # noqa: BLE001 - an unreadable path is a reason to try republishing
+        pass
+    _mirror_token_for_installed_clients(settings.API_TOKEN)
 
 
 def initialize_local_api_token() -> str:

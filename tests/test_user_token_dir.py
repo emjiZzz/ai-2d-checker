@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from services.backend.core.security import APP_IDENTIFIER, user_storage_root
+from services.backend.core.security import APP_IDENTIFIER, TOKEN_DIR_NAME, user_storage_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUST_SECURITY = REPO_ROOT / "apps" / "desktop" / "src-tauri" / "src" / "security" / "mod.rs"
@@ -36,18 +36,39 @@ def _rust_source() -> str:
     return RUST_SECURITY.read_text(encoding="utf-8")
 
 
-def test_the_rust_side_declares_the_same_app_identifier() -> None:
+def test_the_rust_side_declares_the_same_token_directory() -> None:
     match = re.search(
-        r'const\s+APP_IDENTIFIER:\s*&str\s*=\s*"([^"]+)"', _rust_source()
+        r'const\s+TOKEN_DIR_NAME:\s*&str\s*=\s*"([^"]+)"', _rust_source()
     )
-    assert match, "no APP_IDENTIFIER constant found in the Rust security module"
-    assert match.group(1) == APP_IDENTIFIER
+    assert match, "no TOKEN_DIR_NAME constant found in the Rust security module"
+    assert match.group(1) == TOKEN_DIR_NAME
 
 
-def test_the_tauri_identifier_matches_too() -> None:
-    """The bundle identifier is the reason this folder name was chosen; keep them together."""
+def test_the_token_directory_is_NOT_the_tauri_identifier() -> None:
+    """🔴 The regression that cost a shipped build.
+
+    The token directory used to BE the bundle identifier. That is the desktop app's own data
+    directory -- WebView2 keeps its profile there and the uninstaller deletes it -- so an
+    uninstall/reinstall removed the published credential, and since it was only written at backend
+    startup nothing restored it. From the access log on 2026-08-27: `POST /api/v1/rooms` and
+    `GET /api/v1/rooms` both 401 at 05:16 on a freshly reinstalled build, healthy again at 05:18
+    only because a diagnostic happened to re-run token initialisation.
+
+    Asserting inequality looks odd until you have paid for the equality once.
+    """
     conf = json.loads(TAURI_CONF.read_text(encoding="utf-8"))
-    assert conf.get("identifier") == APP_IDENTIFIER
+    identifier = conf.get("identifier")
+
+    assert identifier == APP_IDENTIFIER, "the recorded bundle identifier has drifted from tauri.conf.json"
+    assert TOKEN_DIR_NAME != identifier, (
+        "the token directory is the app's own data directory again -- an uninstall will delete "
+        "the credential and every authenticated request will 401 until the backend restarts"
+    )
+
+    source = _rust_source()
+    assert f'"{identifier}"' not in source, (
+        "the Rust side still joins a path from the bundle identifier"
+    )
 
 
 def test_the_rust_side_resolves_a_user_data_root_at_all() -> None:
@@ -82,11 +103,11 @@ def test_python_resolves_under_local_app_data() -> None:
     local = os.environ.get("LOCALAPPDATA")
     if not local:
         pytest.skip("LOCALAPPDATA is not set in this environment")
-    assert resolved == Path(local) / APP_IDENTIFIER
+    assert resolved == Path(local) / TOKEN_DIR_NAME
 
 
 def test_python_path_ends_with_the_identifier_on_every_platform() -> None:
-    assert user_storage_root().name == APP_IDENTIFIER
+    assert user_storage_root().name == TOKEN_DIR_NAME
 
 
 def test_the_mirror_is_not_fatal_when_the_directory_cannot_be_written(monkeypatch) -> None:

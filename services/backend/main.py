@@ -162,6 +162,16 @@ async def health_check() -> dict:
     """
     Diagnostic healthcheck endpoint. Returns service state details.
     """
+    # Repair the installed-client token if it has gone missing since startup. This endpoint is
+    # the right place for exactly two reasons: it needs no token itself (so it still works in the
+    # very state that needs repairing), and the desktop client already polls it every few
+    # seconds. A missing token is otherwise invisible -- /health keeps answering 200, so the app
+    # reports itself CONNECTED while every authenticated call 401s, which is precisely how this
+    # was shipped twice. Cheap: a stat, and a write only when the file is actually absent.
+    from .core.security import ensure_token_published
+
+    ensure_token_published()
+
     db_health = await check_database_health()
     storage_diag = get_storage_diagnostics()
     
