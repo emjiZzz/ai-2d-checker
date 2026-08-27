@@ -6,6 +6,7 @@
  */
 
 import { buildHeaders, baseUrl, parseOrThrow } from "./fetchUtils";
+import { isPrototypeMode } from "../config/features";
 import type { DrawingItem } from "../stores/workspaceStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -135,9 +136,23 @@ export function countFallbackZones(zones: DrawingZonesResponse | null | undefine
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/**
+ * `?mine=true` in a prototype build, so a tester's workspace shows their own work plus the
+ * SHARED (ownerless) corpus, rather than all 21 testers' uploads on one backend.
+ *
+ * ⚠ Off in a full build: ownership there comes from a real login, and this list also feeds admin
+ * views that are supposed to see everything.
+ *
+ * ⚠ Separation, not privacy — the backend says so too. Anything fetched by id is still served to
+ * any caller holding the shared API token.
+ */
+function mineQuery(): string {
+  return isPrototypeMode() ? "?mine=true" : "";
+}
+
 /** GET /api/v1/drawings — fetches all available drawings. */
 export async function fetchDrawings(signal?: AbortSignal): Promise<DrawingItem[]> {
-  const res = await fetch(`${baseUrl()}/api/v1/drawings`, {
+  const res = await fetch(`${baseUrl()}/api/v1/drawings${mineQuery()}`, {
     headers: buildHeaders(),
     signal,
   });

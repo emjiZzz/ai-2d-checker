@@ -13,6 +13,7 @@
  */
 
 import { useConnectionStore } from "../stores/connectionStore";
+import { useEngineerStore } from "../stores/engineerStore";
 import { useAuthStore } from "../stores/authStore";
 import { ZodType } from "zod";
 
@@ -30,6 +31,24 @@ export async function resolveApiToken(): Promise<string | null> {
   return token;
 }
 
+/**
+ * The name the tester chose in `EngineerPromptModal`, sent so a SHARED backend can keep each
+ * tester's workspaces and uploads separate.
+ *
+ * ⚠ **Identity, not authentication.** It is a name picked from a dropdown with no password, and
+ * every installed client carries the same API bearer token — so the backend treats it as a label
+ * for separation, never as a permission. `api/dependencies.resolve_username` says the same on the
+ * far side, and prefers a verified session token whenever one exists.
+ *
+ * Only sent when there is no session token: a full build authenticates properly and must not have
+ * a spoofable header competing with its real identity.
+ */
+function engineerIdentity(sessionToken: string | null | undefined): string | null {
+  if (sessionToken) return null;
+  const name = useEngineerStore.getState().engineerName?.trim();
+  return name ? name : null;
+}
+
 export async function buildHeadersAsync(extra: Record<string, string> = {}): Promise<Record<string, string>> {
   const apiToken = await resolveApiToken();
   const sessionToken = useAuthStore.getState().sessionToken;
@@ -43,6 +62,8 @@ export async function buildHeadersAsync(extra: Record<string, string> = {}): Pro
 
   if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
   if (sessionToken) headers["X-Session-Token"] = sessionToken;
+  const engineer = engineerIdentity(sessionToken);
+  if (engineer) headers["X-Engineer-Name"] = engineer;
 
   return headers;
 }
@@ -60,6 +81,8 @@ export function buildHeaders(extra: Record<string, string> = {}): Record<string,
 
   if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
   if (sessionToken) headers["X-Session-Token"] = sessionToken;
+  const engineer = engineerIdentity(sessionToken);
+  if (engineer) headers["X-Engineer-Name"] = engineer;
 
   return headers;
 }

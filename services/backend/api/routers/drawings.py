@@ -2,7 +2,7 @@ import os
 import hashlib
 import uuid
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, Header, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from ...domain.models.drawing_document import DrawingDocument
@@ -14,7 +14,7 @@ from ...infrastructure.rendering.geometry_serializer import GeometrySerializer
 from ...core.security import sandboxed_path
 from ...logger import logger, correlation_id_var
 from ...config import settings
-from ..dependencies import get_auth_token, get_or_404
+from ..dependencies import get_auth_token, get_or_404, resolve_username
 from ...infrastructure.storage.entity_cache import (
     load_entities,
     clear_for_drawing as clear_entity_cache,
@@ -37,15 +37,25 @@ router = APIRouter()
     summary="Upload a local CAD drawing (DWG or DXF) and trigger parsing",
     dependencies=[Depends(get_auth_token)]
 )
-async def upload_drawing(file: UploadFile = File(...)):
+async def upload_drawing(
+    file: UploadFile = File(...),
+    x_session_token: str | None = Header(None, alias="X-Session-Token"),
+    x_engineer_name: str | None = Header(None, alias="X-Engineer-Name"),
+):
     """
     Enforces local secure authorization, checks file extension limits, streams file,
     computes SHA-256 hash, and queues it for background ODA/DXF extraction via DrawingIngestionService.
+
+    Records who uploaded it so a shared backend can keep testers' workspaces separate. A caller
+    that sends no identity produces a SHARED drawing (`uploaded_by=None`), which is what the
+    pre-loaded corpus is -- see `DrawingDocument.uploaded_by`.
     """
     from ...infrastructure.ingestion.drawing_ingestion_service import DrawingIngestionService
 
     try:
-        drawing, job, is_duplicate = await DrawingIngestionService.process_ingestion(file)
+        drawing, job, is_duplicate = await DrawingIngestionService.process_ingestion(
+            file, uploaded_by=resolve_username(x_session_token, x_engineer_name)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -138,12 +148,29 @@ async def reextract_drawing(id: str):
     summary="List all registered drawing documents",
     dependencies=[Depends(get_auth_token)]
 )
-async def list_drawings():
+async def list_drawings(
+    mine: bool = False,
+    x_session_token: str | None = Header(None, alias="X-Session-Token"),
+    x_engineer_name: str | None = Header(None, alias="X-Engineer-Name"),
+):
     """
     Fetches all registered drawings from the local MongoDB registry, sorted by newest first.
     Filters out and purges orphaned drawing records whose backing files no longer exist on disk.
+
+    `mine=true` narrows to the caller's own uploads plus the SHARED ones. Opt-in, and shaped
+    exactly like `GET /rooms?mine=true`, for the same reason stated there: every drawing uploaded
+    before `uploaded_by` existed has no owner, and those are the pre-loaded corpus pairs every
+    tester works on. Filtering them out would empty every workspace at once.
+
+    🔴 Separation, not access control: the identity is an unverified client header and
+    `GET /drawings/{id}` still serves any drawing to any caller. See `resolve_username`.
     """
     docs = await DrawingDocument.find_all(sort=[("created_at", -1)]).to_list()
+
+    if mine:
+        username = resolve_username(x_session_token, x_engineer_name)
+        if username:
+            docs = [d for d in docs if d.uploaded_by == username or d.uploaded_by is None]
     valid_docs = []
     
     for d in docs:

@@ -81,7 +81,9 @@ class DrawingIngestionService:
         return temp_upload_path, sha256.hexdigest(), total_size
 
     @classmethod
-    async def process_ingestion(cls, file: UploadFile) -> tuple[DrawingDocument, ExtractionJob, bool]:
+    async def process_ingestion(
+        cls, file: UploadFile, uploaded_by: str | None = None
+    ) -> tuple[DrawingDocument, ExtractionJob, bool]:
         """
         Orchestrates full ingestion flow: temp file save, storage move, database
         model persistence, and processing queue dispatch.
@@ -129,7 +131,11 @@ class DrawingIngestionService:
             file_hash=file_hash,
             file_size_bytes=total_size,
             format=file_ext,
-            status="queued"
+            status="queued",
+            # None when the caller sent no identity, which means SHARED rather than orphaned --
+            # see DrawingDocument.uploaded_by. Defaulted in the signature so every existing
+            # caller (tests, tooling) keeps working and keeps producing shared drawings.
+            uploaded_by=uploaded_by,
         )
         await drawing.save()
 

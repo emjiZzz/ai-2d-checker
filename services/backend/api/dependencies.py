@@ -17,7 +17,10 @@ async def get_auth_token(token: str = Depends(verify_api_token)) -> str:
     return token
 
 
-def resolve_username(x_session_token: str | None) -> str | None:
+def resolve_username(
+    x_session_token: str | None,
+    x_engineer_name: str | None = None,
+) -> str | None:
     """
     Best-effort username extraction from a session token, for attributing
     created/authored records (Room.created_by, AnnotationDocument.author_id).
@@ -27,14 +30,52 @@ def resolve_username(x_session_token: str | None) -> str | None:
     identifies which local user acted. Callers that require a guaranteed user
     should depend on get_current_user instead, which validates revocation and
     account status and 401s.
+
+    ## The engineer-name fallback, and what it is NOT
+
+    A prototype build has no login — `App.tsx` renders the workspace directly and never calls
+    `initializeAuth`, so `X-Session-Token` is absent and this returned `None` for every request.
+    That is why every room created by a tester carries `created_by = None`, and why the
+    `?mine=true` owner filter had nothing to filter on.
+
+    `X-Engineer-Name` carries the name chosen in `EngineerPromptModal` so those records can be
+    attributed and separated per tester.
+
+    🔴 **It is NOT authentication and must never be treated as such.** The name is picked from a
+    21-entry dropdown with no password, every installed client holds the same API bearer token,
+    and this header is set by the client. Anyone can send any name. It buys **separation**
+    — "your workspace lists your work" — not confidentiality, and any endpoint that fetches by id
+    still serves any record to any caller.
+
+    The verified session token is therefore tried FIRST and always wins. The fallback applies only
+    where there is no session at all, which is exactly the prototype case. Do not use this to gate
+    anything that matters; for that, depend on `get_current_user`.
     """
-    if not x_session_token:
-        return None
-    try:
-        from ..core.auth import verify_session_token
-        return verify_session_token(x_session_token).get("username") or None
-    except Exception:
-        return None
+    if x_session_token:
+        try:
+            from ..core.auth import verify_session_token
+            username = verify_session_token(x_session_token).get("username") or None
+            if username:
+                return username
+        except Exception:
+            pass
+
+    # Unverified, prototype-only. Bounded and stripped so a malformed header cannot become a
+    # 10 KB `created_by` or an empty-string owner that matches nothing.
+    #
+    # ⚠ `isinstance` rather than a truthiness check, because this is not always reached through
+    # FastAPI. Router functions in this codebase are also called DIRECTLY from tests, and then the
+    # parameter still holds the unresolved `Header(...)` default object -- which is truthy and has
+    # no `.strip`. `test_drawings_router_error_handling` caught exactly that: an AttributeError
+    # inside the identity lookup surfaced as a 500 from the upload route, turning a caller's 400
+    # into an internal error. The session-token branch above only escaped it by accident, being
+    # wrapped in a try/except.
+    if isinstance(x_engineer_name, str):
+        candidate = x_engineer_name.strip()[:64]
+        if candidate:
+            return candidate
+
+    return None
 
 
 async def get_or_404(model, id: str, detail: str, projection: dict | None = None):

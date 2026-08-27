@@ -43,6 +43,7 @@ def _to_response(room: Room) -> RoomResponse:
 async def create_room(
     payload: RoomCreateRequest,
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
+    x_engineer_name: str | None = Header(None, alias="X-Engineer-Name"),
 ):
     """
     Creates an isolated Room container for a comparison/testing session.
@@ -59,7 +60,7 @@ async def create_room(
         client_name=payload.client_name,
         comparison_method=payload.comparison_method,
         room_mode=payload.room_mode,
-        created_by=resolve_username(x_session_token),
+        created_by=resolve_username(x_session_token, x_engineer_name),
     )
     await room.save()
     logger.info(f"Room created: {room.id} ('{room.name}') mode={room.room_mode} method={room.comparison_method}")
@@ -75,6 +76,7 @@ async def create_room(
 async def list_rooms(
     mine: bool = False,
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
+    x_engineer_name: str | None = Header(None, alias="X-Engineer-Name"),
 ):
     """
     Lists non-deleted Rooms.
@@ -111,7 +113,7 @@ async def list_rooms(
     rooms = [Room.model_validate(d) for d in docs]
 
     if mine:
-        username = resolve_username(x_session_token)
+        username = resolve_username(x_session_token, x_engineer_name)
         if username:
             rooms = [r for r in rooms if r.created_by == username or r.created_by is None]
 

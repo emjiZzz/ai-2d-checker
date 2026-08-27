@@ -27,7 +27,12 @@ async def test_unexpected_service_error_becomes_structured_500_with_correlation_
     router now degrades it to a structured HTTPException(500) referencing a correlation ID, instead
     of letting the raw exception (and its message) escape uncaught.
     """
-    async def boom(cls, file):
+    # `**kwargs` so this stub keeps matching `process_ingestion` as the real signature grows.
+    # It gained `uploaded_by` when per-user isolation landed, and a positional-only stub
+    # failed with a TypeError that surfaced here as a 500 -- i.e. as a router bug rather
+    # than as "the mock is stale", which is the trap `Gotcha - A Patch on a Method Nobody
+    # Calls Fails Silently` records.
+    async def boom(cls, file, **kwargs):
         raise RuntimeError("simulated unexpected service-layer failure")
 
     monkeypatch.setattr(DrawingIngestionService, "process_ingestion", classmethod(boom))
@@ -46,7 +51,12 @@ async def test_http_exception_from_service_passes_through_unchanged(monkeypatch)
     file-too-large) must pass through the router's new try/except unchanged, not get
     rewrapped into a generic 500.
     """
-    async def raise_400(cls, file):
+    # `**kwargs` so this stub keeps matching `process_ingestion` as the real signature grows.
+    # It gained `uploaded_by` when per-user isolation landed, and a positional-only stub
+    # failed with a TypeError that surfaced here as a 500 -- i.e. as a router bug rather
+    # than as "the mock is stale", which is the trap `Gotcha - A Patch on a Method Nobody
+    # Calls Fails Silently` records.
+    async def raise_400(cls, file, **kwargs):
         raise HTTPException(status_code=400, detail="Unsupported file format.")
 
     monkeypatch.setattr(DrawingIngestionService, "process_ingestion", classmethod(raise_400))

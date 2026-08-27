@@ -17,6 +17,20 @@ class DrawingDocument(Document):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Extracted structural drawing metadata")
     ai_summary: dict[str, Any] | None = Field(None, description="Detailed 6-view AI summary of the drawing")
 
+    #: Who uploaded this, for per-user separation of workspaces on a shared backend.
+    #:
+    #: ⚠ **`None` means SHARED, not orphaned.** Every drawing predating this field has no owner,
+    #: and those are the pre-loaded corpus pairs every tester is meant to work on — so the
+    #: `?mine=true` filter includes ownerless rows deliberately, matching what `GET /rooms`
+    #: already does for `Room.created_by`. Excluding them would make the shared corpus vanish
+    #: from every workspace at once.
+    #:
+    #: 🔴 **Separation, not access control.** It is populated from `X-Engineer-Name`, an
+    #: unverified client header (see `api/dependencies.resolve_username`), and every by-id route
+    #: still serves any drawing to any caller holding the shared API token. It keeps testers out
+    #: of each other's lists; it does not keep them out of each other's data.
+    uploaded_by: str | None = Field(None, description="Engineer who uploaded this drawing; None = shared")
+
     # --- PHASE 1: extraction provenance ---
     # Version stamps make a stale extraction detectable without re-reading entities.
     # There is no backfill path by design: existing drawings are re-ingested rather
