@@ -60,10 +60,59 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$bundleDir = "$PSScriptRoot\apps\desktop\src-tauri\target\release\bundle"
+# 5. Report where the installers ACTUALLY are.
+#
+# This printed "$PSScriptRoot\apps\desktop\src-tauri\target\release\bundle" unconditionally, and
+# that directory does not exist on this project: `apps/desktop/src-tauri/.cargo/config.toml` sets
+#
+#     [build]
+#     target-dir = "C:/tauri-build-cache"
+#
+# so cargo -- and therefore the bundler -- writes to C:\tauri-build-cache\release\bundle instead.
+# A successful build ended by pointing the operator at an empty path, which is the same shape of
+# defect as a checker quoting figures no command can reproduce: the message reads like a fact and
+# is derived from nothing.
+#
+# Resolved in cargo's own precedence order (CARGO_TARGET_DIR beats the config file beats the
+# default), then VERIFIED rather than asserted -- if the directory is missing or holds no
+# installer, this says so instead of printing a confident path.
+$targetDir = $env:CARGO_TARGET_DIR
+if ([string]::IsNullOrWhiteSpace($targetDir)) {
+    $cargoConfig = "$PSScriptRoot\apps\desktop\src-tauri\.cargo\config.toml"
+    if (Test-Path $cargoConfig) {
+        $match = Select-String -Path $cargoConfig -Pattern '^\s*target-dir\s*=\s*"(.+?)"' | Select-Object -First 1
+        if ($match) { $targetDir = $match.Matches[0].Groups[1].Value }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($targetDir)) {
+    $targetDir = "$PSScriptRoot\apps\desktop\src-tauri\target"
+}
+$bundleDir = Join-Path $targetDir "release\bundle"
+
 Write-Host ""
 Write-Host "=====================================================" -ForegroundColor Green
-Write-Host "✅ Prototype Installer Build Complete!" -ForegroundColor Green
-Write-Host "Installers are located at:" -ForegroundColor Cyan
-Write-Host "  $bundleDir" -ForegroundColor White
+Write-Host "Prototype Installer Build Complete!" -ForegroundColor Green
+
+$installers = @()
+if (Test-Path $bundleDir) {
+    $installers = Get-ChildItem -Path $bundleDir -Recurse -Include *.msi, *.exe -ErrorAction SilentlyContinue
+}
+
+if ($installers.Count -gt 0) {
+    Write-Host "Installers:" -ForegroundColor Cyan
+    foreach ($installer in $installers) {
+        $mb = [math]::Round($installer.Length / 1MB, 1)
+        Write-Host "  $($installer.FullName)  ($mb MB)" -ForegroundColor White
+    }
+} else {
+    Write-Host "No installer found under:" -ForegroundColor Red
+    Write-Host "  $bundleDir" -ForegroundColor White
+    Write-Host "The build reported success, so this is a path resolution problem, not a build" -ForegroundColor Red
+    Write-Host "failure -- check [build] target-dir in apps/desktop/src-tauri/.cargo/config.toml." -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "NOTE: this installs the DESKTOP APP ONLY -- it bundles no backend." -ForegroundColor Yellow
+Write-Host "      tauri.conf.json declares no externalBin and lib.rs spawns nothing, so on a" -ForegroundColor Yellow
+Write-Host "      machine with no FastAPI service running the app opens on 'Connection Lost'." -ForegroundColor Yellow
 Write-Host "=====================================================" -ForegroundColor Green
