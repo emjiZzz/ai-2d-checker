@@ -1,5 +1,25 @@
 import { create } from "zustand";
 
+/**
+ * Where the app looks for the backend before anyone changes it.
+ *
+ * ⚠ **This must be permitted by the `connect-src` in `src-tauri/tauri.conf.json`.** The CSP is
+ * enforced by the webview, so a default the CSP does not allow fails *before the request leaves
+ * the app* — no network error, no backend log, nothing to debug against. The two used to be
+ * separate literals that happened to agree, and `connectionStore.csp.test.ts` now pins that they
+ * still do.
+ *
+ * ⚠ **The port is not fixed.** `.env` documents `SIDECAR_PORT=0` for dynamic allocation, and
+ * `services/backend/config.py` honours it, so the running backend legitimately answers on a port
+ * nothing can predict at build time. That is why the CSP allows `http://127.0.0.1:*` rather than
+ * pinning 8080 — pinning would make the documented dynamic-port mode permanently unreachable, and
+ * would make the offline overlay's address field unable to fix the very mismatch it exists for.
+ */
+export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8080";
+
+/** Where a user-chosen backend address is remembered. */
+export const BACKEND_URL_STORAGE_KEY = "ai_2d_backend_url";
+
 export type ConnectionStatus =
   | "online"
   | "offline"
@@ -27,8 +47,7 @@ interface ConnectionState {
 }
 
 export const useConnectionStore = create<ConnectionState>((set, get) => ({
-  // Set default standalone port matching environment loader
-  backendUrl: localStorage.getItem("ai_2d_backend_url") || "http://127.0.0.1:8080",
+  backendUrl: localStorage.getItem(BACKEND_URL_STORAGE_KEY) || DEFAULT_BACKEND_URL,
   status: "connecting",
   version: null,
   lastChecked: null,
@@ -39,7 +58,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   setBackendUrl: (url: string) => {
     // Sanitize trailing slash
     const sanitizedUrl = url.endsWith("/") ? url.slice(0, -1) : url;
-    localStorage.setItem("ai_2d_backend_url", sanitizedUrl);
+    localStorage.setItem(BACKEND_URL_STORAGE_KEY, sanitizedUrl);
     set({ backendUrl: sanitizedUrl, status: "connecting", error: null, failedAttempts: 0 });
     get().checkHealth();
   },

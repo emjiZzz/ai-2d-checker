@@ -161,6 +161,34 @@ correction — rather than by un-hiding Settings, which would also surface Activ
 Cloud Database panel and reopen the AI surfaces the flag exists to hide. Scoped to prototype mode
 so the full build keeps one place to change one value.
 
+🔴 **That fix was incomplete when first written, and the way it was verified is why.** The overlay
+lets an engineer type a corrected address — but `tauri.conf.json`'s `connect-src` pinned
+`http://127.0.0.1:8080` and `http://localhost:8080` **by exact port**, so in the packaged app the
+corrected port was blocked by the webview before any request left. The field could fix the
+`localhost` vs `127.0.0.1` spelling and nothing else, which is not the mismatch it was built for.
+
+⚠ **It passed six tests and a live browser check.** The browser check was the problem: it drove
+Vite directly in a plain tab, where no Tauri CSP exists. *A UI fix verified outside the shell that
+constrains it is verified against the wrong thing* — and CSP is the failure mode least likely to be
+noticed, because it is enforced by the webview and the request never leaves: no network error, no
+backend log, nothing in the network tab, just "Connection Lost" against an address that looks
+correct.
+
+**The CSP is now widened on the port axis only** — `http://127.0.0.1:*`, `http://localhost:*` and
+the `ws://` forms — because `.env` documents `SIDECAR_PORT=0` for dynamic allocation and
+`config.py` honours it, so pinning any port makes a documented mode permanently unreachable.
+`tests/test_host_header_guard.py` already asserted the backend's own guard passes a non-default
+port; the CSP was the one layer that disagreed. `connectionStore.csp.test.ts` parses the shipped
+CSP and pins **both halves**: that `DEFAULT_BACKEND_URL` is permitted, and that non-loopback hosts
+(`192.168.x`, `0.0.0.0`, `localhost.attacker.com`) still are not — because "make the CSP less
+annoying" and "make the CSP not a boundary" look identical in a diff. Verified non-vacuous in both
+directions: the old pinned CSP fails the dynamic-port tests, and a default of `http://0.0.0.0:8080`
+fails the agreement test.
+
+⚠ **The general shape: the backend is localhost-only in FOUR independent places** — the uvicorn
+bind, `ALLOWED_HOST_NAMES`, the CORS origins, and this CSP. Three of them fail loudly. **Fix one
+and you have fixed nothing**, and the one that fails silently is the one you will not check.
+
 ⚠ **The same class of dead end had already been found one screen earlier**: `RoomsView` showed a
 single empty state for both "no search matches" and "no rooms at all", so a fresh install — which
 is what a demo is — was offered a Clear Search button for a search it had not typed, and the

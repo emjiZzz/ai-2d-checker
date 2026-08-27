@@ -595,7 +595,51 @@ from `addopts`; the command below now prints a count.)
 
 ## Local environment
 
-The backend runs on **port 8080**, not 8000 (`connectionStore.ts` defaults to
-`http://127.0.0.1:8080`). The desktop dev server is on 1420. The local API bearer token is
-generated and stored encrypted under `storage/secure/`; retrieve it with
-`core.security.initialize_local_api_token()` rather than expecting it in `.env`.
+The backend runs on **port 8080**, not 8000 (`connectionStore.DEFAULT_BACKEND_URL`). The desktop
+dev server is on 1420. The local API bearer token is generated and stored encrypted under
+`storage/secure/`; retrieve it with `core.security.initialize_local_api_token()` rather than
+expecting it in `.env`.
+
+### The backend is localhost-only, on purpose and in four places
+
+Do not treat any one of these as the whole rule — changing one alone produces a build that fails
+in a layer you are not looking at:
+
+| Layer | What it enforces |
+| :--- | :--- |
+| `services/backend/start.ps1` | binds `--host 127.0.0.1` |
+| `main.py` `ALLOWED_HOST_NAMES` | Host must be **exactly** `localhost` / `127.0.0.1` / `::1` |
+| `main.py` CORS `allow_origins` | only `localhost:1420`, `tauri://localhost`, `http://tauri.localhost` |
+| `src-tauri/tauri.conf.json` `connect-src` | what the webview may reach at all |
+
+⚠ **The CSP layer fails differently from the other three, which is why it hid.** It is enforced by
+the *webview*, so a blocked address never leaves the app: no network error, no backend log, nothing
+in the network tab worth reading — just a UI stuck on "Connection Lost" against an address that
+looks right.
+
+⚠ **The port is not fixed and the CSP must not pin it.** `.env` documents `SIDECAR_PORT=0` for
+dynamic allocation and `config.py` honours it, so the backend can answer on a port nothing knows at
+build time; `tests/test_host_header_guard.py` already asserts the host guard passes a non-default
+port. Until 2026-08-27 the CSP pinned `:8080` exactly — so the documented dynamic-port mode was
+permanently unreachable, and the offline overlay's address field could not fix the mismatch it
+exists for, because the corrected port was blocked by the same CSP. `connect-src` now allows any
+port on the two loopback hosts. **The host axis was deliberately NOT widened**, and
+`connectionStore.csp.test.ts` pins both halves — that the default is permitted, and that
+non-loopback hosts still are not.
+
+🔴 **There is no sidecar.** `tauri.conf.json` has no `bundle.externalBin`,
+`src-tauri/binaries/` does not exist, and `lib.rs` spawns nothing.
+`tools/scripts/build-sidecar.ps1` announces *"Building single-file Python executable with
+PyInstaller..."* and then writes a **text file** containing `"Scaffold mock executable binary"`,
+reporting success. So an installed `.msi` starts no backend: it launches, finds nothing on 8080 and
+sits on "Connection Lost". Running the app outside a developer checkout needs the backend started
+separately (`start_desktop.ps1` does this in dev) — or a real sidecar built, which is a project,
+not a config change.
+
+⚠ **Going centralized is not a config change either.** It means the four rows above *plus* the auth
+model: the token is written to local disk by the backend and read off the local filesystem by
+Tauri's `get_api_token`, so a remote client has no way to obtain one. And `storage/uploads` is not
+in `sync_manager.SYNC_COLLECTIONS` while `drawing_documents` is — so drawing **metadata** syncs
+across machines and the **files do not**. Every engineer would see every drawing row and be able to
+open only the ones on their own disk. That failure is already visible at n=1: the two rows
+`reextract_stale_drawings.py` reports as `source file gone`.
