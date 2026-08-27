@@ -27,11 +27,18 @@
  *
  * ## What was widened, and what deliberately was not
  *
- * `connect-src` now allows any PORT on the two loopback hosts (`http://127.0.0.1:*`,
- * `http://localhost:*`, plus the `ws://` forms) — not any host. The last test below pins that
- * distinction, because "make the CSP less annoying" and "make the CSP not a boundary" look
- * identical in a diff. The backend still refuses any request whose Host is not exactly
- * `localhost`, `127.0.0.1` or `::1`, and still requires the bearer token.
+ * **Port axis, 2026-08-27:** any port on the two loopback hosts, because `SIDECAR_PORT=0` is a
+ * documented mode and no build-time constant can know the result.
+ *
+ * **Host axis, same day:** exactly ONE host — `192.168.200.105`, the shared LAN backend the
+ * prototype is deployed against. Not a subnet, not a wildcard. That was a deliberate decision
+ * taken together with `ALLOWED_HOSTS` and the CORS origins in `main.py` and a shared `API_TOKEN`,
+ * because a per-machine backend cannot give 21 engineers one shared drawing corpus.
+ *
+ * The last test pins the distinction, because "make the CSP less annoying" and "make the CSP not
+ * a boundary" look identical in a diff — `192.168.200.106` must still fail. The backend's own host
+ * guard remains an exact match and still requires the bearer token; this CSP is one of four layers
+ * that had to move together, not a lock that was simply removed.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -114,15 +121,30 @@ describe("the shipped CSP and the app's backend address agree", () => {
     }
   });
 
-  it("still refuses non-loopback hosts", () => {
+  it("permits the LAN server the prototype is deployed against", () => {
     /**
-     * The half that keeps the widening honest. Only the PORT axis was opened; the host axis was
-     * not. A centralized backend on another machine is intentionally NOT reachable — that would
-     * need this CSP, the CORS origins in `main.py`, the `ALLOWED_HOST_NAMES` guard and the
-     * file-based local token model all changed together, which is a decision, not a config tweak.
+     * The host axis was opened on 2026-08-27, for ONE host: the shared backend at
+     * 192.168.200.105. That was a deliberate decision taken with the CORS origins in `main.py`,
+     * the `ALLOWED_HOSTS` guard and a shared `API_TOKEN` — not a config tweak, which is why the
+     * test below still exists.
+     *
+     * Port-wildcarded so a `SIDECAR_PORT` change on the server does not need a client rebuild.
+     */
+    for (const url of ["http://192.168.200.105:8080", "http://192.168.200.105:9000"]) {
+      expect(allows(url), `connect-src blocks the LAN server at ${url}`).toBe(true);
+    }
+  });
+
+  it("still refuses every OTHER non-loopback host", () => {
+    /**
+     * The half that keeps the widening honest. One named server was added — not a subnet, not a
+     * wildcard. `192.168.1.50` and `192.168.200.106` are the interesting cases: both look like
+     * plausible LAN addresses and both must fail, which is what proves this is a host allowlist
+     * rather than "anything on a private network".
      */
     for (const url of [
       "http://192.168.1.50:8080",
+      "http://192.168.200.106:8080",
       "http://backend.internal:8080",
       "https://evil.example.com",
       "http://0.0.0.0:8080",

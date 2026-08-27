@@ -42,6 +42,16 @@ $pnpmExe = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } elseif
 Write-Host "Installing dependencies..." -ForegroundColor Yellow
 & $pnpmExe install
 
+# Freeze the backend and stage it for bundling. The installer carries it as a Tauri resource and
+# registers it as a logon service, so an engineer installs one thing and never runs a backend by
+# hand. Skipped only if the staged copy is already current -- the freeze takes ~3 minutes.
+Write-Host "Packaging backend sidecar..." -ForegroundColor Yellow
+& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "tools\scripts\package-server.ps1")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "BUILD ABORTED - backend packaging failed; the installer would ship no server." -ForegroundColor Red
+    exit 1
+}
+
 # The separate `build:prototype` step that used to sit here has been removed rather than fixed.
 # It built dist/ and `tauri build` immediately overwrote it, so it cost a full frontend build and
 # proved nothing -- while reading like the step that set the mode.
@@ -149,7 +159,12 @@ if ($installers.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "NOTE: this installs the DESKTOP APP ONLY -- it bundles no backend." -ForegroundColor Yellow
-Write-Host "      tauri.conf.json declares no externalBin and lib.rs spawns nothing, so on a" -ForegroundColor Yellow
-Write-Host "      machine with no FastAPI service running the app opens on 'Connection Lost'." -ForegroundColor Yellow
+Write-Host "This installer bundles the backend and registers it as a background service:" -ForegroundColor Cyan
+Write-Host "  - server\ is installed beside the app (frozen Python, no install needed)" -ForegroundColor White
+Write-Host "  - a logon Scheduled Task starts it hidden and keeps it running" -ForegroundColor White
+Write-Host "  - the app can be opened and closed freely; uninstall removes the task" -ForegroundColor White
+Write-Host "  - storage\ is NOT removed on uninstall - it holds drawings and markings" -ForegroundColor White
+Write-Host ""
+Write-Host "NSIS only: an .msi cannot run installerHooks, so it would install the app" -ForegroundColor Yellow
+Write-Host "with no registered backend - a silently broken install." -ForegroundColor Yellow
 Write-Host "=====================================================" -ForegroundColor Green

@@ -119,3 +119,6 @@ docs/vault/09 - Learned Models/*.joblib
 docs/vault/09 - Learned Models/*.meta.json
 
 .obsidian/
+# PyInstaller server build (tools/kmti_2dchecker_server.spec)
+/dist/server/
+/build/server/

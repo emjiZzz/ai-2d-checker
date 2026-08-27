@@ -40,22 +40,45 @@ app.add_middleware(CorrelationIDMiddleware)
 # Configure CORS - Allowed scopes for local Tauri client
 app.add_middleware(
     CORSMiddleware,
+    # A packaged Tauri app presents `tauri://localhost` (Windows) or `http://tauri.localhost`,
+    # NOT the backend's own address — so serving a LAN needs no per-server origin, and these
+    # three cover every installed client regardless of which machine the backend runs on.
+    #
+    # `CORS_ORIGINS` exists for anything else (a browser pointed at the server, a second client).
+    # Added to the defaults, never replacing them, so an installed app keeps working whatever the
+    # variable says.
     allow_origins=[
         "http://localhost:1420",     # Vite dev server standard Tauri
         "tauri://localhost",         # Production Tauri Windows
         "http://tauri.localhost",    # Production Tauri Linux/macOS
-    ],
+    ] + [o.strip() for o in (settings.CORS_ORIGINS or "").split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Middleware: Host verification to strictly enforce localhost-only binding.
+# Middleware: Host verification.
 #
 # The hostname is matched EXACTLY. A previous version accepted any Host that merely *started
 # with* an allowed value, which let `localhost.attacker.com` through — precisely the DNS-rebinding
 # case this check exists to stop. Do not reintroduce a prefix/substring match here.
-ALLOWED_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+#
+# ## Serving a LAN
+#
+# The default stays loopback-only, so a developer checkout and any existing deployment behave
+# exactly as before. `ALLOWED_HOSTS` adds names for the shared-server deployment, e.g.
+#
+#     ALLOWED_HOSTS=192.168.200.105,kmti-server
+#
+# ⚠ Names are ADDED to the loopback set, never replace it: the server must keep answering its own
+# health checks and anything running on the box. And each entry is matched exactly by the same
+# rule above — a wildcard here would hand back the DNS-rebinding hole the exact match closed.
+_EXTRA_ALLOWED_HOSTS = {
+    h.strip().lower()
+    for h in (settings.ALLOWED_HOSTS or "").split(",")
+    if h.strip()
+}
+ALLOWED_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"} | _EXTRA_ALLOWED_HOSTS)
 
 
 def _hostname_of(host_header: str) -> str:

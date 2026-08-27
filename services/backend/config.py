@@ -3,8 +3,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Find workspace root .env if running from workspace
-root_dir = Path(__file__).resolve().parents[2]
+# Find the .env beside the application root. `app_root()` rather than a `__file__` walk because
+# a frozen build unpacks into a temp directory -- see runtime_paths for what that silently costs.
+from .runtime_paths import app_root
+
+root_dir = app_root()
 env_path = root_dir / ".env"
 
 if env_path.exists():
@@ -51,6 +54,12 @@ class Settings:
     ENABLE_DB_AUTO_SYNC: bool = os.getenv("ENABLE_DB_AUTO_SYNC", "true").lower() in ("1", "true", "yes")
     DB_AUTO_SYNC_INTERVAL_SEC: int = int(os.getenv("DB_AUTO_SYNC_INTERVAL_SEC", "60"))
     
+    # LAN deployment. Both are comma-separated and ADD to the built-in defaults rather than
+    # replacing them -- see main.py. Empty means "loopback only", which is the historical
+    # behaviour and what a developer checkout wants.
+    ALLOWED_HOSTS: str = os.getenv("ALLOWED_HOSTS", "")
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "")
+
     # API Security Token
     API_TOKEN: str | None = os.getenv("API_TOKEN")
     
