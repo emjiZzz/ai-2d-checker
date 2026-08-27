@@ -38,28 +38,63 @@ $exe = Join-Path $ServerDir "KMTI_2DChecker_Server.exe"
 if (-not (Test-Path $exe)) { throw "Backend executable not found: $exe" }
 if (-not (Test-Path $launcher)) { throw "Hidden launcher not found: $launcher" }
 
-# Seed the machine's config on FIRST install only.
+# Seed the machine's config from the shipped template, every install.
 #
-# ⚠ Never overwrite an existing .env. An upgrade reruns this, and clobbering the file would undo
-# any per-machine change -- a different SIDECAR_PORT where 8080 was taken, a corrected MONGO_URI --
-# silently, and the symptom would appear as "the app stopped working after the update".
+# ## Why the template wins, and why that reverses an earlier decision
+#
+# This used to seed only when `.env` was absent, to protect a per-machine edit. Measured on a real
+# upgrade: Tauri's NSIS installer upgrades IN PLACE and never runs the uninstaller, so `.env` was
+# preserved and the installed config could never change. 0.1.6 installed over 0.1.5 and kept
+# 0.1.5's database URI; 0.1.7 over 0.1.6 kept it again.
+#
+# That is fatal to the one operation this deployment actually needs: rotating the Atlas credential
+# to a scoped user and pushing it to every workstation. Under the old rule, a new installer would
+# reach 21 machines and change nothing, silently.
+#
+# ⚠ **The cost, stated rather than hidden: a per-machine edit is overwritten on upgrade.** The
+# realistic case is `SIDECAR_PORT` on a machine where 8080 is taken. So the old file is kept as
+# `.env.previous`, and any key whose value CHANGED is printed -- an operator who tuned something
+# is told, instead of discovering it when the app stops connecting.
 $envFile = Join-Path $ServerDir ".env"
 $envTemplate = Join-Path $ServerDir ".env.template"
-if (-not (Test-Path $envFile)) {
-    if (Test-Path $envTemplate) {
-        Copy-Item $envTemplate $envFile
-        Write-Host "  created .env from template" -ForegroundColor DarkGray
+
+function Get-EnvMap([string]$Path) {
+    $map = @{}
+    if (Test-Path $Path) {
+        foreach ($line in Get-Content $Path) {
+            if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { $map[$Matches[1]] = $Matches[2].Trim() }
+        }
+    }
+    return $map
+}
+
+if (Test-Path $envTemplate) {
+    $old = Get-EnvMap $envFile
+    if (Test-Path $envFile) {
+        Copy-Item $envFile "$envFile.previous" -Force
+        Remove-Item $envFile -Force
+    }
+    Copy-Item $envTemplate $envFile -Force
+    $new = Get-EnvMap $envFile
+
+    if ($old.Count -gt 0) {
+        $changed = @($new.Keys | Where-Object { $old.ContainsKey($_) -and $old[$_] -ne $new[$_] })
+        if ($changed.Count -gt 0) {
+            Write-Host "  .env reseeded from template; previous saved as .env.previous" -ForegroundColor Yellow
+            foreach ($k in $changed) {
+                # Never echo a connection string: it carries the database password.
+                $redact = if ($k -match 'MONGO|TOKEN|KEY|SECRET') { "<changed>" } else { "$($old[$k]) -> $($new[$k])" }
+                Write-Host "    $k : $redact" -ForegroundColor Yellow
+            }
+            Write-Host "    if you had tuned any of these for this machine, re-apply from .env.previous" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  .env reseeded from template (no values changed)" -ForegroundColor DarkGray
+        }
     } else {
-        Write-Host "  WARNING: no .env and no .env.template - backend will use defaults" -ForegroundColor Yellow
+        Write-Host "  created .env from template" -ForegroundColor DarkGray
     }
 } else {
-    # Say WHICH database it kept. "left untouched" alone is what let a stale URI survive a
-    # reinstall unnoticed -- the message was true and told the operator nothing actionable.
-    $keptUri = (Select-String -Path $envFile -Pattern '^\s*MONGO_URI\s*=\s*(.+)$' | Select-Object -First 1)
-    $keptHost = if ($keptUri -and $keptUri.Matches[0].Groups[1].Value -match '@([^/?]+)') { $Matches[1] }
-                elseif ($keptUri) { $keptUri.Matches[0].Groups[1].Value } else { "unset" }
-    Write-Host "  .env already present - left untouched (database: $keptHost)" -ForegroundColor Yellow
-    Write-Host "    delete it and re-run this script to reseed from .env.template" -ForegroundColor DarkGray
+    Write-Host "  WARNING: no .env.template - backend will use defaults" -ForegroundColor Yellow
 }
 
 Write-Host "Registering background backend..." -ForegroundColor Yellow
