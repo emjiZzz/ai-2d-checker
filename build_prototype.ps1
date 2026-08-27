@@ -93,16 +93,53 @@ Write-Host ""
 Write-Host "=====================================================" -ForegroundColor Green
 Write-Host "Prototype Installer Build Complete!" -ForegroundColor Green
 
-$installers = @()
+# The bundle directory ACCUMULATES: the bundler never removes an installer from a previous
+# version, so after a version bump it holds every build ever made there. Listing all of them --
+# which this did on its first outing after 0.1.0 -> 0.1.1, printing four files as though all four
+# were deliverable -- is worse than printing the wrong directory was. Every one of those older
+# artifacts is a real, runnable installer carrying whatever bugs it shipped with, and the operator
+# has no way to tell from the banner which is the build that was just verified.
+#
+# So: match on the version this build actually stamped, read from the same file the bundler read.
+$appVersion = ""
+$confPath = "$PSScriptRoot\apps\desktop\src-tauri\tauri.conf.json"
+if (Test-Path $confPath) {
+    try {
+        $appVersion = (Get-Content $confPath -Raw | ConvertFrom-Json).version
+    } catch {
+        $appVersion = ""
+    }
+}
+
+$allBundles = @()
 if (Test-Path $bundleDir) {
-    $installers = Get-ChildItem -Path $bundleDir -Recurse -Include *.msi, *.exe -ErrorAction SilentlyContinue
+    $allBundles = @(Get-ChildItem -Path $bundleDir -Recurse -Include *.msi, *.exe -ErrorAction SilentlyContinue)
+}
+
+# Fall back to "everything" only if the version could not be read -- listing too much beats
+# listing nothing and claiming the build produced no installer.
+if ([string]::IsNullOrWhiteSpace($appVersion)) {
+    $installers = $allBundles
+    $stale = @()
+} else {
+    $installers = @($allBundles | Where-Object { $_.Name -like "*$appVersion*" })
+    $stale = @($allBundles | Where-Object { $_.Name -notlike "*$appVersion*" })
 }
 
 if ($installers.Count -gt 0) {
-    Write-Host "Installers:" -ForegroundColor Cyan
+    Write-Host "Installers (version $appVersion):" -ForegroundColor Cyan
     foreach ($installer in $installers) {
         $mb = [math]::Round($installer.Length / 1MB, 1)
         Write-Host "  $($installer.FullName)  ($mb MB)" -ForegroundColor White
+    }
+
+    if ($stale.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  $($stale.Count) installer(s) from an earlier version are also in that folder." -ForegroundColor Yellow
+        Write-Host "  They are NOT this build and must not be distributed:" -ForegroundColor Yellow
+        foreach ($old in $stale) {
+            Write-Host "    $($old.Name)" -ForegroundColor DarkYellow
+        }
     }
 } else {
     Write-Host "No installer found under:" -ForegroundColor Red
