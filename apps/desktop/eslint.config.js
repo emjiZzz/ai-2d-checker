@@ -15,7 +15,15 @@ import tseslint from "typescript-eslint";
 // much larger effort than this targeted regression guard. If/when you want
 // to adopt broader linting, do it as its own deliberate phase with a
 // baseline/ignore pass, not bundled in here.
-export default tseslint.config({
+export default tseslint.config(
+  {
+    // Global ignores. `src-tauri` is the Rust crate plus, since the backend became a bundled
+    // sidecar, a staged 350 MB PyInstaller output containing vendored JavaScript (matplotlib's
+    // mpl.js among it). Linting build output is slow and reports problems in code nobody here
+    // wrote -- the first symptom was an "unused eslint-disable" warning from inside matplotlib.
+    ignores: ["src-tauri/**", "dist/**", "e2e/**", "playwright-report/**", "test-results/**"],
+  },
+  {
   files: ["src/**/*.{ts,tsx}"],
   ignores: ["src/stores/workspace/**"],
   languageOptions: {
@@ -38,4 +46,5 @@ export default tseslint.config({
       },
     ],
   },
-});
+}
+);

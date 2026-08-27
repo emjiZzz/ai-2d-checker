@@ -53,7 +53,13 @@ if (-not (Test-Path $envFile)) {
         Write-Host "  WARNING: no .env and no .env.template - backend will use defaults" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "  .env already present - left untouched" -ForegroundColor DarkGray
+    # Say WHICH database it kept. "left untouched" alone is what let a stale URI survive a
+    # reinstall unnoticed -- the message was true and told the operator nothing actionable.
+    $keptUri = (Select-String -Path $envFile -Pattern '^\s*MONGO_URI\s*=\s*(.+)$' | Select-Object -First 1)
+    $keptHost = if ($keptUri -and $keptUri.Matches[0].Groups[1].Value -match '@([^/?]+)') { $Matches[1] }
+                elseif ($keptUri) { $keptUri.Matches[0].Groups[1].Value } else { "unset" }
+    Write-Host "  .env already present - left untouched (database: $keptHost)" -ForegroundColor Yellow
+    Write-Host "    delete it and re-run this script to reseed from .env.template" -ForegroundColor DarkGray
 }
 
 Write-Host "Registering background backend..." -ForegroundColor Yellow

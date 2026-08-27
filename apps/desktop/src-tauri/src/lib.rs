@@ -36,6 +36,65 @@ fn get_api_token() -> Result<String, String> {
     Ok(decrypted)
 }
 
+/// Start the bundled backend, if it is installed beside this executable and not already running.
+///
+/// The installer registers a logon Scheduled Task, which covers the normal case. This covers the
+/// rest: the task not firing, the backend having crashed, or a machine where the post-install hook
+/// failed. Without it the app sits on "Connection Lost" forever with no way forward that does not
+/// involve an engineer opening Task Scheduler.
+///
+/// ⚠ **Does not wait, and does not report success.** Startup takes tens of seconds (Atlas
+/// connection plus index bootstrap), far longer than any sensible command timeout. The app already
+/// polls `/health` every few seconds and recovers on its own, so this returns as soon as the
+/// process is spawned and lets the existing polling notice.
+///
+/// ⚠ **CREATE_NO_WINDOW.** The backend is a console application on purpose, so an operator can run
+/// it by hand and read the banner. Spawned from a GUI app without this flag it pops a console
+/// window over the user's workspace every time.
+#[tauri::command]
+fn start_backend() -> Result<String, String> {
+    use crate::security::logging;
+
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("Cannot locate the app executable: {e}"))?
+        .parent()
+        .map(|dir| dir.join("server").join("KMTI_2DChecker_Server.exe"))
+        .ok_or_else(|| "App executable has no parent directory".to_string())?;
+
+    if !exe.exists() {
+        // A dev run has no bundled server; the developer starts one themselves. Not an error.
+        let msg = format!("No bundled backend at {}", exe.display());
+        logging::log("info", "StartBackend", &msg);
+        return Ok(msg);
+    }
+
+    let mut command = std::process::Command::new(&exe);
+    // Working directory is the server folder so relative paths land beside the executable.
+    if let Some(dir) = exe.parent() {
+        command.current_dir(dir);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match command.spawn() {
+        Ok(child) => {
+            let msg = format!("Backend starting (pid {})", child.id());
+            logging::log("info", "StartBackend", &msg);
+            Ok(msg)
+        }
+        Err(e) => {
+            let msg = format!("Failed to start backend: {e}");
+            logging::log("error", "StartBackend", &msg);
+            Err(msg)
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SessionPayload {
     token: String,
@@ -141,7 +200,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, get_api_token, save_session, load_session, clear_session, log_from_frontend])
+        .invoke_handler(tauri::generate_handler![greet, get_api_token, start_backend, save_session, load_session, clear_session, log_from_frontend])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

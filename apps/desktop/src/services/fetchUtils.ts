@@ -111,6 +111,24 @@ export async function parseOrThrow<T>(res: Response): Promise<T> {
   }
 
   if (!res.ok) {
+    /*
+      A rejected token is cached until the app restarts -- so drop it here, on the one path every
+      response already takes.
+
+      `apiToken` is read once and held for the life of the app. When it changes underneath us (a
+      backend restart against different storage, a reinstall, or two backends publishing to the
+      same per-user path) every subsequent request 401s, the user sees "Access Denied: Invalid
+      security API Token", and nothing recovers short of closing the app.
+
+      Clearing it is enough to self-heal: `checkHealth` runs every 5 seconds and re-reads the token
+      whenever it is null, so the next attempt carries the current one. Deliberately NOT a retry of
+      this request -- the caller has already been told it failed, and re-issuing a mutation on a
+      401 risks performing it twice if the failure was anything other than a stale token.
+    */
+    if (res.status === 401 || res.status === 403) {
+      useConnectionStore.setState({ apiToken: null });
+    }
+
     const b = body as Record<string, unknown>;
     let message = "HTTP request failed";
     if (typeof b?.detail === "string") {

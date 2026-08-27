@@ -37,6 +37,8 @@ interface ConnectionState {
   pollingIntervalId: number | null;
   apiToken: string | null;
   failedAttempts: number;
+  /** One bundled-backend start attempt per app session; see the offline branch of checkHealth. */
+  backendStartAttempted: boolean;
 
   // Actions
   setBackendUrl: (url: string) => void;
@@ -44,6 +46,8 @@ interface ConnectionState {
   startPolling: (intervalMs?: number) => void;
   stopPolling: () => void;
   fetchApiToken: () => Promise<string | null>;
+  /** Discard the cached token and read it again. See the 401 path in `fetchUtils`. */
+  refreshApiToken: () => Promise<string | null>;
 }
 
 export const useConnectionStore = create<ConnectionState>((set, get) => ({
@@ -55,12 +59,30 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   pollingIntervalId: null,
   apiToken: (typeof window !== "undefined" && !(window as any).__TAURI_INTERNALS__) ? localStorage.getItem("ai_2d_api_token") : null,
   failedAttempts: 0,
+  backendStartAttempted: false,
   setBackendUrl: (url: string) => {
     // Sanitize trailing slash
     const sanitizedUrl = url.endsWith("/") ? url.slice(0, -1) : url;
     localStorage.setItem(BACKEND_URL_STORAGE_KEY, sanitizedUrl);
     set({ backendUrl: sanitizedUrl, status: "connecting", error: null, failedAttempts: 0 });
     get().checkHealth();
+  },
+
+  /**
+   * Force a re-read of the API token.
+   *
+   * The token is cached for the life of the app once fetched, which is right until it changes
+   * underneath us -- a backend restart against different storage, a reinstall, or two backends
+   * publishing to the same per-user path. Then every request 401s and the ONLY cure is restarting
+   * the app, with an error that says "Invalid security API Token" and nothing about why.
+   *
+   * Observed exactly that: the packaged sidecar and a development backend both publish to
+   * `%LOCALAPPDATA%/kmti-2d-checker/secure/.api-token`, so whichever started last owned it, and an
+   * app opened before that point held a token the running backend had never issued.
+   */
+  refreshApiToken: async () => {
+    set({ apiToken: null });
+    return await get().fetchApiToken();
   },
 
   fetchApiToken: async () => {
@@ -182,6 +204,34 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         lastChecked: Date.now(),
         failedAttempts: nextFailed,
       });
+
+      /*
+        Confirmed offline -- try to start the bundled backend.
+
+        The installer registers a logon Scheduled Task, which covers the normal case. This covers
+        the rest: the task not firing, the backend having crashed, or a post-install hook that
+        failed. Without it the app sits on "Connection Lost" indefinitely and the only way forward
+        is an engineer opening Task Scheduler.
+
+        ⚠ ONCE per app session, not once per poll. `checkHealth` runs every 5 seconds; retrying
+        each time would spawn a process every 5 seconds against a backend that is simply slow to
+        start -- and it IS slow, tens of seconds for the Atlas connection and index bootstrap. One
+        attempt, then let the existing polling notice when it comes up.
+
+        Errors are swallowed on purpose: in a dev run there is no bundled backend and the command
+        says so, which is not a condition worth surfacing to a developer who started their own.
+      */
+      if (!get().backendStartAttempted && typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+        set({ backendStartAttempted: true });
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const result = await invoke<string>("start_backend");
+          console.info("[connection] start_backend:", result);
+        } catch (startErr) {
+          console.warn("[connection] could not start the bundled backend:", startErr);
+        }
+      }
+
       return false;
     }
   },
