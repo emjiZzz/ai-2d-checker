@@ -296,6 +296,36 @@ def _open_request(room="room1", ref="ref1", rev="rev1"):
     return gt.CreateSessionRequest(room_id=room, ref_drawing_id=ref, rev_drawing_id=rev)
 
 
+def _find_stub(*results):
+    """Stand in for `Model.find(query).sort(...).to_list()`. One `results` entry per call.
+
+    ⚠ **Patch `find`, not `find_one`.** These tests patched `find_one` until 2026-08-25, long
+    after `_resume` had moved to `find(...).sort(...).to_list()` in `3b90d1e`. A patch on a method
+    nobody calls does not fail loudly — the real `find` was reached instead, beanie was never
+    initialised, and ten tests died at `CollectionWasNotInitialized`. In the window before that
+    surfaced, the resume was effectively unguarded, and `f89cf0d` changed its behaviour with
+    nothing watching. Keep this in step with `_resume`.
+
+    Exposes `.queries`, so the query mapping itself stays assertable — which is the whole reason
+    `_resume` builds a raw dict rather than using Beanie's class-attribute expressions: those
+    resolve through descriptors that only exist after `init_beanie`, so a mocked test cannot see
+    them.
+    """
+    queries: list = []
+
+    def _find(*args, **kwargs):
+        queries.append(args[0] if args else kwargs)
+        chain = MagicMock()
+        chain.sort.return_value = chain
+        index = min(len(queries) - 1, len(results) - 1) if results else 0
+        chain.to_list = AsyncMock(return_value=list(results[index]) if results else [])
+        chain.update_many = AsyncMock()
+        return chain
+
+    _find.queries = queries
+    return _find
+
+
 async def test_reopening_a_pair_resumes_the_session_already_in_progress(monkeypatch):
     """The defect the owner hit: markings vanished from the panel after every app reload.
 
@@ -307,7 +337,7 @@ async def test_reopening_a_pair_resumes_the_session_already_in_progress(monkeypa
     existing = _session()
     existing.marking_count = 3
     monkeypatch.setattr(
-        gt.ManualCheckSession, "find_one", AsyncMock(return_value=existing), raising=False
+        gt.ManualCheckSession, "find", _find_stub([existing]), raising=False
     )
     monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
 
@@ -319,9 +349,7 @@ async def test_reopening_a_pair_resumes_the_session_already_in_progress(monkeypa
 
 
 async def test_a_pair_with_nothing_open_starts_a_new_session(monkeypatch):
-    monkeypatch.setattr(
-        gt.ManualCheckSession, "find_one", AsyncMock(return_value=None), raising=False
-    )
+    monkeypatch.setattr(gt.ManualCheckSession, "find", _find_stub([]), raising=False)
     monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
 
     result = await gt.create_session(_open_request())
@@ -332,27 +360,32 @@ async def test_a_pair_with_nothing_open_starts_a_new_session(monkeypatch):
     gt.ManualCheckSession.save.assert_awaited_once()
 
 
-async def test_the_resume_is_scoped_to_pair_annotator_and_open_status(monkeypatch):
+async def test_the_resume_is_scoped_to_the_pair_and_the_annotator(monkeypatch):
     """Each clause of the filter is load-bearing, and dropping one is silent.
 
-    Without `status`, reopening a room would append to a session already submitted, so a
-    finished pass would keep growing. Without `annotator`, a second engineer would inherit the
-    first's partial work and the session would stop meaning "who checked this pair". Without the
-    two drawing ids, swapping a room's drawings would resume a check of the previous pair.
+    Without `annotator`, a second engineer would inherit the first's partial work and the session
+    would stop meaning "who checked this pair". Without the two drawing ids, swapping a room's
+    drawings would resume a check of the previous pair.
+
+    ⚠ **`status` is deliberately NOT here, and this test asserted that it was until 2026-08-25.**
+    It was dropped when `_require_open` stopped refusing a submitted session and started reopening
+    it: submit became soft, so a submitted pass IS the thing to resume, and filtering it out would
+    mint a fresh session and orphan the markings — the exact defect this endpoint exists to
+    prevent. The amendment is recorded on the session instead (`reopen_count`), which is what
+    makes soft-submit acceptable. If submit is ever made final again, `status` comes back here and
+    these two changes move together.
     """
-    find_one = AsyncMock(return_value=None)
-    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    find = _find_stub([])
+    monkeypatch.setattr(gt.ManualCheckSession, "find", find, raising=False)
     monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
 
     await gt.create_session(_open_request())
 
-    query = find_one.await_args.args[0]
-    assert query == {
+    assert find.queries[0] == {
         "room_id": "room1",
         "ref_drawing_id": "ref1",
         "rev_drawing_id": "rev1",
         "annotator": "imrysn",
-        "status": "in_progress",
     }
 
 
@@ -363,13 +396,13 @@ async def test_the_resume_query_names_only_real_session_fields(monkeypatch):
     empty-panel defect would be back with nothing to show for it — no error, no log, just an
     engineer's markings orphaned again.
     """
-    find_one = AsyncMock(return_value=None)
-    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    find = _find_stub([])
+    monkeypatch.setattr(gt.ManualCheckSession, "find", find, raising=False)
     monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
 
     await gt.create_session(_open_request())
 
-    assert set(find_one.await_args.args[0]) <= set(ManualCheckSession.model_fields)
+    assert set(find.queries[0]) <= set(ManualCheckSession.model_fields)
 
 
 async def test_an_unidentified_caller_does_not_inherit_another_engineers_session(monkeypatch):
@@ -378,14 +411,14 @@ async def test_an_unidentified_caller_does_not_inherit_another_engineers_session
     It has to be passed to the lookup like any other, or every unauthenticated open would share
     one session — and the markings inside it would carry no usable attribution.
     """
-    find_one = AsyncMock(return_value=None)
-    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    find = _find_stub([])
+    monkeypatch.setattr(gt.ManualCheckSession, "find", find, raising=False)
     monkeypatch.setattr(gt, "resolve_username", lambda _t: None)
 
     result = await gt.create_session(_open_request())
 
     assert result.data.annotator == "unknown"
-    assert find_one.await_args.args[0]["annotator"] == "unknown"
+    assert find.queries[0]["annotator"] == "unknown"
 
 
 async def test_the_repair_tool_groups_sessions_the_same_way_this_endpoint_resumes(monkeypatch):
@@ -398,13 +431,15 @@ async def test_the_repair_tool_groups_sessions_the_same_way_this_endpoint_resume
     """
     from tools.merge_duplicate_check_sessions import GROUP_KEYS
 
-    find_one = AsyncMock(return_value=None)
-    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    find = _find_stub([])
+    monkeypatch.setattr(gt.ManualCheckSession, "find", find, raising=False)
     monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
 
     await gt.create_session(_open_request())
 
-    assert set(find_one.await_args.args[0]) == set(GROUP_KEYS) | {"status"}
+    # Exactly the repair tool's grouping keys, with nothing extra. They agreed on four fields
+    # plus `status` until submit became soft; now they agree on the four.
+    assert set(find.queries[0]) == set(GROUP_KEYS)
 
 
 # ── where a category came from is part of the record ─────────────────────────────────
@@ -469,27 +504,38 @@ def _submitted_session():
     return session
 
 
-async def test_a_submitted_session_refuses_a_new_marking(monkeypatch):
+async def test_a_submitted_session_reopens_and_records_the_amendment(monkeypatch):
     """`submit` is the moment a pass becomes the thing `from-manual-check` converts.
 
-    Appending afterwards rewrites the record a label was taken from. `create_session` mints a
-    fresh session for a genuinely new pass, so refusing here blocks nothing legitimate.
+    Appending afterwards rewrites the record a label was taken from — so this REFUSED with a 409
+    until 2026-08-25, and now reopens instead, because an engineer who spots a miss should not
+    have to start a pass over. The trade is only acceptable while the amendment is visible:
+    `reopened_at` and `reopen_count` are what let an export, or anyone auditing why a label
+    disagrees with its source, tell an amended pass from a clean one.
+
+    ⚠ Assert the STAMP, not just the reopen. A reopen that forgets to record itself is the
+    silent corruption this endpoint was refusing to allow in the first place.
     """
-    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=_submitted_session()))
+    session = _submitted_session()
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=session))
+    monkeypatch.setattr(gt.ManualCheckSession, "find", _find_stub([]), raising=False)
 
-    with pytest.raises(HTTPException) as err:
-        await gt.create_marking(
-            "sess1",
-            gt.CreateMarkingRequest(
-                status="ADDED", category="drawing_views", rev_address=_address()
-            ),
-        )
+    result = await gt.create_marking(
+        "sess1",
+        gt.CreateMarkingRequest(
+            status="ADDED", category="drawing_views", rev_address=_address()
+        ),
+    )
 
-    assert err.value.status_code == 409
-    assert "closed" in err.value.detail
+    assert result.success
+    assert session.status == "in_progress"
+    assert session.submitted_at is None
+    assert session.reopen_count == 1
+    assert session.reopened_at is not None
 
 
-async def test_a_submitted_session_refuses_an_edit_to_its_markings(monkeypatch):
+async def test_editing_a_submitted_sessions_marking_reopens_and_records(monkeypatch):
+    """Same rule as adding one: the edit is allowed, and the session says it was amended."""
     marking = GroundTruthMarking(
         session_id="sess1",
         side="rev",
@@ -498,13 +544,17 @@ async def test_a_submitted_session_refuses_an_edit_to_its_markings(monkeypatch):
         category="drawing_views",
         annotator="imrysn",
     )
+    session = _submitted_session()
     monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=marking))
-    monkeypatch.setattr(gt, "_session_of", AsyncMock(return_value=_submitted_session()))
+    monkeypatch.setattr(gt, "_session_of", AsyncMock(return_value=session))
+    monkeypatch.setattr(gt.ManualCheckSession, "find", _find_stub([]), raising=False)
+    monkeypatch.setattr(gt.GroundTruthMarking, "save", AsyncMock(), raising=False)
 
-    with pytest.raises(HTTPException) as err:
-        await gt.update_marking("m1", gt.UpdateMarkingRequest(category="notes_section"))
+    await gt.update_marking("m1", gt.UpdateMarkingRequest(category="notes_section"))
 
-    assert err.value.status_code == 409
+    assert session.status == "in_progress"
+    assert session.reopen_count == 1
+    assert session.reopened_at is not None
 
 
 async def test_submitting_twice_keeps_the_first_timestamp(monkeypatch):
@@ -552,8 +602,8 @@ async def test_a_racing_open_resumes_the_session_that_won(monkeypatch):
     winner = _session()
     winner.marking_count = 4
     # Misses first (so the insert is attempted), then finds the winner on the retry.
-    find_one = AsyncMock(side_effect=[None, winner])
-    monkeypatch.setattr(gt.ManualCheckSession, "find_one", find_one, raising=False)
+    find = _find_stub([], [winner])
+    monkeypatch.setattr(gt.ManualCheckSession, "find", find, raising=False)
     monkeypatch.setattr(
         gt.ManualCheckSession,
         "save",
@@ -565,15 +615,13 @@ async def test_a_racing_open_resumes_the_session_that_won(monkeypatch):
     result = await gt.create_session(_open_request())
 
     assert result.data.marking_count == 4
-    assert find_one.await_count == 2
+    assert len(find.queries) == 2
 
 
 async def test_a_race_that_leaves_nothing_open_is_reported_not_guessed(monkeypatch):
     # The index rejected the insert but nothing in-progress is there to read. Retrying would
     # loop, and inventing a session would attach an engineer's work to the wrong record.
-    monkeypatch.setattr(
-        gt.ManualCheckSession, "find_one", AsyncMock(return_value=None), raising=False
-    )
+    monkeypatch.setattr(gt.ManualCheckSession, "find", _find_stub([]), raising=False)
     monkeypatch.setattr(
         gt.ManualCheckSession,
         "save",
@@ -633,3 +681,62 @@ async def test_a_marking_naming_an_unloadable_session_still_retracts(monkeypatch
 # query is written as a raw mapping instead. `list_markings` is not worth the same contortion —
 # it has no invariant to protect, only an index to use — so the cost is recorded here rather
 # than paid.
+
+
+# ── the resume and the reopen must ask the same question ─────────────────────────────
+
+
+async def test_the_reopen_looks_for_the_same_session_the_resume_does(monkeypatch):
+    """`_require_open` frees the index slot the resume will later compete for.
+
+    They were written in two different shapes — a raw mapping in `_resume`, Beanie
+    class-attribute expressions in `_require_open` — and the second could not be exercised by a
+    mocked test at all (`AttributeError: room_id`), so it was the one branch here with no
+    coverage. That is where the unrecorded reopen shipped. `_pair_query` is now the single
+    definition; this asserts both callers still go through it.
+
+    The drift is silent if it returns: a reopen that closes sessions matched one way, and a
+    resume that looks for them another, leaves an engineer's marking on a session the next open
+    cannot find.
+    """
+    session = _submitted_session()
+    find = _find_stub([])
+    monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=session))
+    monkeypatch.setattr(gt.ManualCheckSession, "find", find, raising=False)
+
+    await gt.create_marking(
+        "sess1",
+        gt.CreateMarkingRequest(status="ADDED", category="drawing_views", rev_address=_address()),
+    )
+
+    reopen_query = find.queries[0]
+    assert set(reopen_query) == set(gt._pair_query("r", "a", "b", "who")) | {"status"}
+    assert reopen_query["status"] == "in_progress", (
+        "the reopen must only close sessions occupying the partial unique index slot"
+    )
+    assert set(reopen_query) <= set(ManualCheckSession.model_fields)
+
+
+async def test_the_amendment_reaches_the_client_not_just_the_database(monkeypatch):
+    """Recording a reopen changes nothing anyone can act on unless it is on the response.
+
+    The workspace, an export, and anyone auditing why a corpus label disagrees with its source
+    all read `SessionResponse`. A stamp that stops at the collection is a stamp nobody sees.
+    """
+    existing = _session()
+    existing.reopen_count = 2
+    existing.reopened_at = datetime(2026, 8, 25, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr(gt.ManualCheckSession, "find", _find_stub([existing]), raising=False)
+    monkeypatch.setattr(gt, "resolve_username", lambda _t: "imrysn")
+
+    result = await gt.create_session(_open_request())
+
+    assert result.data.reopen_count == 2
+    assert result.data.reopened_at == existing.reopened_at
+
+
+def test_a_session_that_was_never_reopened_says_so():
+    """The common case has to read as 'clean', or the field cannot distinguish anything."""
+    session = _session()
+    assert session.reopen_count == 0
+    assert session.reopened_at is None

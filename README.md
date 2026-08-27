@@ -76,7 +76,13 @@ powershell -ExecutionPolicy Bypass -File .\start_prototype.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start_desktop.ps1 -Prototype
 ```
-> 🚀 Bypasses Login straight to 2D CAD Workspace, hides 3D/History/Standards tabs, and runs deterministic visual/physical difference checks offline.
+> 🚀 Bypasses Login straight to the 2D CAD Workspace and hides the 3D / History / Standards / Settings tabs.
+>
+> ⚠ **Prototype mode is for collecting an engineer's own markings — no comparison engine runs in it.**
+> Every room is forced to `manual_check`, the left panel is the marking list rather than the
+> comparison panel, and there is no START COMPARISON button to reach. This bullet used to promise
+> "deterministic visual/physical difference checks", which is the opposite of what the flag does.
+> Use **Option A** if you want the comparison engine. See `apps/desktop/src/config/features.ts`.
 
 ---
 
@@ -88,6 +94,14 @@ To build the standalone Windows installer pre-packaged in **Prototype Mode**:
 powershell -ExecutionPolicy Bypass -File .\build_prototype.ps1
 ```
 The output installer will be generated in `apps/desktop/src-tauri/target/release/bundle/msi/`.
+
+> ⚠ **Use the script — do not hand-run `pnpm build:prototype` and then `tauri build`.**
+> `tauri.conf.json` sets `beforeBuildCommand: "pnpm build"`, so `tauri build` re-runs Vite in
+> production mode and **overwrites** the `dist/` that `build:prototype` just produced. Only an
+> ambient `VITE_PROTOTYPE_MODE=true` survives that far, which is what the script exports. Run the
+> two commands by hand without it and you get a full installer with a login screen, silently.
+> The script now verifies the result with `tools/scripts/assert-build-mode.mjs` and aborts rather
+> than hand you an installer in the wrong mode.
 
 ---
 
@@ -137,8 +151,12 @@ pnpm install
 # Run web dev in Prototype Mode (no Tauri / browser only)
 pnpm dev:prototype
 
-# Build web bundle in Prototype Mode
+# Build the WEB bundle in Prototype Mode (browser only)
 pnpm build:prototype
+
+# Check which mode apps/desktop/dist was actually built in
+pnpm assert:prototype     # fails unless dist/ is a prototype build
+pnpm assert:full
 
 # Check code for errors
 pnpm run lint

@@ -27,7 +27,7 @@ from typing import Annotated, Literal, get_args
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.ground_truth import (
@@ -148,6 +148,11 @@ class SessionResponse(BaseModel):
     marking_count: int
     started_at: datetime
     submitted_at: datetime | None = None
+    # A pass that was amended after submit. Carried on the response rather than left in the
+    # database because the whole point of recording it is that a reader can SEE it -- the
+    # workspace, an export, and anyone auditing why a corpus label disagrees with its source.
+    reopened_at: datetime | None = None
+    reopen_count: int = 0
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────────────
@@ -243,6 +248,8 @@ def _session_response(s: ManualCheckSession) -> SessionResponse:
         marking_count=s.marking_count,
         started_at=s.started_at,
         submitted_at=s.submitted_at,
+        reopened_at=s.reopened_at,
+        reopen_count=s.reopen_count,
     )
 
 
@@ -266,26 +273,93 @@ async def _session_of(marking: GroundTruthMarking) -> ManualCheckSession | None:
         return None
 
 
-async def _require_open(session: ManualCheckSession) -> ManualCheckSession:
-    """If a session was submitted, automatically reopen it when an engineer adds or updates markings."""
-    if session.status == "submitted":
-        try:
-            await ManualCheckSession.find(
-                ManualCheckSession.room_id == session.room_id,
-                ManualCheckSession.ref_drawing_id == session.ref_drawing_id,
-                ManualCheckSession.rev_drawing_id == session.rev_drawing_id,
-                ManualCheckSession.annotator == session.annotator,
-                ManualCheckSession.status == "in_progress",
-            ).update_many({"$set": {"status": "submitted"}})
-        except Exception:
-            pass
+def _pair_query(room_id: str, ref_drawing_id: str, rev_drawing_id: str,
+                annotator: str, **extra: object) -> dict[str, object]:
+    """The fields that identify one engineer's check of one pair. One definition, two readers.
 
-        session.status = "in_progress"
-        session.submitted_at = None
-        try:
-            await session.save()
-        except DuplicateKeyError:
-            pass
+    `create_session._resume` and `_require_open` both have to ask "which session is this pair's",
+    and they were asking it in two different shapes — a raw mapping in one, Beanie class-attribute
+    expressions in the other. Two spellings of one rule is how they drift, and here the drift is
+    silent: a resume that looks in one place and a reopen that writes in another leaves an
+    engineer's marking on a session the next open will not find.
+
+    ⚠ **A raw mapping, never Beanie's `Model.field == value` expressions.** Those resolve through
+    descriptors that only exist after `init_beanie`, so a fully-mocked router test cannot
+    construct them — it raises `AttributeError: room_id` — and the code path goes untested. That
+    is not hypothetical: `_require_open` was written with expressions and was therefore the one
+    branch here with no coverage, which is where the reopen shipped unrecorded.
+
+    Pinned against `ManualCheckSession.model_fields` by
+    `test_the_resume_query_names_only_real_session_fields`, because a mistyped key in a raw
+    mapping matches nothing and fails in the quiet direction.
+    """
+    return {
+        "room_id": room_id,
+        "ref_drawing_id": ref_drawing_id,
+        "rev_drawing_id": rev_drawing_id,
+        "annotator": annotator,
+        **extra,
+    }
+
+
+async def _require_open(session: ManualCheckSession) -> ManualCheckSession:
+    """Reopen a submitted session so a late marking is not lost -- and RECORD that it happened.
+
+    An engineer who spots a miss after submitting should not have to start a new pass, so this
+    deliberately reopens rather than refusing with a 409 (which is what it did until 2026-08-25).
+
+    ⚠ **The reopen rewrites the record a corpus label was taken from.** `submit` is the moment a
+    pass becomes the thing `tools/eval_corpus.py from-manual-check` converts, so a silent
+    amendment leaves a label whose source no longer matches it and nothing anywhere saying so.
+    `reopened_at` / `reopen_count` are what make that visible; they are the reason this is an
+    acceptable trade rather than a quiet corruption. Do not drop them to simplify this function.
+
+    The `update_many` first closes any OTHER in-progress session for the same pair, because the
+    unique index is partial on `status: "in_progress"` and this session is about to occupy that
+    slot. Without it the `save()` below collides with a session the engineer never asked for.
+    """
+    if session.status != "submitted":
+        return session
+
+    try:
+        await ManualCheckSession.find(
+            _pair_query(
+                session.room_id, session.ref_drawing_id, session.rev_drawing_id,
+                session.annotator, status="in_progress",
+            )
+        ).update_many({"$set": {"status": "submitted"}})
+    except PyMongoError as err:
+        # ⚠ Was a bare `except Exception: pass`. Narrowed and logged because the failure it hides
+        # is not cosmetic: if this update does not land, the `save()` below hits the partial
+        # unique index, is swallowed by the `DuplicateKeyError` branch, and the session stays
+        # `submitted` in the database while this function returns it as `in_progress`. The
+        # marking is then written against a session the next resume will not find.
+        logger.warning(
+            f"[ground_truth] Could not close other in-progress sessions for pair "
+            f"{session.ref_drawing_id}->{session.rev_drawing_id} before reopening "
+            f"{session.id}: {err}"
+        )
+
+    session.status = "in_progress"
+    session.submitted_at = None
+    session.reopened_at = datetime.now(UTC)
+    session.reopen_count = (session.reopen_count or 0) + 1
+    try:
+        await session.save()
+    except DuplicateKeyError:
+        # Another in-progress session for this pair beat us to the index slot. The marking still
+        # belongs to THIS session, which is the one the caller named, so carry on with the
+        # in-memory state rather than failing the write -- but say so, because the row on disk
+        # now disagrees with what we return.
+        logger.warning(
+            f"[ground_truth] Reopen of session {session.id} lost the in-progress index slot; "
+            f"the stored row is still 'submitted'."
+        )
+    else:
+        logger.info(
+            f"[ground_truth] Session {session.id} reopened after submit "
+            f"(amendment #{session.reopen_count}) by {session.annotator}"
+        )
     return session
 
 
@@ -334,12 +408,9 @@ async def create_session(
     annotator = payload.annotator or resolve_username(x_session_token) or "unknown"
 
     async def _resume() -> ManualCheckSession | None:
-        query = {
-            "room_id": payload.room_id,
-            "ref_drawing_id": payload.ref_drawing_id,
-            "rev_drawing_id": payload.rev_drawing_id,
-            "annotator": annotator,
-        }
+        query = _pair_query(
+            payload.room_id, payload.ref_drawing_id, payload.rev_drawing_id, annotator
+        )
         sessions = await ManualCheckSession.find(query).sort("-started_at").to_list()
         if not sessions:
             return None

@@ -85,6 +85,17 @@ from services.backend.infrastructure.rendering.dxf_render_setup import (  # noqa
 from services.backend.infrastructure.rendering.geometry_serializer import (  # noqa: E402
     GeometrySerializer,
 )
+from services.backend.infrastructure.rendering.text_placement import (  # noqa: E402
+    ANCHOR_FRACTIONS as _ANCHOR_FRACTIONS,
+)
+from services.backend.infrastructure.rendering.text_placement import (
+    CANVAS_FONT,
+    cap_height_ratio,
+    clean_cad_text,
+)
+from services.backend.infrastructure.rendering.text_placement import (
+    quadrant as _quadrant,
+)
 
 # ---------------------------------------------------------------------------
 # The renderEntities.ts branch table, ported.
@@ -490,30 +501,11 @@ def match_within_parent(
 
 
 # ---------------------------------------------------------------------------
-# Font metrics: the cap-height/em factor the canvas renderer is missing.
+# Font metrics, attachment-point anchors and the `%%c` substitutions now live in
+# `infrastructure/rendering/text_placement.py`, imported above -- production code needs the same
+# answers and must not import a harness out of `tools/`. Proven inert: this file's `--json`
+# ledger is byte-identical across the move.
 # ---------------------------------------------------------------------------
-
-#: The canvas asks for these in order (see `renderEntities.ts`); the first is what Windows
-#: resolves in practice and what the raster path substitutes for the SHX styles.
-CANVAS_FONT = "msgothic.ttc"
-
-
-def cap_height_ratio(font_name: str = CANVAS_FONT) -> float:
-    """Cap height as a fraction of the em square.
-
-    ezdxf scales glyphs so the DXF `height` lands on the CAP height; CSS `font: Npx` sets the EM
-    size. Before the fix the canvas passed the DXF height straight to `font-size`, drawing every
-    string at this fraction of its correct size -- measured as a flat 0.7617 across the sheet.
-    `renderEntities.ts` now divides by the same ratio, measured in-browser from
-    `TextMetrics.actualBoundingBoxAscent`.
-    """
-    from ezdxf.fonts import fonts
-
-    # A font built at cap_height=1 measures widths in cap-height units. Latin glyphs in MS
-    # Gothic are exactly half-width, so "MMMM" is 2 em; dividing gives em per cap unit.
-    font = fonts.make_font(font_name, cap_height=1.0)
-    em_in_cap_units = font.text_width("MMMM") / 2.0
-    return 1.0 / em_in_cap_units if em_in_cap_units else 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -528,20 +520,6 @@ def cap_height_ratio(font_name: str = CANVAS_FONT) -> float:
 RENDERER_APPLIES_ATTACHMENT_POINT = True   # ctx.textAlign / ctx.textBaseline from attachment_point
 RENDERER_APPLIES_WIDTH_FACTOR = True       # \W and \T folded into a horizontal scale
 RENDERER_APPLIES_CAP_HEIGHT = True         # font-size = height / (cap/em)
-
-
-#: The escape -> glyph substitutions `cleanCadText` makes before the canvas measures anything.
-#: Without these the harness measures "%%c145" as six glyphs against ezdxf's rendered "⌀145",
-#: and reports a 1.56 width ratio for a string that is drawn correctly.
-_CAD_TEXT_SUBSTITUTIONS = (("%%c", "⌀"), ("%%C", "⌀"), ("%%d", "°"), ("%%D", "°"),
-                           ("%%p", "±"), ("%%P", "±"))
-
-
-def clean_cad_text(text: str) -> str:
-    """Mirror of `cleanCadText` in `renderEntities.ts`, for the substitutions that change width."""
-    for escape, glyph in _CAD_TEXT_SUBSTITUTIONS:
-        text = text.replace(escape, glyph)
-    return text
 
 
 def predicted_width(
@@ -580,15 +558,6 @@ def predicted_width(
     return fonts.make_font(font_name, cap_height=cap, width_factor=scale).text_width(text)
 
 
-#: attachment point -> (x fraction of the box, y fraction) that the anchor sits on.
-#: 1-3 top, 4-6 middle, 7-9 bottom; left/centre/right across.
-_ANCHOR_FRACTIONS: dict[int, tuple[float, float]] = {
-    1: (0.0, 1.0), 2: (0.5, 1.0), 3: (1.0, 1.0),
-    4: (0.0, 0.5), 5: (0.5, 0.5), 6: (1.0, 0.5),
-    7: (0.0, 0.0), 8: (0.5, 0.0), 9: (1.0, 0.0),
-}
-
-
 #: Strings shorter than this are excluded from the width statistic.
 #:
 #: `ez_w` is the INK width of the rendered glyphs; the predicted width is the ADVANCE width,
@@ -597,15 +566,6 @@ _ANCHOR_FRACTIONS: dict[int, tuple[float, float]] = {
 #: reads 3.5 with nothing actually wrong. Measuring only longer strings keeps the statistic
 #: about the width factor rather than about font side bearings.
 MIN_CHARS_FOR_WIDTH_RATIO = 6
-
-
-def _quadrant(rotation: float) -> int | None:
-    """0/90/180/270 as 0-3, or None for an off-axis rotation."""
-    normalized = round(((rotation % 360.0) + 360.0) % 360.0, 3)
-    for index, angle in enumerate((0.0, 90.0, 180.0, 270.0)):
-        if abs(normalized - angle) < 1.0 or abs(normalized - angle - 360.0) < 1.0:
-            return index
-    return None
 
 
 def anchor_reference(
@@ -935,10 +895,21 @@ def print_report(report: dict[str, Any], top: int) -> None:
     print()
 
 
-#: What CLAUDE.md records for the section-callout cull across `storage/uploads`, so a drift is
-#: visible in the output rather than needing a human to remember the figure. These are a
-#: reference point, NOT a pass/fail gate: adding a drawing legitimately moves the denominator.
-DOCUMENTED_CULL = {"drawings": 32, "cull_nothing": 23, "max_per_sheet": 10}
+#: The one figure here that is an INVARIANT rather than a census.
+#:
+#: `drawings` and `cull_nothing` both scale with the corpus, so pinning them guarantees a false
+#: alarm the next time anyone uploads a drawing — which is exactly what happened: this held
+#: `{"drawings": 32, "cull_nothing": 23, "max_per_sheet": 10}`, the figures CLAUDE.md itself
+#: **retired on 2026-08-20** as unreproducible ("the denominator alone shows why they were quoted
+#: rather than measured: `storage/uploads` holds 55 drawings, not 32"). The doc was corrected and
+#: the tool was not, so every run printed three DIFFERS lines against numbers no document claimed
+#: any more — a checker crying wolf, which is how a real jump gets waved through.
+#:
+#: The per-sheet maximum is the failure mode CLAUDE.md actually names, and it does not move when
+#: the corpus grows: a sheet culling more than this means the section-callout rule started eating
+#: geometry. Re-measure and update this ONLY with a stated reason.
+#: Measured 2026-08-25 over 57 drawings: max 8, 38 culling nothing.
+MAX_CULL_PER_SHEET = 8
 
 
 def sweep_cull(directory: Path) -> dict[str, Any]:
@@ -946,10 +917,11 @@ def sweep_cull(directory: Path) -> dict[str, Any]:
 
     ## Why this exists
 
-    CLAUDE.md mandates this sweep before landing any change to the section-callout rule, and
-    quotes its result: *"23 of 32 drawings cull nothing, 9 cull 8-10 entities each, and the
-    maximum on any sheet is 10. Re-run that sweep if you touch the rule -- a jump in those
-    numbers is the failure mode, and it does not show up as a test failure."*
+    CLAUDE.md mandates this sweep before landing any change to the section-callout rule:
+    *"a jump in those numbers is the failure mode, and it does not show up as a test failure."*
+
+    ⚠ The figure it quotes is a CENSUS and moves whenever a drawing is added. Only
+    `MAX_CULL_PER_SHEET` is compared; the counts are printed as context.
 
     Until now nothing produced those numbers. `main()` took a single DXF, so the documented
     pre-landing check had no producer -- the same shape as
@@ -1001,19 +973,20 @@ def print_sweep(result: dict[str, Any], top: int) -> None:
             bar = "#" * max(1, round(count * 28 / widest))
             print(f"    {culled:>3} culled   {bar:<28} {count}")
 
-    doc = DOCUMENTED_CULL
-    print("\n  against the figure recorded in CLAUDE.md:")
-    for key, label in (
-        ("drawings", "drawings swept"),
-        ("cull_nothing", "sheets culling nothing"),
-        ("max_per_sheet", "max cull on any sheet"),
-    ):
-        got, want = result[key], doc[key]
-        verdict = "as documented" if got == want else f"DIFFERS (documented {want})"
-        print(f"    {label:<24} {got:>4}   {verdict}")
+    print("\n  census (context -- these move when the corpus does):")
+    print(f"    {'drawings swept':<24} {result['drawings']:>4}")
+    print(f"    {'sheets culling nothing':<24} {result['cull_nothing']:>4}")
+
+    got = result["max_per_sheet"]
+    verdict = (
+        "as expected" if got <= MAX_CULL_PER_SHEET
+        else f"REGRESSION -- expected at most {MAX_CULL_PER_SHEET}"
+    )
+    print("\n  the invariant:")
+    print(f"    {'max cull on any sheet':<24} {got:>4}   {verdict}")
     print(
-        "\n  A difference is not automatically a defect -- adding a drawing moves the\n"
-        "  denominator. A jump in the per-sheet maximum is the failure mode to look at."
+        "\n  A bigger corpus is not a defect; a sheet culling MORE than the maximum is. That\n"
+        "  means the section-callout rule started eating geometry, and no test would catch it."
     )
 
     culling = [r for r in result["rows"] if r["culled"]]

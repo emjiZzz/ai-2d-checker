@@ -37,6 +37,8 @@ import { TwoDLeftPanel } from "./TwoDLeftPanel";
 import { TwoDRightPanel } from "./TwoDRightPanel";
 import { useIsManualCheckRoom } from "../../hooks/useManualCheckRoom";
 import { SavedTemplatesModal } from "./SavedTemplatesModal";
+import { ExportStatusNote } from "./ExportStatusNote";
+import { ExportOverlay } from "./ExportOverlay";
 import { isPrototypeMode } from "../../config/features";
 
 /**
@@ -230,13 +232,21 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const isPhysicalComparisonEnabled = useReviewStore(s => s.isPhysicalComparisonEnabled);
   const isRightPanelVisible = complianceScore !== null || aiScanProgress === "completed" || isPhysicalComparisonEnabled;
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
+  const setHasHydrated = useWorkspaceStore(s => s.setHasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
 
+  // Prototype builds render the workspace without opening a room first, so nothing has called
+  // `loadWorkspaceState` and `hasHydrated` would pin the loading spinner forever. Opening a room
+  // still hydrates and overwrites this — it is a render gate, not a data bypass.
+  //
+  // Via the named action, not `useWorkspaceStore.setState`: eslint.config.js's one rule forbids
+  // the latter outside the store, and `setHasHydrated` has existed in `createNavSlice` all along
+  // with no callers. Both prototype hydration sites were violating it unsuppressed.
   useEffect(() => {
     if (isPrototypeMode() && !hasHydrated) {
-      useWorkspaceStore.setState({ hasHydrated: true });
+      setHasHydrated(true);
     }
-  }, [hasHydrated]);
+  }, [hasHydrated, setHasHydrated]);
 
   // Manual engineer check. `isManualCheckMode` is view state (reviewStore, beside every other
   // mode toggle); the markings it produces are records and live in the workspace store.
@@ -626,7 +636,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     };
   }, []);
 
-  const { exportToPDF, isExporting } = useComplianceReportExport();
+  const { exportToPDF, isExporting, exportPhase, exportStatus, revealExport } =
+    useComplianceReportExport();
 
   const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
 
@@ -903,6 +914,8 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
                   <Download size={12} /> {isExporting ? "Building…" : "PDF"}
                 </Button>
               )}
+              <ExportStatusNote status={exportStatus} onReveal={revealExport} compact />
+              <ExportOverlay active={isExporting} phase={exportPhase} />
               {activeSession?.id && (
                 <Button
                   variant="outline"

@@ -275,23 +275,52 @@ export const RoomsView: React.FC = () => {
 
         {/* ── 3. Main CAD Content Area ── */}
         {filteredRooms.length === 0 ? (
-          /* Empty Match Feedback */
+          /* Empty Feedback — and the two empty states are NOT the same state.
+           *
+           * "Nothing matches your search" and "you have no workspaces yet" were one branch, which
+           * told a fresh install that no rooms matched a search query it had not typed and offered
+           * it a Clear Search button for an empty search. The only route to `setIsCreating(true)`
+           * is the "Create New" card in the grid below, and the grid does not render when there
+           * are no rooms — so a new install had no way to create its first workspace at all.
+           */
           <div className="flex flex-col items-center justify-center p-12 bg-bg-card border border-border-color text-center my-6">
-            <Search size={28} className="text-text-muted mb-3" />
-            <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
-              NO MATCHING WORKSPACES FOUND
-            </h3>
-            <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
-              No CAD inspection rooms match your current search query.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSearchQuery("")}
-              className="rounded-none font-mono text-xs uppercase"
-            >
-              Clear Search
-            </Button>
+            {rooms.length === 0 ? (
+              <>
+                <Plus size={28} className="text-text-muted mb-3" />
+                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
+                  NO WORKSPACES YET
+                </h3>
+                <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
+                  Create a workspace to compare a reference drawing against its revision.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCreating(true)}
+                  className="rounded-none font-mono text-xs uppercase"
+                >
+                  Create Room
+                </Button>
+              </>
+            ) : (
+              <>
+                <Search size={28} className="text-text-muted mb-3" />
+                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
+                  NO MATCHING WORKSPACES FOUND
+                </h3>
+                <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
+                  No CAD inspection rooms match your current search query.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSearchQuery("")}
+                  className="rounded-none font-mono text-xs uppercase"
+                >
+                  Clear Search
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           /* ── 4-COLUMN GRID BLUEPRINT GALLERY ── */

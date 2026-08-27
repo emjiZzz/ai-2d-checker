@@ -9,6 +9,9 @@ import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
 import { useComplianceReportExport } from '../../hooks/useComplianceReportExport';
 import { CATEGORY_KEYS, categoryLabel } from './manualCheckCategories';
+import { ExportStatusNote } from './ExportStatusNote';
+import { ExportOverlay } from './ExportOverlay';
+import { StaleExtractionBadge } from './StaleExtractionBadge';
 
 /**
  * The live marking list — the whole left panel in a manual-check room.
@@ -35,12 +38,17 @@ export const ManualMarkingList: React.FC = () => {
 
   const markings = useWorkspaceStore((s) => s.markings);
   const annotations = useWorkspaceStore((s) => s.annotations);
+  // Subscribed, not read through `getState()` like `retryOpen` does: the stale badge below has
+  // to re-render when the pair changes, and `extraction_is_stale` arrives with the drawing.
+  const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
+  const newDrawing = useWorkspaceStore((s) => s.newDrawing);
   const deleteAnnotationById = useWorkspaceStore((s) => s.deleteAnnotationById);
   const manualSessionId = useWorkspaceStore((s) => s.manualSessionId);
   const manualSessionError = useWorkspaceStore((s) => s.manualSessionError);
   const startManualSession = useWorkspaceStore((s) => s.startManualSession);
 
-  const { exportToPDF, isExporting } = useComplianceReportExport();
+  const { exportToPDF, isExporting, exportPhase, exportStatus, revealExport } =
+    useComplianceReportExport();
 
   // Retry re-runs the open with the SAME identity the effect would have used. It does not clear
   // the error first: if the second attempt fails too, the message must not flicker away and
@@ -140,6 +148,43 @@ export const ManualMarkingList: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/*
+        Stale-extraction warning for the pair being marked.
+
+        ⚠ **This is the only place it can appear in a prototype build.** `StaleExtractionBadge`
+        previously lived solely in `TwoDRightPanel`, which renders only when
+        `isPhysicalComparisonEnabled || aiScanProgress === "completed" || isStandardsAuditCompleted`
+        — and the first of those is set in exactly one place, after the comparison engine runs
+        (`usePhysicalComparison`). Prototype mode forces every room to `manual_check` so the engine
+        never runs, the flag is permanently false, the panel is never created, and the badge was
+        structurally unreachable in the build handed to engineers for data gathering.
+
+        That is the worst place to lose it: `render_paths`, dimension text anchors, leader
+        hooklines, arrowheads, MTEXT rotation and the angular-degree conversion are computed at
+        EXTRACTION time, so a stale sheet renders wrong while looking perfectly ordinary. At the
+        time this was added, `tools/extraction_status.py` reported 38 of 65 stored drawings stale,
+        20 of them at v2 — five versions behind. An engineer marking one of those produces corpus
+        ground truth taken from arrowheads that are missing and a dimension reading 1.05 where the
+        paper says 60°, and nothing anywhere would flag it.
+
+        Renders nothing when both drawings are current — the badge's own no-op contract, which is
+        what makes it safe in an always-visible panel.
+      */}
+      {(oldDrawing?.extraction_is_stale || newDrawing?.extraction_is_stale) && (
+        <div
+          style={{
+            padding: '8px 12px',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
+          <StaleExtractionBadge drawing={oldDrawing} label="Reference" />
+          <StaleExtractionBadge drawing={newDrawing} label="Revision" />
+        </div>
+      )}
 
       {/* A pairing in flight, surfaced here as well as in the menu. Without it the first half of
           a CHANGED pair is invisible state, and a click that appears to do nothing is how a user
@@ -463,6 +508,9 @@ export const ManualMarkingList: React.FC = () => {
             >
               <Download size={14} /> {isExporting ? 'Building report…' : 'Export PDF Report'}
             </button>
+
+            <ExportStatusNote status={exportStatus} onReveal={revealExport} />
+            <ExportOverlay active={isExporting} phase={exportPhase} />
 
             <button
               type="button"

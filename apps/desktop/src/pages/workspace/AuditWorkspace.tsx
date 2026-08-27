@@ -53,11 +53,15 @@ export const AuditWorkspace: React.FC = () => {
   useUploadJobPolling(activeOldJobId, "old");
   useUploadJobPolling(activeNewJobId, "new");
 
+  // See the twin in TwoDWorkspace: prototype builds render before any room is opened, so the
+  // hydration flag has to be lifted here too. Through the named action — `useWorkspaceStore
+  // .setState` is what eslint.config.js's single rule exists to forbid.
+  const setHasHydrated = useWorkspaceStore((s) => s.setHasHydrated);
   useEffect(() => {
     if (isPrototypeMode()) {
-      useWorkspaceStore.setState({ hasHydrated: true });
+      setHasHydrated(true);
     }
-  }, []);
+  }, [setHasHydrated]);
 
   useEffect(() => {
     if (activeRoom) {

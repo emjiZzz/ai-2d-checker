@@ -4,7 +4,12 @@
     {
       "name": "desktop-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/desktop"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "apps/desktop"
+      ],
       "port": 1420
     },
     {
@@ -20,6 +25,17 @@
         "8080"
       ],
       "port": 8080
+    },
+    {
+      "name": "desktop-dev-prototype",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:prototype",
+        "--prefix",
+        "apps/desktop"
+      ],
+      "port": 1420
     }
   ]
 }

@@ -368,13 +368,23 @@ single DXF:
 services/backend/.venv/Scripts/python.exe tools/render_audit.py --sweep storage/uploads
 ```
 
-Measured 2026-08-20: **37 of 55 drawings cull nothing, 18 cull 1–8 entities, and the maximum on
-any sheet is 8.** Re-run it if you touch the rule — a jump in those numbers is the failure mode,
-and it does not show up as a test failure.
+Re-measured 2026-08-25: **38 of 57 drawings cull nothing, 19 cull 1–8 entities, and the maximum
+on any sheet is 8.** Re-run it if you touch the rule — it does not show up as a test failure.
 
-⚠ The previous figures here read **23 of 32 … maximum 10**, and the denominator alone shows why
-they were quoted rather than measured: `storage/uploads` holds 55 drawings, not 32. The sweep
-skips the text oracle, so it is fast enough to actually run.
+⚠ **Only the maximum is an invariant; the other two are a census and move when the corpus does.**
+`storage/uploads` was 55 drawings on 2026-08-20 and is 57 now, which is why the first two numbers
+changed here without anything being wrong. The tool no longer compares them — it prints them as
+context and gates on `MAX_CULL_PER_SHEET` alone. A sheet culling MORE than 8 means the
+section-callout rule started eating geometry.
+
+⚠ **The tool was pinned to figures this file had already retired.** `DOCUMENTED_CULL` held
+`23 / 32 / 10` — corrected here on 2026-08-20, never corrected there — so every run printed three
+`DIFFERS` lines against numbers no document claimed any more. A checker that cries wolf is how a
+real jump gets waved through. Fixed 2026-08-25.
+
+⚠ The figures before 2026-08-20 read **23 of 32 … maximum 10**, and the denominator alone showed
+why they were quoted rather than measured. The sweep skips the text oracle, so it is fast enough
+to actually run.
 
 Address resolution has the same kind of harness, for the pipeline that turns a click into
 ground truth. Run it after touching `address_resolver.py`, `manual_check_bridge.py` or
@@ -436,9 +446,44 @@ is missing, parsing the `# vN:` notes **out of `extracted_entity.py` itself** ra
 restating them — a second copy would be correct until v8 and silently wrong after. Report only;
 it never re-extracts.
 
-🔴 First run: **36 of 55 stored drawings are stale, 20 of them at v2** — five versions
-behind, so their dimension text anchors, leader hooklines, arrowheads and angular-dimension
-degrees are all absent. They render wrong and have been rendering wrong.
+**The cure now has a producer too** — until 2026-08-27 the only one was calling the route 38 times
+by hand, which is done once, half-finished, and never repeated:
+
+```bash
+services/backend/.venv/Scripts/python.exe tools/reextract_stale_drawings.py --apply
+```
+
+It drives `POST /drawings/{id}/reextract` **one drawing at a time** (the route answers 409 while an
+extraction is running, and `ExtractionPipeline.run` replaces entities), reports only without
+`--apply`, and **reuses `extraction_status.collect`** rather than restating the staleness rule —
+two copies of "which rows are behind" would disagree silently, one tool reporting clean while the
+other re-extracts nothing. Needs the backend up; a row whose source file is gone answers 422 and is
+skipped rather than failing the run. **Re-run it after every `EXTRACTION_SCHEMA_VERSION` bump**,
+since a bump is the act that makes rows stale.
+
+⚠ Re-measured 2026-08-25 it read **38 of 65 stale, 20 of them at v2** — five versions behind, with
+dimension text anchors, leader hooklines, arrowheads and angular-dimension degrees all absent. They
+had been rendering wrong for weeks. **Cleared 2026-08-27: 36 re-extracted, 0 failed, 63 of 65 now
+current.** Measure rather than quoting this — the estate moves.
+
+⚠ **The floor is 2, not 0, and it is permanent.** `MD511367B01_WABC-new.pdf` and
+`MD51167B01_WABC-old.pdf` are `DrawingDocument` rows whose stored source file no longer exists, so
+`/reextract` answers 422 and no tool can bring them current. They are also **PDFs, not DXF** —
+legacy rows from before the vector path. A run reporting `skipped 2 (source file gone)` is healthy;
+treat a *rising* skip count as the signal, not a non-zero one.
+
+🔴 **Why this stopped being a background annoyance:** the only warning in the app,
+`StaleExtractionBadge`, was mounted solely in `TwoDRightPanel`, which renders only once
+`isPhysicalComparisonEnabled` is set — and that is written in exactly one place, after the
+comparison engine runs. Prototype mode forces every room to `manual_check`, so the engine never
+runs and **the badge was structurally unreachable in the build used to collect ground truth**. It
+is now also mounted in `ManualMarkingList`. See
+[[Gotcha - The Prototype Build Was Prototype By Accident]] §6.
+
+⚠ **"Stored drawings" is not "files in `storage/uploads`", and this line used to mix them.** It
+read *36 of 55*, where 55 was the upload FILE count of the day — `extraction_status.py` counts
+`DrawingDocument` rows, which is 65. Two different denominators for two different questions: the
+sweep above asks about files on disk, this asks about rows in the database.
 
 ⚠ **`_dxf_get` tells you the effective value, `_dxf_is_set` tells you whether the file said it.**
 ezdxf returns the DXF-spec default for an unset optional, so a LEADER that declares neither reads
@@ -456,10 +501,58 @@ the command in bash.
 
 ## Known pre-existing test failures
 
-**None. Both suites are green as of 2026-08-11 — treat any failure you see as yours.**
+**None. Both suites are green as of 2026-08-25 — treat any failure you see as yours.**
+One `xfail`, named and scoped, is recorded below.
 
 That sentence is the point of this section now, so keep it accurate: a standing allowlist is a
 place for new breakage to hide, which is exactly what happened below.
+
+⚠ **It was false between `f89cf0d` and 2026-08-25, and the failures were nine days old, not
+inherited.** `pytest` reported **13 failed**, all traceable by `git log -L` to that one commit, and
+this line told the next agent to take the blame for them. Verified as *not* the current session's
+by running them with the working tree's only touched module made unimportable (same failures) and
+again at clean `HEAD` in a throwaway worktree (same failures). **Do that before believing this
+line in either direction** — the section's whole argument is that a claim about test state is a
+claim, not a fact.
+
+The thirteen, and what each turned out to be:
+
+- **10 × `tests/test_ground_truth_submission.py`** — the tests patched `ManualCheckSession.find_one`
+  while `_resume` had moved to `find(...).sort(...).to_list()` in `3b90d1e`. **A patch on a method
+  nobody calls does not fail loudly**: the real `find` was reached, beanie was never initialised,
+  and they died at `CollectionWasNotInitialized`. In the window before that surfaced the resume was
+  effectively unguarded, and `f89cf0d` changed its behaviour underneath it — `_require_open` went
+  from refusing a submitted session with 409 to silently reopening it. Fixed by patching `find`,
+  and by making the reopen RECORD itself (`reopened_at`, `reopen_count` on `ManualCheckSession`
+  and on `SessionResponse`), which is what makes a soft submit acceptable: `submit` is the moment a
+  pass becomes what `from-manual-check` converts, and an amendment nobody can see is a corpus label
+  whose source silently changed. Owner's call 2026-08-25.
+  ⚠ `_require_open` also used Beanie **class-attribute expressions** (`Model.field == value`), which
+  resolve through descriptors that only exist after `init_beanie` — so a mocked router test cannot
+  construct them (`AttributeError: room_id`) and that branch had no coverage at all. It and
+  `_resume` now share `_pair_query`, a raw mapping. The comment explaining exactly this was in the
+  file until `3b90d1e` deleted it along with the protection.
+- **`tests/test_phase2_infrastructure.py::test_database_retry_handling`** — environment-dependent.
+  It pointed `MONGO_URI` at a dead port, but `connect()` falls back to `MONGO_FALLBACK_URI`
+  (default `mongodb://127.0.0.1:27017`), so on a machine running `mongod` the connection succeeded
+  and the test asserted it had failed. Both URIs are now dead ports, and the counters are asserted
+  as `max_retries × candidates` — they accumulate across candidates rather than resetting.
+- **`tests/test_database_failover_and_sync.py::test_database_sync_manager_status_and_execution`** —
+  🔴 **it ran a real `sync_manager.sync_all()` on every `pytest`**, upserting into the cloud
+  database as a side effect of running the suite. Split: the diagnostics contract still runs, the
+  live sync is now behind `RUN_LIVE_DB_SYNC=1`. It was failing on genuine data — the live
+  collections hold more than one `in_progress` session per (room, ref, rev, annotator), which the
+  partial unique index refuses (`E11000`). `tools/merge_duplicate_check_sessions.py` is the cure and
+  has to be run against **every** environment including Atlas.
+  ⚠ **This is also why the suite took 11 minutes.** Without the live sync it is **~2 minutes**.
+- **`tests/test_eval_corpus.py::test_committed_corpus_has_every_ocr_reading_captured`** — the only
+  one still open, and **`xfail(strict=True)`** rather than fixed. `M745204N01` has no captured
+  title-block reading and none is recoverable from `storage/cache/` by id or by file hash; making
+  one is a **live Gemini call per side**, so it is an owner's decision. Owner's call 2026-08-25:
+  leave it, capture by hand later. 🔴 The exposure is real — an eval run over that pair breaks the
+  "zero network calls" criterion. `strict=True` so the suite fails the day it starts passing, and
+  `test_no_pair_beyond_the_known_one_is_missing_its_ocr_reading` keeps the other pairs guarded,
+  because **an `xfail` on a test that checks every pair excuses every pair.**
 
 - ~~`tests/test_vision_ocr_grounding.py` — 2 failures~~ — **fixed 2026-08-11.** Both were
   documented here for months as pre-existing, and **the note recorded two different causes as if
@@ -478,12 +571,25 @@ contract; the suites grow.** (Until 2026-08-11 `pyproject.toml`'s `addopts` carr
 documented `pytest tests/ -q` resolved to `-qq` and printed **no totals line at all** — the one
 command the docs recommended was the one that could not report a result. `-q` has been removed
 from `addopts`; the command below now prints a count.)
-- `pytest` — **1239 passed, 3 skipped, 0 failed** (measured 2026-08-17). The 3 skips are
-  deliberate rung gates in `tests/test_maturity_ledger.py`, not failures.
+- `pytest` — **1478 passed, 4 skipped, 1 xfailed, 0 failed** (measured 2026-08-25, with
+  `--ignore=tests/test_phase4_audit_pipeline.py`). The skips are the deliberate rung gates in
+  `tests/test_maturity_ledger.py` plus the opt-in live cloud sync; the xfail is `M745204N01`'s
+  OCR reading, above.
   ⚠ `tests/test_phase4_audit_pipeline.py` alone takes **~3 minutes** and its runtime swings
   between runs — it appears to make a real network call. Pre-existing (verified by timing it
   against a stashed working tree), and worth `--ignore`-ing for a fast inner loop.
-- `npx vitest run` — **408 passed across 35 files.**
+  ⚠ **The rest of the suite is ~2 minutes, not 11.** It was 11 until 2026-08-25 because
+  `test_database_sync_manager_status_and_execution` performed a real cloud sync on every run.
+- `npx vitest run` — **653 passed across 56 files** (measured 2026-08-27; it read 633 across 52 on
+  2026-08-25, and 408 across 35 before that). The four new files are prototype-mode coverage,
+  which had **none at all** until 2026-08-27: vitest runs with `VITE_PROTOTYPE_MODE` unset, so
+  every prior test exercised the non-prototype branch of all 8 gates and the configuration that
+  actually ships to engineers was the untested one.
+- `npx eslint .` (from `apps/desktop`) — **28 errors**, all `no-restricted-syntax` on direct
+  `useWorkspaceStore.setState` calls. Standing backlog, not a gate; it was 30 until the two
+  prototype-mode hydration sites were moved onto the `setHasHydrated` action that had been sitting
+  in `createNavSlice` with no callers. ⚠ Five test files trip it unsuppressed — arranging store
+  state is the fixture — so a *new* error here is worth reading, a non-zero total is not.
 - `npx tsc --noEmit` — **0 errors** (now also gated in CI; it previously ran only over the shared
   types package, so `apps/desktop` was unenforced on merge).
 

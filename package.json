@@ -14,6 +14,8 @@
     "verify": "powershell -ExecutionPolicy Bypass -File ./tools/scripts/verify-env.ps1",
     "build": "turbo run build",
     "build:prototype": "pnpm --filter desktop build:prototype",
+    "assert:prototype": "node tools/scripts/assert-build-mode.mjs prototype",
+    "assert:full": "node tools/scripts/assert-build-mode.mjs full",
     "dev": "turbo run dev",
     "dev:prototype": "pnpm --filter desktop dev:prototype",
     "lint": "turbo run lint",

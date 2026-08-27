@@ -107,6 +107,28 @@ class ManualCheckSession(Document):
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     submitted_at: datetime | None = Field(None)
 
+    # ── an amendment after submit has to be visible ─────────────────────────────────────
+    # `submit` is the moment a pass becomes the thing `tools/eval_corpus.py from-manual-check`
+    # converts into corpus labels. `_require_open` deliberately REOPENS a submitted session
+    # rather than refusing the marking, so an engineer who spots a miss does not lose the work
+    # -- but that silently rewrites the record a label was already taken from, and a label whose
+    # source changed after the derivation is worse than one that was never taken.
+    #
+    # These two fields are what stop it being silent. `reopen_count` survives repeated
+    # amendments (`reopened_at` alone only remembers the last one), and both are `None`/0 for
+    # every session that was submitted once and left alone -- which is the common case, so their
+    # presence on a row is itself the signal.
+    #
+    # ⚠ Additive and unindexed on purpose: existing rows read back as "never reopened", which is
+    # true of every session written before this. Anything deriving corpus labels should carry
+    # `reopen_count` through, so a downstream reader can tell an amended pass from a clean one.
+    reopened_at: datetime | None = Field(
+        None, description="When this session was last reopened after being submitted"
+    )
+    reopen_count: int = Field(
+        0, description="How many times a submitted session was reopened to take more markings"
+    )
+
     class Settings:
         name = "manual_check_sessions"
         indexes = [

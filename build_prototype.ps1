@@ -53,7 +53,13 @@ $env:LIB = @(
 
 Write-Host "✅ MSVC Environment injected." -ForegroundColor Green
 
-# 3. Set Prototype Flag
+# 3. Set Prototype Flag.
+#
+# This process variable is the ONLY thing that makes the installer a prototype build. It is not
+# a belt-and-braces companion to `--mode prototype`: `tauri.conf.json` sets
+# `beforeBuildCommand: "pnpm build"`, so `tauri build` re-runs Vite in production mode and
+# overwrites apps/desktop/dist. A `--mode prototype` build performed first is discarded, and only
+# an ambient VITE_PROTOTYPE_MODE reaches the bundle that actually ships.
 $env:VITE_PROTOTYPE_MODE = "true"
 
 $pnpmExe = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } elseif (Test-Path "$env:APPDATA\npm\pnpm.cmd") { "$env:APPDATA\npm\pnpm.cmd" } else { "npx pnpm" }
@@ -61,11 +67,23 @@ $pnpmExe = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } elseif
 Write-Host "Installing dependencies..." -ForegroundColor Yellow
 & $pnpmExe install
 
-Write-Host "Building React Frontend in PROTOTYPE mode..." -ForegroundColor Yellow
-& $pnpmExe --filter desktop build:prototype
-
+# The separate `build:prototype` step that used to sit here has been removed rather than fixed.
+# It built dist/ and `tauri build` immediately overwrote it, so it cost a full frontend build and
+# proved nothing -- while reading like the step that set the mode.
 Write-Host "Packaging Tauri Desktop Installer (.msi / .exe)..." -ForegroundColor Yellow
 & $pnpmExe --filter desktop tauri build
+
+# 4. Verify what actually shipped, rather than trusting step 3.
+#    Reads the stamp `apps/desktop/vite.config.ts` writes at closeBundle. AFTER tauri build,
+#    because that is the build whose output goes into the installer.
+Write-Host "Verifying build mode..." -ForegroundColor Yellow
+& node "$PSScriptRoot\tools\scripts\assert-build-mode.mjs" prototype
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "BUILD ABORTED - the bundle is not a prototype build." -ForegroundColor Red
+    Write-Host "Do not distribute the installers in the bundle directory." -ForegroundColor Red
+    exit 1
+}
 
 $bundleDir = "$PSScriptRoot\apps\desktop\src-tauri\target\release\bundle"
 Write-Host ""

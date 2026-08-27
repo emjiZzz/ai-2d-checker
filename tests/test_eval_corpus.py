@@ -490,18 +490,64 @@ def test_uncaptured_sides_are_reported(tmp_path):
     assert pair.uncaptured_ocr_sides() == ["rev"]
 
 
-def test_committed_corpus_has_every_ocr_reading_captured():
-    """Guards the real corpus, not a fixture. If a future export forgets to capture the
-    reading, the corpus silently goes back to depending on a volatile cache."""
+#: Pairs known to be missing their captured title-block OCR reading, with why.
+#:
+#: `M745204N01` was exported when `storage/cache/` held no reading for either side, and none is
+#: recoverable now — `_find_ocr_reading` misses by drawing id and by file hash. Capturing it means
+#: running a comparison to MAKE the reading, which is a live Gemini call per side, so it is an
+#: owner's decision rather than something a test run can fix. Owner's call 2026-08-25: leave it,
+#: capture it by hand later.
+#:
+#: 🔴 **This is a real exposure, not a formality.** `generate_deterministic_candidates` calls
+#: Gemini on a title-block OCR cache miss, so an eval run over this pair breaks the "zero network
+#: calls" exit criterion and scores its title-block findings differently offline than in the app.
+#:
+#: ⚠ Empty this set the moment the reading is captured. The `xfail` below is **strict**, so the
+#: suite fails on the day it starts passing — which is the reminder, and is deliberate: a standing
+#: allowlist is a place for new breakage to hide.
+KNOWN_UNCAPTURED_OCR = {"M745204N01"}
+
+
+def _pairs_missing_ocr() -> dict[str, list[str]]:
     corpus = load_corpus(fixtures_dir=default_fixtures_dir())
-    exposed = {
+    return {
         p.pair_id: p.uncaptured_ocr_sides()
         for p in corpus.pairs
         if p.uncaptured_ocr_sides()
     }
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "M745204N01 has no OCR reading in storage/cache/ to capture; making one is a live "
+        "Gemini call. Owner's call 2026-08-25. Remove this marker and the entry in "
+        "KNOWN_UNCAPTURED_OCR once it is captured."
+    ),
+)
+def test_committed_corpus_has_every_ocr_reading_captured():
+    """Guards the real corpus, not a fixture. If a future export forgets to capture the
+    reading, the corpus silently goes back to depending on a volatile cache."""
+    exposed = _pairs_missing_ocr()
     assert not exposed, (
         f"{len(exposed)} pair(s) still borrow their title-block reading from "
         f"storage/cache/ instead of owning it: {sorted(exposed)[:5]}"
+    )
+
+
+def test_no_pair_beyond_the_known_one_is_missing_its_ocr_reading():
+    """The guard the `xfail` above would otherwise switch off for the whole corpus.
+
+    ⚠ **An `xfail` on a test that checks EVERY pair excuses every pair.** That is the trap: with
+    only the marker above, a sixth pair exported tomorrow without its reading would be absorbed
+    into the same expected failure and never reported. This asserts the exposure has not grown,
+    so the known gap stays named and a new one still fails.
+    """
+    exposed = set(_pairs_missing_ocr())
+    unexpected = exposed - KNOWN_UNCAPTURED_OCR
+    assert not unexpected, (
+        f"{len(unexpected)} pair(s) newly borrow their title-block reading from storage/cache/: "
+        f"{sorted(unexpected)}. An eval run over these makes a live Gemini call."
     )
 
 

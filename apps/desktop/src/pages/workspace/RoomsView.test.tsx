@@ -34,7 +34,10 @@ vi.mock('../../stores/roomStore', () => ({
 
 function openCreateDialog() {
   render(<RoomsView />);
-  // Both the header button and the empty-state button open the same modal.
+  // `rooms` is mocked empty above, so this is the EMPTY-STATE button. That is deliberate: the
+  // only other route to the dialog is the "Create New" card inside the room grid, which does
+  // not render when there are no rooms — and for a while neither did this button, which left a
+  // fresh install with no way to create its first workspace. This click is what catches that.
   fireEvent.click(screen.getAllByRole('button', { name: /create room/i })[0]);
 }
 
@@ -58,9 +61,15 @@ describe('RoomsView — Create Room dialog', () => {
     // and deleting a block by line range is exactly the edit that can swallow a sibling.
     openCreateDialog();
 
-    const nameInput = screen.getByPlaceholderText(/architectural phase/i);
+    // Copy-coupled selectors, and both moved: the placeholder was "...architectural phase..."
+    // and the submit button read "Create & Open". Neither rename broke anything — they are
+    // matched here because this dialog has no test ids, so a copy edit shows up as a failure
+    // in a test about the comparison-engine picker.
+    const nameInput = screen.getByPlaceholderText(/bracket rev/i);
     fireEvent.change(nameInput, { target: { value: 'Bracket Rev C vs Rev D' } });
-    fireEvent.click(screen.getByRole('button', { name: /create & open/i }));
+    // Exactly "Create" — `/create/i` would also match the empty-state "Create Room" button
+    // behind the modal.
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     await waitFor(() => expect(createRoom).toHaveBeenCalled());
     const payload = createRoom.mock.calls[0][0];

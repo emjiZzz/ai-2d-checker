@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { WifiOff, RefreshCw, CheckCircle2 } from "lucide-react";
 import { useConnectionStore } from "../stores/connectionStore";
+import { isPrototypeMode } from "../config/features";
 
 export const ConnectionBanner: React.FC = () => {
-  const { status, checkHealth } = useConnectionStore();
+  const { status, checkHealth, backendUrl, setBackendUrl } = useConnectionStore();
   const [isRetrying, setIsRetrying] = useState(false);
   const [showRestoredOverlay, setShowRestoredOverlay] = useState(false);
   const [prevStatus, setPrevStatus] = useState(status);
+  const [urlDraft, setUrlDraft] = useState(backendUrl);
+
+  // Keep the draft in step with the store while the field is not the thing driving the change.
+  useEffect(() => {
+    setUrlDraft(backendUrl);
+  }, [backendUrl]);
 
   useEffect(() => {
     // Detect transition from offline/failed/reconnecting/connecting -> online
@@ -91,6 +98,55 @@ export const ConnectionBanner: React.FC = () => {
             <RefreshCw size={14} className={isReconnecting ? "animate-spin" : ""} />
             <span>{isReconnecting ? "Connecting..." : "Retry Connection"}</span>
           </button>
+
+          {/*
+            Prototype builds only: the address the app is retrying against, and a way to correct it.
+
+            `SystemDiagnostics` — inside `SettingsView` — is the ONLY place `setBackendUrl` is
+            called, and prototype mode hides the whole header nav strip, so Settings is
+            unreachable and `currentNav` is pinned to "workspace". That left a prototype build
+            able to say "Connection Lost" and retry forever against an address the user could not
+            see or change. It is not hypothetical: `connectionStore` hardcodes port 8080 while
+            `start_desktop.ps1` starts the backend on `SIDECAR_PORT` from `.env`, so the two
+            disagree the moment anyone sets that variable.
+
+            Scoped to prototype mode rather than shown always, because the full build reaches the
+            same control through Settings with more context around it (health, version, last
+            checked) and a second entry point here would be two places to change one value.
+          */}
+          {isPrototypeMode() && (
+            <div className="w-full mb-4 flex flex-col gap-1.5 text-left">
+              <label
+                htmlFor="connection-banner-backend-url"
+                className="text-[10px] font-semibold uppercase tracking-wider text-text-muted"
+              >
+                Backend Address
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="connection-banner-backend-url"
+                  value={urlDraft}
+                  onChange={(e) => setUrlDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && urlDraft.trim()) {
+                      setBackendUrl(urlDraft.trim());
+                    }
+                  }}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="flex-1 min-w-0 h-8 px-2 rounded-none bg-bg-dark border border-border-color text-[11px] font-mono text-text-primary focus:border-accent-cyan focus:outline-none"
+                  placeholder="http://127.0.0.1:8080"
+                />
+                <button
+                  onClick={() => urlDraft.trim() && setBackendUrl(urlDraft.trim())}
+                  disabled={!urlDraft.trim() || urlDraft.trim() === backendUrl}
+                  className="h-8 px-3 rounded-none border border-border-color text-[11px] font-semibold text-text-primary hover:border-accent-cyan hover:text-accent-cyan disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Subtle Status Indicator */}
           <div className="flex items-center gap-2 text-[11px] text-text-muted opacity-75">

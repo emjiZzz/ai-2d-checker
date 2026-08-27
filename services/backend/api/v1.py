@@ -1,7 +1,7 @@
 import time
 from fastapi import APIRouter
 from ..config import settings
-from .routers import auth, drawings, standards, audits, copilot, analytics, rooms, annotations, ground_truth, zone_templates, database, system
+from .routers import auth, drawings, standards, audits, copilot, analytics, rooms, annotations, ground_truth, zone_templates, database, system, export
 from .schemas import StandardResponse, SystemStatusResponse
 from ..infrastructure.database.health import check_database_health
 from ..infrastructure.storage.storage_health import get_storage_diagnostics
@@ -45,3 +45,4 @@ router.include_router(ground_truth.router)
 router.include_router(zone_templates.router)
 router.include_router(database.router)
 router.include_router(system.router)
+router.include_router(export.router)
