@@ -35,39 +35,10 @@ if (Test-Path $nodePath) {
     }
 }
 
-# 2. Setup Portable MSVC Environment (link.exe, cl.exe, Windows SDK)
-$msvcRoot = if (Test-Path "$PSScriptRoot\msvc\VC\Tools\MSVC") { "$PSScriptRoot\msvc" } else { "$env:USERPROFILE\msvc" }
-$msvcVerFolder = Get-ChildItem "$msvcRoot\VC\Tools\MSVC" -ErrorAction SilentlyContinue | Select-Object -First 1
-$msvcVer = if ($msvcVerFolder) { $msvcVerFolder.Name } else { "14.51.36231" }
-
-$sdkRoot = if (Test-Path "$msvcRoot\Windows Kits\10") { "$msvcRoot\Windows Kits\10" } else { "C:\Program Files (x86)\Windows Kits\10" }
-$sdkVerFolder = Get-ChildItem "$sdkRoot\bin" -Filter "10.*" -ErrorAction SilentlyContinue | Select-Object -First 1
-$sdkVer = if ($sdkVerFolder) { $sdkVerFolder.Name } else { "10.0.26100.0" }
-
-$msvcBin = "$msvcRoot\VC\Tools\MSVC\$msvcVer\bin\Hostx64\x64"
-$sdkBin = "$sdkRoot\bin\$sdkVer\x64"
-
-# Add MSVC and SDK binaries to PATH
-$env:Path = "$msvcBin;$sdkBin;$env:Path"
-
-# Set INCLUDE paths for the compiler
-$env:INCLUDE = @(
-    "$msvcRoot\VC\Tools\MSVC\$msvcVer\include",
-    "$sdkRoot\Include\$sdkVer\ucrt",
-    "$sdkRoot\Include\$sdkVer\shared",
-    "$sdkRoot\Include\$sdkVer\um",
-    "$sdkRoot\Include\$sdkVer\winrt",
-    "$sdkRoot\Include\$sdkVer\cppwinrt"
-) -join ";"
-
-# Set LIB paths for the linker
-$env:LIB = @(
-    "$msvcRoot\VC\Tools\MSVC\$msvcVer\lib\x64",
-    "$sdkRoot\Lib\$sdkVer\ucrt\x64",
-    "$sdkRoot\Lib\$sdkVer\um\x64"
-) -join ";"
-
-Write-Host "MSVC link.exe and Windows SDK injected successfully." -ForegroundColor Green
+# 2. Setup MSVC Environment (link.exe, cl.exe, Windows SDK).
+#    Shared with build_prototype.ps1 -- see tools/scripts/msvc-env.ps1 for why this stopped being
+#    ~30 lines copied into both. Dot-sourced, so its $env: writes apply here.
+. "$PSScriptRoot\tools\scripts\msvc-env.ps1"
 Write-Host ""
 
 # Ensure MongoDB and Backend are running

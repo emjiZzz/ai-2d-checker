@@ -22,36 +22,11 @@ if (Test-Path $nodePath) {
     }
 }
 
-# 2. Setup Portable MSVC Environment (link.exe, cl.exe, Windows SDK)
-$msvcRoot = if (Test-Path "$PSScriptRoot\msvc\VC\Tools\MSVC") { "$PSScriptRoot\msvc" } else { "$env:USERPROFILE\msvc" }
-$msvcVerFolder = Get-ChildItem "$msvcRoot\VC\Tools\MSVC" -ErrorAction SilentlyContinue | Select-Object -First 1
-$msvcVer = if ($msvcVerFolder) { $msvcVerFolder.Name } else { "14.51.36231" }
-
-$sdkRoot = if (Test-Path "$msvcRoot\Windows Kits\10") { "$msvcRoot\Windows Kits\10" } else { "C:\Program Files (x86)\Windows Kits\10" }
-$sdkVerFolder = Get-ChildItem "$sdkRoot\bin" -Filter "10.*" -ErrorAction SilentlyContinue | Select-Object -First 1
-$sdkVer = if ($sdkVerFolder) { $sdkVerFolder.Name } else { "10.0.26100.0" }
-
-$msvcBin = "$msvcRoot\VC\Tools\MSVC\$msvcVer\bin\Hostx64\x64"
-$sdkBin = "$sdkRoot\bin\$sdkVer\x64"
-
-$env:Path = "$msvcBin;$sdkBin;$env:Path"
-
-$env:INCLUDE = @(
-    "$msvcRoot\VC\Tools\MSVC\$msvcVer\include",
-    "$sdkRoot\Include\$sdkVer\ucrt",
-    "$sdkRoot\Include\$sdkVer\shared",
-    "$sdkRoot\Include\$sdkVer\um",
-    "$sdkRoot\Include\$sdkVer\winrt",
-    "$sdkRoot\Include\$sdkVer\cppwinrt"
-) -join ";"
-
-$env:LIB = @(
-    "$msvcRoot\VC\Tools\MSVC\$msvcVer\lib\x64",
-    "$sdkRoot\Lib\$sdkVer\ucrt\x64",
-    "$sdkRoot\Lib\$sdkVer\um\x64"
-) -join ";"
-
-Write-Host "✅ MSVC Environment injected." -ForegroundColor Green
+# 2. Setup MSVC Environment (link.exe, cl.exe, Windows SDK).
+#    Shared with start_desktop.ps1 -- this was ~30 duplicated lines in both, so a toolchain fix
+#    landed in whichever script the author happened to run. Dot-sourced, so its $env: writes
+#    apply here. Throws if no toolchain resolves, rather than exporting paths that do not exist.
+. "$PSScriptRoot\tools\scripts\msvc-env.ps1"
 
 # 3. Set Prototype Flag.
 #
