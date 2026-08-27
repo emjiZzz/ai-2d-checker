@@ -13,6 +13,7 @@ import { useRoomStore } from "../../stores/roomStore";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useRooms } from "../../hooks/useRooms";
 import { isPrototypeMode } from "../../config/features";
+import { useIsEngineerPromptBlocking } from "../../stores/engineerStore";
 import { Button } from "./Button";
 
 export const InteractiveTourOverlay: React.FC = () => {
@@ -22,6 +23,10 @@ export const InteractiveTourOverlay: React.FC = () => {
 
   const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
   const newDrawing = useWorkspaceStore((s) => s.newDrawing);
+
+  // Read up here with the other hooks, not beside the early return that uses it — the returns
+  // below are conditional and a hook after one of them would change hook order between renders.
+  const engineerPromptBlocking = useIsEngineerPromptBlocking();
 
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
@@ -73,6 +78,20 @@ export const InteractiveTourOverlay: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isTourActive, endTour]);
+
+  /**
+   * Defence in depth for the identity prompt.
+   *
+   * `RoomsView` already refuses to *start* the tour while the prompt is up, which is the real
+   * fix. This covers the paths that do not go through that effect: the prompt being reopened
+   * mid-tour, and the "Quick Tour" button being pressed by anything other than a resolved user.
+   *
+   * Needed because the two cannot be reconciled by stacking order. The prompt's backdrop is
+   * `z-[100000]` and opaque on purpose ("Hides workspace completely for clean presentation");
+   * this overlay is `z-[999999]`. Whoever is on top, one of them is a modal drawn over another
+   * modal — so the answer has to be that only one of them renders.
+   */
+  if (engineerPromptBlocking) return null;
 
   if (!isTourActive || !step) return null;
 

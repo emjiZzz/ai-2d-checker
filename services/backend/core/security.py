@@ -33,16 +33,92 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
         logger.warning(f"Could not restrict permissions on the API token file: {err}")
 
 
+#: Matches `identifier` in `apps/desktop/src-tauri/tauri.conf.json`, and the folder name the Rust
+#: side derives independently in `security/mod.rs`. Two languages, no shared constant -- pinned by
+#: `tests/test_user_token_dir.py`, which parses the Rust source rather than trusting this comment.
+APP_IDENTIFIER = "com.kmti.checker"
+
+
+def user_storage_root() -> Path:
+    """A per-user storage root an INSTALLED desktop app can find without knowing this repo.
+
+    ## Why the token needs a second home
+
+    `get_storage_root()` resolves to `<repo>/storage`, which is correct for the backend and
+    useless to an installed client. The Tauri app looks for `<storage root>/secure/.api-token` by
+    walking up from its own executable and from the working directory -- and an app installed to
+    `C:\\Program Files\\KMTI Checker\\` has no `storage` anywhere up that tree.
+
+    The result was not a visible error. `GET /health` requires no token and returned 200, so the
+    app reported itself **connected** while every authenticated call answered 401: the rooms list
+    came back empty and "Create Room" did nothing at all. Reported from the first installed
+    prototype build as "I can't create a room and proceed".
+
+    ## Why this is safe to write
+
+    The blob is AES-GCM encrypted under a key derived from machine and user identity (see
+    `core/encryption.py` and the Rust `security/encryption.rs`), so a copy is bound to this
+    machine and this user -- carrying it to another machine yields ciphertext that will not
+    decrypt. Writing it under the user's own local app data is the same trust boundary as
+    `<repo>/storage/secure`, not a wider one.
+
+    ⚠ **Local, never roaming.** On Windows this is `%LOCALAPPDATA%`, not `%APPDATA%`, precisely
+    because the key is machine-bound: a roaming profile would sync a credential to machines where
+    it cannot decrypt, which is all cost and no benefit.
+    """
+    import os
+    import sys
+
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        root = Path(base) if base else Path.home() / "AppData" / "Local"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        base = os.environ.get("XDG_DATA_HOME")
+        root = Path(base) if base else Path.home() / ".local" / "share"
+
+    return root / APP_IDENTIFIER
+
+
+def _mirror_token_for_installed_clients(token: str) -> None:
+    """Publish the active token where an installed app can read it.
+
+    Written on every startup rather than only when a token is generated: the generate branch runs
+    once in the life of a checkout, so an existing install would otherwise never receive a copy.
+    Re-encrypting each time is intentional and cheap -- AES-GCM uses a fresh nonce, so the
+    ciphertext differs while the plaintext does not.
+
+    Never fatal. A backend that cannot write this still serves every client that can reach
+    `<repo>/storage`, and refusing to start over a convenience path would trade an outage for it.
+    """
+    try:
+        secure_dir = user_storage_root() / "secure"
+        secure_dir.mkdir(parents=True, exist_ok=True)
+        mirrored = secure_dir / TOKEN_FILE_NAME
+
+        from .encryption import encryptor
+
+        mirrored.write_text(encryptor.encrypt(token), encoding="utf-8")
+        _restrict_token_file_permissions(mirrored)
+        logger.info(f"Published API token for installed clients at: {mirrored}")
+    except Exception as err:  # noqa: BLE001 - see docstring; this must not break startup
+        logger.warning(f"Could not publish the API token for installed clients: {err}")
+
+
 def initialize_local_api_token() -> str:
     """
     Returns the local security authentication token.
     If none is set in env variables, generates a cryptographically secure token
     and writes it to storage/secure/ for Tauri client retrieval.
+
+    Also mirrors it to `user_storage_root()` so a client installed outside this checkout -- which
+    cannot find `<repo>/storage` at all -- can authenticate. See `_mirror_token_for_installed_clients`.
     """
     token = settings.API_TOKEN
-    
+
     from ..infrastructure.storage.path_resolver import get_storage_root
-    
+
     # Ensure storage/secure folder exists
     secure_dir = get_storage_root() / "secure"
     secure_dir.mkdir(parents=True, exist_ok=True)
@@ -71,6 +147,13 @@ def initialize_local_api_token() -> str:
 
     # Update config settings with active token
     settings.API_TOKEN = token
+
+    # Publish it where an installed client can find it. After the branches above, so it mirrors
+    # the token actually in force -- whether it came from the environment, an existing file, or
+    # was generated a moment ago.
+    if token:
+        _mirror_token_for_installed_clients(token)
+
     return token
 
 def verify_api_token(authorization: str | None = Header(None, description="API Security Bearer Token")) -> str:

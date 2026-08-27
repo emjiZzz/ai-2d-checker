@@ -16,6 +16,7 @@ import { Modal } from "../../components/ui/Modal";
 import { ConfirmModal } from "../../components/ui/ConfirmModal";
 import { RealDrawingThumbnail, CadFileIcon } from "../../components/review/RealDrawingThumbnail";
 import { isPrototypeMode } from "../../config/features";
+import { useIsEngineerPromptBlocking } from "../../stores/engineerStore";
 
 type SortOption = "recent" | "name" | "created";
 
@@ -28,15 +29,31 @@ export const RoomsView: React.FC = () => {
 
   const [isCreating, setIsCreating] = useState(false);
   const [name, setName] = useState("");
+  //: Why a create failed, shown in the dialog. Empty when there is nothing to report.
+  const [createError, setCreateError] = useState("");
   const [roomMode, setRoomMode] = useState<RoomMode>(isPrototypeMode() ? "manual_check" : "ai_comparison");
 
-  // Auto-launch interactive onboarding tour for first-time testers / users
+  /**
+   * Auto-launch the onboarding tour for first-time testers / users.
+   *
+   * ⚠ **Waits for the engineer-identity prompt.** This effect used to fire on mount, and in a
+   * prototype build `RoomsView` mounts underneath `EngineerPromptModal` — so a first launch
+   * opened the tour on top of the name prompt, before the tester had entered anything. It was
+   * not even a z-index accident to be nudged: the prompt's backdrop is `z-[100000]` and
+   * deliberately opaque, the tour is `z-[999999]`, so the tour wins by design and always will.
+   * The trigger was the thing that was wrong.
+   *
+   * Once the tester proceeds, `setEngineerName` clears `isModalOpen`, this re-runs, and the tour
+   * starts then — which is the intended sequence and what it now does.
+   */
+  const engineerPromptBlocking = useIsEngineerPromptBlocking();
   useEffect(() => {
+    if (engineerPromptBlocking) return;
     const hasSeen = localStorage.getItem("has_seen_interactive_tour");
     if (!hasSeen) {
       startTour();
     }
-  }, [startTour]);
+  }, [engineerPromptBlocking, startTour]);
 
   // Deletion confirmation modal state
   const [deletingRoom, setDeletingRoom] = useState<{ id: string; name: string } | null>(null);
@@ -151,10 +168,18 @@ export const RoomsView: React.FC = () => {
     return filteredRooms.slice(0, displayLimit);
   }, [filteredRooms, displayLimit]);
 
+  //: Open/close the create dialog, always clearing a previous failure. A stale "not
+  //: authorised" sitting over a fresh attempt is its own small lie.
+  const setCreateOpen = (open: boolean) => {
+    setCreateError("");
+    setIsCreating(open);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
+    setCreateError("");
     try {
       const newRoom = await createRoom({
         name: name.trim(),
@@ -166,8 +191,31 @@ export const RoomsView: React.FC = () => {
       setName("");
       setRoomMode(isPrototypeMode() ? "manual_check" : "ai_comparison");
       openRoom(newRoom.id);
-    } catch {
-      // rollback handled by useRooms
+    } catch (err) {
+      /*
+        This was `catch { // rollback handled by useRooms }` -- an empty block.
+
+        Rollback IS handled there, but rollback is not feedback: `useCreateRoom.onError` only
+        restores the pre-mutation list, so a failed create showed the optimistic row appear, blink
+        out, and nothing else. The dialog stayed open with the name still in it. Reported from the
+        installed prototype as "I can't create a room and proceed", and the button genuinely looked
+        dead.
+
+        ⚠ **Every cause looked identical, which is what made it expensive.** The real one was a 401:
+        an installed build cannot find `storage/secure/.api-token`, so it holds no bearer token --
+        while `/health` needs none and returns 200, so the app reports itself connected. A network
+        failure, a duplicate name and an auth failure were all rendered as "nothing happened".
+
+        401 and 403 are called out by name because they are the ones a user cannot act on from
+        this dialog, and the remedy is somewhere else entirely.
+      */
+      const message = err instanceof Error ? err.message : String(err);
+      const isAuth = /\b40[13]\b|unauthor|forbidden/i.test(message);
+      setCreateError(
+        isAuth
+          ? "Not authorised by the backend. The app could not read its API token — check that the backend service is running from a folder containing storage/secure/."
+          : `Could not create the room: ${message}`
+      );
     }
   };
 
@@ -296,7 +344,7 @@ export const RoomsView: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsCreating(true)}
+                  onClick={() => setCreateOpen(true)}
                   className="rounded-none font-mono text-xs uppercase"
                 >
                   Create Room
@@ -327,7 +375,7 @@ export const RoomsView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4.5" data-tour="rooms-gallery">
             {/* Quick Action "Start New Inspection" Card */}
             <div
-              onClick={() => setIsCreating(true)}
+              onClick={() => setCreateOpen(true)}
               className="border-2 border-dashed border-border-color hover:border-accent-cyan bg-bg-card/40 hover:bg-accent-cyan/5 p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[220px] group rounded-none"
             >
               <div className="w-12 h-12 border border-dashed border-border-color group-hover:border-accent-cyan group-hover:bg-accent-cyan/10 flex items-center justify-center text-text-muted group-hover:text-accent-cyan mb-3 transition-colors">
@@ -413,7 +461,7 @@ export const RoomsView: React.FC = () => {
       {/* ── 4. Create Inspection Room Dialog (Global Modal Standard) ── */}
       <Modal
         isOpen={isCreating}
-        onClose={() => setIsCreating(false)}
+        onClose={() => setCreateOpen(false)}
         title="Create Inspection Room"
         description="Set up a new workspace to compare drawing revisions."
         maxWidthClassName="max-w-lg"
@@ -422,7 +470,7 @@ export const RoomsView: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsCreating(false)}
+              onClick={() => setCreateOpen(false)}
               className="rounded-none font-mono font-bold text-xs uppercase px-4 h-9 cursor-pointer"
             >
               Cancel
@@ -463,6 +511,14 @@ export const RoomsView: React.FC = () => {
             <p className="text-xs text-text-muted">
               Enter a name to identify this drawing inspection.
             </p>
+            {createError && (
+              <div
+                role="alert"
+                className="mt-1 px-3 py-2 border border-rose-500/40 bg-rose-500/10 text-[11px] leading-relaxed text-rose-300"
+              >
+                {createError}
+              </div>
+            )}
           </div>
         </form>
       </Modal>
