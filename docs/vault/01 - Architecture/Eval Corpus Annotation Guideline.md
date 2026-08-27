@@ -5,7 +5,13 @@ tags: [evaluation, ground-truth, annotation, corpus, ai-architecture]
 status: active
 guideline_version: 2026-08-06
 date: 2026-08-06
-verified-against: schema enforced by `infrastructure/eval/corpus.py`; 7 pairs registered, 0 labelled
+verified-against: schema enforced by `infrastructure/eval/corpus.py`, whose `GUIDELINE_VERSION`
+  constant must equal the `guideline_version` above or every label file is rejected. Re-measured
+  2026-08-27 with `tools/eval_corpus.py status`: **8 pairs registered, 5 labelled, 1 of 3 held
+  out** (it read "7 registered, 0 labelled" until then). ⚠ The MATCHED / `not_findings` section
+  added 2026-08-27 deliberately did NOT bump `guideline_version` — the scorer never reads
+  `not_findings`, so no score and no existing label could move; a bump would have invalidated all
+  five.
 ---
 
 # 📏 Eval Corpus Annotation Guideline
@@ -190,6 +196,80 @@ are where the real defects live: a revision that documents nothing, and a rewrit
 > rows: *"those are false positives and the number is real."* It converts an invisible product
 > behaviour into a measured one. Expect it to motivate suppressing new revision rows in the
 > engine — and when that decision is made it will have evidence behind it instead of taste.
+
+---
+
+## Recording MATCHED — the confirmed non-changes
+
+> [!NOTE] Added 2026-08-27. **`guideline_version` is deliberately NOT bumped.**
+> This changes nothing about what a *finding* is, so no existing label is now wrong and nothing
+> needs re-labelling. Verified rather than assumed: `MATCHED` maps to `not_findings`
+> (`manual_check_bridge.py`), `VALID_STATUSES` for a finding stays `{ADDED, REMOVED, CHANGED}`,
+> and **the scorer never reads `not_findings`** — no reference to them in `scorer.py` or
+> `tools/eval.py`. P / R / F1 cannot move because of anything in this section. A bump would
+> invalidate the five pairs already labelled, which is exactly the cost this document warns about
+> at the top; adding guidance that cannot change a score is not that.
+
+A `MATCHED` marking is an engineer saying **"I looked at this and it did not change."** It becomes
+a `not_findings` entry, which is what makes a false positive there *attributable* rather than
+merely counted — the difference between "the engine reported 24 things that were not findings" and
+"the engine reported this, and a human had already examined this exact entity and cleared it."
+
+### The rule
+
+> **Record MATCHED where you looked hard at something that could have been a discrepancy and
+> concluded it was not.**
+
+Not on everything that is fine. A reference sheet carries **~528 entities** (measured with
+`tools/address_audit.py`), so exhaustive MATCHED is neither achievable nor asked for — and a
+corpus padded with hundreds of trivially-identical entities buries the few rows that carry
+information.
+
+**What to record:**
+
+- A value you had to compare digit by digit before deciding it was the same.
+- Something that moved, or re-flowed, or re-wrapped, where the *text* turned out identical.
+- An entity you expected to have changed with the revision and it had not.
+- Anything you found yourself checking twice.
+
+**What not to record:**
+
+- Entities you never actually examined.
+- Obviously identical geometry you skimmed past.
+- Anything in a safe zone (`tolerance`, シム表) — those are never compared, so a MATCHED there is a
+  statement about something no engine will ever look at.
+
+### Why the hard cases and not the easy ones
+
+These are the rows nearest the decision boundary — where the engine is most likely to fire wrongly,
+and therefore the only place a `not_findings` entry is likely to ever be read. A MATCHED on two
+manifestly identical strings documents a decision nobody would have questioned.
+
+⚠ **This also matters for whatever trains on this corpus later, and in a way that is easy to get
+backwards.** `GroundTruthMarking` records `MATCHED` as a first-class status precisely so these rows
+survive — its docstring says the fields are *"a superset on purpose"* so that deciding how they
+become training rows *"must not require re-labelling"*. But an explicitly recorded MATCHED and an
+entity that simply went unmarked are **not the same claim**:
+
+- an explicit `MATCHED` is a human asserting a negative;
+- an unmarked entity means only that nobody said anything about it.
+
+Treating "unmarked" as a confirmed negative assumes the engineer inspected all ~528 entities on the
+sheet, which no one does. **The negatives in this corpus are sparse and non-random by construction**
+— they are what someone chose to check — and any future training over them has to model that, not
+assume a complete sweep. Recording the *hard* negatives is what makes the sparse set worth having.
+
+### What the UI offers
+
+`SelectionMenu` offers **MATCHED, ADDED, REMOVED**; CHANGED is the two-click pairing flow. MATCHED
+records **both sheets** when the counterpart resolves unambiguously, and records one side — drawing
+the badge on one sheet only — when several candidates tie, because a pair is never guessed.
+
+⚠ **`NOT_A_FINDING` is not offered** (owner's call, 2026-08-18; see `SelectionMenu.tsx`). The status
+still exists end to end and older markings still convert. In a manual-check pass its absence costs
+nothing, because no engine has run and there is no engine finding to dismiss — `MATCHED` carries the
+whole "I checked this and it is fine" signal. If a later phase shows engine output to a reviewer,
+that gap reopens and the file notes restoring it is one line.
 
 ---
 
