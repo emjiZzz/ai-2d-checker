@@ -15,7 +15,15 @@ import { create } from "zustand";
  * pinning 8080 — pinning would make the documented dynamic-port mode permanently unreachable, and
  * would make the offline overlay's address field unable to fix the very mismatch it exists for.
  */
-export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8080";
+export const DEFAULT_BACKEND_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_BACKEND_URL)
+    ? (import.meta.env.VITE_BACKEND_URL as string)
+    : "http://127.0.0.1:8080";
+
+export const DEFAULT_REMOTE_API_TOKEN =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_REMOTE_API_TOKEN)
+    ? (import.meta.env.VITE_REMOTE_API_TOKEN as string)
+    : "";
 
 /** Where a user-chosen backend address is remembered. */
 export const BACKEND_URL_STORAGE_KEY = "ai_2d_backend_url";
@@ -76,18 +84,25 @@ interface ConnectionState {
  */
 let inFlightTokenRead: Promise<string | null> | null = null;
 
-export const useConnectionStore = create<ConnectionState>((set, get) => ({
-  backendUrl: localStorage.getItem(BACKEND_URL_STORAGE_KEY) || DEFAULT_BACKEND_URL,
-  status: "connecting",
-  version: null,
-  lastChecked: null,
-  error: null,
-  pollingIntervalId: null,
-  apiToken: (typeof window !== "undefined" && !(window as any).__TAURI_INTERNALS__)
-    ? (localStorage.getItem(REMOTE_API_TOKEN_STORAGE_KEY) || localStorage.getItem("ai_2d_api_token"))
-    : null,
-  remoteApiToken: typeof window !== "undefined" ? localStorage.getItem(REMOTE_API_TOKEN_STORAGE_KEY) : null,
-  failedAttempts: 0,
+export const useConnectionStore = create<ConnectionState>((set, get) => {
+  const initialBackendUrl = (typeof window !== "undefined" ? localStorage.getItem(BACKEND_URL_STORAGE_KEY) : null) || DEFAULT_BACKEND_URL;
+  const initialRemoteToken = (typeof window !== "undefined" ? localStorage.getItem(REMOTE_API_TOKEN_STORAGE_KEY) : null) || DEFAULT_REMOTE_API_TOKEN || null;
+  const isLoopback = isLoopbackBackend(initialBackendUrl);
+
+  return {
+    backendUrl: initialBackendUrl,
+    status: "connecting",
+    version: null,
+    lastChecked: null,
+    error: null,
+    pollingIntervalId: null,
+    apiToken: !isLoopback
+      ? initialRemoteToken
+      : ((typeof window !== "undefined" && !(window as any).__TAURI_INTERNALS__)
+          ? (localStorage.getItem("ai_2d_api_token") || initialRemoteToken)
+          : null),
+    remoteApiToken: initialRemoteToken,
+    failedAttempts: 0,
   backendStartAttempted: false,
   setBackendUrl: (url: string) => {
     // Sanitize trailing slash
@@ -160,11 +175,15 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           return remoteApiToken;
         }
         if (typeof window !== "undefined") {
-          const stored = localStorage.getItem(REMOTE_API_TOKEN_STORAGE_KEY) || localStorage.getItem("ai_2d_api_token");
+          const stored = localStorage.getItem(REMOTE_API_TOKEN_STORAGE_KEY) || DEFAULT_REMOTE_API_TOKEN || localStorage.getItem("ai_2d_api_token");
           if (stored) {
             set({ apiToken: stored, remoteApiToken: stored });
             return stored;
           }
+        }
+        if (DEFAULT_REMOTE_API_TOKEN) {
+          set({ apiToken: DEFAULT_REMOTE_API_TOKEN, remoteApiToken: DEFAULT_REMOTE_API_TOKEN });
+          return DEFAULT_REMOTE_API_TOKEN;
         }
         return null;
       }
@@ -370,4 +389,5 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       set({ pollingIntervalId: null });
     }
   },
-}));
+};
+});

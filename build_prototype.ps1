@@ -1,3 +1,9 @@
+param(
+    [switch]$LeanCloud = $true,
+    [string]$BackendUrl = "https://ai-2d-checker-backend.onrender.com",
+    [string]$ApiToken = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "=====================================================" -ForegroundColor Magenta
@@ -23,39 +29,42 @@ if (Test-Path $nodePath) {
 }
 
 # 2. Setup MSVC Environment (link.exe, cl.exe, Windows SDK).
-#    Shared with start_desktop.ps1 -- this was ~30 duplicated lines in both, so a toolchain fix
-#    landed in whichever script the author happened to run. Dot-sourced, so its $env: writes
-#    apply here. Throws if no toolchain resolves, rather than exporting paths that do not exist.
 . "$PSScriptRoot\tools\scripts\msvc-env.ps1"
 
-# 3. Set Prototype Flag.
-#
-# This process variable is the ONLY thing that makes the installer a prototype build. It is not
-# a belt-and-braces companion to `--mode prototype`: `tauri.conf.json` sets
-# `beforeBuildCommand: "pnpm build"`, so `tauri build` re-runs Vite in production mode and
-# overwrites apps/desktop/dist. A `--mode prototype` build performed first is discarded, and only
-# an ambient VITE_PROTOTYPE_MODE reaches the bundle that actually ships.
+# 3. Set Prototype & Cloud Configuration Environment Variables
 $env:VITE_PROTOTYPE_MODE = "true"
+
+if (![string]::IsNullOrWhiteSpace($BackendUrl)) {
+    $env:VITE_BACKEND_URL = $BackendUrl.Trim()
+    Write-Host "Target Cloud Backend : $env:VITE_BACKEND_URL" -ForegroundColor Cyan
+}
+
+if (![string]::IsNullOrWhiteSpace($ApiToken)) {
+    $env:VITE_REMOTE_API_TOKEN = $ApiToken.Trim()
+    Write-Host "Remote API Token     : [Configured / Baked]" -ForegroundColor Cyan
+}
 
 $pnpmExe = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } elseif (Test-Path "$env:APPDATA\npm\pnpm.cmd") { "$env:APPDATA\npm\pnpm.cmd" } else { "npx pnpm" }
 
 Write-Host "Installing dependencies..." -ForegroundColor Yellow
 & $pnpmExe install
 
-# Freeze the backend and stage it for bundling. The installer carries it as a Tauri resource and
-# registers it as a logon service, so an engineer installs one thing and never runs a backend by
-# hand. Skipped only if the staged copy is already current -- the freeze takes ~3 minutes.
-Write-Host "Packaging backend sidecar..." -ForegroundColor Yellow
-& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "tools\scripts\package-server.ps1")
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "BUILD ABORTED - backend packaging failed; the installer would ship no server." -ForegroundColor Red
-    exit 1
+if ($LeanCloud) {
+    Write-Host "Lean Cloud Client Mode: Skipping local Python backend freeze (~15 MB installer)." -ForegroundColor Green
+    $stagedServerDir = Join-Path $PSScriptRoot "apps\desktop\src-tauri\server"
+    if (!(Test-Path $stagedServerDir)) {
+        New-Item -ItemType Directory -Path $stagedServerDir -Force | Out-Null
+    }
+} else {
+    Write-Host "Hybrid Bundle Mode: Packaging local backend sidecar (~160 MB installer)..." -ForegroundColor Yellow
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "tools\scripts\package-server.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "BUILD ABORTED - backend packaging failed; the installer would ship no server." -ForegroundColor Red
+        exit 1
+    }
 }
 
-# The separate `build:prototype` step that used to sit here has been removed rather than fixed.
-# It built dist/ and `tauri build` immediately overwrote it, so it cost a full frontend build and
-# proved nothing -- while reading like the step that set the mode.
-Write-Host "Packaging Tauri Desktop Installer (.msi / .exe)..." -ForegroundColor Yellow
+Write-Host "Packaging Tauri Desktop Installer (.exe)..." -ForegroundColor Yellow
 & $pnpmExe --filter desktop tauri build
 
 # 4. Verify what actually shipped, rather than trusting step 3.

@@ -24,27 +24,31 @@
 ; scripts' own output still reaches the installer log.
 
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "Registering KMTI 2D Checker backend service..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\server\install-service.ps1" -ServerDir "$INSTDIR\server"'
-  Pop $0
-  ${If} $0 != 0
-    DetailPrint "WARNING: backend service registration returned $0."
-    DetailPrint "The app will report 'Connection Lost' until it is registered."
-    DetailPrint "Repair by running install-service.ps1 in $INSTDIR\server"
-  ${Else}
-    DetailPrint "Backend service registered - it starts automatically at logon."
+  ${If} ${FileExists} "$INSTDIR\server\install-service.ps1"
+    DetailPrint "Registering KMTI 2D Checker backend service..."
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\server\install-service.ps1" -ServerDir "$INSTDIR\server"'
+    Pop $0
+    ${If} $0 != 0
+      DetailPrint "WARNING: backend service registration returned $0."
+      DetailPrint "The app will report 'Connection Lost' until it is registered."
+      DetailPrint "Repair by running install-service.ps1 in $INSTDIR\server"
+    ${Else}
+      DetailPrint "Backend service registered - it starts automatically at logon."
+    ${EndIf}
   ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  ; ⚠ BEFORE files are removed, not after. The uninstall script has to stop a process whose
-  ; executable lives in $INSTDIR -- and a running exe cannot be deleted, so leaving this until
-  ; afterwards makes the uninstall fail to remove its own files AND strand the backend holding
-  ; port 8080 until the next reboot.
-  DetailPrint "Removing KMTI 2D Checker backend service..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\server\uninstall-service.ps1"'
-  Pop $0
-  DetailPrint "Backend service removal returned $0."
-  ; Give the OS a moment to release the file handles before NSIS starts deleting.
-  Sleep 2000
+  ${If} ${FileExists} "$INSTDIR\server\uninstall-service.ps1"
+    ; ⚠ BEFORE files are removed, not after. The uninstall script has to stop a process whose
+    ; executable lives in $INSTDIR -- and a running exe cannot be deleted, so leaving this until
+    ; afterwards makes the uninstall fail to remove its own files AND strand the backend holding
+    ; port 8080 until the next reboot.
+    DetailPrint "Removing KMTI 2D Checker backend service..."
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\server\uninstall-service.ps1"'
+    Pop $0
+    DetailPrint "Backend service removal returned $0."
+    ; Give the OS a moment to release the file handles before NSIS starts deleting.
+    Sleep 2000
+  ${EndIf}
 !macroend
