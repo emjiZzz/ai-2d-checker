@@ -86,9 +86,24 @@ function permits(source: string, target: string): boolean {
   if (!m) return false;
   const [, scheme, host, port] = m;
 
-  const url = new URL(target);
+  let url: URL;
+  try {
+    url = new URL(target);
+  } catch {
+    return false;
+  }
   if (url.protocol !== `${scheme}:`) return false;
-  if (url.hostname !== host) return false;
+
+  if (host.startsWith("*.")) {
+    const domainSuffix = host.slice(1); // e.g. ".onrender.com"
+    const baseDomain = host.slice(2);   // e.g. "onrender.com"
+    if (!url.hostname.endsWith(domainSuffix) || url.hostname === baseDomain) {
+      return false;
+    }
+  } else if (url.hostname !== host) {
+    return false;
+  }
+
   if (port === undefined) return true;
   if (port === "*") return true;
   return (url.port || (url.protocol === "https:" ? "443" : "80")) === port;
@@ -135,6 +150,19 @@ describe("the shipped CSP and the app's backend address agree", () => {
     }
   });
 
+  it("permits the cloud backend on Render", () => {
+    /**
+     * Added 2026-08-28 for cloud deployment on Render.
+     * Narrowed to `https://*.onrender.com` only (no blanket https:, no wss:).
+     */
+    for (const url of [
+      "https://ai-2d-checker-backend.onrender.com",
+      "https://test-preview-123.onrender.com",
+    ]) {
+      expect(allows(url), `connect-src blocks Render cloud backend at ${url}`).toBe(true);
+    }
+  });
+
   it("still refuses every OTHER non-loopback host", () => {
     /**
      * The half that keeps the widening honest. One named server was added — not a subnet, not a
@@ -147,6 +175,7 @@ describe("the shipped CSP and the app's backend address agree", () => {
       "http://192.168.200.106:8080",
       "http://backend.internal:8080",
       "https://evil.example.com",
+      "https://evil.onrender.com.attacker.com",
       "http://0.0.0.0:8080",
       "http://localhost.attacker.com:8080",
     ]) {

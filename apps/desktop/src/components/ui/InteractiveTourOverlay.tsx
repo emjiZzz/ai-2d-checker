@@ -15,6 +15,31 @@ import { useRooms } from "../../hooks/useRooms";
 import { isPrototypeMode } from "../../config/features";
 import { useIsEngineerPromptBlocking } from "../../stores/engineerStore";
 import { Button } from "./Button";
+import { isAuthFailure } from "../../services/fetchUtils";
+
+/**
+ * What to show when the Tutorial Room could not be created.
+ *
+ * Exported and pure so the wording can be tested without mounting the overlay, which needs the
+ * room, onboarding and connection stores just to render.
+ *
+ * The auth branch used to be selected by regexing the message for a status code or the word
+ * "unauthorised". The backend's actual detail is *"Access Denied: Invalid security API Token."* --
+ * no code, none of those words -- so the branch written for this exact failure never fired, and
+ * the installed 0.1.8 build showed the tester the raw backend string with no next step.
+ * `isAuthFailure` reads the status off the thrown `ApiError` instead of inferring it from prose.
+ */
+export function describeRoomCreationFailure(err: unknown): string {
+  if (isAuthFailure(err)) {
+    return (
+      "Not authorised by the backend, so the Tutorial Room was not created. The app is sending an " +
+      "API token the backend does not recognise - restart the app, and if that does not clear it, " +
+      "check the backend service is running."
+    );
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return "Could not create the Tutorial Room: " + message;
+}
 
 export const InteractiveTourOverlay: React.FC = () => {
   const { isTourActive, currentStep, nextStep, prevStep, goToStep, endTour } = useOnboardingStore();
@@ -130,13 +155,7 @@ export const InteractiveTourOverlay: React.FC = () => {
           Advancing past a failed prerequisite is worse than a visible error: the console line was
           real, and nobody has a console open in a packaged desktop app.
         */
-        const message = err instanceof Error ? err.message : String(err);
-        const isAuth = /\b40[13]\b|unauthor|forbidden/i.test(message);
-        setRoomError(
-          isAuth
-            ? "Not authorised by the backend, so the Tutorial Room was not created. The app could not read its API token — check the backend service is running."
-            : `Could not create the Tutorial Room: ${message}`
-        );
+        setRoomError(describeRoomCreationFailure(err));
       } finally {
         setIsCreatingRoom(false);
       }

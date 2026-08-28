@@ -2,18 +2,19 @@
 title: ADR-005 Local-Only Processing with Cloud Licensing
 type: adr
 tags: [adr, architecture, deployment, licensing, security, packaging, pre-prod]
-status: proposed
+status: superseded
 date: 2026-08-06
 amended: 2026-08-11 (amendment 2 — the local-only claim does not describe the shipping code; four live Gemini paths). Previously 2026-08-07 (egress claim narrowed for knowledge sync).
 supersedes: none
+superseded-by: ADR-013 Cloud Deployment Topology with Gated CI/CD
 amends: none
 amended-by: ADR-008 The Second Brain — Retrieval-Only Local Knowledge, ADR-010 Grounded LLM Summarization of Comparison Results
-related: [ADR-004 Deterministic-Only Scope, ADR-008 The Second Brain — Retrieval-Only Local Knowledge, ADR-010 Grounded LLM Summarization of Comparison Results, System Overview]
+related: [ADR-004 Deterministic-Only Scope, ADR-008 The Second Brain — Retrieval-Only Local Knowledge, ADR-010 Grounded LLM Summarization of Comparison Results, ADR-013 Cloud Deployment Topology with Gated CI/CD, System Overview]
 ---
 
 # ADR-005 — All processing local; the cloud does licensing and nothing else
 
-**Status:** proposed · **Date:** 2026-08-06 · **Builds on:** [[ADR-004 Deterministic-Only Scope]]
+**Status:** superseded by [[ADR-013 Cloud Deployment Topology with Gated CI-CD]] · **Date:** 2026-08-06 · **Builds on:** [[ADR-004 Deterministic-Only Scope]]
 
 > [!NOTE] Status is **proposed**, not accepted. The topology is decided; three sub-decisions
 > inside it are explicitly open (persistence, egress enforcement, license mechanism) and are

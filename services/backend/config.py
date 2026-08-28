@@ -40,9 +40,9 @@ class Settings:
     PROJECT_NAME: str = "AI-2D-Checker Standalone Backend"
     VERSION: str = "1.0.0"
     
-    # Binding Configuration - Force localhost-only loopback for secure local-first isolation
-    HOST: str = os.getenv("SIDECAR_HOST", "127.0.0.1")
-    PORT: int = int(os.getenv("SIDECAR_PORT", "8080"))  # Default to 8080 if not set or dynamic
+    # Binding Configuration - Loopback by default, 0.0.0.0 in container/Render environments
+    HOST: str = os.getenv("SIDECAR_HOST") or ("0.0.0.0" if (os.getenv("PORT") or os.getenv("RENDER")) else "127.0.0.1")
+    PORT: int = int(os.getenv("PORT") or os.getenv("SIDECAR_PORT", "8080"))  # Default to 8080 if not set or dynamic
     
     LOG_LEVEL: str = os.getenv("SIDECAR_LOG_LEVEL", "INFO")
     STORAGE_ROOT: str = os.getenv("STORAGE_ROOT", "./storage")
@@ -54,10 +54,18 @@ class Settings:
     ENABLE_DB_AUTO_SYNC: bool = os.getenv("ENABLE_DB_AUTO_SYNC", "true").lower() in ("1", "true", "yes")
     DB_AUTO_SYNC_INTERVAL_SEC: int = int(os.getenv("DB_AUTO_SYNC_INTERVAL_SEC", "60"))
     
-    # LAN deployment. Both are comma-separated and ADD to the built-in defaults rather than
+    # LAN/Cloud deployment. Both are comma-separated and ADD to the built-in defaults rather than
     # replacing them -- see main.py. Empty means "loopback only", which is the historical
-    # behaviour and what a developer checkout wants.
-    ALLOWED_HOSTS: str = os.getenv("ALLOWED_HOSTS", "")
+    # behaviour and what a developer checkout wants. RENDER_EXTERNAL_HOSTNAME is auto-appended when present.
+    @staticmethod
+    def _resolve_allowed_hosts() -> str:
+        configured = os.getenv("ALLOWED_HOSTS", "")
+        render_host = (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
+        if render_host:
+            return f"{configured},{render_host}".strip(",") if configured else render_host
+        return configured
+
+    ALLOWED_HOSTS: str = _resolve_allowed_hosts()
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "")
 
     # API Security Token

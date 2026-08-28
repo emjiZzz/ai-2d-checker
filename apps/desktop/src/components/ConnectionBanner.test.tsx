@@ -86,6 +86,19 @@ describe("ConnectionBanner — prototype build", () => {
     expect(apply).toBeDisabled();
   });
 
+  it("applies a remote API token to the store", () => {
+    const setRemoteApiToken = vi.fn();
+    useConnectionStore.setState({ setRemoteApiToken } as never);
+    goOffline();
+    render(<ConnectionBanner />);
+
+    const tokenInput = screen.getByLabelText("API Token (Remote Backend)");
+    fireEvent.change(tokenInput, { target: { value: "test-secret-token-123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Token" }));
+
+    expect(setRemoteApiToken).toHaveBeenCalledWith("test-secret-token-123");
+  });
+
   it("is absent while the connection is healthy — the overlay itself does not render", () => {
     useConnectionStore.setState({ status: "online" });
     const { container } = render(<ConnectionBanner />);

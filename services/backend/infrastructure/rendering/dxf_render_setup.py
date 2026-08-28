@@ -32,6 +32,10 @@ JAPANESE_FONT_CANDIDATES = [
     r"C:\Windows\Fonts\YuGothR.ttc",    # Yu Gothic Regular
     r"C:\Windows\Fonts\meiryo.ttc",     # Meiryo
     r"C:\Windows\Fonts\MSMINCHO.TTF",   # MS Mincho
+    # Linux / Container paths (fonts-noto-cjk)
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
 ]
 
 # SHX font names seen on this corpus. `txt` is the stock stick font and `extfont2` is the
@@ -60,7 +64,12 @@ def configure_cad_fonts(configure_matplotlib: bool = True) -> str | None:
         return None
 
     logger.info(f"Japanese font found: {jp_font_path}")
-    ezdxf_fonts.font_manager.scan_folder(Path(r"C:\Windows\Fonts"))
+    # Scan the folder the chosen font actually came from. On Windows that IS C:\Windows\Fonts,
+    # which is what this line said literally until the Linux candidates were added above --
+    # so Windows behaviour is unchanged, while the container scans the Noto directory
+    # instead of a path that does not exist there. A hardcoded folder here would have made
+    # those new candidates resolve and then render as tofu anyway.
+    ezdxf_fonts.font_manager.scan_folder(Path(jp_font_path).parent)
     jp_font_filename = Path(jp_font_path).name
     ezdxf_fonts.font_manager._fallback_font_name = jp_font_filename
 

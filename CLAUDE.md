@@ -580,8 +580,9 @@ from `addopts`; the command below now prints a count.)
   against a stashed working tree), and worth `--ignore`-ing for a fast inner loop.
   ⚠ **The rest of the suite is ~2 minutes, not 11.** It was 11 until 2026-08-25 because
   `test_database_sync_manager_status_and_execution` performed a real cloud sync on every run.
-- `npx vitest run` — **653 passed across 56 files** (measured 2026-08-27; it read 633 across 52 on
-  2026-08-25, and 408 across 35 before that). The four new files are prototype-mode coverage,
+- `npx vitest run` — **684 passed across 63 files** (measured 2026-08-28; it read 653 across 56 on
+  2026-08-27, 633 across 52 on 2026-08-25, and 408 across 35 before that). The four files added on
+  2026-08-27 are prototype-mode coverage,
   which had **none at all** until 2026-08-27: vitest runs with `VITE_PROTOTYPE_MODE` unset, so
   every prior test exercised the non-prototype branch of all 8 gates and the configuration that
   actually ships to engineers was the untested one.
@@ -627,14 +628,42 @@ port on the two loopback hosts. **The host axis was deliberately NOT widened**, 
 `connectionStore.csp.test.ts` pins both halves — that the default is permitted, and that
 non-loopback hosts still are not.
 
-🔴 **There is no sidecar.** `tauri.conf.json` has no `bundle.externalBin`,
-`src-tauri/binaries/` does not exist, and `lib.rs` spawns nothing.
-`tools/scripts/build-sidecar.ps1` announces *"Building single-file Python executable with
-PyInstaller..."* and then writes a **text file** containing `"Scaffold mock executable binary"`,
-reporting success. So an installed `.msi` starts no backend: it launches, finds nothing on 8080 and
-sits on "Connection Lost". Running the app outside a developer checkout needs the backend started
-separately (`start_desktop.ps1` does this in dev) — or a real sidecar built, which is a project,
-not a config change.
+✅ **There IS a bundled backend now — this paragraph read "There is no sidecar" until 2026-08-28,
+and had been false since `27fb0ab`.** The FastAPI backend is frozen with PyInstaller
+(`tools/kmti_2dchecker_server.spec`), shipped as a Tauri **resource** rather than an
+`externalBin`, and installed to `$INSTDIR\server\` with its own Python runtime; NSIS hooks
+register a per-user logon Scheduled Task. `lib.rs::start_backend` also spawns it directly when the
+task has not fired. Measured on an installed 0.1.8 build: `KMTI_2DChecker_Server.exe` running from
+`%LOCALAPPDATA%\KMTI Checker\server\`, answering on 8080.
+
+⚠ **NSIS only, so there is no working `.msi`.** `installerHooks` apply to NSIS alone — an `.msi`
+would install the app and the server files and never register the task, which is an install that
+looks fine and has no backend.
+
+⚠ `tools/scripts/build-sidecar.ps1` is still the scaffold it always was: it announces *"Building
+single-file Python executable with PyInstaller..."* and writes a **text file** containing
+`"Scaffold mock executable binary"`, reporting success. It is not what packages the backend
+(`package-server.ps1` is). Do not read its success as evidence of anything.
+
+🔴 **An installed build's storage root is `%LOCALAPPDATA%\kmti-2d-checker`, and the search that
+finds it used to escape to the drive root.** `security::find_storage_root()` (Rust) ascends six
+parents from the working directory and from the executable looking for any directory named
+`storage`. An app installed to `%LOCALAPPDATA%\KMTI Checker\` is five parents below `C:\`, so a
+stray `C:\storage` — which the frozen backend creates if it is ever launched from `C:\` — was found
+first, and the app read a token from it that the running backend had never issued. Every
+authenticated request 401'd with *"Access Denied: Invalid security API Token"* while `/health`,
+which needs no token, kept the app showing CONNECTED. Fixed 2026-08-28 by `looks_like_checkout()`:
+a `storage` directory is this project's only with `pyproject.toml`, or `services/backend` **and**
+`apps/desktop`, beside it. Guarded by `tests/test_storage_root_resolution.py` (parses the Rust,
+because CI runs pytest and **not** `cargo test`) and by `cargo test --lib` in
+`apps/desktop/src-tauri`. See
+[[Gotcha - The Installed App Bound to a Storage Directory at the Drive Root]].
+
+⚠ **A stale token decrypts perfectly.** The key is derived from machine and user, not provenance,
+so there is no such thing as a token file that is obviously wrong — only one the backend rejects.
+The frontend's 401 self-heal (`parseOrThrow` clears `apiToken`, `checkHealth` re-reads it) recovers
+from a *rotated* token and cannot recover from the wrong *file*; it will re-read it every five
+seconds indefinitely.
 
 ⚠ **Going centralized is not a config change either.** It means the four rows above *plus* the auth
 model: the token is written to local disk by the backend and read off the local filesystem by

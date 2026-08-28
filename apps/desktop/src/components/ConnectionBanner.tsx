@@ -4,16 +4,21 @@ import { useConnectionStore } from "../stores/connectionStore";
 import { isPrototypeMode } from "../config/features";
 
 export const ConnectionBanner: React.FC = () => {
-  const { status, checkHealth, backendUrl, setBackendUrl } = useConnectionStore();
+  const { status, checkHealth, backendUrl, setBackendUrl, remoteApiToken, setRemoteApiToken } = useConnectionStore();
   const [isRetrying, setIsRetrying] = useState(false);
   const [showRestoredOverlay, setShowRestoredOverlay] = useState(false);
   const [prevStatus, setPrevStatus] = useState(status);
   const [urlDraft, setUrlDraft] = useState(backendUrl);
+  const [tokenDraft, setTokenDraft] = useState(remoteApiToken || "");
 
   // Keep the draft in step with the store while the field is not the thing driving the change.
   useEffect(() => {
     setUrlDraft(backendUrl);
   }, [backendUrl]);
+
+  useEffect(() => {
+    setTokenDraft(remoteApiToken || "");
+  }, [remoteApiToken]);
 
   useEffect(() => {
     // Detect transition from offline/failed/reconnecting/connecting -> online
@@ -115,35 +120,70 @@ export const ConnectionBanner: React.FC = () => {
             checked) and a second entry point here would be two places to change one value.
           */}
           {isPrototypeMode() && (
-            <div className="w-full mb-4 flex flex-col gap-1.5 text-left">
-              <label
-                htmlFor="connection-banner-backend-url"
-                className="text-[10px] font-semibold uppercase tracking-wider text-text-muted"
-              >
-                Backend Address
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="connection-banner-backend-url"
-                  value={urlDraft}
-                  onChange={(e) => setUrlDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && urlDraft.trim()) {
-                      setBackendUrl(urlDraft.trim());
-                    }
-                  }}
-                  spellCheck={false}
-                  autoComplete="off"
-                  className="flex-1 min-w-0 h-8 px-2 rounded-none bg-bg-dark border border-border-color text-[11px] font-mono text-text-primary focus:border-accent-cyan focus:outline-none"
-                  placeholder="http://127.0.0.1:8080"
-                />
-                <button
-                  onClick={() => urlDraft.trim() && setBackendUrl(urlDraft.trim())}
-                  disabled={!urlDraft.trim() || urlDraft.trim() === backendUrl}
-                  className="h-8 px-3 rounded-none border border-border-color text-[11px] font-semibold text-text-primary hover:border-accent-cyan hover:text-accent-cyan disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+            <div className="w-full mb-4 flex flex-col gap-3 text-left">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="connection-banner-backend-url"
+                  className="text-[10px] font-semibold uppercase tracking-wider text-text-muted"
                 >
-                  Apply
-                </button>
+                  Backend Address
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="connection-banner-backend-url"
+                    value={urlDraft}
+                    onChange={(e) => setUrlDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && urlDraft.trim()) {
+                        setBackendUrl(urlDraft.trim());
+                      }
+                    }}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="flex-1 min-w-0 h-8 px-2 rounded-none bg-bg-dark border border-border-color text-[11px] font-mono text-text-primary focus:border-accent-cyan focus:outline-none"
+                    placeholder="http://127.0.0.1:8080"
+                  />
+                  <button
+                    onClick={() => urlDraft.trim() && setBackendUrl(urlDraft.trim())}
+                    disabled={!urlDraft.trim() || urlDraft.trim() === backendUrl}
+                    className="h-8 px-3 rounded-none border border-border-color text-[11px] font-semibold text-text-primary hover:border-accent-cyan hover:text-accent-cyan disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="connection-banner-api-token"
+                  className="text-[10px] font-semibold uppercase tracking-wider text-text-muted"
+                >
+                  API Token (Remote Backend)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="connection-banner-api-token"
+                    type="password"
+                    value={tokenDraft}
+                    onChange={(e) => setTokenDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setRemoteApiToken(tokenDraft.trim());
+                      }
+                    }}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="flex-1 min-w-0 h-8 px-2 rounded-none bg-bg-dark border border-border-color text-[11px] font-mono text-text-primary focus:border-accent-cyan focus:outline-none"
+                    placeholder="Paste remote API token..."
+                  />
+                  <button
+                    onClick={() => setRemoteApiToken(tokenDraft.trim())}
+                    disabled={tokenDraft.trim() === (remoteApiToken || "")}
+                    className="h-8 px-3 rounded-none border border-border-color text-[11px] font-semibold text-text-primary hover:border-accent-cyan hover:text-accent-cyan disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                  >
+                    Save Token
+                  </button>
+                </div>
               </div>
             </div>
           )}

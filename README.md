@@ -1,18 +1,18 @@
 # AI-2D-Checker
 
-> An AI-powered engineering drawing compliance checker that runs entirely on your local computer — no cloud uploads, no subscriptions.
+> An AI-grounded engineering drawing comparison and compliance platform, supporting local sidecar, LAN server, and cloud-hosted (Render) deployment topologies.
 
-Upload a DWG/DXF drawing file, and the app will automatically compare it against your company's engineering standards and highlight violations using Google's Gemini AI.
+Upload a DWG/DXF drawing file, and the app will automatically compare revision pairs, detect dimension changes, verify title blocks, and highlight differences using high-precision deterministic geometry and AI assistance.
 
 ---
 
 ## ✅ What This App Does
 
-- Converts AutoCAD DWG/DXF drawings into analyzable vectors
-- Overlays standard compliance grids onto drawings
-- Uses AI to detect dimension errors, missing annotations, and standard violations
-- Stores all results locally in MongoDB — your data never leaves your machine
-- Runs as a native Windows desktop application (not just a web browser tab)
+- Converts AutoCAD DWG/DXF drawings into analyzable vector scenes
+- Performs high-precision deterministic geometric and text differencing
+- Detects title block metadata, scale ratios, and zone-based annotations
+- Stores structured audit results, rooms, and markings in MongoDB
+- Runs as a native desktop application (Tauri v2) connecting to local, LAN, or cloud backends
 
 ---
 

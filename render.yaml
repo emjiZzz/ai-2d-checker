@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: ai-2d-checker-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_FALLBACK_URI
+        sync: false
+      - key: API_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_ENGINEER_PASSWORD
+        sync: false
+      - key: ALLOWED_HOSTS
+        value: ai-2d-checker-backend.onrender.com
+      - key: CORS_ORIGINS
+        value: ""
+      - key: ENABLE_LLM_SUMMARY
+        value: "false"
+      - key: ENABLE_DB_AUTO_SYNC
+        value: "false"
+      - key: STORAGE_ROOT
+        value: /app/storage

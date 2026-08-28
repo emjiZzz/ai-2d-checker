@@ -3,15 +3,24 @@ import { Server, Clock, Cpu, Database, AlertCircle, RefreshCw, Settings } from "
 import { useConnectionStore, ConnectionStatus } from "../stores/connectionStore";
 
 export const SystemDiagnostics: React.FC = () => {
-  const { backendUrl, status, version, lastChecked, error, checkHealth, setBackendUrl } = useConnectionStore();
+  const { backendUrl, status, version, lastChecked, error, checkHealth, setBackendUrl, remoteApiToken, setRemoteApiToken } = useConnectionStore();
   const [isManualChecking, setIsManualChecking] = useState(false);
   const [inputUrl, setInputUrl] = useState(backendUrl);
+  const [inputToken, setInputToken] = useState(remoteApiToken || "");
   const [diagnostics, setDiagnostics] = useState<{
     mongodb: boolean;
     storage_root: boolean;
     gemini_api: boolean;
     openai_api?: boolean;
   } | null>(null);
+
+  useEffect(() => {
+    setInputUrl(backendUrl);
+  }, [backendUrl]);
+
+  useEffect(() => {
+    setInputToken(remoteApiToken || "");
+  }, [remoteApiToken]);
 
   const fetchDiagnostics = async () => {
     try {
@@ -54,6 +63,11 @@ export const SystemDiagnostics: React.FC = () => {
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setBackendUrl(inputUrl);
+  };
+
+  const handleTokenSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setRemoteApiToken(inputToken);
   };
 
   const getStatusBadgeClass = (s: ConnectionStatus) => {
@@ -217,20 +231,41 @@ export const SystemDiagnostics: React.FC = () => {
         <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <Settings size={20} className="text-zinc-400" /> Connection Controls
         </h3>
-        <p className="text-sm text-text-muted mb-6">Manually force a diagnostic ping or change the target backend URI.</p>
+        <p className="text-sm text-text-muted mb-6">Manually force a diagnostic ping or change the target backend URI and remote authentication token.</p>
 
-        <form onSubmit={handleUrlSubmit} className="flex gap-4">
-          <input
-            type="text"
-            className="input-field flex-grow font-mono text-sm bg-bg-dark"
-            value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
-            placeholder="http://127.0.0.1:8000"
-          />
-          <button type="submit" className="btn btn-secondary whitespace-nowrap">
-            Update Host
-          </button>
-        </form>
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="text-xs font-semibold text-text-muted mb-1.5 block">Backend Address</label>
+            <form onSubmit={handleUrlSubmit} className="flex gap-4">
+              <input
+                type="text"
+                className="input-field flex-grow font-mono text-sm bg-bg-dark"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+                placeholder="http://127.0.0.1:8080 or https://ai-2d-checker-backend.onrender.com"
+              />
+              <button type="submit" className="btn btn-secondary whitespace-nowrap">
+                Update Host
+              </button>
+            </form>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-muted mb-1.5 block">Remote API Token (for cloud/remote servers)</label>
+            <form onSubmit={handleTokenSubmit} className="flex gap-4">
+              <input
+                type="password"
+                className="input-field flex-grow font-mono text-sm bg-bg-dark"
+                value={inputToken}
+                onChange={(e) => setInputToken(e.target.value)}
+                placeholder="Paste remote API token..."
+              />
+              <button type="submit" className="btn btn-secondary whitespace-nowrap">
+                Save Token
+              </button>
+            </form>
+          </div>
+        </div>
 
         <div className="mt-6 flex gap-4 pt-6 border-t border-border-color">
           <button

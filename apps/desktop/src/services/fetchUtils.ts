@@ -18,6 +18,40 @@ import { useAuthStore } from "../stores/authStore";
 import { ZodType } from "zod";
 
 /**
+ * An error carrying the HTTP status that produced it.
+ *
+ * ⚠ **Callers were reading the status back out of the message text, and it is not in there.**
+ * `InteractiveTourOverlay` tested the message against `/\b40[13]\b|unauthor|forbidden/i` to decide
+ * whether to explain an auth failure -- and the backend's own 401 detail is
+ * *"Access Denied: Invalid security API Token."*, which contains no status code and none of those
+ * words. So on 2026-08-28 the installed build showed the generic fallback instead of the branch
+ * written for exactly that failure, and the tester saw a raw backend string with no next step.
+ *
+ * `parseOrThrow` already knows the status -- it clears the token on 401 two lines earlier. Passing
+ * it on costs nothing and means no caller has to infer it from prose that the backend is free to
+ * reword. Extends `Error`, so every existing `rejects.toThrow(message)` still holds.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** True for the failures that mean "the credential was rejected", from any error shape. */
+export function isAuthFailure(err: unknown): boolean {
+  if (err instanceof ApiError) {
+    return err.status === 401 || err.status === 403;
+  }
+  // Fallback for errors raised before a response existed, or by a non-parseOrThrow path.
+  const message = err instanceof Error ? err.message : String(err);
+  return /\b40[13]\b|unauthor|forbidden|invalid security api token/i.test(message);
+}
+
+/**
  * Builds authenticated request headers from the current Zustand store state.
  * Called outside React (no hooks), so we use .getState() directly.
  *
@@ -120,13 +154,19 @@ export async function parseOrThrow<T>(res: Response): Promise<T> {
       same per-user path) every subsequent request 401s, the user sees "Access Denied: Invalid
       security API Token", and nothing recovers short of closing the app.
 
-      Clearing it is enough to self-heal: `checkHealth` runs every 5 seconds and re-reads the token
-      whenever it is null, so the next attempt carries the current one. Deliberately NOT a retry of
-      this request -- the caller has already been told it failed, and re-issuing a mutation on a
-      401 risks performing it twice if the failure was anything other than a stale token.
+      Re-reading it is enough to self-heal: the replacement lands within one round trip, so the
+      next attempt carries the current token. Deliberately NOT a retry of this request -- the
+      caller has already been told it failed, and re-issuing a mutation on a 401 risks performing
+      it twice if the failure was anything other than a stale token.
+
+      🔴 **This used to `setState({ apiToken: null })`, which made the next request worse, not
+      better.** The synchronous `buildHeaders()` omits `Authorization` entirely when the token is
+      null, so anything issued before the re-read completed went out unauthenticated and came back
+      *"Access Denied: Missing Authorization Header"* -- a different error naming a different
+      subsystem, for the same cause. See `connectionStore.refreshApiToken`.
     */
     if (res.status === 401 || res.status === 403) {
-      useConnectionStore.setState({ apiToken: null });
+      void useConnectionStore.getState().refreshApiToken();
     }
 
     const b = body as Record<string, unknown>;
@@ -142,7 +182,7 @@ export async function parseOrThrow<T>(res: Response): Promise<T> {
     } else {
       message = `HTTP ${res.status}`;
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status);
   }
 
   let payload = body;

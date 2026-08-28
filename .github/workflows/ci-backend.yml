@@ -1,6 +1,8 @@
 name: CI Python Backend
 
 on:
+  workflow_call:
+  workflow_dispatch:
   push:
     branches: [ main, develop ]
     paths:
@@ -19,6 +21,12 @@ on:
 jobs:
   test-python:
     runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
 
     steps:
       - name: Checkout Code
