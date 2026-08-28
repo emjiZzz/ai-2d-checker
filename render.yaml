@@ -4,7 +4,7 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /health
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: MONGO_URI
         sync: false
