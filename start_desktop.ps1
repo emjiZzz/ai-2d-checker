@@ -1,46 +1,20 @@
 param(
-    [switch]$Prototype,
-    [ValidateSet("dev", "prod", "local", "cloud", "")]
-    [string]$Target = ""
+    [switch]$Prototype
 )
 
 $ErrorActionPreference = "Stop"
 
-$PROD_URL = "https://ai-2d-checker-backend.onrender.com"
-$PROD_TOKEN = "kmti-cloud-token-2026-secret"
-
-# Check if .env.local has configured a target, or use parameter
-$isProdTarget = ($Target -in @("prod", "cloud"))
-if (-not $isProdTarget -and [string]::IsNullOrWhiteSpace($Target)) {
-    $envLocal = ".\apps\desktop\.env.local"
-    if (Test-Path $envLocal) {
-        $localContent = Get-Content $envLocal -Raw
-        if ($localContent -match "VITE_BACKEND_URL=.+onrender.com") {
-            $isProdTarget = $true
-        }
-    }
-}
-
 $modeLabel = if ($Prototype) { "PROTOTYPE (2D Workspace Only)" } else { "FULL DEVELOPMENT" }
-$targetLabel = if ($isProdTarget) { "PROD (Render Cloud)" } else { "DEV (Local Sidecar)" }
 
 Write-Host "=====================================================" -ForegroundColor Cyan
 Write-Host "      AI-2D-Checker Tauri Desktop Launcher           " -ForegroundColor Cyan
-Write-Host "      Mode   : $modeLabel                            " -ForegroundColor $(if ($Prototype) { "Magenta" } else { "Green" })
-Write-Host "      Backend: $targetLabel                          " -ForegroundColor $(if ($isProdTarget) { "Cyan" } else { "Yellow" })
+Write-Host "      Mode: $modeLabel                               " -ForegroundColor $(if ($Prototype) { "Magenta" } else { "Green" })
 Write-Host "=====================================================" -ForegroundColor Cyan
 
 if ($Prototype) {
     $env:VITE_PROTOTYPE_MODE = "true"
 } else {
     $env:VITE_PROTOTYPE_MODE = "false"
-}
-
-if ($isProdTarget) {
-    $env:VITE_BACKEND_URL = $PROD_URL
-    $env:VITE_REMOTE_API_TOKEN = $PROD_TOKEN
-    Write-Host "Target Cloud Backend : $PROD_URL" -ForegroundColor Cyan
-    Write-Host "Remote API Token     : [Configured / Baked]" -ForegroundColor Cyan
 }
 
 # 1. Inject Rust Cargo Path

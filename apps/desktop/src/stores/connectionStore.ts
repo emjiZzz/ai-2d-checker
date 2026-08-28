@@ -15,15 +15,19 @@ import { create } from "zustand";
  * pinning 8080 — pinning would make the documented dynamic-port mode permanently unreachable, and
  * would make the offline overlay's address field unable to fix the very mismatch it exists for.
  */
+export const PROD_CLOUD_URL = "https://ai-2d-checker-backend.onrender.com";
+export const PROD_CLOUD_TOKEN = "kmti-cloud-token-2026-secret";
+export const LOCAL_DEV_URL = "http://127.0.0.1:8080";
+
 export const DEFAULT_BACKEND_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_BACKEND_URL)
     ? (import.meta.env.VITE_BACKEND_URL as string)
-    : "http://127.0.0.1:8080";
+    : (typeof import.meta !== "undefined" && import.meta.env?.DEV ? LOCAL_DEV_URL : PROD_CLOUD_URL);
 
 export const DEFAULT_REMOTE_API_TOKEN =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_REMOTE_API_TOKEN)
     ? (import.meta.env.VITE_REMOTE_API_TOKEN as string)
-    : "";
+    : (typeof import.meta !== "undefined" && import.meta.env?.DEV ? "" : PROD_CLOUD_TOKEN);
 
 /** Where a user-chosen backend address is remembered. */
 export const BACKEND_URL_STORAGE_KEY = "ai_2d_backend_url";
