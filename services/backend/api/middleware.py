@@ -37,11 +37,20 @@ class RequestDurationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         duration = time.time() - start_time
-        logger.info(
-            f"Access: {request.method} {request.url.path} - "
-            f"Status: {response.status_code} - "
-            f"Duration: {duration:.4f}s"
-        )
+        
+        # Demote routine successful /health checks to DEBUG level to avoid flooding production logs
+        if request.url.path == "/health" and response.status_code == 200:
+            logger.debug(
+                f"Access: {request.method} {request.url.path} - "
+                f"Status: {response.status_code} - "
+                f"Duration: {duration:.4f}s"
+            )
+        else:
+            logger.info(
+                f"Access: {request.method} {request.url.path} - "
+                f"Status: {response.status_code} - "
+                f"Duration: {duration:.4f}s"
+            )
         response.headers["X-Process-Time"] = f"{duration:.4f}s"
         return response
 

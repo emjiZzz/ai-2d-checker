@@ -95,7 +95,7 @@ function App() {
 
   // Poll connection on component mount
   useEffect(() => {
-    startPolling(5000);
+    startPolling();
     return () => stopPolling();
   }, [backendUrl, startPolling, stopPolling]);
 

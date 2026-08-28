@@ -313,24 +313,39 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     }
   },
 
-  startPolling: (intervalMs = 5000) => {
+  startPolling: (intervalMs?: number) => {
     // Clear any existing poll first
     get().stopPolling();
 
     // Trigger initial check immediately
     get().checkHealth();
 
-    const intervalId = window.setInterval(() => {
-      get().checkHealth();
-    }, intervalMs);
+    const scheduleNext = () => {
+      const { status, backendUrl } = get();
+      const isLoopback = isLoopbackBackend(backendUrl);
 
-    set({ pollingIntervalId: intervalId });
+      // Adaptive intervals:
+      // Online: 20s for remote backend, 10s for local loopback
+      // Disconnected/reconnecting: 5s for rapid recovery detection
+      const nextDelay = intervalMs ?? (
+        status === "online" ? (isLoopback ? 10000 : 20000) : 5000
+      );
+
+      const timeoutId = window.setTimeout(async () => {
+        await get().checkHealth();
+        scheduleNext();
+      }, nextDelay);
+
+      set({ pollingIntervalId: timeoutId });
+    };
+
+    scheduleNext();
   },
 
   stopPolling: () => {
     const { pollingIntervalId } = get();
     if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
+      clearTimeout(pollingIntervalId);
       set({ pollingIntervalId: null });
     }
   },

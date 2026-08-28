@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sys
 import time
 
@@ -11,6 +12,14 @@ from .logger import logger
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# Suppress repetitive 200 OK /health logs from standard Uvicorn access stream
+class HealthCheckLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("/health" in msg and "200" in msg)
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckLogFilter())
 
 # Import Phase 2 Core and Infrastructure
 from .api.middleware import (
