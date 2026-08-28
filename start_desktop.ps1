@@ -1,20 +1,46 @@
 param(
-    [switch]$Prototype
+    [switch]$Prototype,
+    [ValidateSet("dev", "prod", "local", "cloud", "")]
+    [string]$Target = ""
 )
 
 $ErrorActionPreference = "Stop"
 
+$PROD_URL = "https://ai-2d-checker-backend.onrender.com"
+$PROD_TOKEN = "kmti-cloud-token-2026-secret"
+
+# Check if .env.local has configured a target, or use parameter
+$isProdTarget = ($Target -in @("prod", "cloud"))
+if (-not $isProdTarget -and [string]::IsNullOrWhiteSpace($Target)) {
+    $envLocal = ".\apps\desktop\.env.local"
+    if (Test-Path $envLocal) {
+        $localContent = Get-Content $envLocal -Raw
+        if ($localContent -match "VITE_BACKEND_URL=.+onrender.com") {
+            $isProdTarget = $true
+        }
+    }
+}
+
 $modeLabel = if ($Prototype) { "PROTOTYPE (2D Workspace Only)" } else { "FULL DEVELOPMENT" }
+$targetLabel = if ($isProdTarget) { "PROD (Render Cloud)" } else { "DEV (Local Sidecar)" }
 
 Write-Host "=====================================================" -ForegroundColor Cyan
 Write-Host "      AI-2D-Checker Tauri Desktop Launcher           " -ForegroundColor Cyan
-Write-Host "      Mode: $modeLabel                               " -ForegroundColor $(if ($Prototype) { "Magenta" } else { "Green" })
+Write-Host "      Mode   : $modeLabel                            " -ForegroundColor $(if ($Prototype) { "Magenta" } else { "Green" })
+Write-Host "      Backend: $targetLabel                          " -ForegroundColor $(if ($isProdTarget) { "Cyan" } else { "Yellow" })
 Write-Host "=====================================================" -ForegroundColor Cyan
 
 if ($Prototype) {
     $env:VITE_PROTOTYPE_MODE = "true"
 } else {
     $env:VITE_PROTOTYPE_MODE = "false"
+}
+
+if ($isProdTarget) {
+    $env:VITE_BACKEND_URL = $PROD_URL
+    $env:VITE_REMOTE_API_TOKEN = $PROD_TOKEN
+    Write-Host "Target Cloud Backend : $PROD_URL" -ForegroundColor Cyan
+    Write-Host "Remote API Token     : [Configured / Baked]" -ForegroundColor Cyan
 }
 
 # 1. Inject Rust Cargo Path
@@ -36,37 +62,39 @@ if (Test-Path $nodePath) {
 }
 
 # 2. Setup MSVC Environment (link.exe, cl.exe, Windows SDK).
-#    Shared with build_prototype.ps1 -- see tools/scripts/msvc-env.ps1 for why this stopped being
-#    ~30 lines copied into both. Dot-sourced, so its $env: writes apply here.
 . "$PSScriptRoot\tools\scripts\msvc-env.ps1"
 Write-Host ""
 
-# Ensure MongoDB and Backend are running
-Write-Host "Checking services status..." -ForegroundColor Yellow
-powershell -ExecutionPolicy Bypass -File .\start-mongo.ps1
+if (-not $isProdTarget) {
+    # Ensure local MongoDB and Backend are running
+    Write-Host "Checking local services status..." -ForegroundColor Yellow
+    powershell -ExecutionPolicy Bypass -File .\start-mongo.ps1
 
-# Determine port from Env or default
-$envFile = ".\.env"
-$port = 8080
-if (Test-Path $envFile) {
-    $envContent = Get-Content $envFile -Raw
-    if ($envContent -match "SIDECAR_PORT=(\d+)") {
-        $foundPort = [int]$Matches[1]
-        if ($foundPort -ne 0) {
-            $port = $foundPort
+    # Determine port from Env or default
+    $envFile = ".\.env"
+    $port = 8080
+    if (Test-Path $envFile) {
+        $envContent = Get-Content $envFile -Raw
+        if ($envContent -match "SIDECAR_PORT=(\d+)") {
+            $foundPort = [int]$Matches[1]
+            if ($foundPort -ne 0) {
+                $port = $foundPort
+            }
         }
     }
-}
 
-$backendRunning = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-if (-not $backendRunning) {
-    Write-Host "Backend is not running on port $port. Launching FastAPI Backend Service..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoExit -File .\services\backend\start.ps1" -WorkingDirectory $PWD
-    Write-Host "Waiting a few seconds for backend to initialize..." -ForegroundColor Gray
-    Start-Sleep -Seconds 5
-}
-else {
-    Write-Host "✅ Backend is already running on port $port." -ForegroundColor Green
+    $backendRunning = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+    if (-not $backendRunning) {
+        Write-Host "Backend is not running on port $port. Launching FastAPI Backend Service..." -ForegroundColor Yellow
+        Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoExit -File .\services\backend\start.ps1" -WorkingDirectory $PWD
+        Write-Host "Waiting a few seconds for backend to initialize..." -ForegroundColor Gray
+        Start-Sleep -Seconds 5
+    }
+    else {
+        Write-Host "✅ Local Backend is already running on port $port." -ForegroundColor Green
+    }
+} else {
+    Write-Host "Connected to cloud backend. Skipping local Mongo & FastAPI startup." -ForegroundColor Green
 }
 
 # Free port 1420 if previously occupied by background vite process
