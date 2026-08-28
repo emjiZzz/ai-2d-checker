@@ -371,7 +371,7 @@ export interface EntityLocator {
   sfy: number | null;
 }
 
-export type StampTool = "matched" | "added" | "removed" | "changed" | "not_a_finding";
+export type StampTool = "matched" | "added" | "removed" | "changed" | "mismatched" | "not_a_finding";
 
 /**
  * One stamp, as the canvas assembled it. The argument to `recordStamp`.

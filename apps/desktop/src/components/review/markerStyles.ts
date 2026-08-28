@@ -50,7 +50,7 @@ export interface MarkerStyle {
 }
 
 export const MARKER_STYLES: Record<MarkerType, MarkerStyle> = {
-  MISMATCHED: { color: '#ff2850', ui: '#ef4444', uiLight: '#b91c1c', glyph: '!', label: 'Mismatched' },
+  MISMATCHED: { color: '#ff2850', ui: '#ef4444', uiLight: '#b91c1c', glyph: '!', label: 'Mismatched / Wrong' },
   CHANGED: { color: '#ff9600', ui: '#f97316', uiLight: '#c2410c', glyph: '⇄', label: 'Changed' },
   ADDED: { color: '#00ffff', ui: '#3b82f6', uiLight: '#1d4ed8', glyph: '+', label: 'Added' },
   MATCHED: { color: '#39ff14', ui: '#10b981', uiLight: '#047857', glyph: '✓', label: 'Matched' },
@@ -162,7 +162,7 @@ export function markerTypeOf(v: {
  * both sheets and draws wherever it has a coordinate.
  */
 export const MARKER_SIDE: Record<MarkerType, 'ref' | 'rev' | null> = {
-  MISMATCHED: 'ref',
+  MISMATCHED: null,
   REMOVED: 'ref',
   ADDED: 'rev',
   CHANGED: null,

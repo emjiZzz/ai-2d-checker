@@ -147,15 +147,15 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         style={{
           background: isSelected ? "rgba(37, 99, 235, 0.08)" : "var(--bg-card)",
           border: isSelected ? "1.5px solid var(--accent-cyan)" : "1px solid var(--border-color)",
-          borderRadius: 0,
-          padding: "14px",
+          borderRadius: "6px",
+          padding: "10px 12px",
           display: "flex",
           flexDirection: "column",
-          gap: "10px",
+          gap: "8px",
           cursor: matchingViolation ? "pointer" : "default",
           opacity: isHidden || dismissedRowIds[rowId] ? 0.4 : 1,
-          boxShadow: isSelected ? "0 6px 20px rgba(37,99,235,0.15)" : "0 1px 4px rgba(0,0,0,0.05)",
-          transition: "all 0.2s ease",
+          boxShadow: isSelected ? "0 4px 14px rgba(37,99,235,0.12)" : "0 1px 3px rgba(0,0,0,0.04)",
+          transition: "all 0.15s ease",
           // The card is the query container for `.cmp-grid` below. This panel is a flexlayout
           // tabset whose width the user drags, so a viewport media query would be measuring the
           // wrong box entirely — at the 220px floor the card only has ~138px of content.
@@ -167,7 +167,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             width the eye + Dismiss + Correct + status pill do not fit on one line, and the panel
             root is overflow-x-hidden, so anything that overflows is silently clipped rather than
             scrollable. */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px", minWidth: 0 }}>
           <div style={{ display: "flex", gap: "10px", rowGap: "6px", alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
             <div
               onClick={(e) => {

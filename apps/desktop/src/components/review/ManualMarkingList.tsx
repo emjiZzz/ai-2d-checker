@@ -1,9 +1,9 @@
-import { MARKER_STYLES, markerStyle } from './markerStyles';
+import { markerUi } from './markerStyles';
 import { ChecklistSection } from './ChecklistSection';
 import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
 import { useThemeStore } from '../../stores/themeStore';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Trash2, CheckCircle2, ClipboardCheck, Download, RotateCcw } from 'lucide-react';
+import { Trash2, ClipboardCheck, Download } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
@@ -63,7 +63,6 @@ export const ManualMarkingList: React.FC = () => {
   const pendingPairTool = useWorkspaceStore((s) => s.pendingPairTool);
   const retractManualMarking = useWorkspaceStore((s) => s.retractManualMarking);
   const submitManualSession = useWorkspaceStore((s) => s.submitManualSession);
-  const reopenManualSession = useWorkspaceStore((s) => s.reopenManualSession);
   const markingError = useWorkspaceStore((s) => s.markingError);
   const clearMarkingError = useWorkspaceStore((s) => s.clearMarkingError);
 
@@ -71,9 +70,8 @@ export const ManualMarkingList: React.FC = () => {
   // Open by default: this panel is short and the engineer is reading their own work, not
   // triaging someone else's. Collapsed-by-default would hide the thing they came here for.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [submitted, setSubmitted] = useState(false);
   const manualSessionStatus = useWorkspaceStore((s) => s.manualSessionStatus);
-  const isSubmitted = submitted || manualSessionStatus === 'submitted' || manualSessionStatus === 'completed';
+  const isSubmitted = manualSessionStatus === 'submitted' || manualSessionStatus === 'completed';
 
   const grouped = useMemo(() => {
     const map: Record<string, typeof markings> = {};
@@ -85,19 +83,14 @@ export const ManualMarkingList: React.FC = () => {
   if (!isManualCheckRoom) return null;
 
   /*
-    `submitted` is set from the SERVER's answer, never unconditionally.
-
-    It read `await submitManualSession(); setSubmitted(true)` until 2026-08-20, and the store
-    swallowed its own failure — so a submit that never reached the database rendered "Check
-    submitted" and the engineer walked away from a session still marked `in_progress`. The store
-    now returns whether the server confirmed it, and writes the reason to `markingError` when it
-    did not.
+    Session submission is driven directly through `submitManualSession`, which writes to
+    `manualSessionStatus` in the store upon server confirmation. Any marking modification
+    on the canvas automatically flips the session back to in_progress.
   */
   const submit = async () => {
     setSubmitting(true);
-    const ok = await submitManualSession();
+    await submitManualSession();
     setSubmitting(false);
-    if (ok) setSubmitted(true);
   };
 
   const totalCount = markings.length + annotations.length;
@@ -195,8 +188,8 @@ export const ManualMarkingList: React.FC = () => {
             padding: '7px 12px',
             fontSize: 11,
             lineHeight: 1.45,
-            color: MARKER_STYLES.CHANGED.color,
-            background: 'rgba(249,115,22,0.1)',
+            color: markerUi('CHANGED', theme === 'hc-light').color,
+            background: markerUi('CHANGED', theme === 'hc-light').background,
             borderBottom: '1px solid var(--border-color)',
           }}
         >
@@ -229,9 +222,9 @@ export const ManualMarkingList: React.FC = () => {
               lineHeight: 1.6,
               padding: '8px',
               marginBottom: 8,
-              color: MARKER_STYLES.MISMATCHED.color,
-              background: 'rgba(255,40,80,0.08)',
-              border: `1px solid ${MARKER_STYLES.MISMATCHED.color}55`,
+              color: markerUi('MISMATCHED', theme === 'hc-light').color,
+              background: markerUi('MISMATCHED', theme === 'hc-light').background,
+              border: `1px solid ${markerUi('MISMATCHED', theme === 'hc-light').color}44`,
             }}
           >
             <div style={{ fontWeight: 600 }}>Could not open this check.</div>
@@ -273,9 +266,9 @@ export const ManualMarkingList: React.FC = () => {
               lineHeight: 1.6,
               padding: '8px',
               marginBottom: 8,
-              color: MARKER_STYLES.MISMATCHED.color,
-              background: 'rgba(255,40,80,0.08)',
-              border: `1px solid ${MARKER_STYLES.MISMATCHED.color}55`,
+              color: markerUi('MISMATCHED', theme === 'hc-light').color,
+              background: markerUi('MISMATCHED', theme === 'hc-light').background,
+              border: `1px solid ${markerUi('MISMATCHED', theme === 'hc-light').color}44`,
             }}
           >
             <div style={{ fontWeight: 600 }}>Not recorded.</div>
@@ -312,7 +305,7 @@ export const ManualMarkingList: React.FC = () => {
             key="custom_annotations"
             label="Annotations & Notes"
             statusLabel={String(annotations.length)}
-            statusColor="#00e5ff"
+            statusColor={theme === 'hc-light' ? '#0284c7' : '#00e5ff'}
             statusIsMatched={false}
             expanded={expanded['custom_annotations'] ?? true}
             onToggle={() =>
@@ -328,12 +321,12 @@ export const ManualMarkingList: React.FC = () => {
                 statusLabel={ann.severity.toUpperCase()}
                 statusColor={
                   ann.severity === 'critical'
-                    ? '#f43f5e'
+                    ? (theme === 'hc-light' ? '#b91c1c' : '#f43f5e')
                     : ann.severity === 'high'
-                    ? '#f97316'
+                    ? (theme === 'hc-light' ? '#c2410c' : '#f97316')
                     : ann.severity === 'medium'
-                    ? '#eab308'
-                    : '#00e5ff'
+                    ? (theme === 'hc-light' ? '#b45309' : '#eab308')
+                    : (theme === 'hc-light' ? '#0284c7' : '#00e5ff')
                 }
                 actions={
                   <button
@@ -347,7 +340,7 @@ export const ManualMarkingList: React.FC = () => {
                       background: 'transparent',
                       border: '1px solid transparent',
                       borderRadius: '4px',
-                      color: '#f43f5e',
+                      color: theme === 'hc-light' ? '#b91c1c' : '#f43f5e',
                       cursor: 'pointer',
                       fontSize: '0.75rem',
                       fontWeight: 600,
@@ -381,20 +374,15 @@ export const ManualMarkingList: React.FC = () => {
         {CATEGORY_KEYS.map((key) => {
           const rows = grouped[key] ?? [];
           if (!rows.length) return null;
-          // The same card the engine's checklist uses. It was a bold caption over bare rows,
-          // which made this panel look like a different product sitting in the same slot — and
-          // an engineer switching between an AI room and a manual one had to relearn the page.
-          // Only the chrome is shared; the rows below are this panel's own, because recording a
-          // judgement and correcting the engine's are different acts with different destinations.
+          const isLight = theme === 'hc-light';
           const allMatched = rows.every((m) => m.status === 'MATCHED');
+          const { color: sectionColor } = markerUi(allMatched ? 'MATCHED' : 'CHANGED', isLight);
           return (
             <ChecklistSection
               key={key}
               label={categoryLabel(key)}
               statusLabel={String(rows.length)}
-              statusColor={
-                allMatched ? MARKER_STYLES.MATCHED.color : MARKER_STYLES.CHANGED.color
-              }
+              statusColor={sectionColor}
               statusIsMatched={allMatched}
               expanded={expanded[key] ?? true}
               onToggle={() =>
@@ -402,20 +390,15 @@ export const ManualMarkingList: React.FC = () => {
               }
             >
               {rows.map((m) => {
-                // The card's own heading. A checklist row names a FIELD; a marking has no field,
-                // so it heads with the value the engineer marked — the revision's spelling where
-                // there is one, since that is the sheet being checked.
                 const title = m.rev_text || m.ref_text || '—';
+                const { color: statusColor, background: statusBg } = markerUi(m.status, isLight);
                 return (
                   <FindingCard
                     key={m.id}
                     statusLabel={`${m.status.replace(/_/g, ' ')}${m.is_bulk ? ' · bulk' : ''}`}
-                    statusColor={markerStyle(m.status).color}
+                    statusColor={statusColor}
+                    statusBg={statusBg}
                     actions={
-                      /* Labelled "Remove" because that is what it means to the engineer using
-                         it. The tooltip still states what happens on the server, because the two
-                         differ and the difference matters if anyone ever needs a marking back:
-                         nothing is deleted, the row is stamped `retracted_at` and hidden. */
                       <button
                         type="button"
                         title="Remove from this check — the record is kept on the server, marked as withdrawn"
@@ -423,26 +406,27 @@ export const ManualMarkingList: React.FC = () => {
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: MARKER_STYLES.MISMATCHED.color,
+                          color: 'var(--text-muted)',
                           cursor: 'pointer',
-                          fontSize: '0.65rem',
+                          fontSize: '0.68rem',
                           fontWeight: 600,
                           display: 'flex',
                           alignItems: 'center',
                           gap: '3px',
-                          padding: 0,
+                          padding: '1px 4px',
+                          borderRadius: '3px',
+                          transition: 'color 0.15s ease',
                         }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
                       >
-                        <Trash2 size={11} />
+                        <Trash2 size={12} />
                         <span>Remove</span>
                       </button>
                     }
                   >
                     <ComparisonValues
                       title={title}
-                      // Straight through. A `markingValueView` helper used to decide whether to
-                      // show one value or two — a rule the compact row needed and this grid does
-                      // not: two labelled columns are always drawn, and an absent side prints
                       // `-`, which for an ADDED or a REMOVED is the finding rather than a gap.
                       original={m.ref_text ?? ''}
                       revision={m.rev_text ?? ''}
@@ -466,36 +450,17 @@ export const ManualMarkingList: React.FC = () => {
       <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {isSubmitted ? (
           <>
-            <div
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 700,
-                background: 'rgba(16,185,129,0.15)',
-                border: '1.5px solid #10b981',
-                color: '#10b981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              <CheckCircle2 size={14} /> Check Submitted
-            </div>
-
             <button
               type="button"
               onClick={exportToPDF}
               disabled={isExporting}
               style={{
                 width: '100%',
-                padding: '8px 12px',
-                borderRadius: 8,
+                padding: '9px 12px',
+                borderRadius: 6,
                 fontSize: 12,
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: isExporting ? 'wait' : 'pointer',
                 background: 'rgba(0, 229, 255, 0.15)',
                 border: '1.5px solid var(--accent-cyan)',
                 color: 'var(--accent-cyan)',
@@ -503,6 +468,7 @@ export const ManualMarkingList: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 6,
+                transition: 'all 0.15s ease',
               }}
               title="Download Compliance Audit Report PDF"
             >
@@ -511,32 +477,6 @@ export const ManualMarkingList: React.FC = () => {
 
             <ExportStatusNote status={exportStatus} onReveal={revealExport} />
             <ExportOverlay active={isExporting} phase={exportPhase} />
-
-            <button
-              type="button"
-              onClick={async () => {
-                setSubmitted(false);
-                clearMarkingError();
-                await reopenManualSession();
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                background: 'transparent',
-                border: '1.5px solid var(--border-color)',
-                color: 'var(--text-main)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              <RotateCcw size={14} /> Re-open / Edit Check
-            </button>
           </>
         ) : (
           <button
@@ -545,8 +485,8 @@ export const ManualMarkingList: React.FC = () => {
             onClick={submit}
             style={{
               width: '100%',
-              padding: '8px 12px',
-              borderRadius: 8,
+              padding: '9px 12px',
+              borderRadius: 6,
               fontSize: 12,
               fontWeight: 700,
               cursor: canSubmit ? 'pointer' : 'not-allowed',
@@ -557,6 +497,7 @@ export const ManualMarkingList: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
+              transition: 'all 0.15s ease',
             }}
           >
             {submitting ? 'Finalising…' : 'Finish check'}

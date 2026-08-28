@@ -45,7 +45,7 @@ from .cad_point import CadPoint, coerce_cad_point
 #: verified non-change is real signal (it is `verdict_matched` in the trainer's existing
 #: vocabulary), and "I looked at this and it is deliberately not a finding" is how a false
 #: positive gets *attributed* rather than merely counted.
-MarkingStatus = Literal["MATCHED", "ADDED", "REMOVED", "CHANGED", "NOT_A_FINDING"]
+MarkingStatus = Literal["MATCHED", "ADDED", "REMOVED", "CHANGED", "MISMATCHED", "NOT_A_FINDING"]
 
 SessionStatus = Literal["in_progress", "submitted"]
 

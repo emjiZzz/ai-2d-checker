@@ -88,8 +88,34 @@ async def export_vector_sheet(drawing_id: str, payload: VectorSheetRequest) -> R
             detail="Drawing has no stored source file.",
         )
 
-    source = sandboxed_path(drawing.file_path)
-    if not source.exists():
+    from pathlib import Path
+    from ...infrastructure.storage.path_resolver import get_storage_root
+
+    raw_path = str(drawing.file_path or "").replace("\\", "/")
+    if raw_path.startswith("storage/"):
+        raw_path = raw_path[len("storage/"):]
+    elif raw_path.startswith("/"):
+        raw_path = raw_path.lstrip("/")
+
+    source = None
+    try:
+        candidate = sandboxed_path(raw_path)
+        if candidate.exists():
+            source = candidate
+    except Exception:
+        pass
+
+    if source is None or not source.exists():
+        filename = Path(drawing.file_path).name
+        candidate_uploads = get_storage_root() / "uploads" / filename
+        if candidate_uploads.exists():
+            source = candidate_uploads
+        else:
+            candidate_root = get_storage_root() / raw_path
+            if candidate_root.exists():
+                source = candidate_root
+
+    if not source or not source.exists():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Drawing's source file is no longer on disk.",

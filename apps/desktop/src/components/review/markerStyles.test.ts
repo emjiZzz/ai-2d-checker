@@ -77,6 +77,7 @@ describe('the shared marker table', () => {
       ['added', 'ADDED'],
       ['matched', 'MATCHED'],
       ['changed', 'CHANGED'],
+      ['mismatched', 'MISMATCHED'],
     ];
     for (const [tool, type] of pairs) {
       const drawnOn = MARKER_SIDE[type] ?? 'both';

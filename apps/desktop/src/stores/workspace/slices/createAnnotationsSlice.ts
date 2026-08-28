@@ -8,6 +8,7 @@ import {
   updateAnnotation as updateAnnotationApi,
   deleteAnnotation as deleteAnnotationApi,
 } from "../../../services/annotationsApi";
+import { reopenSession } from "../../../services/groundTruthApi";
 
 export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], AnnotationsSlice> = (set, get) => ({
   annotations: [],
@@ -41,6 +42,9 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
     const penType = SEVERITY_PEN_MAP[severity] || "checker_blue";
     const violationId = violationIdOverride !== undefined ? violationIdOverride : (useReviewStore.getState().selectedViolationId || null);
 
+    const { manualSessionId, manualSessionStatus } = get();
+    const isCurrentlySubmitted = manualSessionStatus === 'completed' || manualSessionStatus === 'submitted';
+
     try {
       const created = await createAnnotationApi({
         review_session_id: reviewSessionId,
@@ -56,7 +60,11 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
         isPlacingAnnotation: false,
         pendingAnnotationText: "",
         selectedAnnotationId: created.id,
+        manualSessionStatus: 'in_progress',
       }));
+      if (isCurrentlySubmitted && manualSessionId) {
+        reopenSession(manualSessionId).catch((err) => console.warn('[annotations] Reopen on annotation create warning:', err));
+      }
     } catch (err: any) {
       console.error("Failed to create annotation:", err.message);
       set({ isPlacingAnnotation: false });
@@ -64,6 +72,8 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
   },
 
   deleteAnnotationById: async (id) => {
+    const { manualSessionId, manualSessionStatus } = get();
+    const isCurrentlySubmitted = manualSessionStatus === 'completed' || manualSessionStatus === 'submitted';
     try {
       await deleteAnnotationApi(id);
     } catch (err: any) {
@@ -72,7 +82,11 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
       set((state) => ({
         annotations: state.annotations.filter((a) => a.id !== id),
         selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
+        manualSessionStatus: 'in_progress',
       }));
+      if (isCurrentlySubmitted && manualSessionId) {
+        reopenSession(manualSessionId).catch((err) => console.warn('[annotations] Reopen on annotation delete warning:', err));
+      }
     }
   },
 

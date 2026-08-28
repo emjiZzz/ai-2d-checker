@@ -64,6 +64,7 @@ import { useEngineerStore } from "../../engineerStore";
 
 const TOOL_STATUS: Record<StampTool, MarkingStatus> = {
   matched: "MATCHED",
+  mismatched: "MISMATCHED",
   added: "ADDED",
   removed: "REMOVED",
   changed: "CHANGED",
@@ -78,12 +79,11 @@ const TOOL_STATUS: Record<StampTool, MarkingStatus> = {
  * and nowhere else. (Reference-side handle coverage of 0.8–13% is the hard case for addressing
  * precisely because REMOVED lives there.)
  *
- * MATCHED and CHANGED are claims about an entity that exists on both sheets, so both offer them
- * — `matched` was `rev`-only until 2026-08-18, which meant the same judgement was recordable
- * from one sheet and not the other for no reason the drawing could explain.
+ * MATCHED, MISMATCHED and CHANGED are claims recordable from either sheet (both).
  */
 export const TOOL_SIDE: Record<StampTool, "ref" | "rev" | "both"> = {
   matched: "both",
+  mismatched: "both",
   added: "rev",
   removed: "ref",
   changed: "both",
@@ -344,13 +344,18 @@ export const createManualCheckSlice: StateCreator<
 
     try {
       const saved = await createMarking(manualSessionId, payload);
+      const isCurrentlySubmitted = get().manualSessionStatus === 'completed' || get().manualSessionStatus === 'submitted';
       set((state) => ({
         markings: [...state.markings, saved],
         pendingPairRef: null,
+        manualSessionStatus: 'in_progress',
         // Cleared only by a write that actually succeeded. A stale error standing over a panel
         // that is recording fine is its own kind of lie.
         markingError: null,
       }));
+      if (isCurrentlySubmitted) {
+        reopenSession(manualSessionId).catch((err) => console.warn('[manualCheck] Reopen on stamp warning:', err));
+      }
     } catch (err: any) {
       console.error("Failed to record marking:", err?.message ?? err);
 
@@ -397,14 +402,20 @@ export const createManualCheckSlice: StateCreator<
    * downstream could tell. 31 of the 38 markings behind `M745204N01` were retractions.
    */
   retractManualMarking: async (markingId) => {
+    const { manualSessionId } = get();
+    const isCurrentlySubmitted = get().manualSessionStatus === 'completed' || get().manualSessionStatus === 'submitted';
     try {
       await retractMarking(markingId);
       // The server keeps the row marked rather than deleted — the collection is the audit trail
       // of who asserted what. Only the local view drops it.
       set((state) => ({
         markings: state.markings.filter((m) => m.id !== markingId),
+        manualSessionStatus: 'in_progress',
         markingError: null,
       }));
+      if (isCurrentlySubmitted && manualSessionId) {
+        reopenSession(manualSessionId).catch((err) => console.warn('[manualCheck] Reopen on retract warning:', err));
+      }
       return true;
     } catch (err: any) {
       const message = String(err?.message ?? err);

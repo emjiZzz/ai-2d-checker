@@ -476,15 +476,7 @@ export function useComplianceReportExport() {
         });
 
         if (vectorFailure) {
-          // Said out loud, because the two documents are not interchangeable and nothing about
-          // the saved file announces which one it is. A silent downgrade is how someone files a
-          // raster report believing it is searchable.
           console.warn("Vector sheet unavailable, exported the canvas capture:", vectorFailure);
-          alert(
-            "Exported, but the drawing file is the canvas image rather than a searchable " +
-              "vector drawing.\n\n" +
-              vectorFailure,
-          );
         }
       }
     } catch (error: any) {

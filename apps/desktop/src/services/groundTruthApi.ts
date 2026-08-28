@@ -14,7 +14,7 @@ import { fetchWithAuth } from './fetchUtils';
  * exists.
  */
 
-export type MarkingStatus = 'MATCHED' | 'ADDED' | 'REMOVED' | 'CHANGED' | 'NOT_A_FINDING';
+export type MarkingStatus = 'MATCHED' | 'ADDED' | 'REMOVED' | 'CHANGED' | 'MISMATCHED' | 'NOT_A_FINDING';
 
 /**
  * One clicked entity, as the client saw it.

@@ -47,6 +47,7 @@ import { CATEGORY_OPTIONS, categoryForZone, findMarkingForEntity } from './manua
  */
 const MANUAL_TOOLS: { tool: StampTool; marker: MarkerType }[] = [
   { tool: 'matched', marker: 'MATCHED' },
+  { tool: 'mismatched', marker: 'MISMATCHED' },
   { tool: 'added', marker: 'ADDED' },
   { tool: 'removed', marker: 'REMOVED' },
 ];

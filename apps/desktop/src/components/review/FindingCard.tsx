@@ -2,60 +2,33 @@ import React from "react";
 import { cleanCadText } from "./renderEntities";
 
 /**
- * The finding card, shared by the engine's checklist and the manual-check panel.
+ * The finding card and comparison grid, shared by the engine's checklist and the manual-check panel.
  *
- * ## Why this is shared and the bodies are not
- *
- * Both panels answer "what was found, and what do the two sheets say". That question has one
- * right presentation — a card, a status chip, and the two values side by side under ORIGINAL and
- * REVISION — and it was implemented once for the engine and then approximated for manual
- * markings, which is why the two panels looked like two products.
- *
- * What stays separate is what each panel DOES with a row. The checklist's actions write to
- * `audit_feedback`, the learned model's corpus, because dismissing or correcting an engine
- * finding is a statement about the engine. A manual marking is ground truth and its only action
- * is retraction. So the actions are a slot, not a fixed part of the card.
- *
- * ## The two columns never stack
- *
- * Stacking would fit a narrow panel more comfortably and would destroy what the grid is for:
- * you cannot compare two values that are not beside each other. The container query buys back
- * horizontal room instead — tighter padding, gap and type — so a squeezed panel yields a smaller
- * pair rather than two slivers.
+ * Designed with a flat, single-card hierarchy (no nested boxes within boxes) so items
+ * have maximum horizontal breathing room inside narrow flexlayout panels.
  */
 
-/**
- * The grid's stylesheet. Render ONCE per panel, never per card.
- *
- * Layout and type scale live here rather than inline because inline styles outrank stylesheet
- * rules — a container query could never override a value declared on the element. Only
- * status-dependent styling stays inline.
- *
- * ⚠ The query container is the CARD (`container-type: inline-size` on `FindingCard`), not the
- * viewport. This panel is a flexlayout tabset whose width the user drags, so a viewport media
- * query would be measuring an unrelated box: at the 220px floor a card has ~138px of content.
- */
 export const ComparisonGridStyles: React.FC = () => (
   <style>{`
-    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; }
     .cmp-grid > * { min-width: 0; overflow-wrap: anywhere; }
-    .cmp-grid-diff { text-align: center; padding: 12px; }
+    .cmp-grid-diff { padding: 6px 8px; }
     .cmp-grid-diff > .cmp-title { grid-column: 1 / -1; }
     .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.62rem; }
-    .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.8rem; }
+    .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.78rem; }
 
     @container (max-width: 260px) {
       .cmp-grid { gap: 6px; }
-      .cmp-grid-diff { padding: 8px; }
-      .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.55rem; letter-spacing: 0.02em; }
+      .cmp-grid-diff { padding: 5px 6px; }
+      .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.58rem; }
       .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.72rem; }
     }
   `}</style>
 );
 
 export interface ComparisonValuesProps {
-  /** Heading inside the box — the field name for a checklist row, the value for a marking. */
-  title: string;
+  /** Heading inside the card — the field name for a checklist row, the value for a marking. */
+  title?: string;
   original: string;
   revision: string;
   /** Strike the ORIGINAL: something that was there is gone or altered. */
@@ -72,81 +45,93 @@ export const ComparisonValues: React.FC<ComparisonValuesProps> = ({
   struck = false,
   matched = false,
   theme,
-}) => (
-  <div
-    className="cmp-grid cmp-grid-diff"
-    style={{
-      background: theme === "hc-light" ? "#f1f5f9" : "var(--sidebar-item-hover)",
-      border: "1px solid var(--border-color)",
-      borderRadius: "2px",
-    }}
-  >
-    <div
-      className="cmp-title"
-      style={{
-        fontSize: "0.8rem",
-        fontWeight: 700,
-        color: "var(--text-primary)",
-        borderBottom: "1px solid var(--border-color)",
-        paddingBottom: "8px",
-        marginBottom: "2px",
-        textTransform: "uppercase",
-        textAlign: "left",
-        letterSpacing: "0.02em",
-      }}
-    >
-      {cleanCadText(title)}
-    </div>
+}) => {
+  const isLight = theme === "hc-light";
+  const cleanedOrig = cleanCadText(original) || "-";
+  const cleanedRev = cleanCadText(revision) || "-";
 
-    <div
-      className="cmp-h-ref"
-      style={{
-        fontWeight: 700,
-        color: "var(--text-secondary)",
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-      }}
-    >
-      Original
-    </div>
-    <div
-      className="cmp-h-rev"
-      style={{
-        fontWeight: 700,
-        color: "var(--accent-cyan)",
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-      }}
-    >
-      Revision
-    </div>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+      {title && (
+        <div
+          style={{
+            fontSize: "0.82rem",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            letterSpacing: "0.01em",
+            wordBreak: "break-word",
+            lineHeight: 1.3,
+          }}
+        >
+          {cleanCadText(title)}
+        </div>
+      )}
 
-    {/* `-` rather than an empty cell: a blank reads as a rendering fault, where a dash reads as
-        "this sheet has nothing here", which for an ADDED or a REMOVED is the finding itself. */}
-    <div
-      className="cmp-v-ref"
-      style={{
-        color: "var(--text-secondary)",
-        fontFamily: "'JetBrains Mono', monospace",
-        textDecoration: struck ? "line-through" : "none",
-        wordBreak: "break-word",
-      }}
-    >
-      {cleanCadText(original) || "-"}
+      {/* Side-by-side comparison strip (integrated, no heavy double-box) */}
+      <div
+        className="cmp-grid"
+        style={{
+          background: isLight ? "rgba(241, 245, 249, 0.75)" : "var(--sidebar-item-hover)",
+          borderRadius: "5px",
+          padding: "7px 9px",
+          border: "1px solid var(--border-color)",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+          <span
+            style={{
+              fontSize: "0.6rem",
+              fontWeight: 700,
+              color: "var(--text-secondary)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            Original
+          </span>
+          <span
+            style={{
+              fontSize: "0.78rem",
+              fontFamily: "'JetBrains Mono', monospace",
+              color: struck ? (isLight ? "#991b1b" : "#f87171") : "var(--text-secondary)",
+              textDecoration: struck ? "line-through" : "none",
+              wordBreak: "break-word",
+              lineHeight: 1.35,
+            }}
+          >
+            {cleanedOrig}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+          <span
+            style={{
+              fontSize: "0.6rem",
+              fontWeight: 700,
+              color: matched ? (isLight ? "#047857" : "#10b981") : "var(--accent-cyan)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            Revision
+          </span>
+          <span
+            style={{
+              fontSize: "0.78rem",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontWeight: 600,
+              color: matched ? (isLight ? "#047857" : "#10b981") : "var(--text-primary)",
+              wordBreak: "break-word",
+              lineHeight: 1.35,
+            }}
+          >
+            {cleanedRev}
+          </span>
+        </div>
+      </div>
     </div>
-    <div
-      className="cmp-v-rev"
-      style={{
-        color: matched ? (theme === "hc-light" ? "#047857" : "#10b981") : "var(--text-primary)",
-        fontFamily: "'JetBrains Mono', monospace",
-        fontWeight: 600,
-        wordBreak: "break-word",
-      }}
-    >
-      {cleanCadText(revision) || "-"}
-    </div>
-  </div>
-);
+  );
+};
 
 export interface FindingCardProps {
   /** Left of the badge row: whatever this panel lets you do to a row. */
@@ -176,41 +161,35 @@ export const FindingCard: React.FC<FindingCardProps> = ({
     style={{
       background: selected ? "rgba(37, 99, 235, 0.08)" : "var(--bg-card)",
       border: selected ? "1.5px solid var(--accent-cyan)" : "1px solid var(--border-color)",
-      borderRadius: 0,
-      padding: "14px",
+      borderRadius: "6px",
+      padding: "10px 12px",
       display: "flex",
       flexDirection: "column",
-      gap: "10px",
+      gap: "8px",
       cursor: onClick ? "pointer" : "default",
       opacity: dimmed ? 0.4 : 1,
-      boxShadow: selected ? "0 6px 20px rgba(37,99,235,0.15)" : "0 1px 4px rgba(0,0,0,0.05)",
-      transition: "all 0.2s ease",
-      // Same reason as `ChecklistSection`: these are flex items in a column, and a card that
-      // shrinks crops its own comparison grid — the two values it exists to show.
+      boxShadow: selected ? "0 4px 14px rgba(37,99,235,0.12)" : "0 1px 3px rgba(0,0,0,0.04)",
+      transition: "all 0.15s ease",
       flexShrink: 0,
-      // The card is the query container for `.cmp-grid` inside it. See `ComparisonGridStyles`.
       minWidth: 0,
       containerType: "inline-size",
     }}
   >
-    {/* Both this row and the cluster inside it must wrap: at the panel's minimum width the
-        actions and the status pill do not fit on one line, and the panel root is
-        overflow-x:hidden, so anything that overflows is silently clipped rather than scrollable. */}
+    {/* Header with actions and status badge */}
     <div
       style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: "8px",
+        gap: "6px",
         minWidth: 0,
       }}
     >
       <div
         style={{
           display: "flex",
-          gap: "10px",
-          rowGap: "6px",
+          gap: "8px",
           alignItems: "center",
           flexWrap: "wrap",
           minWidth: 0,
@@ -222,22 +201,23 @@ export const FindingCard: React.FC<FindingCardProps> = ({
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: "5px",
+          gap: "4px",
           fontSize: "0.62rem",
           fontWeight: 700,
-          padding: "2px 6px",
-          borderRadius: "2px",
+          padding: "2px 7px",
+          borderRadius: "999px",
           color: statusColor,
-          background: statusBg ?? `${statusColor}1f`,
+          background: statusBg ?? `${statusColor}18`,
           textTransform: "uppercase",
           letterSpacing: "0.04em",
+          flexShrink: 0,
         }}
       >
         <span
           style={{
-            width: "4px",
-            height: "4px",
-            borderRadius: "1px",
+            width: "5px",
+            height: "5px",
+            borderRadius: "50%",
             background: statusColor,
             flexShrink: 0,
           }}
