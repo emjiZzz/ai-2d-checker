@@ -8,13 +8,13 @@ This document specifies the variables used in the workspace `.env` configuration
 
 | Variable Name | Description | Default / Recommended | Security Level |
 |---|---|---|---|
-| `MONGO_URI` | Connection URI for the primary MongoDB cluster / server. | `mongodb://localhost:27017` | **Medium** (Masked credentials in logs) |
+| `MONGO_URI` | Connection URI for the primary MongoDB cluster / server. (For cloud/Render, Atlas IP Access must allow `0.0.0.0/0`). | `mongodb://localhost:27017` | **Medium** (Masked credentials in logs) |
 | `MONGO_FALLBACK_URI` | Failover MongoDB connection URI. | `mongodb://localhost:27017` | **Medium** (Masked credentials in logs) |
 | `MONGO_DB_NAME` | Active MongoDB database namespace. | `ai_2d_checker` | **Low** |
 | `ENABLE_DB_AUTO_SYNC` | Enables background replication synchronization with Atlas. | `true` (disable on cloud) | **Low** |
 | `DB_AUTO_SYNC_INTERVAL_SEC` | Interval between background database sync cycles. | `60` | **Low** |
-| `SEED_ADMIN_PASSWORD` | Initial bootstrap password for seed admin account. | `admin123` | **High** |
-| `SEED_ENGINEER_PASSWORD` | Initial bootstrap password for seed engineer account. | `engineer123` | **High** |
+| `SEED_ADMIN_PASSWORD` | Initial bootstrap password for seed admin account. Must be configured before first startup. | None (must be set) | **High** |
+| `SEED_ENGINEER_PASSWORD` | Initial bootstrap password for seed engineer account. Must be configured before first startup. | None (must be set) | **High** |
 | `API_TOKEN` | Static API Bearer Token for authenticating clients. | Auto-generated if empty | **Critical** (Redacted in logs) |
 | `GEMINI_API_KEY` | Google Gemini API Key for OCR and AI analysis. | `YOUR_GEMINI_API_KEY_HERE` | **Critical** (Redacted in logs) |
 | `GEMINI_MODEL_PRO` | Highest-reasoning Gemini tier for full structured pipeline. | `gemini-2.5-flash` | **Low** |
@@ -26,7 +26,7 @@ This document specifies the variables used in the workspace `.env` configuration
 | `STORAGE_ROOT` | Path to persistent storage root hierarchy. | `./storage` (or `/app/storage`) | **Low** |
 | `MAX_FILE_SIZE_MB` | Upper limit boundary on drawing upload requests. | `500` | **Low** |
 | `ODA_CONVERTER_PATH`| Path to local ODA File Converter on Windows. | `C:/Program Files/ODA/...` | **Low** |
-| `SIDECAR_PORT` / `PORT` | Port binding for backend FastAPI server. | `8080` (or injected by cloud) | **Low** |
+| `SIDECAR_PORT` / `PORT` | Port binding for backend FastAPI server (`0` for dynamic port allocation). | `0` (or `8080`, or cloud `PORT`) | **Low** |
 | `SIDECAR_HOST` / `HOST` | FastAPI server binding host interface. | `127.0.0.1` (or `0.0.0.0`) | **Medium** |
 | `ALLOWED_HOSTS` | Comma-separated list of exact allowed Host headers. | Empty (loopback only) | **Medium** |
 | `CORS_ORIGINS` | Comma-separated extra allowed CORS origins. | Empty (standard Tauri origins) | **Low** |

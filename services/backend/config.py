@@ -59,11 +59,16 @@ class Settings:
     # behaviour and what a developer checkout wants. RENDER_EXTERNAL_HOSTNAME is auto-appended when present.
     @staticmethod
     def _resolve_allowed_hosts() -> str:
-        configured = os.getenv("ALLOWED_HOSTS", "")
+        hosts = [h.strip() for h in (os.getenv("ALLOWED_HOSTS", "")).split(",") if h.strip()]
         render_host = (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
-        if render_host:
-            return f"{configured},{render_host}".strip(",") if configured else render_host
-        return configured
+        if render_host and render_host not in hosts:
+            hosts.append(render_host)
+        render_svc = (os.getenv("RENDER_SERVICE_NAME") or "").strip()
+        if render_svc and render_svc not in hosts:
+            hosts.append(render_svc)
+        if (os.getenv("PORT") or os.getenv("RENDER")) and "0.0.0.0" not in hosts:
+            hosts.append("0.0.0.0")
+        return ",".join(hosts)
 
     ALLOWED_HOSTS: str = _resolve_allowed_hosts()
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "")

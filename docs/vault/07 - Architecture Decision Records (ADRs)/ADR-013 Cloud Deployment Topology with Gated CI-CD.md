@@ -32,8 +32,9 @@ To accelerate prototype feedback and establish automated deployment pipelines, t
 
 1. **Cloud Backend Hosting (Render):**
    - The FastAPI backend is containerized via a production `Dockerfile` (`python:3.12-slim` + `fonts-noto-cjk` + `libgomp1`) and deployed on Render.
-   - Database persistence remains anchored to the shared **MongoDB Atlas** cluster.
+   - Database persistence remains anchored to the shared **MongoDB Atlas** cluster. Because Render free-tier instances run on dynamic outbound IP addresses, the MongoDB Atlas Network Access IP Access List must include `0.0.0.0/0` (Allow Access from Anywhere).
    - Dynamic port binding (`PORT`) and cloud binding (`HOST=0.0.0.0`) are supported out of the box.
+   - `/health` endpoint returns HTTP 503 if MongoDB connection is unavailable, preventing dead-database builds from being marked healthy.
 
 2. **Security & Authentication Boundary:**
    - **Remote API Token:** Cloud deployments use an explicit `API_TOKEN` configured in environment variables.

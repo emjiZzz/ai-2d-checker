@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -190,9 +190,12 @@ async def shutdown_event() -> None:
 app.include_router(api_v1_router)
 
 @app.get("/health")
-async def health_check() -> dict:
+async def health_check(response: Response) -> dict:
     """
     Diagnostic healthcheck endpoint. Returns service state details.
+    Returns HTTP 503 Service Unavailable when the database is disconnected or storage
+    is unwritable, preventing cloud platforms (like Render) from falsely reporting a broken
+    deployment as live.
     """
     # Repair the installed-client token if it has gone missing since startup. This endpoint is
     # the right place for exactly two reasons: it needs no token itself (so it still works in the
@@ -207,8 +210,12 @@ async def health_check() -> dict:
     db_health = await check_database_health()
     storage_diag = get_storage_diagnostics()
     
+    is_healthy = bool(db_health["connected"] and storage_diag["write_permission"])
+    if not is_healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
     return {
-        "status": "healthy" if db_health["connected"] and storage_diag["write_permission"] else "degraded",
+        "status": "healthy" if is_healthy else "degraded",
         "version": settings.VERSION,
         "name": settings.PROJECT_NAME,
         "timestamp": time.time(),

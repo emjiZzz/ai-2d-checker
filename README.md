@@ -1,6 +1,6 @@
 # AI-2D-Checker
 
-> An AI-grounded engineering drawing comparison and compliance platform, supporting local sidecar, LAN server, and cloud-hosted (Render) deployment topologies.
+> An AI-grounded engineering drawing comparison and compliance platform, running locally with desktop-sidecar and LAN server deployment, with preview cloud backend (Render) support.
 
 Upload a DWG/DXF drawing file, and the app will automatically compare revision pairs, detect dimension changes, verify title blocks, and highlight differences using high-precision deterministic geometry and AI assistance.
 
@@ -12,7 +12,7 @@ Upload a DWG/DXF drawing file, and the app will automatically compare revision p
 - Performs high-precision deterministic geometric and text differencing
 - Detects title block metadata, scale ratios, and zone-based annotations
 - Stores structured audit results, rooms, and markings in MongoDB
-- Runs as a native desktop application (Tauri v2) connecting to local, LAN, or cloud backends
+- Runs as a native desktop application (Tauri v2) connecting to local sidecar, LAN, or cloud backends
 
 ---
 

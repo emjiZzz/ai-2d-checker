@@ -6,6 +6,7 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # Important: MongoDB Atlas Network Access must allow 0.0.0.0/0 since Render free tier has dynamic outbound IPs
       - key: MONGO_URI
         sync: false
       - key: MONGO_FALLBACK_URI
@@ -30,3 +31,5 @@ services:
         value: "false"
       - key: STORAGE_ROOT
         value: /app/storage
+      - key: MAX_FILE_SIZE_MB
+        value: "500"

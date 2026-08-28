@@ -594,39 +594,35 @@ from `addopts`; the command below now prints a count.)
 - `npx tsc --noEmit` — **0 errors** (now also gated in CI; it previously ran only over the shared
   types package, so `apps/desktop` was unenforced on merge).
 
-## Local environment
+## Deployment Topologies & Network Environment
 
-The backend runs on **port 8080**, not 8000 (`connectionStore.DEFAULT_BACKEND_URL`). The desktop
-dev server is on 1420. The local API bearer token is generated and stored encrypted under
-`storage/secure/`; retrieve it with `core.security.initialize_local_api_token()` rather than
-expecting it in `.env`.
+The system supports three deployment topologies (ADR-013):
+1. **Local Sidecar**: Bound to `127.0.0.1:8080` (or dynamic port via `SIDECAR_PORT=0`), with machine-bound encrypted bearer token in `storage/secure/`.
+2. **On-Premises LAN Server**: Deployed at a fixed LAN host (e.g. `192.168.200.105:8080`) configured via `ALLOWED_HOSTS` and shared `API_TOKEN`.
+3. **Cloud Backend (Render)**: Containerized backend at `https://*.onrender.com`, using fixed `API_TOKEN`, with desktop client persisting token in `localStorage` (`ai_2d_remote_api_token`).
 
-### The backend is localhost-only, on purpose and in four places
+### Multi-layer host & network enforcement
 
 Do not treat any one of these as the whole rule — changing one alone produces a build that fails
 in a layer you are not looking at:
 
 | Layer | What it enforces |
 | :--- | :--- |
-| `services/backend/start.ps1` | binds `--host 127.0.0.1` |
-| `main.py` `ALLOWED_HOST_NAMES` | Host must be **exactly** `localhost` / `127.0.0.1` / `::1` |
-| `main.py` CORS `allow_origins` | only `localhost:1420`, `tauri://localhost`, `http://tauri.localhost` |
-| `src-tauri/tauri.conf.json` `connect-src` | what the webview may reach at all |
+| `services/backend/config.py` | Binds `--host 127.0.0.1` locally, `0.0.0.0` on cloud/containers |
+| `main.py` `ALLOWED_HOST_NAMES` | Host must be **exact match** in `ALLOWED_HOSTS` + `RENDER_EXTERNAL_HOSTNAME` |
+| `main.py` CORS `allow_origins` | `localhost:1420`, `tauri://localhost`, `http://tauri.localhost` + `CORS_ORIGINS` |
+| `src-tauri/tauri.conf.json` `connect-src` | loopback `*`, `192.168.200.105:*`, and `https://*.onrender.com` |
 
 ⚠ **The CSP layer fails differently from the other three, which is why it hid.** It is enforced by
 the *webview*, so a blocked address never leaves the app: no network error, no backend log, nothing
 in the network tab worth reading — just a UI stuck on "Connection Lost" against an address that
 looks right.
 
-⚠ **The port is not fixed and the CSP must not pin it.** `.env` documents `SIDECAR_PORT=0` for
-dynamic allocation and `config.py` honours it, so the backend can answer on a port nothing knows at
-build time; `tests/test_host_header_guard.py` already asserts the host guard passes a non-default
-port. Until 2026-08-27 the CSP pinned `:8080` exactly — so the documented dynamic-port mode was
-permanently unreachable, and the offline overlay's address field could not fix the mismatch it
-exists for, because the corrected port was blocked by the same CSP. `connect-src` now allows any
-port on the two loopback hosts. **The host axis was deliberately NOT widened**, and
-`connectionStore.csp.test.ts` pins both halves — that the default is permitted, and that
-non-loopback hosts still are not.
+⚠ **The port is not fixed on loopback.** `.env` documents `SIDECAR_PORT=0` for dynamic allocation
+and `config.py` honours it, so the backend can answer on a port nothing knows at build time;
+`tests/test_host_header_guard.py` asserts the host guard passes a non-default port. `connect-src`
+allows any port on loopback and the LAN server, and `https://*.onrender.com` for cloud instances.
+Non-allowlisted external hosts are strictly rejected (`connectionStore.csp.test.ts`).
 
 ✅ **There IS a bundled backend now — this paragraph read "There is no sidecar" until 2026-08-28,
 and had been false since `27fb0ab`.** The FastAPI backend is frozen with PyInstaller

@@ -98,12 +98,20 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   },
   setRemoteApiToken: (token: string) => {
     const trimmed = token.trim();
+    const isRemote = !isLoopbackBackend(get().backendUrl);
     if (trimmed) {
       localStorage.setItem(REMOTE_API_TOKEN_STORAGE_KEY, trimmed);
-      set({ remoteApiToken: trimmed, apiToken: trimmed });
+      set({ remoteApiToken: trimmed });
+      if (isRemote) {
+        set({ apiToken: trimmed });
+      }
     } else {
       localStorage.removeItem(REMOTE_API_TOKEN_STORAGE_KEY);
-      set({ remoteApiToken: null, apiToken: null });
+      set({ remoteApiToken: null });
+      if (isRemote) {
+        // Do not leave apiToken as null — re-resolve immediately to avoid unauthenticated bursts
+        get().fetchApiToken();
+      }
     }
     get().checkHealth();
   },
@@ -297,6 +305,19 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       /*
         Confirmed offline -- try to start the bundled local backend ONLY if loopback.
         Remote backend failures must never spawn a local server on 8080.
+
+        The installer registers a logon Scheduled Task, which covers the normal case. This covers
+        the rest: the task not firing, the backend having crashed, or a post-install hook that
+        failed. Without it the app sits on "Connection Lost" indefinitely and the only way forward
+        is an engineer opening Task Scheduler.
+
+        ⚠ ONCE per app session, not once per poll. `checkHealth` runs every few seconds; retrying
+        each time would spawn a process every few seconds against a backend that is simply slow to
+        start -- and it IS slow, tens of seconds for the Atlas connection and index bootstrap. One
+        attempt, then let the existing polling notice when it comes up.
+
+        Errors are swallowed on purpose: in a dev run there is no bundled backend and the command
+        says so, which is not a condition worth surfacing to a developer who started their own.
       */
       if (isLoopback && !get().backendStartAttempted && typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
         set({ backendStartAttempted: true });
