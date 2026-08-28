@@ -171,40 +171,10 @@ async def list_drawings(
         username = resolve_username(x_session_token, x_engineer_name)
         if username:
             docs = [d for d in docs if d.uploaded_by == username or d.uploaded_by is None]
-    valid_docs = []
-    
-    for d in docs:
-        if d.file_path:
-            # Guarded like the serving paths, but it must not raise: this loop decides whether to
-            # *delete* records, and one malformed row should not fail the whole listing. A path
-            # that cannot be validated is kept rather than pruned — declining to delete on a
-            # check we could not complete is the conservative direction.
-            try:
-                full_path = sandboxed_path(d.file_path)
-            except HTTPException:
-                logger.warning(
-                    f"DrawingDocument {d.id} ({d.file_name}) has a file_path outside the "
-                    f"storage root: {d.file_path!r}. Keeping the record; not pruning on an "
-                    f"unverifiable path."
-                )
-                valid_docs.append(d)
-                continue
-            if not full_path.exists():
-                # Backing file on disk is gone - purge orphaned DB record
-                logger.info(f"Pruning orphaned DrawingDocument {d.id} ({d.file_name}) - file not found at {full_path}")
-                try:
-                    clear_entity_cache(str(d.id))
-                    await ExtractedEntity.find(ExtractedEntity.drawing_id == str(d.id)).delete()
-                    await ExtractionJob.find(ExtractionJob.drawing_id == str(d.id)).delete()
-                    await d.delete()
-                except Exception as e:
-                    logger.warning(f"Failed to auto-prune orphaned drawing {d.id}: {e}")
-                continue
-        valid_docs.append(d)
 
     res = [
         DrawingResponse.from_document(d)
-        for d in valid_docs
+        for d in docs
     ]
     return StandardResponse(success=True, data=res)
 

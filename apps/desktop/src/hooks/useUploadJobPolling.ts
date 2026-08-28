@@ -46,13 +46,21 @@ export function useUploadJobPolling(jobId: string | null, side: "old" | "new") {
       } else if (job.status === "failed") {
         console.error(`Upload job ${jobId} failed: ${job.error_message}`);
         if (side === "old") {
-            state.setOldUploadState("failed");
+          state.setOldUploadState("failed");
         } else {
-            state.setNewUploadState("failed");
+          state.setNewUploadState("failed");
         }
       }
+    } else if (query.isError && jobId) {
+      console.error(`Upload job polling for ${jobId} failed:`, query.error);
+      const state = useWorkspaceStore.getState();
+      if (side === "old") {
+        state.setOldUploadState("failed");
+      } else {
+        state.setNewUploadState("failed");
+      }
     }
-  }, [query.data, jobId, side]);
+  }, [query.data, query.isError, query.error, jobId, side]);
 
   return query;
 }
