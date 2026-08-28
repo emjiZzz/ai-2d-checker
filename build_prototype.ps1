@@ -50,11 +50,15 @@ Write-Host "Installing dependencies..." -ForegroundColor Yellow
 & $pnpmExe install
 
 if ($LeanCloud) {
-    Write-Host "Lean Cloud Client Mode: Skipping local Python backend freeze (~15 MB installer)." -ForegroundColor Green
+    Write-Host "Lean Cloud Client Mode: Purging local server files for lean installer (~15 MB)..." -ForegroundColor Green
     $stagedServerDir = Join-Path $PSScriptRoot "apps\desktop\src-tauri\server"
-    if (!(Test-Path $stagedServerDir)) {
+    if (Test-Path $stagedServerDir) {
+        Remove-Item -Path "$stagedServerDir\*" -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
         New-Item -ItemType Directory -Path $stagedServerDir -Force | Out-Null
     }
+    # Keep a dummy placeholder file so Tauri resource glob doesn't fail
+    Set-Content -Path (Join-Path $stagedServerDir ".cloud-client") -Value "cloud-mode"
 } else {
     Write-Host "Hybrid Bundle Mode: Packaging local backend sidecar (~160 MB installer)..." -ForegroundColor Yellow
     & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "tools\scripts\package-server.ps1")
