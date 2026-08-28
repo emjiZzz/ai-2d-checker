@@ -1,4 +1,4 @@
-"""Where the application's own files live, whether running from source or frozen.
+r"""Where the application's own files live, whether running from source or frozen.
 
 ## Why this exists
 

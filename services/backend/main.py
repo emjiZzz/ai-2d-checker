@@ -189,6 +189,18 @@ async def shutdown_event() -> None:
 # Include standard v1 routes
 app.include_router(api_v1_router)
 
+@app.get("/")
+@app.head("/")
+async def root_ping() -> dict:
+    """Root discovery endpoint for load balancers and platform probers."""
+    return {
+        "status": "online",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "docs": "/docs",
+        "health": "/health"
+    }
+
 @app.get("/health")
 async def health_check(response: Response) -> dict:
     """

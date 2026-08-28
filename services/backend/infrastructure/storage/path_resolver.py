@@ -14,7 +14,7 @@ from ...runtime_paths import app_root
 
 ROOT_DIR = app_root()
 def _resolve_storage_root() -> Path:
-    """`STORAGE_ROOT` if set, anchored to the app root when it is relative.
+    r"""`STORAGE_ROOT` if set, anchored to the app root when it is relative.
 
     ⚠ A RELATIVE override must not be resolved against the working directory. `.env` ships
     `STORAGE_ROOT=./storage`, and the frozen server is launched by an operator from whatever
