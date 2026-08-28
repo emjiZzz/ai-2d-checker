@@ -636,7 +636,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     };
   }, []);
 
-  const { exportToPDF, isExporting, exportPhase, exportStatus, revealExport } =
+  const { isExporting, exportPhase, exportStatus, revealExport } =
     useComplianceReportExport();
 
   const activeLayoutPreset = useReviewStore(s => s.activeLayoutPreset);
@@ -909,11 +909,6 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              {newDrawing && (
-                <Button variant="outline" size="sm" onClick={exportToPDF} disabled={isExporting} className="h-6 px-2 text-[11px] rounded-sm border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan hover:text-zinc-950 gap-1" title="Export the revision drawing and its checklist as a PDF">
-                  <Download size={12} /> {isExporting ? "Building…" : "PDF"}
-                </Button>
-              )}
               <ExportStatusNote status={exportStatus} onReveal={revealExport} compact />
               <ExportOverlay active={isExporting} phase={exportPhase} />
               {activeSession?.id && (
