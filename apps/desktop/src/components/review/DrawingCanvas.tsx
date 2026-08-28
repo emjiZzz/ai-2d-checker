@@ -181,6 +181,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             entityHitIndex={entityHitIndex}
             cursorStyle={cursorStyle}
             sharedCanvasRef={canvasRef}
+            currentStrokeRef={state.currentStrokeRef}
           />
         </ErrorBoundary>
 
@@ -201,14 +202,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
             canvasWidth={width}
             canvasHeight={height}
             theme={theme}
-            onOpenAnnotationModal={(severity) => {
+            onOpenAnnotationModal={() => {
               setAnnotationModal({
                 visible: true,
                 x: contextMenu.x,
                 y: contextMenu.y,
                 wx: contextMenu.wx,
                 wy: contextMenu.wy,
-                severity,
+                severity: 'info',
                 content: '',
               });
               setContextMenu(null);
@@ -274,20 +275,14 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
   }
 );
 
-const SEVERITY_ORDER: AnnotationSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
-
 /**
  * Sticky, text-only warning summary for THIS canvas's open annotations — pinned
  * to the top-right corner so a reviewer can tell "this drawing has open notes"
- * without hunting the linework for a small '!' pin first. Each canvas gets its
+ * without hunting the linework for a pin first. Each canvas gets its
  * own instance (mirrors the per-drawing filtering renderAnnotationPins already
  * does), so the old/new panes never leak counts into each other.
  */
 const AnnotationSummaryOverlay: React.FC<{ drawingId?: string; theme: string }> = ({ drawingId, theme }) => {
-  // Deliberately NOT gated behind showAnnotations — this is the passive "you have
-  // open notes" signal, so it needs to work precisely when the panel/pins are
-  // hidden. Gating it the same as the panel made it useless (it only appeared
-  // once the panel was already open, which already lists everything).
   const annotations = useWorkspaceStore((s) => s.annotations);
   const selectAnnotation = useWorkspaceStore((s) => s.selectAnnotation);
   const toggleAnnotations = useReviewStore((s) => s.toggleAnnotations);
@@ -300,22 +295,7 @@ const AnnotationSummaryOverlay: React.FC<{ drawingId?: string; theme: string }> 
 
   if (!drawingId || openForDrawing.length === 0) return null;
 
-  const counts: Partial<Record<AnnotationSeverity, number>> = {};
-  openForDrawing.forEach((a) => {
-    const sev = (a.severity as AnnotationSeverity) || 'info';
-    counts[sev] = (counts[sev] || 0) + 1;
-  });
-
-  const presentSeverities = SEVERITY_ORDER.filter((s) => counts[s]);
-  const summary = presentSeverities.map((s) => `${counts[s]} ${s[0].toUpperCase()}${s.slice(1)}`).join(' · ');
-
-  // Clicking jumps to the single highest-severity open pin — reuses the
-  // existing selectedAnnotationId zoom-to-focus effect in useCanvasInteraction.ts,
-  // so this doubles as a one-click "take me to what matters most" shortcut. Also
-  // opens the panel/pins if they were hidden, since that's the whole point of
-  // clicking a summary that was visible precisely because they were hidden.
-  const topSeverity = presentSeverities[0];
-  const jumpTarget = openForDrawing.find((a) => a.severity === topSeverity);
+  const jumpTarget = openForDrawing[0];
 
   return (
     <div
@@ -330,7 +310,7 @@ const AnnotationSummaryOverlay: React.FC<{ drawingId?: string; theme: string }> 
     >
       <span className="shrink-0 text-red font-bold">⚠</span>
       <span className="truncate">
-        {openForDrawing.length} Open Annotation{openForDrawing.length === 1 ? '' : 's'} — {summary}
+        {openForDrawing.length} Open Annotation{openForDrawing.length === 1 ? '' : 's'}
       </span>
     </div>
   );

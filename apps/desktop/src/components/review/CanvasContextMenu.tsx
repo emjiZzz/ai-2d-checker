@@ -1,7 +1,9 @@
 import React from 'react';
-import { Eye, EyeOff, RotateCcw, Pin, Filter, Plus, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, RotateCcw, Pin, Filter, Plus, ChevronRight, PenTool, Trash2, Undo2, Redo2 } from 'lucide-react';
 import { useReviewStore } from '../../stores/reviewStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useHistoryStore } from '../../stores/historyStore';
+import { performUndo, performRedo } from '../../hooks/useUndoRedo';
 import { AnnotationSeverity } from '../../stores/workspace/types';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
 import { MARKER_STYLES, type MarkerType } from './markerStyles';
@@ -15,7 +17,7 @@ interface CanvasContextMenuProps {
   canvasWidth?: number;
   canvasHeight?: number;
   theme: string;
-  onOpenAnnotationModal: (severity: AnnotationSeverity) => void;
+  onOpenAnnotationModal: (severity?: AnnotationSeverity) => void;
   onClose: () => void;
   setRedrawTrigger: React.Dispatch<React.SetStateAction<number>>;
 }
@@ -46,6 +48,18 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   const showMarkerLabels = useReviewStore((s) => s.showMarkerLabels);
   const toggleMarkerLabels = useReviewStore((s) => s.toggleMarkerLabels);
 
+  const isPenActive = useWorkspaceStore((s) => s.isPenActive);
+  const setIsPenActive = useWorkspaceStore((s) => s.setIsPenActive);
+  const undoLastPenStroke = useWorkspaceStore((s) => s.undoLastPenStroke);
+  const penStrokes = useWorkspaceStore((s) => s.penStrokes);
+  const clearPenStrokes = useWorkspaceStore((s) => s.clearPenStrokes);
+  const hasDrawingStrokes = Boolean(
+    drawingId && Array.isArray(penStrokes) && penStrokes.some((s) => s.drawingId === String(drawingId))
+  );
+
+  const canUndo = useHistoryStore((s) => s.past.length > 0) || hasDrawingStrokes;
+  const canRedo = useHistoryStore((s) => s.future.length > 0);
+
   // Manual engineer check. Marking moved to `SelectionMenu` on 2026-08-18; all this menu still
   // owns is cancelling a pairing in flight, which needs a surface that opens with nothing
   // selected. There is still exactly ONE way to write a marking — see that component.
@@ -73,7 +87,74 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* 1. Direct Annotation Pin Creation -> Opens Modal */}
+      {/* 1. Freehand Pen Tool */}
+      <div
+        className={`flex items-center justify-between px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-colors rounded-none ${
+          isPenActive
+            ? theme === 'hc-light'
+              ? 'bg-red-50 text-red-600 font-semibold'
+              : 'bg-red-500/20 text-red-400 font-semibold'
+            : theme === 'hc-light'
+              ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
+              : 'hover:bg-cyan-500/15 hover:text-cyan-400'
+        }`}
+        onClick={() => {
+          setIsPenActive(!isPenActive);
+          setRedrawTrigger((prev) => prev + 1);
+          onClose();
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <PenTool size={13} className={isPenActive ? 'text-red-500' : ''} />
+          <span>{isPenActive ? 'Exit Pen Tool (Esc)' : 'Draw with Pen'}</span>
+        </div>
+      </div>
+
+      {/* Undo Last Pen Stroke */}
+      {hasDrawingStrokes && (
+        <div
+          className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${
+            theme === 'hc-light'
+              ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
+              : 'hover:bg-cyan-500/15 hover:text-cyan-400'
+          }`}
+          onClick={() => {
+            if (drawingId) undoLastPenStroke(drawingId);
+            setRedrawTrigger((prev) => prev + 1);
+            onClose();
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            <Undo2 size={13} />
+            <span>Undo Pen Stroke</span>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Pen Markings */}
+      {hasDrawingStrokes && (
+        <div
+          className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${
+            theme === 'hc-light'
+              ? 'hover:bg-red-50 text-red-600'
+              : 'hover:bg-red-500/15 text-red-400'
+          }`}
+          onClick={() => {
+            if (drawingId) clearPenStrokes(drawingId);
+            setRedrawTrigger((prev) => prev + 1);
+            onClose();
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            <Trash2 size={13} />
+            <span>Clear Pen Markings</span>
+          </div>
+        </div>
+      )}
+
+      <div className={`border-b my-1 ${theme === 'hc-light' ? 'border-zinc-200' : 'border-white/10'}`} />
+
+      {/* 2. Direct Annotation Pin Creation -> Opens Modal */}
       <div
         className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${theme === 'hc-light'
           ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
@@ -81,7 +162,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           }`}
         onClick={() => {
           if (!drawingId) return;
-          onOpenAnnotationModal('info');
+          onOpenAnnotationModal();
         }}
       >
         <div className="flex items-center gap-1.5">
@@ -90,7 +171,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         </div>
       </div>
 
-      {/* 2. Show/Hide Labels */}
+      {/* 3. Show/Hide Labels */}
       <div
         className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${theme === 'hc-light'
           ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
@@ -107,7 +188,57 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         </div>
       </div>
 
-      {/* 3. Undo Delete */}
+      {/* Global Undo */}
+      <div
+        className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium rounded-none ${
+          !canUndo
+            ? 'opacity-40 pointer-events-none text-zinc-500'
+            : `cursor-pointer transition-colors ${
+                theme === 'hc-light'
+                  ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
+                  : 'hover:bg-cyan-500/15 hover:text-cyan-400'
+              }`
+        }`}
+        onClick={() => {
+          if (useHistoryStore.getState().past.length > 0) {
+            performUndo();
+          } else if (drawingId && hasDrawingStrokes) {
+            undoLastPenStroke(drawingId);
+          }
+          setRedrawTrigger((prev) => prev + 1);
+          onClose();
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <Undo2 size={13} />
+          <span>Undo</span>
+        </div>
+        <span className="text-[10px] text-zinc-400 font-mono ml-2">Ctrl+Z</span>
+      </div>
+
+      {/* Global Redo */}
+      {canRedo && (
+        <div
+          className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors rounded-none ${
+            theme === 'hc-light'
+              ? 'hover:bg-cyan-600/10 hover:text-cyan-700'
+              : 'hover:bg-cyan-500/15 hover:text-cyan-400'
+          }`}
+          onClick={() => {
+            performRedo();
+            setRedrawTrigger((prev) => prev + 1);
+            onClose();
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            <Redo2 size={13} />
+            <span>Redo</span>
+          </div>
+          <span className="text-[10px] text-zinc-400 font-mono ml-2">Ctrl+Y</span>
+        </div>
+      )}
+
+      {/* 4. Undo Delete */}
       <div
         className={`flex items-center justify-between px-2.5 py-1 text-xs font-medium rounded-none ${useWorkspaceStore.getState().deletedViolationsStack.length === 0
           ? 'opacity-40 pointer-events-none text-zinc-500'

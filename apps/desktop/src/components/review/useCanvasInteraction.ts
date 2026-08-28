@@ -114,6 +114,15 @@ export function useCanvasInteraction({
   // const hiddenViolationIds = useWorkspaceStore(s => s.hiddenViolationIds);
   const setViolations = useWorkspaceStore((s) => s.setViolations);
 
+  // Freehand Pen Tool State
+  const isPenActive = useWorkspaceStore((s) => s.isPenActive);
+  const setIsPenActive = useWorkspaceStore((s) => s.setIsPenActive);
+  const penColor = useWorkspaceStore((s) => s.penColor);
+  const penWidth = useWorkspaceStore((s) => s.penWidth);
+  const addPenStroke = useWorkspaceStore((s) => s.addPenStroke);
+  const isDrawingStrokeRef = useRef(false);
+  const currentStrokeRef = useRef<{ points: [number, number][]; color: string; width: number } | null>(null);
+
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
   const dragDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,6 +150,20 @@ export function useCanvasInteraction({
   const [dragAnnotationStartPos, setDragAnnotationStartPos] = useState<[number, number] | null>(null);
   const [dragAnnotationMouseStart, setDragAnnotationMouseStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
   const [hasDragAnnotationMoved, setHasDragAnnotationMoved] = useState(false);
+
+  // Escape key cancels pen mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPenActive) {
+        setIsPenActive(false);
+        isDrawingStrokeRef.current = false;
+        currentStrokeRef.current = null;
+        setRedrawTrigger((prev) => prev + 1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPenActive, setIsPenActive, setRedrawTrigger]);
 
   // Custom Context Menu State
   const [contextMenu, setContextMenu] = useState<{
@@ -414,6 +437,10 @@ export function useCanvasInteraction({
         e.preventDefault();
         selectViolation(null);
         useWorkspaceStore.getState().selectAnnotation(null);
+        if (useWorkspaceStore.getState().isPenActive) {
+          useWorkspaceStore.getState().setIsPenActive(false);
+          setRedrawTrigger((prev) => prev + 1);
+        }
       } else if (key === 'f') {
         e.preventDefault();
         if (selectedViolation && selectedViolation.coordinates && drawing) {
@@ -505,6 +532,23 @@ export function useCanvasInteraction({
     }
     if (e.button === 0) {
       const rect = canvasRef.current?.getBoundingClientRect();
+      const currentWorkspaceState = useWorkspaceStore.getState();
+
+      // Freehand Pen drawing mode
+      if (currentWorkspaceState.isPenActive && rect && drawing?.id) {
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const world = screenToWorld(mx, my, norm, currentViewport);
+        isDrawingStrokeRef.current = true;
+        currentStrokeRef.current = {
+          points: [[world.x, world.y]],
+          color: currentWorkspaceState.penColor || '#ff2850',
+          width: currentWorkspaceState.penWidth || 2.5,
+        };
+        setRedrawTrigger((prev) => prev + 1);
+        e.preventDefault();
+        return;
+      }
 
       // Annotation placement mode: a left-click drops a pin at the clicked
       // point, attached to THIS canvas's drawing. Either pane can be pinned —
@@ -538,8 +582,7 @@ export function useCanvasInteraction({
           showViolations,
           viewport: currentViewport,
           // Deliberately WITHOUT `markings`: this path starts a marker drag, and a marking's
-          // coordinate belongs to the entity it addresses, not to wherever someone dropped it.
-          markerPositions: markerPositionsRef.current,
+          // card is a hover readout rather than an interactive anchor.
         });
 
         if (clickedViolationId) {
@@ -558,12 +601,6 @@ export function useCanvasInteraction({
           return;
         }
 
-        // Annotation pin hit-test. Positions are stored under "ann:<id>" keys by
-        // renderAnnotationPins, in the same canvas-pixel space. Arms a drag
-        // candidate rather than selecting immediately — mirrors the marker
-        // drag flow so a plain click still selects (handled in mouseup when
-        // the 3px move threshold isn't crossed) while a press-and-drag moves
-        // the pin.
         // Annotation pin hit-test (always active on canvas regardless of side panel visibility)
         const positions = markerPositionsRef.current;
         const hitRadius = 10;
@@ -590,8 +627,6 @@ export function useCanvasInteraction({
         if (e.altKey && handleId.startsWith('node:') && current && drawing?.id) {
           const removed = removePointAt(current, Number(handleId.slice('node:'.length)));
           updateCustomRegion(drawing.id, regionKey, removed);
-          // Recorded immediately rather than through the gesture ref: this is a complete
-          // edit on mousedown with no drag to follow, so there is no mouseup to commit it.
           recordHistory({
             kind: 'zone/update',
             label: 'Remove zone node',
@@ -609,9 +644,6 @@ export function useCanvasInteraction({
         // rectangle this is also the moment the zone stops being one.
         if (handleId.startsWith('edge:') && current && drawing?.id) {
           const edgeIndex = Number(handleId.slice('edge:'.length));
-          // Snapshot BEFORE the insert, and let mouseup commit it — so inserting a node and
-          // dragging it into place is a single undo step, matching the single gesture the
-          // user performed.
           zoneGestureRef.current = { drawingId: drawing.id, zoneKey: regionKey, before: current };
           updateCustomRegion(drawing.id, regionKey, insertPointOnEdge(current, edgeIndex));
           setActiveDragHandle({ regionKey, handleId: `node:${edgeIndex + 1}` });
@@ -666,7 +698,7 @@ export function useCanvasInteraction({
       // The press still counts as a click if it never travels, because `isStampClick` decides
       // that from the distance rather than from anything set here.
     }
-  }, [isSpacePressed, violations, drawing, oldDrawing, showViolations, markerPositionsRef, isRoiEditModeEnabled, hoveredHandleInfo, customRegions, canvasRef, isPlacingAnnotation, createAnnotationAt, showAnnotations]);
+  }, [isSpacePressed, violations, drawing, oldDrawing, showViolations, markerPositionsRef, isRoiEditModeEnabled, hoveredHandleInfo, customRegions, canvasRef, isPlacingAnnotation, createAnnotationAt, showAnnotations, isPenActive, penColor, penWidth]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -675,6 +707,19 @@ export function useCanvasInteraction({
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const currentViewport = useReviewStore.getState().viewport;
+
+    // ── Freehand Pen drawing ──────────────────────────────────────────────────
+    if (isDrawingStrokeRef.current && currentStrokeRef.current && drawing?.id) {
+      const world = screenToWorld(mx, my, norm, currentViewport);
+      const pts = currentStrokeRef.current.points;
+      const last = pts[pts.length - 1];
+      const minDistance = 0.2 / (currentViewport.scale * (norm.normScale || 1));
+      if (!last || Math.hypot(world.x - last[0], world.y - last[1]) >= minDistance) {
+        pts.push([world.x, world.y]);
+        setRedrawTrigger((prev) => prev + 1);
+      }
+      return;
+    }
 
     // ── Marker drag ────────────────────────────────────────────────────────────
     if (dragMarkerId && dragMarkerStartPos) {
@@ -933,6 +978,23 @@ export function useCanvasInteraction({
 
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    // ── Freehand Pen Stroke commit ────────────────────────────────────────────
+    if (isDrawingStrokeRef.current && currentStrokeRef.current && drawing?.id) {
+      const strokeData = currentStrokeRef.current;
+      if (strokeData.points.length >= 1) {
+        addPenStroke({
+          drawingId: String(drawing.id),
+          points: strokeData.points,
+          color: strokeData.color,
+          width: strokeData.width,
+        });
+      }
+      isDrawingStrokeRef.current = false;
+      currentStrokeRef.current = null;
+      setRedrawTrigger((prev) => prev + 1);
+      return;
+    }
+
     // Armed HERE, before the drag state below is cleared, and read by the `click` that follows.
     //
     // Grabbing something arms it whatever the distance: a marker press that never moves is still
@@ -1052,9 +1114,23 @@ export function useCanvasInteraction({
       setDragAnnotationId(null);
       setDragAnnotationStartPos(null);
     }
-  }, [dragMarkerId, hasDragMarkerMoved, dragMarkerOriginalCoords, selectedViolation, selectViolation, dragAnnotationId, hasDragAnnotationMoved, selectedAnnotationId, commitZoneGesture]);
+  }, [dragMarkerId, hasDragMarkerMoved, dragMarkerOriginalCoords, selectedViolation, selectViolation, dragAnnotationId, hasDragAnnotationMoved, selectedAnnotationId, commitZoneGesture, drawing?.id, addPenStroke, setRedrawTrigger]);
 
   const handleMouseLeave = useCallback(() => {
+    if (isDrawingStrokeRef.current && currentStrokeRef.current && drawing?.id) {
+      const strokeData = currentStrokeRef.current;
+      if (strokeData.points.length >= 1) {
+        addPenStroke({
+          drawingId: String(drawing.id),
+          points: strokeData.points,
+          color: strokeData.color,
+          width: strokeData.width,
+        });
+      }
+      isDrawingStrokeRef.current = false;
+      currentStrokeRef.current = null;
+      setRedrawTrigger((prev) => prev + 1);
+    }
     setIsDragging(false);
     if (dragDebounceTimerRef.current) clearTimeout(dragDebounceTimerRef.current);
     dragDebounceTimerRef.current = setTimeout(() => {
@@ -1141,6 +1217,7 @@ export function useCanvasInteraction({
   }, [canvasRef, setViewport, clampViewport]);
 
   const getCursorStyle = () => {
+    if (isPenActive) return 'crosshair';
     if (isPlacingAnnotation) return 'crosshair';
     if (isSpacePressed) return isDragging ? 'grabbing' : 'grab';
     if (activeDragHandle) {
@@ -1187,6 +1264,8 @@ export function useCanvasInteraction({
       // Prefer the one being dragged: once a drag starts the pointer can travel off the
       // handle, and dropping the highlight mid-drag makes it look like the grab was lost.
       hoveredHandleId: activeDragHandle?.handleId ?? hoveredHandleInfo?.handleId ?? null,
+      currentStrokeRef,
+      isPenActive,
     }
   };
 }

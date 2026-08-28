@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Edit2, Check, Trash2, Save } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { AnnotationItem, AnnotationSeverity, SEVERITY_PEN_MAP } from '../../stores/workspace/types';
+import { AnnotationItem } from '../../stores/workspace/types';
 
 import { boundsMatch, parseBounds } from '../../utils/coordinateTransform';
 
@@ -17,22 +17,6 @@ interface AnnotationCardPopoverProps {
   setRedrawTrigger: React.Dispatch<React.SetStateAction<number>>;
 }
 
-const SEVERITY_BADGES: Record<AnnotationSeverity, { label: string; bg: string; text: string; border: string }> = {
-  info: { label: 'INFO', bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500' },
-  low: { label: 'LOW', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500' },
-  medium: { label: 'MED', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500' },
-  high: { label: 'HIGH', bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500' },
-  critical: { label: 'CRIT', bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500' },
-};
-
-const SEVERITY_COLORS: Record<AnnotationSeverity, string> = {
-  info: '#06b6d4',     // cyan-500
-  low: '#3b82f6',      // blue-500
-  medium: '#eab308',   // yellow-500
-  high: '#f97316',     // orange-500
-  critical: '#ef4444', // red-500
-};
-
 export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
   annotation,
   badgeNumber,
@@ -46,7 +30,6 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(annotation.content);
-  const [editSeverity, setEditSeverity] = useState<AnnotationSeverity>(annotation.severity);
 
   const updateAnnotationDetails = useWorkspaceStore((s) => s.updateAnnotationDetails);
   const updateAnnotationStatus = useWorkspaceStore((s) => s.updateAnnotationStatus);
@@ -60,15 +43,12 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
     ? new Date(annotation.created_at).toLocaleDateString()
     : new Date().toLocaleDateString();
 
-  const severityColor = SEVERITY_COLORS[annotation.severity] || '#06b6d4';
+  const annotationColor = annotation.status === 'resolved' ? '#10b981' : '#ef4444';
 
   const handleSaveEdit = async () => {
     if (!editContent.trim()) return;
-    const penType = SEVERITY_PEN_MAP[editSeverity] || 'checker_blue';
     await updateAnnotationDetails(annotation.id, {
       content: editContent.trim(),
-      severity: editSeverity,
-      pen_type: penType,
     });
     setIsEditing(false);
     setRedrawTrigger((prev) => prev + 1);
@@ -138,7 +118,7 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
       >
         <path
           d={`M ${cardAttachX} ${kneeY} L ${kneeX} ${kneeY} L ${tipX} ${tipY}`}
-          stroke={severityColor}
+          stroke={annotationColor}
           strokeWidth="1.5"
           fill="none"
           strokeLinecap="round"
@@ -146,7 +126,7 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
         />
         <polygon
           points={`${tipX},${tipY} ${arrowP1X},${arrowP1Y} ${arrowP2X},${arrowP2Y}`}
-          fill={severityColor}
+          fill={annotationColor}
         />
       </svg>
 
@@ -160,7 +140,7 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
         style={{
           left: popoverX,
           top: popoverY,
-          border: `1px solid ${severityColor}`,
+          border: `1px solid ${annotationColor}`,
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
@@ -169,7 +149,7 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
         <div className="flex items-center justify-between pb-1.5 border-b border-white/10 text-xs font-mono">
           <div className="flex items-center gap-1.5 truncate">
             {badgeNumber && (
-              <span className="text-[10px] font-bold font-mono px-1 py-0.2 rounded-none bg-blue-500/20 text-blue-400 border border-blue-500/40 shrink-0">
+              <span className="text-[11px] font-bold font-mono px-1.5 py-0.2 rounded-none bg-red-500/20 text-red-400 border border-red-500/40 shrink-0">
                 {badgeNumber}
               </span>
             )}
@@ -201,30 +181,6 @@ export const AnnotationCardPopover: React.FC<AnnotationCardPopoverProps> = ({
         {/* Message Content Body */}
         {isEditing ? (
           <div className="py-2">
-            {/* Severity selector grid for editing */}
-            <div className="grid grid-cols-5 gap-1 mb-2">
-              {(['info', 'low', 'medium', 'high', 'critical'] as AnnotationSeverity[]).map((sev) => {
-                const info = SEVERITY_BADGES[sev];
-                const isSelected = editSeverity === sev;
-                return (
-                  <button
-                    key={sev}
-                    type="button"
-                    className={`py-0.5 text-[9px] font-bold rounded-none border transition-colors cursor-pointer ${
-                      isSelected
-                        ? `${info.bg} ${info.text} ${info.border} ring-1 ring-cyan-400`
-                        : theme === 'hc-light'
-                        ? 'bg-zinc-100 text-zinc-600 border-zinc-200'
-                        : 'bg-zinc-900 text-zinc-400 border-white/10'
-                    }`}
-                    onClick={() => setEditSeverity(sev)}
-                  >
-                    {info.label}
-                  </button>
-                );
-              })}
-            </div>
-
             <textarea
               autoFocus
               className={`w-full text-xs p-1.5 rounded-none border outline-none resize-none mb-2 ${

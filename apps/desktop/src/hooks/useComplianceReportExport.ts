@@ -21,6 +21,7 @@ import { markerTypeOf } from "../components/review/markerStyles";
 import { reportFileNames, splitReportDocuments } from "../components/review/reportDocuments";
 import { useIsManualCheckRoom } from "./useManualCheckRoom";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { getAnnotationBadgeMap } from "../stores/workspace/types";
 
 /**
  * The compliance report: the checked drawing, then what was checked on it.
@@ -206,14 +207,15 @@ export function useComplianceReportExport() {
 
     // Pins are drawn on page 1 too, so they belong in the table that explains page 1.
     const pins = annotations.filter((a) => !newDrawing?.id || a.drawing_id === newDrawing.id);
+    const badgeMap = getAnnotationBadgeMap(annotations);
     if (pins.length) {
       sections.push({
-        label: "Annotations & Notes",
+        label: "Annotations",
         rows: pins.map<ChecklistRow>((a) => ({
           status: "ADDED",
           reference: "—",
           revision: a.content || "Annotation pin",
-          note: a.severity ? String(a.severity).toUpperCase() : "",
+          note: badgeMap[a.id] || "X",
         })),
       });
     }

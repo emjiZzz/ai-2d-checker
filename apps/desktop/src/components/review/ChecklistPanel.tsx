@@ -291,12 +291,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             />
           </div>
           <span style={{
-            display: "inline-flex", alignItems: "center", gap: "5px",
+            display: "inline-flex", alignItems: "center",
             fontSize: "0.62rem", fontWeight: 700, padding: "2px 6px", borderRadius: "2px",
             color: cellBadgeColor, background: cellBadgeBg,
             textTransform: "uppercase", letterSpacing: "0.04em"
           }}>
-            <span style={{ width: "4px", height: "4px", borderRadius: "1px", background: cellBadgeColor, flexShrink: 0 }} />
             {statusText}
           </span>
         </div>

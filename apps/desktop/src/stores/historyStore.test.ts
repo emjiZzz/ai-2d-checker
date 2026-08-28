@@ -412,4 +412,25 @@ describe("performUndo / performRedo round trip", () => {
     expect(performRedo()).toBeNull();
     expect(useReviewStore.getState().getRegionsFor(DRAWING).title).toMatchObject(BOX_B);
   });
+
+  it("walks a pen stroke addition back and forward through performUndo/performRedo", () => {
+    useWorkspaceStore.setState({ penStrokes: [] });
+    useHistoryStore.getState().clear();
+
+    useWorkspaceStore.getState().addPenStroke({
+      drawingId: DRAWING,
+      points: [[10, 20], [30, 40]],
+      color: "#ff2850",
+      width: 2.5,
+    });
+
+    expect(useWorkspaceStore.getState().penStrokes).toHaveLength(1);
+
+    performUndo();
+    expect(useWorkspaceStore.getState().penStrokes).toHaveLength(0);
+
+    performRedo();
+    expect(useWorkspaceStore.getState().penStrokes).toHaveLength(1);
+    expect(useWorkspaceStore.getState().penStrokes[0].color).toBe("#ff2850");
+  });
 });

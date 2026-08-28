@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 import { getNormalization, parseBounds } from '../../utils/coordinateTransform';
-import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor, renderViewOrigins, renderSelectionHighlight } from './renderEntities';
+import { renderEntities, renderViolationReticles, renderAnnotationPins, renderZoneEditor, renderViewOrigins, renderSelectionHighlight, renderPenStrokes } from './renderEntities';
 import { entitiesFromLayers, viewDatumsFromTransform } from './viewDatums';
 import { DrawingCanvasRef } from './DrawingCanvas';
 import { EntityHitIndex } from './entityPicking';
@@ -40,6 +40,7 @@ interface CanvasRendererProps {
   isDraggingRef?: React.MutableRefObject<boolean>;
   /** Handle under the cursor (or being dragged) in zone-edit mode, for highlighting. */
   hoveredHandleId?: string | null;
+  currentStrokeRef?: React.MutableRefObject<{ points: [number, number][]; color: string; width: number } | null>;
 }
 
 // Memoized: with a stable `canvasInteractionHandlers` object (see
@@ -61,7 +62,8 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   cursorStyle,
   sharedCanvasRef,
   isDraggingRef,
-  hoveredHandleId
+  hoveredHandleId,
+  currentStrokeRef,
 }, ref) => {
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   // If DrawingCanvas passes its own ref (used by the interaction hook), use it;
@@ -100,6 +102,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
   const annotations = useWorkspaceStore((s) => s.annotations);
   const selectedAnnotationId = useWorkspaceStore((s) => s.selectedAnnotationId);
+  const penStrokes = useWorkspaceStore((s) => s.penStrokes);
   const showAnnotations = useReviewStore((s) => s.showAnnotations);
   const annotationBadgeMap = useMemo(() => getAnnotationBadgeMap(annotations), [annotations]);
   // Zone debug overlay. Read from the store rather than threaded as props: this
@@ -365,6 +368,14 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
       });
     }
 
+    // Freehand pen strokes drawn on this sheet
+    renderPenStrokes({
+      frame: frameData,
+      strokes: Array.isArray(penStrokes) ? penStrokes : [],
+      currentStroke: currentStrokeRef?.current,
+      drawingId: drawing?.id ? String(drawing.id) : undefined,
+    });
+
     // Zone debug boxes, drawn last so they sit above geometry and pins. Indexed by
     // this pane's own drawing id for the same reason annotation pins are filtered by
     // it above: zone boxes are in the owning drawing's CAD space, so showing the
@@ -392,7 +403,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
     ctx.restore();
 
     return stats;
-  }, [layers, width, height, activeLayers, showViolations, isManualCheckMode, manualMarkings, hoveredEntityId, selectedEntities, pendingPairRef, hoverLocator, selectionLocator, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, entityHitIndex, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId]);
+  }, [layers, width, height, activeLayers, showViolations, isManualCheckMode, manualMarkings, hoveredEntityId, selectedEntities, pendingPairRef, hoverLocator, selectionLocator, showMarkerLabels, violations, hiddenViolationIds, selectedViolation, drawing, isNeonCAD, theme, oldDrawing, hoveredMarkerId, hoveredAnnotationId, visibleMarkerTypes, markerPositionsRef, entityHitIndex, showAnnotations, annotations, selectedAnnotationId, annotationBadgeMap, showViewOrigins, zoneRegions, isRoiEditModeEnabled, allCustomRegions, allPinnedZoneKeys, selectedComparisonRegion, hoveredHandleId, penStrokes, currentStrokeRef]);
 
 
   /**

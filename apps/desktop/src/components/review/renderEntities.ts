@@ -1,5 +1,6 @@
 import { flipWorldY, getNormalization, worldToCanvas } from '../../utils/coordinateTransform';
 import type { ViewDatum } from './viewDatums';
+import type { PenStroke } from '../../stores/workspace/types';
 import {
   VIEWS_EXCLUDED_ZONES,
   ZONE_KEYS,
@@ -1368,14 +1369,7 @@ export interface RenderAnnotationPinsParams {
   badgeMap?: Record<string, string>;
 }
 
-const PEN_COLORS: Record<string, string> = {
-  alert_red: '#ff4d4f',
-  warning_orange: '#ffa940',
-  amber_gold: '#ffec3d',
-  checker_blue: '#00ffff',
-  resolved_green: '#39ff14',
-  resolved_pink: '#ff7ab6',
-};
+
 
 // Reviewer annotation pins.
 // Screen positions are stored under "ann:<id>" keys so annotation hit-testing
@@ -1390,7 +1384,7 @@ export const renderAnnotationPins = ({
   annotations,
   selectedAnnotationId,
   hoveredAnnotationId,
-  badgeMap: _badgeMap,
+  badgeMap,
 }: RenderAnnotationPinsParams) => {
   const { ctx, isExport, scale, transX, transY, norm, resolutionMultiplier, markerPositionsRef } = frame;
 
@@ -1414,17 +1408,14 @@ export const renderAnnotationPins = ({
     const isHovered = hoveredAnnotationId === ann.id;
     const isResolved = ann.status === 'resolved';
 
-    // `PEN_COLORS` is a dark-canvas palette — `checker_blue` is `#00ffff`, which on the export's
-    // white page is very nearly invisible. Annotation pins are NOT drawing entities, so they keep
-    // distinct colours rather than going through `getPrintColor` (which now returns uniform black
-    // for the drawing itself). This inline map converts each neon canvas colour to a readable
-    // dark variant for white paper.
-    const rawColor = isResolved ? '#39ff14' : (PEN_COLORS[ann.pen_type] || '#00ffff');
+    // Pin glyph — 'X₁', 'X₂' (or '✓₁' for resolved) in red color,
+    // no disc and no outline stroke — a plain colored glyph.
+    const badge = badgeMap?.[ann.id] || 'X';
+    const sub = badge.replace(/^X/i, '');
+    const glyphChar = isResolved ? `\u2713${sub}` : badge;
+    const rawColor = isResolved ? '#39ff14' : '#ff2850';
     const color = isExport
-      ? ({
-        '#ff4d4f': '#b91c1c', '#ffa940': '#c2410c', '#ffec3d': '#a16207',
-        '#00ffff': '#0284c7', '#39ff14': '#047857', '#ff7ab6': '#be185d',
-      }[rawColor] ?? '#1a1a1a')
+      ? (isResolved ? '#047857' : '#b91c1c')
       : rawColor;
 
     if (!isExport) markerPositionsRef.current[`ann:${ann.id}`] = { x: screenPos.x, y: screenPos.y };
@@ -1433,7 +1424,7 @@ export const renderAnnotationPins = ({
     const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
     ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
 
-    const r = (isSelected || isHovered ? 9 : 7) * resolutionMultiplier;
+    const r = (isSelected || isHovered ? 10 : 8) * resolutionMultiplier;
 
     // Outer aura ring for hover/selection
     if (isSelected || isHovered) {
@@ -1441,15 +1432,12 @@ export const renderAnnotationPins = ({
       ctx.strokeStyle = isSelected ? '#ffffff' : color;
       ctx.lineWidth = 1.5 * resolutionMultiplier;
       ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
-      ctx.arc(screenPos.x, screenPos.y, r + 4 * resolutionMultiplier, 0, 2 * Math.PI);
+      ctx.arc(screenPos.x, screenPos.y, r + 5 * resolutionMultiplier, 0, 2 * Math.PI);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // Pin glyph — just the '!' (or a check for resolved) in the severity color,
-    // no disc and no outline stroke either — a plain colored glyph.
-    const glyphChar = isResolved ? '\u2713' : '!';
-    const glyphSize = Math.round(r * 3.6);
+    const glyphSize = Math.round(r * 3.2);
     ctx.font = `900 ${glyphSize}px "Yu Gothic", "MS Gothic", Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1955,6 +1943,76 @@ export const renderSelectionHighlight = ({
     // the cross-sheet match, so the one box that persists — the selection — was the one with no
     // label, and comparing a pair meant reading the value off the geometry underneath it.
     drawValueChip({ ctx, label: displayValueOf(b.entity), x: x0, boxTop: y0, boxBottom: y0 + ph });
+  }
+
+  ctx.restore();
+};
+
+export interface RenderPenStrokesParams {
+  frame: RenderFrame;
+  strokes: PenStroke[];
+  currentStroke?: { points: [number, number][]; color: string; width: number } | null;
+  drawingId?: string;
+}
+
+export const renderPenStrokes = ({
+  frame,
+  strokes,
+  currentStroke,
+  drawingId,
+}: RenderPenStrokesParams): void => {
+  const { ctx, scale, resolutionMultiplier, isExport, norm } = frame;
+  const list = drawingId ? strokes.filter((s) => s.drawingId === String(drawingId)) : strokes;
+
+  if (!list.length && (!currentStroke || !currentStroke.points || currentStroke.points.length === 0)) {
+    return;
+  }
+
+  const allStrokes: Array<{
+    id: string;
+    points: [number, number][];
+    color: string;
+    width: number;
+  }> = currentStroke && currentStroke.points && currentStroke.points.length > 0
+    ? [
+        ...list,
+        {
+          id: '__current__',
+          points: currentStroke.points,
+          color: currentStroke.color,
+          width: currentStroke.width,
+        },
+      ]
+    : list;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for (const stroke of allStrokes) {
+    if (!stroke.points || stroke.points.length === 0) continue;
+    const strokeColor = isExport ? getPrintColor(stroke.color) : stroke.color;
+    const lineWidth = ((stroke.width || 2.5) / scale) * resolutionMultiplier;
+
+    if (stroke.points.length === 1) {
+      // Single point / dot
+      const [firstX, firstY] = stroke.points[0];
+      ctx.beginPath();
+      ctx.fillStyle = strokeColor;
+      ctx.arc(firstX, flipWorldY(firstY, norm), lineWidth / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      const [firstX, firstY] = stroke.points[0];
+      ctx.moveTo(firstX, flipWorldY(firstY, norm));
+      for (let i = 1; i < stroke.points.length; i++) {
+        const [px, py] = stroke.points[i];
+        ctx.lineTo(px, flipWorldY(py, norm));
+      }
+      ctx.stroke();
+    }
   }
 
   ctx.restore();

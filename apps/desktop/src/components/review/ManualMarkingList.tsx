@@ -12,6 +12,7 @@ import { CATEGORY_KEYS, categoryLabel } from './manualCheckCategories';
 import { ExportStatusNote } from './ExportStatusNote';
 import { ExportOverlay } from './ExportOverlay';
 import { StaleExtractionBadge } from './StaleExtractionBadge';
+import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 
 /**
  * The live marking list — the whole left panel in a manual-check room.
@@ -38,6 +39,7 @@ export const ManualMarkingList: React.FC = () => {
 
   const markings = useWorkspaceStore((s) => s.markings);
   const annotations = useWorkspaceStore((s) => s.annotations);
+  const annotationBadgeMap = useMemo(() => getAnnotationBadgeMap(annotations), [annotations]);
   // Subscribed, not read through `getState()` like `retryOpen` does: the stale badge below has
   // to re-render when the pair changes, and `extraction_is_stale` arrives with the drawing.
   const oldDrawing = useWorkspaceStore((s) => s.oldDrawing);
@@ -303,9 +305,9 @@ export const ManualMarkingList: React.FC = () => {
         {annotations.length > 0 && (
           <ChecklistSection
             key="custom_annotations"
-            label="Annotations & Notes"
+            label="Annotations"
             statusLabel={String(annotations.length)}
-            statusColor={theme === 'hc-light' ? '#0284c7' : '#00e5ff'}
+            statusColor={theme === 'hc-light' ? '#b91c1c' : '#ef4444'}
             statusIsMatched={false}
             expanded={expanded['custom_annotations'] ?? true}
             onToggle={() =>
@@ -315,19 +317,13 @@ export const ManualMarkingList: React.FC = () => {
               }))
             }
           >
-            {annotations.map((ann) => (
-              <FindingCard
-                key={ann.id}
-                statusLabel={ann.severity.toUpperCase()}
-                statusColor={
-                  ann.severity === 'critical'
-                    ? (theme === 'hc-light' ? '#b91c1c' : '#f43f5e')
-                    : ann.severity === 'high'
-                    ? (theme === 'hc-light' ? '#c2410c' : '#f97316')
-                    : ann.severity === 'medium'
-                    ? (theme === 'hc-light' ? '#b45309' : '#eab308')
-                    : (theme === 'hc-light' ? '#0284c7' : '#00e5ff')
-                }
+            {annotations.map((ann) => {
+              const badgeLabel = annotationBadgeMap[ann.id] || 'X';
+              return (
+                <FindingCard
+                  key={ann.id}
+                  statusLabel={badgeLabel}
+                  statusColor={theme === 'hc-light' ? '#b91c1c' : '#ef4444'}
                 actions={
                   <button
                     type="button"
@@ -338,22 +334,22 @@ export const ManualMarkingList: React.FC = () => {
                     }}
                     style={{
                       background: 'transparent',
-                      border: '1px solid transparent',
-                      borderRadius: '4px',
-                      color: theme === 'hc-light' ? '#b91c1c' : '#f43f5e',
+                      border: 'none',
+                      color: 'var(--text-muted)',
                       cursor: 'pointer',
-                      fontSize: '0.75rem',
+                      fontSize: '0.68rem',
                       fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 6px',
-                      position: 'relative',
-                      zIndex: 10,
-                      pointerEvents: 'auto',
+                      gap: '3px',
+                      padding: '1px 4px',
+                      borderRadius: '3px',
+                      transition: 'color 0.15s ease',
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={12} />
                     <span>Remove</span>
                   </button>
                 }
@@ -367,8 +363,9 @@ export const ManualMarkingList: React.FC = () => {
                   </div>
                 )}
               </FindingCard>
-            ))}
-          </ChecklistSection>
+            );
+          })}
+        </ChecklistSection>
         )}
 
         {CATEGORY_KEYS.map((key) => {

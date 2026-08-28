@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { RegionFractions } from '../utils/zoneFractions';
-import type { ViolationItem } from './workspace/types';
+import type { ViolationItem, PenStroke } from './workspace/types';
 
 /**
  * historyStore.ts
@@ -106,6 +106,20 @@ export type HistoryEntry =
       groupId?: string;
       violationId: string;
       violation: ViolationItem;
+    }
+  | {
+      kind: 'pen/stroke';
+      label: string;
+      groupId?: string;
+      drawingId: string;
+      stroke: PenStroke;
+    }
+  | {
+      kind: 'pen/clear';
+      label: string;
+      groupId?: string;
+      drawingId: string;
+      strokes: PenStroke[];
     };
 
 /**

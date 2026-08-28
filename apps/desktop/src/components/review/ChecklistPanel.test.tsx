@@ -219,7 +219,7 @@ describe('ChecklistPanel finding-card layout structure', () => {
     // Field name deliberately not a taxonomy label ("Scale", "Title", ...) — those also render as
     // feature-group headers, and getByText would find two elements.
     render(<ChecklistPanel aiChecklistResults={{ title_block: tableResult([{ field: 'WidgetRef', original: 'A', kmti: 'B' }]) }} />);
-    return screen.getByText('WidgetRef').closest('div')!.parentElement!.parentElement as HTMLElement;
+    return (screen.getByText('WidgetRef').closest('.cmp-grid-diff')?.parentElement || screen.getByText('WidgetRef').closest('div')!.parentElement!.parentElement) as HTMLElement;
   }
 
   test('verdict controls are a child of the card, not of the Dismiss/Correct row', () => {

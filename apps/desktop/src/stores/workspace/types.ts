@@ -74,6 +74,26 @@ export const SEVERITY_PEN_MAP: Record<AnnotationSeverity, AnnotationPenType> = {
   critical: "alert_red",
 };
 
+const SUBSCRIPT_DIGITS: Record<string, string> = {
+  '0': '\u2080',
+  '1': '\u2081',
+  '2': '\u2082',
+  '3': '\u2083',
+  '4': '\u2084',
+  '5': '\u2085',
+  '6': '\u2086',
+  '7': '\u2087',
+  '8': '\u2088',
+  '9': '\u2089',
+};
+
+export function toSubscriptNumber(num: number): string {
+  return String(num)
+    .split('')
+    .map((ch) => SUBSCRIPT_DIGITS[ch] || ch)
+    .join('');
+}
+
 export function getAnnotationBadgeMap(annotations?: AnnotationItem[]): Record<string, string> {
   const list = Array.isArray(annotations) ? annotations : [];
   const sorted = [...list].sort(
@@ -82,7 +102,7 @@ export function getAnnotationBadgeMap(annotations?: AnnotationItem[]): Record<st
   const map: Record<string, string> = {};
   sorted.forEach((ann, idx) => {
     if (ann?.id) {
-      map[ann.id] = `A${String(idx + 1).padStart(3, '0')}`;
+      map[ann.id] = `X${toSubscriptNumber(idx + 1)}`;
     }
   });
   return map;
@@ -253,12 +273,34 @@ export interface UndoSlice {
   popAndRestoreViolation: () => void;
 }
 
+export interface PenStroke {
+  id: string;
+  drawingId: string;
+  points: [number, number][]; // in CAD world coordinates
+  color: string;             // hex color e.g. '#ff2850'
+  width: number;             // stroke thickness
+  createdAt: string;
+}
+
 export interface AnnotationsSlice {
   annotations: AnnotationItem[];
   selectedAnnotationId: string | null;
   isPlacingAnnotation: boolean;
   pendingAnnotationText: string;
   pendingAnnotationSeverity: AnnotationSeverity;
+
+  // Freehand Pen Tool
+  penStrokes: PenStroke[];
+  isPenActive: boolean;
+  penColor: string;
+  penWidth: number;
+  addPenStroke: (stroke: Omit<PenStroke, 'id' | 'createdAt'>) => void;
+  removePenStroke: (id: string) => void;
+  undoLastPenStroke: (drawingId?: string) => void;
+  clearPenStrokes: (drawingId?: string) => void;
+  setIsPenActive: (active: boolean) => void;
+  setPenColor: (color: string) => void;
+  setPenWidth: (width: number) => void;
 
   fetchAnnotations: (drawingId: string) => Promise<void>;
   createAnnotationAt: (

@@ -231,6 +231,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   const aiScanProgress = useWorkspaceStore(s => s.aiScanProgress);
   const isPhysicalComparisonEnabled = useReviewStore(s => s.isPhysicalComparisonEnabled);
   const isRightPanelVisible = complianceScore !== null || aiScanProgress === "completed" || isPhysicalComparisonEnabled;
+  const isPenActive = useWorkspaceStore(s => s.isPenActive);
   const hasHydrated = useWorkspaceStore(s => s.hasHydrated);
   const setHasHydrated = useWorkspaceStore(s => s.setHasHydrated);
   const setReviewViewport = useReviewStore(s => s.setViewport);
@@ -1098,6 +1099,19 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
               onModelChange={handleModelChange}
               onAction={handleAction}
             />
+
+            {/* Single Pen Mode Active Overlay Tip across both panes (White text only) */}
+            {isPenActive && (
+              <div
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 font-mono text-xs font-medium text-white/90 select-none pointer-events-none drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)]"
+              >
+                <span className="font-bold text-white">Pen Mode Active</span>
+                <span className="opacity-50">|</span>
+                <span className="text-white">
+                  Press <span className="font-bold underline underline-offset-2">Esc</span> to exit
+                </span>
+              </div>
+            )}
           </div>
 
           <SavedTemplatesModal

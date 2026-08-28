@@ -84,6 +84,7 @@ export function useEntityPicking(params: {
   const markings = useWorkspaceStore((s) => s.markings);
   const pendingCounterpart = useReviewStore((s) => s.pendingCounterpart);
   const setPendingCounterpart = useReviewStore((s) => s.setPendingCounterpart);
+  const isPenActive = useWorkspaceStore((s) => s.isPenActive);
 
   // One index per canvas, rebuilt each render by `renderEntities`. A ref rather than state:
   // it is written during the render loop, which must not trigger another render.
@@ -297,6 +298,7 @@ export function useEntityPicking(params: {
   const onMouseMove = useCallback(
     (e: React.MouseEvent) => {
       handlers.onMouseMove?.(e);
+      if (isPenActive || useWorkspaceStore.getState().isPenActive) return;
       const hit = pickAt(e.clientX, e.clientY);
 
       // An entity that already carries a marking gets NO picking highlight — no corner
@@ -310,14 +312,15 @@ export function useEntityPicking(params: {
       setHoveredEntityId(markable ? String(hit.id) : null);
       setHoverLocator(markable ? buildLocator(hit) : null);
     },
-    [handlers, pickAt, setHoveredEntityId, setHoverLocator, buildLocator, alreadyMarked],
+    [handlers, pickAt, setHoveredEntityId, setHoverLocator, buildLocator, alreadyMarked, isPenActive],
   );
 
   /** The click point in CAD units, for a correction that records where the engineer pointed. */
   const pickedWorld = useCallback(
     (clientX: number, clientY: number) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return null;
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
       return screenToWorld(clientX - rect.left, clientY - rect.top, norm, viewport);
     },
     [canvasRef, norm, viewport],
@@ -326,12 +329,13 @@ export function useEntityPicking(params: {
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       handlers.onMouseDown?.(e);
+      if (isPenActive || useWorkspaceStore.getState().isPenActive) return;
       pressRef.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
       // A middle-button pan is starting. The selection menu is anchored in canvas pixels, so
       // the drawing would slide out from under it and leave it pointing at nothing.
       if (e.button !== 0) setSelectionMenu(null);
     },
-    [handlers, setSelectionMenu],
+    [handlers, setSelectionMenu, isPenActive],
   );
 
   /**
@@ -359,6 +363,7 @@ export function useEntityPicking(params: {
   const onClick = useCallback(
     (e: React.MouseEvent) => {
       handlers.onClick?.(e);
+      if (isPenActive || useWorkspaceStore.getState().isPenActive) return;
       const press = pressRef.current;
       pressRef.current = null;
       if (!isStampClick(e.button, press, { x: e.clientX, y: e.clientY })) return;

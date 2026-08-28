@@ -1,7 +1,8 @@
 import { StateCreator } from "zustand";
-import { WorkspaceState, AnnotationsSlice, SEVERITY_PEN_MAP } from "../types";
+import { WorkspaceState, AnnotationsSlice, SEVERITY_PEN_MAP, PenStroke } from "../types";
 import { useRoomStore } from "../../roomStore";
 import { useReviewStore } from "../../reviewStore";
+import { recordHistory } from "../../historyStore";
 import {
   fetchAnnotations as fetchAnnotationsApi,
   createAnnotation as createAnnotationApi,
@@ -16,6 +17,73 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
   isPlacingAnnotation: false,
   pendingAnnotationText: "",
   pendingAnnotationSeverity: "info",
+
+  // Freehand Pen Tool
+  penStrokes: [],
+  isPenActive: false,
+  penColor: "#ff2850", // High-contrast red default
+  penWidth: 2.5,
+
+  addPenStroke: (stroke) => {
+    const id = `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const newStroke: PenStroke = {
+      ...stroke,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      penStrokes: [...state.penStrokes, newStroke],
+    }));
+    recordHistory({
+      kind: 'pen/stroke',
+      label: 'Draw pen stroke',
+      drawingId: stroke.drawingId,
+      stroke: newStroke,
+    });
+  },
+
+  removePenStroke: (id) => {
+    set((state) => ({
+      penStrokes: state.penStrokes.filter((s) => s.id !== id),
+    }));
+  },
+
+  undoLastPenStroke: (drawingId) => {
+    set((state) => {
+      if (!state.penStrokes.length) return state;
+      if (drawingId) {
+        const matching = state.penStrokes.filter((s) => s.drawingId === drawingId);
+        if (!matching.length) return state;
+        const lastId = matching[matching.length - 1].id;
+        return { penStrokes: state.penStrokes.filter((s) => s.id !== lastId) };
+      }
+      return { penStrokes: state.penStrokes.slice(0, -1) };
+    });
+  },
+
+  clearPenStrokes: (drawingId) => {
+    const current = get().penStrokes;
+    const strokesToClear = drawingId
+      ? current.filter((s) => s.drawingId === drawingId)
+      : current;
+    if (strokesToClear.length > 0) {
+      recordHistory({
+        kind: 'pen/clear',
+        label: 'Clear pen markings',
+        drawingId: drawingId || '',
+        strokes: strokesToClear,
+      });
+    }
+    set((state) => ({
+      penStrokes: drawingId
+        ? state.penStrokes.filter((s) => s.drawingId !== drawingId)
+        : [],
+    }));
+  },
+
+  setIsPenActive: (active) => set({ isPenActive: active }),
+  setPenColor: (color) => set({ penColor: color }),
+  setPenWidth: (width) => set({ penWidth: width }),
 
   // Both panes hold annotations in this one array, so a fetch for one drawing
   // must replace only that drawing's entries — otherwise loading the second

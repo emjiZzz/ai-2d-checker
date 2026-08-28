@@ -10,15 +10,15 @@ import { cleanCadText } from "./renderEntities";
 
 export const ComparisonGridStyles: React.FC = () => (
   <style>{`
-    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; }
+    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; min-width: 0; }
     .cmp-grid > * { min-width: 0; overflow-wrap: anywhere; }
-    .cmp-grid-diff { padding: 6px 8px; }
-    .cmp-grid-diff > .cmp-title { grid-column: 1 / -1; }
+    .cmp-grid-diff { padding: 6px 8px; border-radius: 4px; }
+    .cmp-grid-diff > .cmp-title { grid-column: 1 / -1; margin-bottom: 2px; }
     .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.62rem; }
     .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.78rem; }
 
     @container (max-width: 260px) {
-      .cmp-grid { gap: 6px; }
+      .cmp-grid { gap: 3px 6px; }
       .cmp-grid-diff { padding: 5px 6px; }
       .cmp-grid-diff > .cmp-h-ref, .cmp-grid-diff > .cmp-h-rev { font-size: 0.58rem; }
       .cmp-grid-diff > .cmp-v-ref, .cmp-grid-diff > .cmp-v-rev { font-size: 0.72rem; }
@@ -47,13 +47,18 @@ export const ComparisonValues: React.FC<ComparisonValuesProps> = ({
   theme,
 }) => {
   const isLight = theme === "hc-light";
-  const cleanedOrig = cleanCadText(original) || "-";
-  const cleanedRev = cleanCadText(revision) || "-";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+    <div
+      className="cmp-grid cmp-grid-diff"
+      style={{
+        background: isLight ? "rgba(241, 245, 249, 0.75)" : "var(--sidebar-item-hover)",
+        border: "1px solid var(--border-color)",
+      }}
+    >
       {title && (
         <div
+          className="cmp-title"
           style={{
             fontSize: "0.82rem",
             fontWeight: 700,
@@ -67,67 +72,52 @@ export const ComparisonValues: React.FC<ComparisonValuesProps> = ({
         </div>
       )}
 
-      {/* Side-by-side comparison strip (integrated, no heavy double-box) */}
       <div
-        className="cmp-grid"
+        className="cmp-h-ref"
         style={{
-          background: isLight ? "rgba(241, 245, 249, 0.75)" : "var(--sidebar-item-hover)",
-          borderRadius: "5px",
-          padding: "7px 9px",
-          border: "1px solid var(--border-color)",
+          fontWeight: 700,
+          color: "var(--text-secondary)",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-          <span
-            style={{
-              fontSize: "0.6rem",
-              fontWeight: 700,
-              color: "var(--text-secondary)",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Original
-          </span>
-          <span
-            style={{
-              fontSize: "0.78rem",
-              fontFamily: "'JetBrains Mono', monospace",
-              color: struck ? (isLight ? "#991b1b" : "#f87171") : "var(--text-secondary)",
-              textDecoration: struck ? "line-through" : "none",
-              wordBreak: "break-word",
-              lineHeight: 1.35,
-            }}
-          >
-            {cleanedOrig}
-          </span>
-        </div>
+        Original
+      </div>
+      <div
+        className="cmp-h-rev"
+        style={{
+          fontWeight: 700,
+          color: matched ? (isLight ? "#047857" : "#10b981") : "var(--accent-cyan)",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+        }}
+      >
+        Revision
+      </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-          <span
-            style={{
-              fontSize: "0.6rem",
-              fontWeight: 700,
-              color: matched ? (isLight ? "#047857" : "#10b981") : "var(--accent-cyan)",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Revision
-          </span>
-          <span
-            style={{
-              fontSize: "0.78rem",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontWeight: 600,
-              color: matched ? (isLight ? "#047857" : "#10b981") : "var(--text-primary)",
-              wordBreak: "break-word",
-              lineHeight: 1.35,
-            }}
-          >
-            {cleanedRev}
-          </span>
-        </div>
+      <div
+        className="cmp-v-ref"
+        style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          color: struck ? (isLight ? "#991b1b" : "#f87171") : "var(--text-secondary)",
+          textDecoration: struck ? "line-through" : "none",
+          wordBreak: "break-word",
+          lineHeight: 1.35,
+        }}
+      >
+        {cleanCadText(original) || "-"}
+      </div>
+      <div
+        className="cmp-v-rev"
+        style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontWeight: 600,
+          color: matched ? (isLight ? "#047857" : "#10b981") : "var(--text-primary)",
+          wordBreak: "break-word",
+          lineHeight: 1.35,
+        }}
+      >
+        {cleanCadText(revision) || "-"}
       </div>
     </div>
   );
@@ -201,7 +191,6 @@ export const FindingCard: React.FC<FindingCardProps> = ({
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: "4px",
           fontSize: "0.62rem",
           fontWeight: 700,
           padding: "2px 7px",
@@ -213,15 +202,6 @@ export const FindingCard: React.FC<FindingCardProps> = ({
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            width: "5px",
-            height: "5px",
-            borderRadius: "50%",
-            background: statusColor,
-            flexShrink: 0,
-          }}
-        />
         {statusLabel}
       </span>
     </div>

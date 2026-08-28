@@ -150,4 +150,61 @@ describe("createAnnotationsSlice", () => {
     );
     consoleSpy.mockRestore();
   });
+
+  describe("Freehand Pen Tool", () => {
+    it("adds pen strokes to store and allows undoing and clearing", () => {
+      const store = useWorkspaceStore.getState();
+      store.setIsPenActive(true);
+      expect(useWorkspaceStore.getState().isPenActive).toBe(true);
+
+      store.addPenStroke({
+        drawingId: "dwg-1",
+        points: [
+          [10, 20],
+          [15, 25],
+          [20, 30],
+        ],
+        color: "#ff2850",
+        width: 2.5,
+      });
+
+      store.addPenStroke({
+        drawingId: "dwg-1",
+        points: [
+          [50, 60],
+          [55, 65],
+        ],
+        color: "#00e5ff",
+        width: 1.5,
+      });
+
+      store.addPenStroke({
+        drawingId: "dwg-2",
+        points: [[100, 100], [110, 110]],
+        color: "#10b981",
+        width: 4.0,
+      });
+
+      let state = useWorkspaceStore.getState();
+      expect(state.penStrokes).toHaveLength(3);
+      expect(state.penStrokes[0].drawingId).toBe("dwg-1");
+      expect(state.penStrokes[0].points).toHaveLength(3);
+
+      // Undo last stroke for dwg-1
+      store.undoLastPenStroke("dwg-1");
+      state = useWorkspaceStore.getState();
+      expect(state.penStrokes).toHaveLength(2);
+      expect(state.penStrokes.map((s) => s.drawingId)).toEqual(["dwg-1", "dwg-2"]);
+
+      // Clear all strokes for dwg-1
+      store.clearPenStrokes("dwg-1");
+      state = useWorkspaceStore.getState();
+      expect(state.penStrokes).toHaveLength(1);
+      expect(state.penStrokes[0].drawingId).toBe("dwg-2");
+
+      // Clear all strokes globally
+      store.clearPenStrokes();
+      expect(useWorkspaceStore.getState().penStrokes).toHaveLength(0);
+    });
+  });
 });

@@ -98,6 +98,33 @@ export function applyHistoryEntry(entry: HistoryEntry, direction: Direction): vo
       }
       break;
     }
+
+    case 'pen/stroke': {
+      if (direction === 'undo') {
+        workspace().removePenStroke(entry.stroke.id);
+      } else {
+        useWorkspaceStore.setState((s) => ({
+          penStrokes: [...s.penStrokes.filter((st) => st.id !== entry.stroke.id), entry.stroke],
+        }));
+      }
+      break;
+    }
+
+    case 'pen/clear': {
+      if (direction === 'undo') {
+        useWorkspaceStore.setState((s) => {
+          const currentWithoutDrawing = s.penStrokes.filter(
+            (st) => st.drawingId !== entry.drawingId,
+          );
+          return {
+            penStrokes: [...currentWithoutDrawing, ...entry.strokes],
+          };
+        });
+      } else {
+        workspace().clearPenStrokes(entry.drawingId);
+      }
+      break;
+    }
   }
 }
 
