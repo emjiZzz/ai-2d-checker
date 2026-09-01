@@ -330,6 +330,7 @@ export const createManualCheckSlice: StateCreator<
     const payload: CreateMarkingPayload = {
       status: TOOL_STATUS[pendingStamp.tool],
       category: input.category,
+      feature: input.feature ?? null,
       // Says whether a person chose that category or the zone did. See
       // `GroundTruthMarking.category_source` — an evaluator filters attribution on it.
       category_source: input.categorySource ?? 'human',

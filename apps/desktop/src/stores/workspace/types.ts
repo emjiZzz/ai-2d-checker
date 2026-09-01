@@ -450,6 +450,7 @@ export interface CommitStampInput {
   category: string;
   /** Where the category came from. Omitted means a person chose it. */
   categorySource?: 'human' | 'zone';
+  feature?: string | null;
   refText: string;
   revText: string;
   textWasEdited: boolean;

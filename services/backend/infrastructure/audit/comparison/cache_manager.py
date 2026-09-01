@@ -439,7 +439,14 @@ class ComparisonCacheManager:
     # v53: Exact-first priority matching in SpatialDiffer. Identical dimension
     # and annotation values (e.g. 60==60, 40==40, 170==170, 25==25) are paired first across
     # both standard and widened radius, preventing nearby different numbers from stealing them.
-    COMPARISON_CACHE_VERSION = "v53"
+    # v54: **the BOM column -> checklist sub-item map named the wrong two items.** `CODE` is
+    # built from `材質` and holds the material (SS400), so it is Material TYPE, not Material
+    # Specification; `DIMENSION` is built from `材料寸法/型式` and holds `6×⌀145`, so it is the
+    # Material SPECIFICATION and was falling to `other`. A cached audit carries the old tags in
+    # its markings and the checklist groups straight off them, so a hit would show the material
+    # name under Material Specification, the specification under Other / Unclassified, and
+    # Material Type reporting clean because nothing could ever assign it.
+    COMPARISON_CACHE_VERSION = "v54"
 
     @staticmethod
     def _get_cache_path(

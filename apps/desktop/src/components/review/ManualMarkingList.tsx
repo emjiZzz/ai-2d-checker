@@ -1,4 +1,4 @@
-import { markerUi } from './markerStyles';
+import { markerUi, markerStyle } from './markerStyles';
 import { ChecklistSection } from './ChecklistSection';
 import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
 import { useThemeStore } from '../../stores/themeStore';
@@ -9,6 +9,7 @@ import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
 import { useComplianceReportExport } from '../../hooks/useComplianceReportExport';
 import { CATEGORY_KEYS, categoryLabel } from './manualCheckCategories';
+import { COMPARISON_TAXONOMY, getTaxonomyWithOther, inferFeatureKeyForPair, isTitleBlockText, OTHER_FEATURE_KEY } from '../../utils/comparisonTaxonomy';
 import { ExportStatusNote } from './ExportStatusNote';
 import { ExportOverlay } from './ExportOverlay';
 import { StaleExtractionBadge } from './StaleExtractionBadge';
@@ -78,7 +79,13 @@ export const ManualMarkingList: React.FC = () => {
   const grouped = useMemo(() => {
     const map: Record<string, typeof markings> = {};
     for (const key of CATEGORY_KEYS) map[key] = [];
-    for (const m of markings) (map[m.category] ??= []).push(m);
+    for (const m of markings) {
+      const targetText = m.rev_text || m.ref_text || '';
+      const effCat = (m.category === 'drawing_views' && isTitleBlockText(targetText))
+        ? 'title_block'
+        : (m.category || 'drawing_views');
+      (map[effCat] ??= []).push(m);
+    }
     return map;
   }, [markings]);
 
@@ -370,75 +377,193 @@ export const ManualMarkingList: React.FC = () => {
 
         {CATEGORY_KEYS.map((key) => {
           const rows = grouped[key] ?? [];
-          if (!rows.length) return null;
+          // Resolve every marking's sub-item ONCE, up front. The bucket list below and the rows
+          // inside each bucket are both derived from this, so they cannot disagree about where a
+          // marking went — the previous shape called `inferFeatureKey` inside the per-feature
+          // filter, which meant the list of buckets and the contents of the buckets were two
+          // separate readings of the same rule.
+          // No explicit feature is passed because a manual marking cannot carry one:
+          // `GroundTruthMarking` has `category`, `ref_text` and `rev_text` and nothing finer,
+          // mirroring the backend model, and the stamp modal only offers the six categories. So
+          // in a manual-check room `inferFeatureKey` is the WHOLE story for where a value the
+          // engineer stamped shows up — which is why its BOM rules are worth reading closely.
+          const resolved = rows.map((m) => ({
+            m,
+            feature: inferFeatureKeyForPair(key, m.ref_text, m.rev_text, undefined, m.feature),
+          }));
+          // `inferFeatureKey` returns `other` when nothing in the category confidently matches —
+          // a real answer, not a failure. The named sub-items are always shown (an unchecked one
+          // reads "Pending", which is the point of this panel); the Other bucket appears only
+          // once something is in it, but it MUST appear then. Rendering `COMPARISON_TAXONOMY`
+          // alone is how a marking an engineer actually stamped drops out of the panel with
+          // nothing to show it ever existed — the same silent drop DEFERRED_FEATURE_KEYS warns
+          // about in `comparisonTaxonomy.ts`, arriving from the other direction.
+          const featureItems = resolved.some((r) => r.feature === OTHER_FEATURE_KEY)
+            ? getTaxonomyWithOther(key)
+            : (COMPARISON_TAXONOMY[key] ?? []);
           const isLight = theme === 'hc-light';
-          const allMatched = rows.every((m) => m.status === 'MATCHED');
-          const { color: sectionColor } = markerUi(allMatched ? 'MATCHED' : 'CHANGED', isLight);
+          const hasRows = rows.length > 0;
+          const hasChanged = rows.some((m) => m.status !== 'MATCHED');
+          const allMatched = hasRows && !hasChanged;
+
+          let statusLabel = '⚪ Pending';
+          let sectionColor = 'var(--text-muted)';
+          if (hasChanged) {
+            const discCount = rows.filter((m) => m.status !== 'MATCHED').length;
+            statusLabel = `${discCount}`;
+            sectionColor = '#ff6b00';
+          } else if (hasRows) {
+            statusLabel = `${rows.length}`;
+            sectionColor = markerUi('MATCHED', isLight).color;
+          }
+
+          const isCatExpanded = expanded[key] ?? (hasRows || key === 'drawing_views');
+
           return (
             <ChecklistSection
               key={key}
               label={categoryLabel(key)}
-              statusLabel={String(rows.length)}
+              statusLabel={statusLabel}
               statusColor={sectionColor}
               statusIsMatched={allMatched}
-              expanded={expanded[key] ?? true}
+              expanded={isCatExpanded}
               onToggle={() =>
-                setExpanded((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
+                setExpanded((prev) => ({ ...prev, [key]: !isCatExpanded }))
               }
             >
-              {rows.map((m) => {
-                const title = m.rev_text || m.ref_text || '—';
-                const { color: statusColor, background: statusBg } = markerUi(m.status, isLight);
-                return (
-                  <FindingCard
-                    key={m.id}
-                    statusLabel={`${m.status.replace(/_/g, ' ')}${m.is_bulk ? ' · bulk' : ''}`}
-                    statusColor={statusColor}
-                    statusBg={statusBg}
-                    actions={
-                      <button
-                        type="button"
-                        title="Remove from this check — the record is kept on the server, marked as withdrawn"
-                        onClick={() => retractManualMarking(m.id)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {featureItems.map((feat) => {
+                  const featRows = resolved.filter((r) => r.feature === feat.key).map((r) => r.m);
+                  const featHasRows = featRows.length > 0;
+                  const featHasChanged = featRows.some((m) => m.status !== 'MATCHED');
+                  const featAllMatched = featHasRows && !featHasChanged;
+
+                  const featPillColor = featHasChanged
+                    ? '#ff6b00'
+                    : featAllMatched
+                    ? markerUi('MATCHED', isLight).color
+                    : 'var(--text-muted)';
+
+                  const featPillText = featHasChanged
+                    ? `${featRows.filter((m) => m.status !== 'MATCHED').length}`
+                    : featAllMatched
+                    ? `✓ ${featRows.length}`
+                    : '⚪ Pending';
+
+                  const featExpandedKey = `${key}_${feat.key}`;
+                  const isFeatExpanded = expanded[featExpandedKey] ?? featHasRows;
+
+                  return (
+                    <div
+                      key={feat.key}
+                      style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 4,
+                        padding: '6px 8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                      }}
+                    >
+                      <div
+                        onClick={() =>
+                          setExpanded((prev) => ({
+                            ...prev,
+                            [featExpandedKey]: !isFeatExpanded,
+                          }))
+                        }
                         style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          fontSize: '0.68rem',
-                          fontWeight: 600,
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '3px',
-                          padding: '1px 4px',
-                          borderRadius: '3px',
-                          transition: 'color 0.15s ease',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          userSelect: 'none',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
                       >
-                        <Trash2 size={12} />
-                        <span>Remove</span>
-                      </button>
-                    }
-                  >
-                    <ComparisonValues
-                      title={title}
-                      // `-`, which for an ADDED or a REMOVED is the finding rather than a gap.
-                      original={m.ref_text ?? ''}
-                      revision={m.rev_text ?? ''}
-                      struck={m.status === 'CHANGED' || m.status === 'REMOVED'}
-                      matched={m.status === 'MATCHED'}
-                      theme={theme}
-                    />
-                    {m.notes && (
-                      <div style={{ fontSize: 10, lineHeight: 1.45, color: 'var(--text-muted)' }}>
-                        {m.notes}
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {feat.label}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: featPillColor,
+                            background: `${featPillColor}15`,
+                            padding: '1px 6px',
+                            borderRadius: 999,
+                          }}
+                        >
+                          {featPillText}
+                        </span>
                       </div>
-                    )}
-                  </FindingCard>
-                );
-              })}
+
+                      {isFeatExpanded && featHasRows && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                          {featRows.map((m) => {
+                            const { color: statusColor, background: statusBg } = markerUi(m.status, isLight);
+                            const glyph = m.status === 'MISMATCHED' ? '✕' : (markerStyle(m.status)?.glyph || '✓');
+                            const iconBadge = `${glyph}${m.is_bulk ? ' · bulk' : ''}`;
+                            return (
+                              <FindingCard
+                                key={m.id}
+                                statusLabel={iconBadge}
+                                statusColor={statusColor}
+                                statusBg={statusBg}
+                                actions={
+                                  <button
+                                    type="button"
+                                    title="Remove from this check"
+                                    onClick={() => retractManualMarking(m.id)}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: 'var(--text-muted)',
+                                      cursor: 'pointer',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 600,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      padding: '1px 4px',
+                                      borderRadius: '3px',
+                                      transition: 'color 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                                  >
+                                    <Trash2 size={12} />
+                                    <span>Remove</span>
+                                  </button>
+                                }
+                              >
+                                <ComparisonValues
+                                  original={m.ref_text ?? ''}
+                                  revision={m.rev_text ?? ''}
+                                  struck={m.status === 'CHANGED' || m.status === 'REMOVED'}
+                                  matched={m.status === 'MATCHED'}
+                                  theme={theme}
+                                />
+                                {m.notes && (
+                                  <div style={{ fontSize: 10, lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                                    {m.notes}
+                                  </div>
+                                )}
+                              </FindingCard>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {isFeatExpanded && !featHasRows && (
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic', padding: '2px 0' }}>
+                          No markings recorded for this checkpoint.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </ChecklistSection>
           );
         })}

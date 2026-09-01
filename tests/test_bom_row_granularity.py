@@ -116,7 +116,7 @@ def test_the_finding_anchors_on_the_first_changed_column_in_bom_cols_order():
     assert finding["coordinates"] == [1.0, 100.0]      # CODE's cell, not QTY's
     assert finding["ref_coordinates"] == [1.0, 100.0]
     assert finding["original_value"] == "ABC"
-    assert finding["feature"] == "material_specification"   # CODE's feature
+    assert finding["feature"] == "material_type"   # CODE's feature: 材質 / Code holds the material
 
 
 def test_two_edited_rows_stay_two_findings():

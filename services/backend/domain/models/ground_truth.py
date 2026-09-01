@@ -201,6 +201,7 @@ class GroundTruthMarking(Document):
     #: `Category` literal before anything reaches this model, and
     #: `tests/test_ground_truth_submission.py` pins that the two lists agree.
     category: str = Field(...)
+    feature: str | None = Field(None, description="Sub-item / feature key from comparison taxonomy")
 
     #: Whether a human chose the category or it was derived from the entity's zone.
     #:

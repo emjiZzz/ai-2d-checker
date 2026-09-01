@@ -3,7 +3,9 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import type { PickedEntity, StampTool } from '../../stores/workspace/types';
 import { TOOL_SIDE } from '../../stores/workspace/slices/createManualCheckSlice';
 import { MARKER_STYLES, type MarkerType } from './markerStyles';
-import { CATEGORY_OPTIONS, categoryForZone, findMarkingForEntity } from './manualCheckCategories';
+import { CATEGORY_OPTIONS, findMarkingForEntity } from './manualCheckCategories';
+import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
+import { ChevronRight, ArrowLeft } from 'lucide-react';
 
 /**
  * The menu that belongs to the SELECTED entity.
@@ -40,6 +42,64 @@ import { CATEGORY_OPTIONS, categoryForZone, findMarkingForEntity } from './manua
  * that is the only surface that opens with nothing selected, which is exactly the state an
  * engineer is in when they change their mind about a pair half-made.
  */
+
+/**
+ * Highly specific bilingual labels for sub-items so engineers can match drawing cells directly.
+ */
+const SPECIFIC_ITEM_LABELS: Record<string, string> = {
+  // Title Block
+  unit_number: 'Unit No. (ユニットNo.)',
+  part_number: 'Part No. (コードNo.)',
+  quantity: 'Total Quantity (総製作個数 / T. Q\'ty)',
+  stock_quantity: 'Stock Quantity (在庫棚入庫)',
+  machine_name: 'Machine Name (機名 / ロールカセット)',
+  line_name: 'Line Name (ライン名 / 押工板)',
+  scale: 'Scale (尺度 / 1:1.5)',
+  creation_date: 'Date of Creation (日付 / 04/12/22)',
+  designed: 'Designed (設計)',
+  drawn: 'Drawn (製図)',
+  job_number: 'Job Number (工事番号 / 2589)',
+  machine_unit_code: 'Machine Code (機器記号 / FSRS2)',
+  previous_drawing_number: 'Drawing Number (図面番号 / M745221N01)',
+  revision_code: 'Revision Code (改訂)',
+  cross_reference_number: 'Cross Reference Number (参考図番)',
+
+  // Bill of Materials
+  material_type: 'Material Type (材質 / SS400)',
+  material_specification: 'Material Specification (寸法・仕様 / 6×⌀145)',
+  material_weight: 'Material Weight (重量 / 0.78 kg)',
+  ballooning: 'Ballooning (照合番号 / バルーン)',
+  remarks: 'Remarks (記事・備考)',
+  numbering_arrangement: 'Numbering & Arrangement (照合順)',
+
+  // Drawing Views
+  dimensions: 'Dimensions (寸法 / ⌀145, 120)',
+  hole_properties: 'Hole Properties (キリ穴・タップ / 6-9キリ)',
+  chamfer_radius: 'Chamfer / Radius (面取り・R / C0.5, R5)',
+  machining_symbol: 'Machining Symbol (仕上げ記号 / ▽)',
+  geometric_tolerances: 'Geometric Tolerances (幾何公差)',
+  welding_symbol: 'Welding Symbol (溶接記号)',
+  line_attributes: 'Line Attributes (線種・線幅)',
+  additional_views: 'Additional Views (詳細図・断面図 / A-A)',
+};
+
+const TITLE_BLOCK_PRIORITY: Record<string, number> = {
+  unit_number: 1,
+  part_number: 2,
+  quantity: 3,
+  stock_quantity: 4,
+  machine_name: 5,
+  line_name: 6,
+  scale: 7,
+  creation_date: 8,
+  designed: 9,
+  drawn: 10,
+  job_number: 11,
+  machine_unit_code: 12,
+  previous_drawing_number: 13,
+  revision_code: 14,
+  cross_reference_number: 15,
+};
 
 /**
  * The colour and wording come from `MARKER_STYLES`, so the dot beside a menu row is the colour
@@ -91,6 +151,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   // click has everything it needs.
   type Stamp = { tool: StampTool; ref: PickedEntity | null; rev: PickedEntity | null };
   const [awaitingCategory, setAwaitingCategory] = useState<Stamp | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   // A MATCHED with one side resolved, waiting for the engineer to pair it or accept it as-is.
   const [awaitingPairDecision, setAwaitingPairDecision] = useState<Stamp | null>(null);
 
@@ -146,11 +207,13 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
    *  - an unpaired MATCHED, where the engineer is about to claim a pair while recording half of
    *    one, and should be told before it lands rather than after.
    */
+  /**
+   * Record the stamp. Follows the explicit flow: Picked item -> Choose Status -> Pick what class.
+   * This gives the engineer full manual control over the classification without relying on brittle heuristics.
+   */
   const submit = (stamp: { tool: StampTool; ref: PickedEntity | null; rev: PickedEntity | null }) => {
     const unpairedMatched = stamp.tool === 'matched' && !(stamp.ref && stamp.rev);
 
-    // A MATCHED about to be recorded with half a pair. Asked in place, like everything else —
-    // it is a warning with two ways out, not a form.
     if (unpairedMatched) {
       setAwaitingPairDecision(stamp);
       return;
@@ -158,17 +221,9 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
     proceed(stamp);
   };
 
-  /** Record it, or ask for the one thing the sheet could not answer. */
+  /** Advance to the class selection step where the engineer explicitly selects the category. */
   const proceed = (stamp: { tool: StampTool; ref: PickedEntity | null; rev: PickedEntity | null }) => {
-    const derived = categoryForZone(picked.zone);
-    if (derived) {
-      write(stamp, derived, 'zone');
-      onClose();
-      return;
-    }
-    // No category could be derived — a tolerance or shim table, or an entity in no measured
-    // zone. The engineer still has to say, but a dialog is the wrong way to ask for the one
-    // value that is missing. The menu asks in place, and what they choose is recorded as theirs.
+    setSelectedCategory(null);
     setAwaitingCategory(stamp);
   };
 
@@ -176,10 +231,12 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
     stamp: { tool: StampTool; ref: PickedEntity | null; rev: PickedEntity | null },
     category: string,
     source: 'human' | 'zone',
+    feature?: string | null,
   ) => {
     recordStamp(stamp, {
       category,
       categorySource: source,
+      feature: feature ?? null,
       refText: stamp.ref?.text ?? '',
       revText: stamp.rev?.text ?? '',
       // Structurally always false/false/'' — nothing in the UI collects them. See
@@ -216,12 +273,17 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
     const missingSide = awaitingPairDecision.ref ? 'revision' : 'reference';
     return (
       <div
-        className={`absolute z-[10000] flex flex-col py-1 min-w-[230px] rounded-none border backdrop-blur-md shadow-xl select-none ${
+        className={`no-scrollbar absolute z-[10000] flex flex-col py-1 min-w-[230px] rounded-none border backdrop-blur-md shadow-xl select-none ${
           theme === 'hc-light'
             ? 'bg-white border-zinc-300 text-zinc-900 shadow-zinc-400/20'
             : 'bg-zinc-950/95 border-white/10 text-zinc-100 shadow-black/60'
         }`}
-        style={{ left, top }}
+        style={{
+          left,
+          top,
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -256,51 +318,112 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   // and the only open question is the category, so offering the statuses again would invite
   // changing an answer that has already been given.
   if (awaitingCategory) {
+    const rawSubItems = selectedCategory ? (COMPARISON_TAXONOMY[selectedCategory] ?? []) : [];
+    const subItems = selectedCategory === 'title_block'
+      ? [...rawSubItems].sort((a, b) => (TITLE_BLOCK_PRIORITY[a.key] ?? 99) - (TITLE_BLOCK_PRIORITY[b.key] ?? 99))
+      : rawSubItems;
+    const selectedCatOption = CATEGORY_OPTIONS.find((c) => c.key === selectedCategory);
+
     return (
       <div
-        className={`absolute z-[10000] flex flex-col py-1 min-w-[210px] rounded-none border backdrop-blur-md shadow-xl select-none ${
+        className={`no-scrollbar absolute z-[10000] flex flex-col py-1 min-w-[270px] max-h-[380px] overflow-y-auto rounded-none border backdrop-blur-md shadow-xl select-none ${
           theme === 'hc-light'
             ? 'bg-white border-zinc-300 text-zinc-900 shadow-zinc-400/20'
             : 'bg-zinc-950/95 border-white/10 text-zinc-100 shadow-black/60'
         }`}
-        style={{ left, top }}
+        style={{
+          left,
+          top,
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className={`px-2.5 py-1 text-[0.62rem] font-mono truncate border-b ${
+          className={`px-2.5 py-1.5 text-[0.62rem] font-mono truncate border-b flex items-center justify-between ${
             theme === 'hc-light' ? 'border-zinc-200 text-zinc-500' : 'border-white/10 text-zinc-500'
           }`}
         >
-          {MARKER_STYLES[awaitingCategory.tool.toUpperCase() as MarkerType]?.label ??
-            awaitingCategory.tool}{' '}
-          · WHICH CATEGORY?
+          {selectedCategory ? (
+            <button
+              className="flex items-center gap-1.5 hover:text-cyan-400 text-left transition-colors font-semibold"
+              onClick={() => setSelectedCategory(null)}
+            >
+              <ArrowLeft className="w-3 h-3 text-cyan-400" />
+              <span>{selectedCatOption?.label ?? selectedCategory} · CHOOSE ITEM</span>
+            </button>
+          ) : (
+            <span>
+              {MARKER_STYLES[awaitingCategory.tool.toUpperCase() as MarkerType]?.label ??
+                awaitingCategory.tool}{' '}
+              · CHOOSE CLASS
+            </span>
+          )}
         </div>
-        {CATEGORY_OPTIONS.map((opt) => (
-          <div
-            key={opt.key}
-            className={rowClass}
-            onClick={() => {
-              write(awaitingCategory, opt.key, 'human');
-              setAwaitingCategory(null);
-              onClose();
-            }}
-          >
-            <span className="text-[0.72rem]">{opt.label}</span>
-          </div>
-        ))}
+
+        {selectedCategory ? (
+          <>
+            <div
+              className={`${rowClass} opacity-60 italic text-[0.68rem] border-b border-white/5`}
+              onClick={() => {
+                write(awaitingCategory, selectedCategory, 'human', null);
+                setAwaitingCategory(null);
+                setSelectedCategory(null);
+                onClose();
+              }}
+            >
+              <span>(General / Auto-classify)</span>
+            </div>
+            {subItems.map((item) => {
+              const displayLabel = SPECIFIC_ITEM_LABELS[item.key] ?? item.label;
+              return (
+                <div
+                  key={item.key}
+                  className={rowClass}
+                  onClick={() => {
+                    write(awaitingCategory, selectedCategory, 'human', item.key);
+                    setAwaitingCategory(null);
+                    setSelectedCategory(null);
+                    onClose();
+                  }}
+                >
+                  <span className="text-[0.72rem] leading-snug">{displayLabel}</span>
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          CATEGORY_OPTIONS.map((opt) => (
+            <div
+              key={opt.key}
+              className={`${rowClass} justify-between`}
+              onClick={() => {
+                setSelectedCategory(opt.key);
+              }}
+            >
+              <span className="text-[0.72rem]">{opt.label}</span>
+              <ChevronRight className="w-3 h-3 opacity-40" />
+            </div>
+          ))
+        )}
       </div>
     );
   }
 
   return (
     <div
-      className={`absolute z-[10000] flex flex-col py-1 min-w-[210px] rounded-none border backdrop-blur-md shadow-xl select-none ${
+      className={`no-scrollbar absolute z-[10000] flex flex-col py-1 min-w-[210px] rounded-none border backdrop-blur-md shadow-xl select-none ${
         theme === 'hc-light'
           ? 'bg-white border-zinc-300 text-zinc-900 shadow-zinc-400/20'
           : 'bg-zinc-950/95 border-white/10 text-zinc-100 shadow-black/60'
       }`}
-      style={{ left, top }}
+      style={{
+        left,
+        top,
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >

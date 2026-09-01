@@ -133,7 +133,7 @@ describe('renderChecklistSheets', () => {
     expect(printed).not.toContain('%%c');
   });
 
-  test('renders annotation status badge like X₁ in status pill', () => {
+  test('renders annotation status badge like X₁ in status pill without table comparison headers', () => {
     const sections: ChecklistSectionData[] = [
       {
         label: 'Annotations',
@@ -145,6 +145,10 @@ describe('renderChecklistSheets', () => {
     renderChecklistSheets(sections, META);
     const printed = allText();
     expect(printed).toContain('X₁');
+    expect(printed).toContain('wrong dimension');
+    expect(printed).not.toContain('STATUS');
+    expect(printed).not.toContain('REFERENCE');
+    expect(printed).not.toContain('REVISION');
     expect(printed).not.toContain('+ ADDED');
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CATEGORY_KEYS, CATEGORY_OPTIONS, categoryLabel, findMarkingForEntity, categoryForZone } from './manualCheckCategories';
+import { CATEGORY_KEYS, CATEGORY_OPTIONS, categoryLabel, findMarkingForEntity, categoryForZone, inferCategoryForEntity } from './manualCheckCategories';
 import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
 
 /**
@@ -122,5 +122,46 @@ describe('categoryForZone — deriving a category from where the entity sits', (
     for (const zone of ['views', 'notes', 'bom', 'title', 'title_upper_left', 'iso']) {
       expect(CATEGORY_KEYS).toContain(categoryForZone(zone));
     }
+  });
+});
+
+describe('inferCategoryForEntity — automatic category inference', () => {
+  it('prefers explicit zone when defined', () => {
+    expect(inferCategoryForEntity('bom', 'ø125')).toBe('bill_of_materials');
+    expect(inferCategoryForEntity('views', 'SS400')).toBe('drawing_views');
+  });
+
+  it('infers drawing views for dimensions and geometric entities outside zones', () => {
+    expect(inferCategoryForEntity(null, 'ø125')).toBe('drawing_views');
+    expect(inferCategoryForEntity(null, '100')).toBe('drawing_views');
+    expect(inferCategoryForEntity(null, 'C0.5')).toBe('drawing_views');
+    expect(inferCategoryForEntity(null, '4-M8')).toBe('drawing_views');
+    expect(inferCategoryForEntity(null, '', 'LINE')).toBe('drawing_views');
+  });
+
+  it('infers bill of materials for material codes, stock sizes, and weights', () => {
+    expect(inferCategoryForEntity(null, 'SS400')).toBe('bill_of_materials');
+    expect(inferCategoryForEntity(null, '6 × ø145')).toBe('bill_of_materials');
+    expect(inferCategoryForEntity(null, '0.78kg')).toBe('bill_of_materials');
+  });
+
+  it('infers title block for metadata fields', () => {
+    expect(inferCategoryForEntity(null, 'SCALE 1:1')).toBe('title_block');
+    expect(inferCategoryForEntity(null, '1:1.5')).toBe('title_block');
+    expect(inferCategoryForEntity(null, '1/1.4')).toBe('title_block');
+    expect(inferCategoryForEntity(null, '04/12/22')).toBe('title_block');
+    expect(inferCategoryForEntity(null, '2026/07/03')).toBe('title_block');
+    expect(inferCategoryForEntity(null, 'DWG NO: M745221')).toBe('title_block');
+    expect(inferCategoryForEntity(null, 'M745221N01')).toBe('title_block');
+    expect(inferCategoryForEntity(null, 'FSRS2')).toBe('title_block');
+    expect(inferCategoryForEntity(null, '2589')).toBe('title_block');
+    expect(inferCategoryForEntity(null, '9324')).toBe('title_block');
+    expect(inferCategoryForEntity(null, 'Roll Cassette 12" Mill')).toBe('title_block');
+    expect(inferCategoryForEntity(null, 'ロールカセット 12"ミル')).toBe('title_block');
+  });
+
+  it('returns null for blank or completely ambiguous text so the engineer is asked', () => {
+    expect(inferCategoryForEntity(null, '')).toBeNull();
+    expect(inferCategoryForEntity(null, '   ')).toBeNull();
   });
 });

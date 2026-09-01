@@ -428,13 +428,15 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
 
           const pct = totalItems > 0 ? Math.round((matchedItems / totalItems) * 100) : 0;
           return (
-            <div style={{ marginTop: "4px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-primary)", marginBottom: "5px", fontWeight: 500 }}>
-                <span>Completion Parity</span>
-                <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{pct}% MATCHED</span>
-              </div>
-              <div style={{ width: "100%", height: "4px", background: "var(--border-color)", borderRadius: "2px", overflow: "hidden" }}>
-                <div style={{ height: "100%", background: "var(--accent-cyan)", width: `${pct}%`, transition: "width 0.5s ease" }}></div>
+            <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-primary)", marginBottom: "4px", fontWeight: 500 }}>
+                  <span>Completion Parity</span>
+                  <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{pct}% MATCHED</span>
+                </div>
+                <div style={{ width: "100%", height: "4px", background: "var(--border-color)", borderRadius: "2px", overflow: "hidden" }}>
+                  <div style={{ height: "100%", background: "var(--accent-cyan)", width: `${pct}%`, transition: "width 0.5s ease" }}></div>
+                </div>
               </div>
             </div>
           );

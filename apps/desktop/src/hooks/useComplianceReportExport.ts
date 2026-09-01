@@ -24,6 +24,7 @@ import { reportFileNames, splitReportDocuments } from "../components/review/repo
 import { useIsManualCheckRoom } from "./useManualCheckRoom";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { getAnnotationBadgeMap } from "../stores/workspace/types";
+import { computeEngineeringMatrix, COMPARISON_TAXONOMY, inferFeatureKeyForPair, isTitleBlockText } from "../utils/comparisonTaxonomy";
 
 /**
  * The compliance report: the checked drawing, then what was checked on it.
@@ -176,34 +177,71 @@ export function useComplianceReportExport() {
 
     if (isManualCheckRoom) {
       for (const key of CATEGORY_KEYS) {
-        const rows = markings
-          .filter((m) => m.category === key && !m.retracted_at)
-          .map<ChecklistRow>((m) => ({
+        const catMarkings = markings.filter((m) => {
+          const targetText = m.rev_text || m.ref_text || '';
+          const effCat = (m.category === 'drawing_views' && isTitleBlockText(targetText))
+            ? 'title_block'
+            : (m.category || 'drawing_views');
+          return effCat === key && !m.retracted_at;
+        });
+        if (!catMarkings.length) continue;
+
+        const featureItems = COMPARISON_TAXONOMY[key] ?? [];
+        const usedFeatures = new Set<string>();
+
+        for (const feat of featureItems) {
+          const featMarkings = catMarkings.filter((m) => {
+            const resolved = inferFeatureKeyForPair(m.category || key, m.ref_text, m.rev_text, undefined, m.feature);
+            return resolved === feat.key;
+          });
+          if (featMarkings.length > 0) {
+            usedFeatures.add(feat.key);
+            const rows = featMarkings.map<ChecklistRow>((m) => ({
+              status: m.status,
+              reference: cleanCadText(m.ref_text) || "—",
+              revision: cleanCadText(m.rev_text) || "—",
+              note: [cleanCadText(m.notes), m.is_bulk ? "bulk" : ""].filter(Boolean).join(" · "),
+            }));
+            sections.push({ label: `${categoryLabel(key)} · ${feat.label}`, rows: sortRows(rows) });
+          }
+        }
+
+        // Everything the named sub-items did not claim — including whatever `inferFeatureKey`
+        // answered `other` for. This is why the report needed no change when the BOM branch
+        // stopped guessing: the detail page has always had somewhere to put an unclassified
+        // value, where the panel and the matrix each had to be given one.
+        const remaining = catMarkings.filter((m) => {
+          const resolved = inferFeatureKeyForPair(m.category || key, m.ref_text, m.rev_text, undefined, m.feature);
+          return !usedFeatures.has(resolved);
+        });
+        if (remaining.length > 0) {
+          const rows = remaining.map<ChecklistRow>((m) => ({
             status: m.status,
             reference: cleanCadText(m.ref_text) || "—",
             revision: cleanCadText(m.rev_text) || "—",
             note: [cleanCadText(m.notes), m.is_bulk ? "bulk" : ""].filter(Boolean).join(" · "),
           }));
-        if (rows.length) sections.push({ label: categoryLabel(key), rows: sortRows(rows) });
+          sections.push({ label: `${categoryLabel(key)} · Other`, rows: sortRows(rows) });
+        }
       }
     } else {
-      const byCategory = new Map<string, ChecklistRow[]>();
+      const byCategoryAndFeature = new Map<string, ChecklistRow[]>();
       for (const v of violations) {
-        const key = v.category || "other_engineering_references";
-        const rows = byCategory.get(key) ?? [];
+        const key = v.category || "drawing_views";
+        const featKey = inferFeatureKeyForPair(key, v.original_value, v.description, undefined, v.feature);
+        const featLabel = (COMPARISON_TAXONOMY[key] ?? []).find(f => f.key === featKey)?.label ?? featKey;
+        const sectionLabel = `${categoryLabel(key)} · ${featLabel}`;
+        const rows = byCategoryAndFeature.get(sectionLabel) ?? [];
         rows.push({
-          // `markerTypeOf` before the severity fallback, for the same reason the canvas uses it:
-          // it is the engine's own verdict, and a report that renames CHANGED to HIGH describes
-          // the finding in a vocabulary the drawing's marker does not use.
           status: markerTypeOf(v) ?? severityStatus(v.severity),
           reference: cleanCadText(v.original_value) || "—",
           revision: cleanCadText(v.description) || "—",
           note: [cleanCadText(v.recommendation), cleanCadText(v.standard_reference)].filter(Boolean).join(" · "),
         });
-        byCategory.set(key, rows);
+        byCategoryAndFeature.set(sectionLabel, rows);
       }
-      for (const [key, rows] of byCategory) {
-        sections.push({ label: categoryLabel(key), rows: sortRows(rows) });
+      for (const [sectionLabel, rows] of byCategoryAndFeature) {
+        sections.push({ label: sectionLabel, rows: sortRows(rows) });
       }
     }
 
@@ -383,16 +421,26 @@ export function useComplianceReportExport() {
       );
 
       setExportPhase(PHASE.checklist);
-      const checklistPages = renderChecklistSheets(sections, {
-        title: "CHECKLIST",
-        subtitle:
-          sanitizeFileStem(newDrawing?.file_name) +
-          "  ·  checked against  " +
-          sanitizeFileStem(oldDrawing?.file_name) +
-          "  ·  " +
-          generatedAt,
-        tally: itemCount + " items  ·  " + findingCount + " findings",
-      });
+      const matrixOverview = computeEngineeringMatrix(
+        isManualCheckRoom
+          ? markings.filter((m) => !m.retracted_at)
+          : violations,
+        isManualCheckRoom ? 'manual' : 'ai',
+      );
+      const checklistPages = renderChecklistSheets(
+        sections,
+        {
+          title: "CHECKLIST",
+          subtitle:
+            sanitizeFileStem(newDrawing?.file_name) +
+            "  ·  checked against  " +
+            sanitizeFileStem(oldDrawing?.file_name) +
+            "  ·  " +
+            generatedAt,
+          tally: itemCount + " items  ·  " + findingCount + " findings",
+        },
+        matrixOverview,
+      );
 
       // Full-bleed: the checklist sheet draws its own inner margin, and its canvas is cut to
       // the paper's aspect ratio (`CHECKLIST_PAGE_H` is derived from it), so placing it edge to

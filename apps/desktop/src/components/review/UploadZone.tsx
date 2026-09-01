@@ -1,6 +1,7 @@
 import React from "react";
-import { Loader, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { DrawingItem, UploadState } from "../../stores/workspaceStore";
+import { LoadingOverlay, SquareAccordion } from "../ui/LoadingOverlay";
 
 export interface UploadZoneProps {
   side: "old" | "new";
@@ -180,59 +181,73 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       )}
 
       {uploadState === "uploading" && (
-        <div className="w-full flex flex-col items-center text-center p-8">
-          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-border-color flex items-center justify-center mb-6 shadow-lg">
-            <Loader className="spin-animation text-accent-cyan" size={24} />
-          </div>
-          <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
-            <span className="text-base font-bold text-zinc-100">Uploading CAD Draft...</span>
-            <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
-          </div>
-          
-          <div className="w-full max-w-[320px]">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Network Transfer</span>
-              <span className="text-xs font-mono font-bold text-accent-cyan">{progress}%</span>
+        <>
+          <LoadingOverlay
+            active={true}
+            title="Uploading CAD Draft…"
+            phase={fileName ? `${fileName} · ${progress}% Network Transfer` : "Network Transfer…"}
+          />
+          <div className="w-full flex flex-col items-center text-center p-8">
+            <div className="relative p-3 flex items-center justify-center mb-6">
+              <SquareAccordion size={4} cellSize={18} />
             </div>
-            <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
-              <div
-                className="h-full bg-accent-cyan transition-all duration-300 shadow-[0_0_10px_rgba(0,229,255,0.4)]"
-                style={{ width: `${progress}%` }}
-              ></div>
+            <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
+              <span className="text-base font-bold text-zinc-100">Uploading CAD Draft...</span>
+              <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
+            </div>
+            
+            <div className="w-full max-w-[320px]">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Network Transfer</span>
+                <span className="text-xs font-mono font-bold text-accent-cyan">{progress}%</span>
+              </div>
+              <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
+                <div
+                  className="h-full bg-accent-cyan transition-all duration-300 shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {(uploadState === "processing" || uploadState === "validating") && (
-        <div className="w-full flex flex-col items-center text-center p-8">
-          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-border-color flex items-center justify-center mb-6 shadow-lg">
-            <Loader className="spin-animation text-accent-cyan" size={24} />
-          </div>
-          <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
-            <span className="text-base font-bold text-zinc-100">
-              {uploadState === "validating" ? "Validating Drawing..." : "Processing File..."}
-            </span>
-            <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
-          </div>
-          
-          <div className="w-full max-w-[320px]">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
-                {uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}
-              </span>
-              <span className="text-xs font-mono font-bold text-accent-cyan">
-                {Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%
-              </span>
+        <>
+          <LoadingOverlay
+            active={true}
+            title={uploadState === "validating" ? "Validating Drawing…" : "Processing File…"}
+            phase={fileName ? `${fileName} · ${uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}` : null}
+          />
+          <div className="w-full flex flex-col items-center text-center p-8">
+            <div className="relative p-3 flex items-center justify-center mb-6">
+              <SquareAccordion size={4} cellSize={18} />
             </div>
-            <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
-              <div
-                className="h-full bg-accent-cyan transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(0,229,255,0.4)]"
-                style={{ width: `${Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%` }}
-              ></div>
+            <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
+              <span className="text-base font-bold text-zinc-100">
+                {uploadState === "validating" ? "Validating Drawing..." : "Processing File..."}
+              </span>
+              <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
+            </div>
+            
+            <div className="w-full max-w-[320px]">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                  {uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}
+                </span>
+                <span className="text-xs font-mono font-bold text-accent-cyan">
+                  {Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%
+                </span>
+              </div>
+              <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
+                <div
+                  className="h-full bg-accent-cyan transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(0,229,255,0.4)]"
+                  style={{ width: `${Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%` }}
+                ></div>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {uploadState === "failed" && (

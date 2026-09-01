@@ -1,6 +1,7 @@
 import { markerStyle } from './markerStyles';
-import { cleanCadText } from './renderEntities';
 import { CHECKLIST_PAGE_ASPECT } from './reportPageGeometry';
+import { cleanCadText } from '../../utils/cadGlyphs';
+import type { EngineeringMatrixOverview } from '../../utils/comparisonTaxonomy';
 
 /**
  * The compliance report's checklist page, drawn onto a canvas rather than typed into the PDF.
@@ -179,14 +180,23 @@ function drawTableHeader(ctx: CanvasRenderingContext2D, colX: number, y: number)
   ctx.font = FONT(9, 700);
   ctx.fillStyle = COLORS.primary;
   ctx.fillText('STATUS', colX + 4, y + 14);
-  ctx.fillText('REFERENCE', colX + 96, y + 14);
-  ctx.fillText('REVISION', colX + 312, y + 14);
+  ctx.fillText('REFERENCE', colX + 50, y + 14);
+  ctx.fillText('REVISION', colX + 286, y + 14);
 
   ctx.strokeStyle = COLORS.border;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(colX, y + TABLE_HEAD_H + 0.5);
   ctx.lineTo(colX + COL_W, y + TABLE_HEAD_H + 0.5);
+  ctx.stroke();
+}
+
+function drawAnnotationHeader(ctx: CanvasRenderingContext2D, colX: number, y: number) {
+  ctx.strokeStyle = COLORS.darkBorder;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(colX, y + 0.5);
+  ctx.lineTo(colX + COL_W, y + 0.5);
   ctx.stroke();
 }
 
@@ -215,13 +225,63 @@ function measureRow(
   const refText = cleanCadText(row.reference);
   const revText = cleanCadText(row.revision);
   const noteText = row.note ? cleanCadText(row.note) : '';
-  const linesRef = cellLines(ctx, refText, 202);
-  const linesRev = cellLines(ctx, revText, 210);
+  const linesRef = cellLines(ctx, refText, 226);
+  const linesRev = cellLines(ctx, revText, 240);
   const linesNote = noteText ? cellLines(ctx, noteText, COL_W - 24) : [];
   const baseLines = Math.max(linesRef.length, linesRev.length, 1);
   const noteHeight = linesNote.length > 0 ? linesNote.length * LINE_H + 4 : 0;
   const height = Math.max(28, baseLines * LINE_H + noteHeight + ROW_PAD * 2);
   return { linesRef, linesRev, linesNote, height };
+}
+
+function measureAnnotationRow(
+  ctx: CanvasRenderingContext2D,
+  row: ChecklistRow,
+): { linesText: string[]; height: number } {
+  ctx.font = FONT(10);
+  const text = cleanCadText(row.revision || row.note || row.reference || '');
+  const linesText = cellLines(ctx, text, COL_W - 56);
+  const height = Math.max(26, linesText.length * LINE_H + ROW_PAD * 2);
+  return { linesText, height };
+}
+
+function drawAnnotationRow(
+  ctx: CanvasRenderingContext2D,
+  row: ChecklistRow,
+  linesText: string[],
+  colX: number,
+  y: number,
+  height: number,
+) {
+  const badgeText = row.status.trim() || 'X';
+  const isResolved = /^✓/i.test(badgeText);
+  const pillColor = isResolved ? '#047857' : '#dc2626';
+
+  ctx.font = FONT(9, 700);
+  const badgeW = Math.max(24, ctx.measureText(badgeText).width + 8);
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = pillColor;
+  ctx.fillRect(colX + 4, y + ROW_PAD - 1, badgeW, 16);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = pillColor;
+  ctx.textAlign = 'center';
+  ctx.fillText(badgeText, colX + 4 + badgeW / 2, y + ROW_PAD + 11);
+  ctx.textAlign = 'left';
+
+  // Annotation text in black, full width
+  ctx.font = FONT(10);
+  ctx.fillStyle = COLORS.primary;
+  linesText.forEach((line, n) => {
+    ctx.fillText(line, colX + badgeW + 12, y + ROW_PAD + 11 + n * LINE_H);
+  });
+
+  // Bottom row divider line
+  ctx.strokeStyle = COLORS.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(colX, y + height + 0.5);
+  ctx.lineTo(colX + COL_W, y + height + 0.5);
+  ctx.stroke();
 }
 
 function drawRow(
@@ -232,7 +292,7 @@ function drawRow(
   y: number,
   height: number,
 ) {
-  // Status pill (only Status has color)
+  // Status icon only (clean icon-only badge)
   const isAnnotationBadge = /^X[₀-₉0-9]*/i.test(row.status.trim());
   let label: string;
   let pillColor: string;
@@ -242,27 +302,29 @@ function drawRow(
     pillColor = '#dc2626'; // Red color for annotation badge (X₁, X₂, X₃)
   } else {
     const style = markerStyle(row.status);
-    label = style.glyph + ' ' + (row.status || style.label).replace(/_/g, ' ');
+    label = style.glyph; // Only the icon: ✓, +, ⇄, −, ✕
     pillColor = style.uiLight;
   }
 
-  ctx.font = FONT(9, 700);
-  const pillW = Math.min(86, ctx.measureText(label).width + 12);
+  ctx.font = FONT(10, 700);
+  const pillW = isAnnotationBadge ? Math.max(24, ctx.measureText(label).width + 8) : 22;
   ctx.globalAlpha = 0.15;
   ctx.fillStyle = pillColor;
-  ctx.fillRect(colX + 2, y + ROW_PAD - 1, pillW, 16);
+  ctx.fillRect(colX + 4, y + ROW_PAD - 1, pillW, 17);
   ctx.globalAlpha = 1;
   ctx.fillStyle = pillColor;
-  ctx.fillText(label, colX + 8, y + ROW_PAD + 11);
+  ctx.textAlign = 'center';
+  ctx.fillText(label, colX + 4 + pillW / 2, y + ROW_PAD + 12);
+  ctx.textAlign = 'left';
 
   // Reference & Revision in pure black
   ctx.font = FONT(10);
   ctx.fillStyle = COLORS.primary;
   measured.linesRef.forEach((line, n) => {
-    ctx.fillText(line, colX + 96, y + ROW_PAD + 11 + n * LINE_H);
+    ctx.fillText(line, colX + 50, y + ROW_PAD + 11 + n * LINE_H);
   });
   measured.linesRev.forEach((line, n) => {
-    ctx.fillText(line, colX + 312, y + ROW_PAD + 11 + n * LINE_H);
+    ctx.fillText(line, colX + 286, y + ROW_PAD + 11 + n * LINE_H);
   });
 
   // Notes in pure black if present
@@ -271,7 +333,7 @@ function drawRow(
     ctx.font = FONT(9);
     ctx.fillStyle = COLORS.primary;
     measured.linesNote.forEach((line, n) => {
-      ctx.fillText(line, colX + 8, noteTop + n * LINE_H);
+      ctx.fillText(line, colX + 50, noteTop + n * LINE_H);
     });
   }
 
@@ -284,21 +346,110 @@ function drawRow(
   ctx.stroke();
 }
 
+function drawMatrixColumn(
+  sheet: Sheet,
+  overview: EngineeringMatrixOverview,
+): void {
+  const { ctx } = sheet;
+
+  const tableW = COL_W;
+  const statusColW = 80;
+  const itemColW = tableW - statusColW;
+
+  const colX = COL_X[0];
+  let y = BODY_TOP;
+
+  for (const cat of overview.categories) {
+    const headerH = 24;
+
+    // Category Header Box: Full border, centered bold title
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(colX, y, tableW, headerH);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(colX, y, tableW, headerH);
+
+    ctx.font = FONT(10, 700);
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.fillText(cat.categoryLabel, colX + tableW / 2, y + 16);
+    ctx.textAlign = 'left';
+
+    y += headerH;
+
+    for (const item of cat.items) {
+      const rowH = 21;
+
+      // Row background & outer border
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(colX, y, tableW, rowH);
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(colX, y, tableW, rowH);
+
+      // Vertical divider separating Item Name and Status
+      ctx.beginPath();
+      ctx.moveTo(colX + itemColW, y);
+      ctx.lineTo(colX + itemColW, y + rowH);
+      ctx.stroke();
+
+      // Sub-item Label
+      ctx.font = FONT(9, 400);
+      ctx.fillStyle = '#000000';
+      ctx.fillText(item.label, colX + 8, y + 14);
+
+      // Status icon / number only
+      ctx.font = FONT(11, 700);
+      if (item.verdict === 'DISCREPANCY') {
+        ctx.fillStyle = '#ff6b00'; // Vibrant neon orange
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          String(item.findingsCount),
+          colX + itemColW + statusColW / 2,
+          y + 15,
+        );
+      } else if (item.verdict === 'PASS') {
+        ctx.fillStyle = '#16a34a';
+        ctx.textAlign = 'center';
+        ctx.fillText('✓', colX + itemColW + statusColW / 2, y + 15);
+      } else {
+        ctx.fillStyle = '#9ca3af';
+        ctx.textAlign = 'center';
+        ctx.fillText('—', colX + itemColW + statusColW / 2, y + 15);
+      }
+      ctx.textAlign = 'left';
+
+      y += rowH;
+    }
+    y += 10; // Small clean spacing between category tables
+  }
+}
+
 /**
  * Every checklist page, as PNG data URLs in order.
  *
- * Rendered in Portrait orientation with a clean normal Two-Column table layout.
+ * Rendered in Portrait orientation with a clean Executive Verification Matrix in Column 1
+ * followed by detailed itemized comparative content tables in Column 2 side-by-side.
  */
 export function renderChecklistSheets(
   sections: ChecklistSectionData[],
   meta: ChecklistSheetMeta,
+  matrixOverview?: EngineeringMatrixOverview | null,
 ): string[] {
   const sheets: Sheet[] = [];
+
   let sheet = newSheet(meta, false);
   sheets.push(sheet);
 
   let colIdx = 0; // 0 (left) or 1 (right)
   let y = BODY_TOP;
+
+  // Place the Checklist Matrix in Column 1, then proceed to Column 2 on Sheet 1
+  if (matrixOverview && matrixOverview.categories && matrixOverview.categories.length > 0) {
+    drawMatrixColumn(sheet, matrixOverview);
+    colIdx = 1;
+    y = BODY_TOP;
+  }
 
   const nextColumn = () => {
     if (colIdx === 0) {
@@ -314,7 +465,10 @@ export function renderChecklistSheets(
 
   const populated = sections.filter((s) => s.rows.length > 0);
 
-  if (populated.length === 0) {
+  if (
+    populated.length === 0 &&
+    (!matrixOverview || !matrixOverview.categories || matrixOverview.categories.length === 0)
+  ) {
     sheet.ctx.font = FONT(12);
     sheet.ctx.fillStyle = COLORS.primary;
     sheet.ctx.fillText(
@@ -325,8 +479,8 @@ export function renderChecklistSheets(
   }
 
   for (const section of populated) {
-    // Check if section heading + table header + 1 row can fit
-    const headerBlockH = SECTION_H + TABLE_HEAD_H + 30;
+    const isAnnotationSection = section.label.trim().toLowerCase() === 'annotations';
+    const headerBlockH = SECTION_H + (isAnnotationSection ? 6 : TABLE_HEAD_H + 2) + 30;
     if (y + headerBlockH > BODY_BOTTOM) {
       nextColumn();
     }
@@ -334,21 +488,41 @@ export function renderChecklistSheets(
     const colX = COL_X[colIdx];
     drawSectionHeading(sheet.ctx, section.label, section.rows.length, colX, y);
     y += SECTION_H;
-    drawTableHeader(sheet.ctx, colX, y);
-    y += TABLE_HEAD_H + 2;
+
+    if (isAnnotationSection) {
+      drawAnnotationHeader(sheet.ctx, colX, y);
+      y += 4;
+    } else {
+      drawTableHeader(sheet.ctx, colX, y);
+      y += TABLE_HEAD_H + 2;
+    }
 
     section.rows.forEach((row) => {
-      const measured = measureRow(sheet.ctx, row);
-      if (y + measured.height > BODY_BOTTOM) {
-        nextColumn();
-        const nextColX = COL_X[colIdx];
-        drawSectionHeading(sheet.ctx, section.label + ' (cont.)', section.rows.length, nextColX, y);
-        y += SECTION_H;
-        drawTableHeader(sheet.ctx, nextColX, y);
-        y += TABLE_HEAD_H + 2;
+      if (isAnnotationSection) {
+        const measured = measureAnnotationRow(sheet.ctx, row);
+        if (y + measured.height > BODY_BOTTOM) {
+          nextColumn();
+          const nextColX = COL_X[colIdx];
+          drawSectionHeading(sheet.ctx, section.label + ' (cont.)', section.rows.length, nextColX, y);
+          y += SECTION_H;
+          drawAnnotationHeader(sheet.ctx, nextColX, y);
+          y += 4;
+        }
+        drawAnnotationRow(sheet.ctx, row, measured.linesText, COL_X[colIdx], y, measured.height);
+        y += measured.height;
+      } else {
+        const measured = measureRow(sheet.ctx, row);
+        if (y + measured.height > BODY_BOTTOM) {
+          nextColumn();
+          const nextColX = COL_X[colIdx];
+          drawSectionHeading(sheet.ctx, section.label + ' (cont.)', section.rows.length, nextColX, y);
+          y += SECTION_H;
+          drawTableHeader(sheet.ctx, nextColX, y);
+          y += TABLE_HEAD_H + 2;
+        }
+        drawRow(sheet.ctx, row, measured, COL_X[colIdx], y, measured.height);
+        y += measured.height;
       }
-      drawRow(sheet.ctx, row, measured, COL_X[colIdx], y, measured.height);
-      y += measured.height;
     });
 
     y += 14; // gap between sections

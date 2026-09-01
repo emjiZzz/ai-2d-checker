@@ -28,6 +28,7 @@ import {
 } from "../../utils/zoneGate";
 import { useAuditStore } from "../../stores/auditStore";
 import { useComplianceReportExport } from "../../hooks/useComplianceReportExport";
+import { LoadingOverlay, SquareAccordion } from "../ui/LoadingOverlay";
 import { registerExportCanvas } from "./canvasExportRegistry";
 import { downloadRedlineDxf } from "../../services/reportsApi";
 import { DrawingCanvas } from "./DrawingCanvas";
@@ -874,9 +875,10 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   if ((!hasHydrated && !isPrototypeMode()) || !model) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-bg-dark text-text-muted">
+        <LoadingOverlay active={true} title="Loading Workspace…" phase="Initializing drawing workspace layout…" />
         <div className="flex flex-col items-center gap-3">
-          <div className="spin-animation w-8 h-8 border-2 border-accent-cyan border-t-transparent rounded-full"></div>
-          <span>Loading workspace state...</span>
+          <SquareAccordion size={4} cellSize={20} />
+          <span className="text-sm font-medium text-slate-300">Loading workspace state...</span>
         </div>
       </div>
     );

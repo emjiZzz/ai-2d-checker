@@ -16,21 +16,11 @@ import {
 import { HIDE_SECTION_CALLOUTS, sectionCalloutsForLayers } from './sectionCallouts';
 
 
-// Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags and convert escape codes
-export const cleanCadText = (text?: string | null): string => {
-  if (!text) return "";
-  let clean = text;
-  clean = clean.replace(/ラ/g, "x");
-  clean = clean.replace(/[{}]/g, "");
-  clean = clean.replace(/\\[A-Za-z][^;]*;/g, "");
-  clean = clean.replace(/\\P/g, " ");
-  // Convert legacy AutoCAD control escape codes to standard engineering symbols
-  clean = clean.replace(/%%c/gi, "⌀");
-  clean = clean.replace(/%%d/gi, "°");
-  clean = clean.replace(/%%p/gi, "±");
-  clean = clean.replace(/%%[uo]/gi, "");
-  return clean.trim();
-};
+// Moved to `utils/cadGlyphs.ts` on 2026-09-01 and re-exported here, because the taxonomy
+// classifiers in `utils/` need it and must not import the canvas renderer to get it. Every
+// existing importer is unchanged — see the note in that file for what went wrong without it.
+export { cleanCadText } from '../../utils/cadGlyphs';
+import { cleanCadText } from '../../utils/cadGlyphs';
 
 /**
  * The ink colour for DRAWING ENTITIES on export.
@@ -1057,7 +1047,7 @@ const MARKER_DOT_PX = 5.5;
  */
 export const MARK_PAINT = {
   canvas: { checkPx: 6, strokePx: 3, checkRisePx: 0, checkShiftRightPx: 12, alpha: 1 },
-  print: { checkPx: 3.2, strokePx: 0.60, checkRisePx: 1.8, checkShiftRightPx: 5, alpha: 0.9 },
+  print: { checkPx: 4.8, strokePx: 0.95, checkRisePx: 2.0, checkShiftRightPx: 6, alpha: 0.95 },
 } as const;
 
 export const renderViolationReticles = ({
@@ -1424,21 +1414,22 @@ export const renderAnnotationPins = ({
     const localDpr = isExport ? 1 : (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
     ctx.setTransform(localDpr, 0, 0, localDpr, 0, 0);
 
-    const r = (isSelected || isHovered ? 10 : 8) * resolutionMultiplier;
+    const r = (isSelected || isHovered ? 8 : 6) * (isExport ? 1 : resolutionMultiplier);
 
     // Outer aura ring for hover/selection
     if (isSelected || isHovered) {
       ctx.beginPath();
       ctx.strokeStyle = isSelected ? '#ffffff' : color;
-      ctx.lineWidth = 1.5 * resolutionMultiplier;
+      ctx.lineWidth = 1.2 * resolutionMultiplier;
       ctx.setLineDash([3 * resolutionMultiplier, 3 * resolutionMultiplier]);
-      ctx.arc(screenPos.x, screenPos.y, r + 5 * resolutionMultiplier, 0, 2 * Math.PI);
+      ctx.arc(screenPos.x, screenPos.y, r + 4 * resolutionMultiplier, 0, 2 * Math.PI);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    const glyphSize = Math.round(r * 3.2);
-    ctx.font = `900 ${glyphSize}px "Yu Gothic", "MS Gothic", Arial, sans-serif`;
+    // Match standard drawing dimension font height (~3.5mm on paper, ~14px on screen)
+    const glyphSize = Math.round((isExport ? 6.5 : 14) * (isExport ? resolutionMultiplier : 1));
+    ctx.font = `bold ${glyphSize}px "Yu Gothic", "MS Gothic", Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
@@ -1991,8 +1982,13 @@ export const renderPenStrokes = ({
 
   for (const stroke of allStrokes) {
     if (!stroke.points || stroke.points.length === 0) continue;
-    const strokeColor = isExport ? getPrintColor(stroke.color) : stroke.color;
-    const lineWidth = ((stroke.width || 2.5) / scale) * resolutionMultiplier;
+    // Reviewer freehand pen markup stays red (or chosen color) on print rather than converting to black CAD ink
+    const strokeColor = isExport
+      ? (stroke.color && stroke.color !== '#18181b' && stroke.color !== '#000000' ? (stroke.color === '#ff2850' ? '#b91c1c' : stroke.color) : '#b91c1c')
+      : (stroke.color || '#ff2850');
+    // On print export, use a thinner line width (1.2px / scale) so the reviewer's red markup is crisp and clean without overpowering the drawing linework
+    const baseWidth = isExport ? (stroke.width ? Math.min(stroke.width * 0.45, 1.2) : 1.2) : (stroke.width || 2.5);
+    const lineWidth = (baseWidth / scale) * resolutionMultiplier;
 
     if (stroke.points.length === 1) {
       // Single point / dot

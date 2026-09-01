@@ -1,4 +1,5 @@
 import { ZONE_KEYS, type DrawingZonesResponse } from "../../services/drawingsApi";
+import { DIAMETER_CHARS } from "../../utils/cadGlyphs";
 
 /**
  * Entity picking — "which CAD entity is under the cursor".
@@ -103,7 +104,9 @@ const DXF_OVERRIDES: [RegExp, string][] = [
 ];
 
 /** Marks the two sides spell differently for the same dimension, so they cannot be compared. */
-const DIAMETER_MARKS = /[⌀øØφϕф]/g;
+// Derived from the shared set rather than restated: the taxonomy classifiers were written
+// against a SHORTER list and could not see the `⌀` that `%%c` transcodes to. One source.
+const DIAMETER_MARKS = new RegExp(`[${DIAMETER_CHARS}]`, 'g');
 
 /**
  * Multiplication signs, folded onto the letter `x`.

@@ -7,7 +7,6 @@ import { CopilotPanel } from "./copilot/CopilotPanel";
 import {
   ShieldCheck,
   Play,
-  Loader2,
   AlertTriangle,
   CheckCircle,
   Clock,
@@ -19,6 +18,7 @@ import {
   XCircle
 } from "lucide-react";
 import { Button } from "./ui/Button";
+import { SquareAccordion } from "./ui/LoadingOverlay";
 
 export const AuditConsole: React.FC = () => {
   const {
@@ -166,7 +166,9 @@ export const AuditConsole: React.FC = () => {
       {/* 2. PROGRESS QUEUE LOADING STATE */}
       {auditState === "processing" && activeSession && (
         <div className="card loading-card">
-          <Loader2 size={48} className="spin-animation text-purple" style={{ marginBottom: "20px" }} />
+          <div className="mb-5 flex items-center justify-center">
+            <SquareAccordion size={5} cellSize={18} className="text-purple-400" />
+          </div>
           <h4>Audit Pipeline Active</h4>
           <span className="loading-sub">
             Session ID: <code style={{ color: "#c084fc" }}>{activeSession.id}</code>

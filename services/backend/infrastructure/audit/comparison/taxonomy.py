@@ -101,7 +101,10 @@ TAXONOMY: dict[Category, list[FeatureItem]] = {
         FeatureItem("creation_date", "Date of Creation"),
         FeatureItem("designed", "Designed"),
         FeatureItem("drawn", "Drawn"),
-        FeatureItem("quantity", "Quantity"),
+        FeatureItem("quantity", "Total Quantity (T. Q'ty)"),
+        FeatureItem("stock_quantity", "Stock Quantity"),
+        FeatureItem("unit_number", "Unit No."),
+        FeatureItem("part_number", "Part No. / Code No."),
         FeatureItem("job_number", "Job Number"),
         # 機器記号 + ユニット記号. ONE item for both cells deliberately, the same way the DWG No.
         # is one item for its ruled sub-cells: the value routinely spans them (`FSRS2` runs

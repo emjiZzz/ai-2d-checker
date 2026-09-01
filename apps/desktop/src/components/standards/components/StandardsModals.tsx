@@ -1,6 +1,7 @@
 import React from "react";
 import { UploadCloud, Loader2, AlertCircle, Pencil, FileText, Save, X, AlertTriangle, Layers, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
+import { SquareAccordion } from "../../../components/ui/LoadingOverlay";
 
 export interface StandardsModalsProps {
   // Upload modal
@@ -90,7 +91,7 @@ export const StandardsModals: React.FC<StandardsModalsProps> = ({
               >
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: "none" }} accept=".pdf,.txt,.md,.xlsx,.xls" />
                 <div className="upload-icon-container">
-                  {uploadStatus === "uploading" ? <Loader2 size={24} className="spin-animation text-purple" /> : <UploadCloud size={24} className="text-purple" />}
+                  {uploadStatus === "uploading" ? <SquareAccordion size={3} cellSize={12} className="text-purple-400" /> : <UploadCloud size={24} className="text-purple" />}
                 </div>
                 <span className="upload-prompt" style={{ fontSize: "0.85rem" }}>
                   {selectedFile ? `Selected: ${selectedFile.name} (${formatBytes(selectedFile.size)})` : "Drag & Drop standard reference, or browse"}
@@ -361,8 +362,8 @@ export const StandardsModals: React.FC<StandardsModalsProps> = ({
               </div>
 
               {explorerLoading ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
-                  <Loader2 size={36} className="spin-animation text-purple" style={{ marginBottom: "16px" }} />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", gap: 14 }}>
+                  <SquareAccordion size={4} cellSize={18} className="text-purple-400" />
                   <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Querying local vector indexes...</span>
                 </div>
               ) : explorerError ? (

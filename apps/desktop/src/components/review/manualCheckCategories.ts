@@ -1,4 +1,18 @@
-import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
+import { COMPARISON_TAXONOMY, isTitleBlockText } from '../../utils/comparisonTaxonomy';
+import { DIAMETER_CHARS, MULTIPLY_CHARS, cleanCadText } from '../../utils/cadGlyphs';
+
+/**
+ * Diameter and size callouts, from the shared glyph set.
+ *
+ * These read `[ØøφΦ]` until 2026-09-01 and therefore matched none of the **U+2300 ⌀** that
+ * `cleanCadText` produces from the DXF `%%c` escape — so `⌀125` did not read as a drawing view
+ * and `6×⌀145` did not read as a bill-of-materials value. Both still returned a category, from
+ * the generic fallthrough at the bottom of `inferCategoryForEntity`, which is why the gap was
+ * invisible. `utils/cadGlyphs.ts` has the full set and the rest of the story.
+ */
+const MATERIAL_SIZE_RE = new RegExp(`[\\d.]+\\s*[${MULTIPLY_CHARS}]\\s*[\\d.${DIAMETER_CHARS}]+`, 'i');
+const DIAMETER_VALUE_RE = new RegExp(`[${DIAMETER_CHARS}]\\s*[\\d.]+`);
+const HOLE_COUNT_RE = new RegExp(`\\d+[-x×]\\s*[${DIAMETER_CHARS}MＭ]?\\d+`, 'i');
 
 /**
  * The six categories a marking can carry, for the stamp modal's selector.
@@ -22,10 +36,10 @@ import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
 const LABELS: Record<string, string> = {
   drawing_views: 'Drawing Views',
   notes_section: 'Notes',
-  bill_of_materials: 'BOM',
+  bill_of_materials: 'Bill of Materials',
   title_block: 'Title Block',
   isometric_view: 'Isometric View',
-  other_engineering_references: 'Other References',
+  other_engineering_references: 'Others',
 };
 
 export const CATEGORY_KEYS: readonly string[] = Object.keys(COMPARISON_TAXONOMY);
@@ -112,4 +126,86 @@ export function categoryForZone(zone: string | null | undefined): string | null 
   // Pinned against the live taxonomy rather than trusted: a category renamed on the backend
   // would otherwise be written into markings that every downstream group-by silently drops.
   return category && CATEGORY_KEYS.includes(category) ? category : null;
+}
+
+/**
+ * Re-exported, not reimplemented.
+ *
+ * This file carried a byte-identical 30-line copy of `isTitleBlockText` until 2026-09-01, used
+ * only by `inferCategoryForEntity` below while every other caller imported the original. The
+ * two were still in agreement, which is what makes the shape dangerous rather than harmless:
+ * fixing the original to classify `cleanCadText(text)` instead of the raw stored string
+ * corrected one copy and left this one deciding categories off `{...}` MTEXT markup and `%%c`
+ * escapes. Duplication in this codebase does not announce itself by breaking -- it keeps
+ * working while the copies slowly disagree, and the output stays plausible.
+ */
+export { isTitleBlockText } from '../../utils/comparisonTaxonomy';
+
+/**
+ * Infers the category for an entity from its zone, or falls back to intelligent
+ * text & CAD entity heuristics. If it is genuinely ambiguous or blank, returns null so the user is prompted.
+ */
+export function inferCategoryForEntity(
+  zone: string | null | undefined,
+  text?: string,
+  entityType?: string,
+): string | null {
+  const fromZone = categoryForZone(zone);
+  if (fromZone) return fromZone;
+
+  // The DISPLAYED form. Raw entity text carries `%%c` escapes and MTEXT markup, and every rule
+  // below is written against the symbols those render as — see `cleanCadText`.
+  const clean = cleanCadText(text);
+
+  // 1. Bill of Materials (BOM)
+  if (
+    /^(SS\d+|SUS\d+|S\d+C|SCM\d+|SPCC|SPHC|AL|A\d+|FC\d+|FCD\d+|SKD\d+|MC|POM|BRASS|C3604)/i.test(clean) ||
+    MATERIAL_SIZE_RE.test(clean) ||
+    /材質|個数|数量|重量|素材重量|仕上重量|寸法|型式|仕様|備考/i.test(clean) ||
+    /\b(kg|g|weight)\b/i.test(clean) ||
+    /\d+(\.\d+)?\s*(kg|g)\b/i.test(clean)
+  ) {
+    return 'bill_of_materials';
+  }
+
+  // 2. Title Block
+  if (isTitleBlockText(clean)) {
+    return 'title_block';
+  }
+
+  // 3. Notes
+  if (/注記|特記|NOTE|NOTES|GENERAL NOTES/i.test(clean)) {
+    return 'notes_section';
+  }
+
+  // 4. Isometric View
+  if (/ISOMETRIC|等角図|3D VIEW/i.test(clean)) {
+    return 'isometric_view';
+  }
+
+  // 5. Drawing Views (Dimensions, Tolerances, Chamfers, Holes, Geometry, Line/Arc/Circle)
+  if (
+    /^[CRＣＲ]\s*\d+/i.test(clean) ||
+    DIAMETER_VALUE_RE.test(clean) ||
+    HOLE_COUNT_RE.test(clean) ||
+    /^M\d{1,2}(?:\s*[*x×]\s*[\d.]+)?$/i.test(clean) ||
+    /^[+-]?\d+(\.\d+)?([°deg]|\s*±\s*[\d.]+)?$/i.test(clean) ||
+    /[▽▼√◎⟂∥⌓⌒↗⌖⌯]/.test(clean) ||
+    /キリ|タップ|深さ|穴|面取り|幾何公差/i.test(clean) ||
+    entityType === 'LINE' ||
+    entityType === 'ARC' ||
+    entityType === 'CIRCLE' ||
+    entityType === 'LWPOLYLINE' ||
+    entityType === 'DIMENSION'
+  ) {
+    return 'drawing_views';
+  }
+
+  // Standard numeric or alphanumeric CAD text (e.g. 125, 40, 18, 4 ロール)
+  if (clean.length > 0 && /[\d\w]/.test(clean)) {
+    return 'drawing_views';
+  }
+
+  // Genuinely ambiguous / blank: prompt the engineer with category selector
+  return null;
 }

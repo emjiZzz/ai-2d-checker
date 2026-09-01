@@ -222,6 +222,77 @@ def test_inject_bom_markings_sets_feature_from_col_map():
     assert qty_marking["feature"] == "quantity"
 
 
+def test_every_bom_column_lands_on_the_sub_item_its_header_names():
+    """The column -> sub-item map, pinned against what `table_extractor` puts in each column.
+
+    Two of these were wrong until 2026-09-01 and neither failed anything: `CODE` (built from
+    `MATERIAL`/`材質`, header `材質 / Code`, holds SS400) was tagged `material_specification`,
+    and `DIMENSION` (built from `SIZE`/`寸法`/`型式`, header `材料寸法/型式 / Dimension`, holds
+    `6×⌀145`) fell to `other`. So `material_type` had no producer at all and reported "No
+    changes detected." on every audit -- a check that never ran, reporting clean -- while the
+    material name sat under Material Specification.
+
+    Asserted per column rather than by comparing the dict to a copy of itself: the claim being
+    made is about the HEADER each column is extracted from, and a mirrored dict would restate
+    the map without checking anything.
+    """
+    ref_rows = [{
+        "NO": {"value": "1", "coordinates": [0.0, 100.0]},
+        "CODE": {"value": "SS400", "coordinates": [1.0, 100.0]},
+        "DIMENSION": {"value": "6×⌀145", "coordinates": [2.0, 100.0]},
+        "QTY": {"value": "2", "coordinates": [3.0, 100.0]},
+        "MATERIAL_WEIGHT": {"value": "0.78", "coordinates": [4.0, 100.0]},
+        "FINISHED_WEIGHT": {"value": "0.41", "coordinates": [5.0, 100.0]},
+        "REMARK": {"value": "NONE", "coordinates": [6.0, 100.0]},
+    }]
+    clean_markings: list = []
+    inject_bom_markings(
+        clean_markings, ref_rows, ref_rows, is_assembly_drawing=False,
+        ref_bom_bbox=None, rev_bom_bbox=None, ref_entities=[], rev_entities=[],
+        used_ref_entities=set(), used_rev_entities=set(),
+    )
+
+    def feature_of(header_fragment: str) -> str:
+        return next(m for m in clean_markings if header_fragment in m["details"])["feature"]
+
+    assert feature_of("No.") == "numbering_arrangement"
+    assert feature_of("Code") == "material_type", "材質 / Code is the material, not its size"
+    assert feature_of("Dimension") == "material_specification", "材料寸法/型式 is the spec"
+    assert feature_of("Q'ty") == "quantity"
+    assert feature_of("Material Wt(kg)") == "material_weight"
+    assert feature_of("Finished Wt(kg)") == "material_weight"
+
+
+def test_material_type_has_a_producer():
+    """A sub-item nothing can assign reports clean forever, which is worse than reporting wrong.
+
+    `taxonomy.DEFERRED_FEATURES` exists to make that state visible for the four items that are
+    genuinely unproduceable; `material_type` was in the same state without being declared, so it
+    did not even get the "not yet supported" treatment that tells a reviewer not to trust it.
+    """
+    from services.backend.infrastructure.audit.comparison import taxonomy
+
+    ref_rows = [{
+        "NO": {"value": "1", "coordinates": [0.0, 100.0]},
+        "CODE": {"value": "SS400", "coordinates": [1.0, 100.0]},
+        "QTY": {"value": "2", "coordinates": [3.0, 100.0]},
+    }]
+    rev_rows = [{
+        "NO": {"value": "1", "coordinates": [0.0, 100.0]},
+        "CODE": {"value": "SUS304", "coordinates": [1.0, 100.0]},
+        "QTY": {"value": "2", "coordinates": [3.0, 100.0]},
+    }]
+    clean_markings: list = []
+    inject_bom_markings(
+        clean_markings, ref_rows, rev_rows, is_assembly_drawing=False,
+        ref_bom_bbox=None, rev_bom_bbox=None, ref_entities=[], rev_entities=[],
+        used_ref_entities=set(), used_rev_entities=set(),
+    )
+
+    assert "material_type" not in taxonomy.DEFERRED_FEATURES
+    assert any(m["feature"] == "material_type" for m in clean_markings)
+
+
 # ─── marking_builder.py::inject_ballooning_markings ───────────────────────────
 
 def test_inject_ballooning_markings_flags_new_orphan_balloon_in_revision():

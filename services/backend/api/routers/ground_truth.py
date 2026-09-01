@@ -87,6 +87,7 @@ class CreateSessionRequest(BaseModel):
 class CreateMarkingRequest(BaseModel):
     status: MarkingStatus
     category: str
+    feature: str | None = None
     #: See `GroundTruthMarking.category_source`. Defaults to `human` so a client that does not
     #: send it cannot silently mark its rows as derived.
     category_source: Literal["human", "zone"] = "human"
@@ -109,6 +110,7 @@ class UpdateMarkingRequest(BaseModel):
 
     status: MarkingStatus | None = None
     category: str | None = None
+    feature: str | None = None
     ref_text: str | None = None
     rev_text: str | None = None
     text_was_edited: bool | None = None
@@ -122,6 +124,7 @@ class MarkingResponse(BaseModel):
     side: Literal["ref", "rev", "both"]
     status: str
     category: str
+    feature: str | None = None
     category_source: str
     ref_text: str
     rev_text: str
@@ -216,6 +219,7 @@ def _marking_response(m: GroundTruthMarking) -> MarkingResponse:
         side=m.side,
         status=m.status,
         category=m.category,
+        feature=m.feature,
         category_source=m.category_source,
         ref_text=m.ref_text,
         rev_text=m.rev_text,
@@ -546,6 +550,7 @@ async def create_marking(
         rev_address=await _to_address(payload.rev_address),
         status=payload.status,
         category=payload.category,
+        feature=payload.feature,
         category_source=payload.category_source,
         ref_text=payload.ref_text,
         rev_text=payload.rev_text,

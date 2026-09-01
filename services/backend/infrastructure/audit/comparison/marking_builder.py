@@ -245,14 +245,31 @@ def inject_bom_markings(
     # Sub-item taxonomy tag per BOM column (docs/checklist-taxonomy-grouping-
     # implementation-plan.md). One flat map covers both assembly and parts column
     # sets since their col_keys don't collide in meaning (NO/QTY/REMARK are shared
-    # concepts in both). DWG_NO/TITLE/CODE/DIMENSION have no dedicated taxonomy
-    # feature for their exact meaning and fall to OTHER except CODE, which maps to
-    # material_specification as the closest real match.
+    # concepts in both). DWG_NO and TITLE genuinely have no taxonomy item and fall to OTHER.
+    #
+    # ⚠ CODE and DIMENSION were both mis-filed until 2026-09-01, and the note here said so in
+    # good faith -- "CODE ... maps to material_specification as the closest real match". It is
+    # not the closest match, it is the wrong one, and `table_extractor` is where you can read
+    # that off: CODE is built from `MATERIAL`/`材質` under the header `材質 / Code`, so it holds
+    # SS400 -- the material TYPE. DIMENSION is built from `SIZE`/`寸法`/`型式` under
+    # `材料寸法/型式 / Dimension`, so it holds `6×⌀145` -- the material SPECIFICATION. The
+    # taxonomy has an exact item for each and this map named neither.
+    #
+    # What that cost, in the two shapes this repo keeps paying for:
+    #   * `material_type` had NO producer anywhere in the backend. Nothing could assign it, so
+    #     it rendered "No changes detected." on every audit this system has ever run -- a check
+    #     that never ran, reporting clean. That is precisely the defect `taxonomy.DEFERRED_
+    #     FEATURES` exists to make visible, except this one was not declared, so it did not even
+    #     get the "not yet supported" treatment that would have told a reviewer to look.
+    #   * The material name was filed under Material Specification while the actual
+    #     specification fell to `other`, so the two columns an engineer checks against each
+    #     other were one bucket apart and one bucket adrift.
     bom_feature_map = {
         "NO": "numbering_arrangement",
         "QTY": "quantity",
         "REMARK": "remarks",
-        "CODE": "material_specification",
+        "CODE": "material_type",
+        "DIMENSION": "material_specification",
         "MATERIAL_WEIGHT": "material_weight",
         "FINISHED_WEIGHT": "material_weight",
     }
