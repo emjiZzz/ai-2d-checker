@@ -542,6 +542,7 @@ export const ManualMarkingList: React.FC = () => {
                                   revision={m.rev_text ?? ''}
                                   struck={m.status === 'CHANGED' || m.status === 'REMOVED'}
                                   matched={m.status === 'MATCHED'}
+                                  added={m.status === 'ADDED'}
                                   theme={theme}
                                 />
                                 {m.notes && (

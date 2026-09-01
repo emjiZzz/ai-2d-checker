@@ -313,6 +313,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
             statusText.toUpperCase().includes("MIS")
           }
           matched={statusText.toUpperCase() === "MATCHED"}
+          added={statusText.toUpperCase().includes("ADD")}
           theme={theme}
         />
 

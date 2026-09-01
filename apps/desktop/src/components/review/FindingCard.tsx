@@ -35,6 +35,8 @@ export interface ComparisonValuesProps {
   struck?: boolean;
   /** Colour the REVISION as agreement rather than as the current state. */
   matched?: boolean;
+  /** Item is newly added: render full-width without comparison table */
+  added?: boolean;
   theme: string;
 }
 
@@ -44,9 +46,55 @@ export const ComparisonValues: React.FC<ComparisonValuesProps> = ({
   revision,
   struck = false,
   matched = false,
+  added = false,
   theme,
 }) => {
   const isLight = theme === "hc-light";
+
+  // When an item is ADDED (or has no original data to compare), display as a clean, full-width block rather than a 2-column table
+  if (added || (!original && revision)) {
+    return (
+      <div
+        className="cmp-grid-diff"
+        style={{
+          background: isLight ? "rgba(241, 245, 249, 0.75)" : "var(--sidebar-item-hover)",
+          border: "1px solid var(--border-color)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "4px",
+        }}
+      >
+        {title && (
+          <div
+            className="cmp-title"
+            style={{
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              letterSpacing: "0.01em",
+              wordBreak: "break-word",
+              lineHeight: 1.3,
+            }}
+          >
+            {cleanCadText(title)}
+          </div>
+        )}
+        <div
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "0.78rem",
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            wordBreak: "break-word",
+            lineHeight: 1.4,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {cleanCadText(revision) || "-"}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
