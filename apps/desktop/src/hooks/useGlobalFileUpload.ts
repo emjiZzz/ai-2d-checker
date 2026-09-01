@@ -1,17 +1,39 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useDrawingStore } from "../stores/drawingStore";
 
 export const useGlobalFileUpload = () => {
   const [isDragging, setIsDragging] = useState(false);
   const { uploadDrawing } = useDrawingStore();
+  const dragCounter = useRef(0);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const isFileDrag = (e: React.DragEvent) => {
+    if (!e.dataTransfer) return false;
+    const types = Array.from(e.dataTransfer.types || []);
+    return types.includes("Files");
+  };
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
+    dragCounter.current += 1;
     setIsDragging(true);
   }, []);
 
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0 || !e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+      dragCounter.current = 0;
+    }
   }, []);
 
   const handleFileSelection = useCallback(async (file: File) => {
@@ -24,8 +46,10 @@ export const useGlobalFileUpload = () => {
   }, [uploadDrawing]);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     setIsDragging(false);
+    dragCounter.current = 0;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
@@ -42,6 +66,7 @@ export const useGlobalFileUpload = () => {
 
   return {
     isDragging,
+    handleDragEnter,
     handleDragOver,
     handleDragLeave,
     handleDrop,

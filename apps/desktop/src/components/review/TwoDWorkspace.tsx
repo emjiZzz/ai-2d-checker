@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Maximize, Download, MoreVertical, Check, Move, ArrowLeft } from "lucide-react";
-import { Layout, Model, TabNode, IJsonModel, Action, Actions, DockLocation } from 'flexlayout-react';
+import { Maximize, Download, MoreVertical, Check, Move, MoveLeft } from "lucide-react";
+import { Layout, Model, TabNode, TabSetNode, IJsonModel, Action, Actions, DockLocation, type ITabRenderValues } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
 import { useWorkspaceStore } from "../../stores/workspaceStore";
@@ -81,7 +81,6 @@ const LAYOUT_STORAGE_PREFIX = "twod-workspace-layout-v17";
 /** Width of the Comparison Results tabset, matching what the layout seed used to apply. */
 const LEFT_TABSET_WEIGHT = 15;
 const RIGHT_TABSET_WEIGHT = 15;
-const LEFT_TABSET_MIN_WIDTH = 220;
 
 interface TwoDWorkspaceProps {
   currentNav: string;
@@ -672,6 +671,81 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     if (savedLayout) {
       try {
         const parsed = JSON.parse(savedLayout);
+        if (parsed.global) {
+          parsed.global.tabEnableClose = false;
+          parsed.global.tabEnableFloat = false;
+          parsed.global.tabEnablePopout = false;
+          parsed.global.tabEnablePopoutIcon = false;
+          parsed.global.tabEnablePopoutFloatIcon = false;
+        }
+
+        // Recover any tabs that were previously popped out into floating windows
+        const subLayouts = parsed.subLayouts || parsed.popouts;
+        if (subLayouts) {
+          const poppedTabs: any[] = [];
+          const collectTabs = (node: any) => {
+            if (!node) return;
+            if (node.type === "tab" || node.component) {
+              poppedTabs.push(node);
+            }
+            if (node.children && Array.isArray(node.children)) {
+              node.children.forEach(collectTabs);
+            }
+          };
+
+          for (const k of Object.keys(subLayouts)) {
+            collectTabs(subLayouts[k]?.layout);
+          }
+
+          delete parsed.subLayouts;
+          delete parsed.popouts;
+
+          if (poppedTabs.length > 0 && parsed.layout) {
+            const findDrawingTabset = (n: any): any => {
+              if (n.type === "tabset" && !n.children?.some((c: any) => c.id === "leftPanelTab")) {
+                return n;
+              }
+              if (n.children && Array.isArray(n.children)) {
+                for (const c of n.children) {
+                  const res = findDrawingTabset(c);
+                  if (res) return res;
+                }
+              }
+              return null;
+            };
+
+            const target = findDrawingTabset(parsed.layout);
+            if (target) {
+              if (!target.children) target.children = [];
+              target.children.push(...poppedTabs);
+            }
+          }
+        }
+
+        const disableCloseOnPermanentTabs = (node: any) => {
+          if (node.id === "originalCanvasTab" || node.id === "kmtiCanvasTab" || node.id === "leftPanelTab" || node.id === "rightPanelTab") {
+            node.enableClose = false;
+          }
+          if (node.type === "tab" || node.component) {
+            node.enableFloat = false;
+            node.enablePopout = false;
+            node.enablePopoutIcon = false;
+            node.enablePopoutFloatIcon = false;
+          }
+          if (node.id === "leftPanelTab") {
+            node.enableDrag = false;
+          }
+          if (node.type === "tabset" && node.children?.some((c: any) => c.id === "leftPanelTab")) {
+            node.weight = LEFT_TABSET_WEIGHT;
+            node.enableDrag = false;
+            node.enableDivide = false;
+            node.enableDrop = false;
+          }
+          if (node.children && Array.isArray(node.children)) {
+            node.children.forEach(disableCloseOnPermanentTabs);
+          }
+        };
+        if (parsed.layout) disableCloseOnPermanentTabs(parsed.layout);
         setModel(Model.fromJson(parsed));
         return;
       } catch (e) {
@@ -680,15 +754,17 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     }
 
     const globalOpts = {
-      tabEnableClose: true,
+      tabEnableClose: false,
       tabSetHeaderHeight: 32,
       tabSetTabStripHeight: 32,
       enableEdgeDock: true,
       marginInsets: { top: 0, right: 0, bottom: 0, left: 0 },
       // No splitterSize/splitterExtra here: flexlayout-react 0.9 ignores both and
       // derives the size from CSS. See --splitter-size in index.css.
-      tabEnableFloat: true,
-      tabEnablePopout: true
+      tabEnableFloat: false,
+      tabEnablePopout: false,
+      tabEnablePopoutIcon: false,
+      tabEnablePopoutFloatIcon: false,
     };
 
     let layoutNode: any;
@@ -713,9 +789,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         type: "row",
         weight: 100,
         children: [
-          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
-          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
+          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: false, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
+          { type: "tabset", weight: 42.5, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: false, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: false }] }] : [])
         ]
       };
     } else if (activeLayoutPreset === 'right') {
@@ -723,9 +799,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         type: "row",
         weight: 100,
         children: [
-          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
-          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
+          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: false, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
+          { type: "tabset", weight: 40, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: false, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: false }] }] : [])
         ]
       };
     } else {
@@ -734,9 +810,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         type: "row",
         weight: 100,
         children: [
-          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: true, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
-          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: true, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
-          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }] }] : [])
+          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "originalCanvasTab", enableClose: false, name: oldFileName || "REFERENCE DRAWING", component: "originalCanvas" }] },
+          { type: "tabset", weight: 50, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "kmtiCanvasTab", enableClose: false, name: newFileName || "REVISED DRAWING", component: "kmtiCanvas" }] },
+          ...(hasResults ? [{ type: "tabset", weight: RIGHT_TABSET_WEIGHT, minWidth: MIN_TABSET_WIDTH, children: [{ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: false }] }] : [])
         ]
       };
     }
@@ -765,10 +841,41 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     }
   }, [model, oldFileNameStr, newFileNameStr]);
 
-  const handleModelChange = (model: Model, _action: Action) => {
-    // v11, matching the key this component reads on mount and writes when seeding a
-    // default layout. This wrote v10 — a key nothing ever read back — so every layout
-    // the user rearranged was saved and then silently discarded on reload.
+  const handleModelChange = (model: Model, action: Action) => {
+    // If weights of the root row need rebalancing to keep Checklist at exactly 15%:
+    const leftNode = model.getNodeById("leftPanelTab");
+    if (leftNode) {
+      const parent = leftNode.getParent();
+      const rootRow = model.getRootRow();
+      const children = rootRow.getChildren();
+      const leftIndex = children.findIndex((c) => c.getId() === parent?.getId());
+
+      if (leftIndex !== -1 && children.length > 1) {
+        const otherChildren = children.filter((_, idx) => idx !== leftIndex);
+        const otherSum = otherChildren.reduce((sum, c) => sum + (c as any).getWeight(), 0);
+        const currentLeftWeight = (children[leftIndex] as any).getWeight();
+
+        // Target: Checklist must be 15% of total row weight
+        // i.e., Checklist = 15, otherChildren sum = 85 (Total = 100)
+        const targetOtherSum = 85;
+        const leftDrifted = Math.abs(currentLeftWeight - LEFT_TABSET_WEIGHT) > 0.05;
+        const othersDrifted = Math.abs(otherSum - targetOtherSum) > 0.05;
+
+        if (leftDrifted || othersDrifted) {
+          const scale = otherSum > 0 ? targetOtherSum / otherSum : 1;
+          const newWeights = children.map((c, idx) => {
+            if (idx === leftIndex) return LEFT_TABSET_WEIGHT;
+            return (c as any).getWeight() * scale;
+          });
+
+          // Only dispatch if action wasn't already ADJUST_WEIGHTS to avoid loop
+          if (action.type !== Actions.ADJUST_WEIGHTS) {
+            model.doAction(Actions.adjustWeights(rootRow.getId(), newWeights));
+          }
+        }
+      }
+    }
+
     localStorage.setItem(`${LAYOUT_STORAGE_PREFIX}-${activeLayoutPreset}`, JSON.stringify(model.toJson()));
   };
 
@@ -790,7 +897,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       model.doAction(Actions.deleteTab("leftPanelTab"));
     } else if (bothUploaded && !leftNode) {
       const added = model.doAction(Actions.addNode(
-        { type: "tab", id: "leftPanelTab", name: "Checklist", component: "leftPanel", enableClose: true },
+        { type: "tab", id: "leftPanelTab", name: "Checklist", component: "leftPanel", enableClose: false, enableDrag: false },
         model.getRootRow().getId(),
         DockLocation.LEFT,
         -1
@@ -802,7 +909,9 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       if (parent) {
         model.doAction(Actions.updateNodeAttributes(parent.getId(), {
           weight: LEFT_TABSET_WEIGHT,
-          minWidth: LEFT_TABSET_MIN_WIDTH,
+          enableDrag: false,
+          enableDivide: false,
+          enableDrop: false,
         }));
       }
     }
@@ -825,12 +934,12 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
       if (!isVisible && node) {
         model.doAction(Actions.deleteTab("rightPanelTab"));
       } else if (isVisible && !node) {
-        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: false }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
       }
     } else {
       const wasVisible = prevRightVisibleRef.current;
       if (!wasVisible && isVisible && !node) {
-        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: true }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
+        model.doAction(Actions.addNode({ type: "tab", id: "rightPanelTab", name: rightTabName, component: "rightPanel", enableClose: false }, model.getRootRow().getId(), DockLocation.RIGHT, -1));
       } else if (wasVisible && !isVisible && node) {
         model.doAction(Actions.deleteTab("rightPanelTab"));
       }
@@ -853,22 +962,253 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
         }
       }
     }
+    if (
+      action.type === Actions.POPOUT_TAB ||
+      action.type === Actions.POPOUT_TABSET ||
+      action.type === Actions.CREATE_SUBLAYOUT
+    ) {
+      return undefined;
+    }
+    if (action.type === Actions.MOVE_NODE) {
+      if (action.data?.fromNode === "leftPanelTab" || action.data?.toNode === "leftPanelTab") {
+        return undefined; // Checklist tab cannot be moved or replaced
+      }
+    }
+    if (action.type === Actions.ADJUST_WEIGHTS) {
+      const rowNode = model?.getNodeById(action.data.nodeId);
+      if (rowNode && Array.isArray(action.data.weights)) {
+        const children = (rowNode as any).getChildren?.();
+        if (Array.isArray(children)) {
+          const leftIndex = children.findIndex((c: any) =>
+            c.getChildren?.().some((tab: any) => tab.getId() === "leftPanelTab")
+          );
+          if (leftIndex !== -1) {
+            // Reject any attempt to resize the Checklist panel away from its fixed weight
+            if (Math.abs(action.data.weights[leftIndex] - LEFT_TABSET_WEIGHT) > 0.05) {
+              return undefined;
+            }
+          }
+        }
+      }
+    }
     return action;
   };
 
   const factory = (node: TabNode) => {
     const component = node.getComponent();
     if (component === "leftPanel") {
-      return <TwoDLeftPanel currentNav={currentNav} />;
+      return (
+        <div className="h-full w-full" data-workspace-panel="Checklist">
+          <TwoDLeftPanel currentNav={currentNav} />
+        </div>
+      );
     }
     if (component === "rightPanel") {
-      return <TwoDRightPanel currentNav={currentNav} />;
+      return (
+        <div className="h-full w-full" data-workspace-panel="AI Auditor">
+          <TwoDRightPanel currentNav={currentNav} />
+        </div>
+      );
     }
     if (component === "originalCanvas") {
-      return <OriginalDrawingPanel canvasRef={drawingCanvasRefOld} currentNav={currentNav} />;
+      return (
+        <div className="h-full w-full" data-workspace-panel="Reference Drawing">
+          <OriginalDrawingPanel canvasRef={drawingCanvasRefOld} currentNav={currentNav} />
+        </div>
+      );
     }
     if (component === "kmtiCanvas") {
-      return <KMTIDrawingPanel canvasRef={drawingCanvasRefNew} currentNav={currentNav} />;
+      return (
+        <div className="h-full w-full" data-workspace-panel="Revised Drawing">
+          <KMTIDrawingPanel canvasRef={drawingCanvasRefNew} currentNav={currentNav} />
+        </div>
+      );
+    }
+  };
+
+  const flexContainerRef = useRef<HTMLDivElement>(null);
+
+  // Ensure Checklist tab/tabset has drag and division disabled in model and weight locked
+  useEffect(() => {
+    if (!model) return;
+    const leftNode = model.getNodeById("leftPanelTab") as TabNode | undefined;
+    if (leftNode) {
+      const parent = leftNode.getParent() as TabSetNode | undefined;
+      const rootRow = model.getRootRow();
+      const children = rootRow.getChildren();
+      const leftIndex = children.findIndex((c) => c.getId() === parent?.getId());
+
+      if (leftIndex !== -1 && children.length > 1) {
+        const otherChildren = children.filter((_, idx) => idx !== leftIndex);
+        const otherSum = otherChildren.reduce((sum, c) => sum + (c as any).getWeight(), 0);
+        const targetOtherSum = 85;
+        const leftDrifted = Math.abs((children[leftIndex] as any).getWeight() - LEFT_TABSET_WEIGHT) > 0.05;
+        const othersDrifted = Math.abs(otherSum - targetOtherSum) > 0.05;
+
+        if (leftDrifted || othersDrifted) {
+          const scale = otherSum > 0 ? targetOtherSum / otherSum : 1;
+          const newWeights = children.map((c, idx) => {
+            if (idx === leftIndex) return LEFT_TABSET_WEIGHT;
+            return (c as any).getWeight() * scale;
+          });
+          model.doAction(Actions.adjustWeights(rootRow.getId(), newWeights));
+        }
+      }
+
+      if (parent) {
+        const needsUpdate =
+          parent.isEnableDrag() ||
+          parent.isEnableDivide() ||
+          parent.isEnableDrop() ||
+          leftNode.isEnableDrag();
+
+        if (needsUpdate) {
+          model.doAction(Actions.updateNodeAttributes("leftPanelTab", { enableDrag: false }));
+          model.doAction(Actions.updateNodeAttributes(parent.getId(), {
+            enableDrag: false,
+            enableDivide: false,
+            enableDrop: false,
+          }));
+        }
+      }
+    }
+  }, [model]);
+
+  // Context-aware drop target labels, boundary tracking & undraggable checklist splitter
+  useEffect(() => {
+    const container = flexContainerRef.current;
+    if (!container) return;
+
+    // Completely block dragging the splitter next to the Checklist panel
+    const handleSplitterPointerDown = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      const splitter = target?.closest<HTMLElement>('.flexlayout__splitter');
+      if (!splitter) return;
+
+      const path = splitter.getAttribute('data-layout-path');
+      const prevTabset = splitter.previousElementSibling;
+      const isChecklistSplitter =
+        path?.endsWith('/s0') ||
+        Boolean(prevTabset?.querySelector('[data-workspace-panel="Checklist"]'));
+
+      if (isChecklistSplitter) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    // Block dragging the Checklist tab button
+    const handleChecklistTabDragStart = (e: DragEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tabButton = target?.closest<HTMLElement>('.flexlayout__tab_button');
+      if (tabButton?.textContent?.toUpperCase().includes('CHECKLIST')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    container.addEventListener("pointerdown", handleSplitterPointerDown, { capture: true });
+    container.addEventListener("mousedown", handleSplitterPointerDown, { capture: true });
+    container.addEventListener("dragstart", handleChecklistTabDragStart, { capture: true });
+
+    const handleDragOver = () => {
+      const outline = container.querySelector<HTMLElement>('.flexlayout__outline_rect, .flexlayout__outline_rect_edge');
+      if (!outline) return;
+
+      const rect = outline.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+
+      // Only label substantial drop areas (not thin tab insertion indicators)
+      if (rect.width >= 40 && rect.height >= 40) {
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const elements = document.elementsFromPoint(centerX, centerY);
+        const panelEl = elements.find((el) => el.getAttribute("data-workspace-panel"));
+        const panelName = panelEl?.getAttribute("data-workspace-panel");
+
+        let actionLabel = "Dock Split";
+
+        if (panelEl) {
+          const panelRect = panelEl.getBoundingClientRect();
+          const relLeft = rect.left - panelRect.left;
+          const relRight = panelRect.right - rect.right;
+          const relTop = rect.top - panelRect.top;
+          const relBottom = panelRect.bottom - rect.bottom;
+
+          const isLeftSplit = relLeft < 30 && rect.width < panelRect.width * 0.7;
+          const isRightSplit = relRight < 30 && rect.width < panelRect.width * 0.7;
+          const isTopSplit = relTop < 30 && rect.height < panelRect.height * 0.7;
+          const isBottomSplit = relBottom < 30 && rect.height < panelRect.height * 0.7;
+          const isTabTogether = rect.width >= panelRect.width * 0.8 && rect.height >= panelRect.height * 0.8;
+
+          if (isLeftSplit) actionLabel = `Split Left • ${panelName}`;
+          else if (isRightSplit) actionLabel = `Split Right • ${panelName}`;
+          else if (isTopSplit) actionLabel = `Split Top • ${panelName}`;
+          else if (isBottomSplit) actionLabel = `Split Bottom • ${panelName}`;
+          else if (isTabTogether) actionLabel = `Tab with ${panelName}`;
+          else actionLabel = `Dock to ${panelName}`;
+        } else {
+          // Edge of workspace
+          const relContainerLeft = rect.left - containerRect.left;
+          const relContainerRight = containerRect.right - rect.right;
+          const relContainerTop = rect.top - containerRect.top;
+          const relContainerBottom = containerRect.bottom - rect.bottom;
+
+          if (relContainerLeft < 30 && rect.width < containerRect.width * 0.5) {
+            actionLabel = "Dock to Left Edge";
+          } else if (relContainerRight < 30 && rect.width < containerRect.width * 0.5) {
+            actionLabel = "Dock to Right Edge";
+          } else if (relContainerTop < 30 && rect.height < containerRect.height * 0.5) {
+            actionLabel = "Dock to Top Edge";
+          } else if (relContainerBottom < 30 && rect.height < containerRect.height * 0.5) {
+            actionLabel = "Dock to Bottom Edge";
+          } else {
+            actionLabel = "Split View";
+          }
+        }
+
+        outline.setAttribute("data-drop-label", actionLabel);
+      } else {
+        outline.removeAttribute("data-drop-label");
+      }
+    };
+
+    container.addEventListener("dragover", handleDragOver, { capture: true });
+    return () => {
+      container.removeEventListener("pointerdown", handleSplitterPointerDown, { capture: true });
+      container.removeEventListener("mousedown", handleSplitterPointerDown, { capture: true });
+      container.removeEventListener("dragstart", handleChecklistTabDragStart, { capture: true });
+      container.removeEventListener("dragover", handleDragOver, { capture: true });
+    };
+  }, []);
+
+  const handleRenderTab = (node: TabNode, renderValues: ITabRenderValues) => {
+    const name = node.getName();
+
+    // Clean Filename / Tab Name formatting (no icons)
+    const dotIndex = name.lastIndexOf(".");
+    if (dotIndex > 0 && (name.toLowerCase().endsWith(".dxf") || name.toLowerCase().endsWith(".dwg"))) {
+      const base = name.slice(0, dotIndex);
+      const ext = name.slice(dotIndex);
+      renderValues.content = (
+        <span className="inline-flex items-center gap-1.5 font-mono tracking-tight select-none">
+          <span className="font-semibold text-text-primary text-[11px]" title={name}>
+            {base}
+          </span>
+          <span className="text-[9px] font-bold tracking-wider px-1 py-0.5 rounded bg-border-color/40 text-text-muted">
+            {ext}
+          </span>
+        </span>
+      );
+    } else {
+      renderValues.content = (
+        <span className="font-bold text-text-primary uppercase tracking-wider text-[11px] select-none">
+          {name}
+        </span>
+      );
     }
   };
 
@@ -888,22 +1228,25 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
     <div className="flex flex-grow h-full overflow-hidden min-w-0 bg-bg-dark">
       {currentNav === "workspace" && (
         <div className="flex flex-grow h-full overflow-hidden min-w-0 flex-col">
-          <div className="flex items-center justify-between bg-bg-topbar border-b border-border-color py-1 px-3 h-8 shrink-0 w-full z-10 select-none">
-            <div className="flex items-center gap-2.5">
+          <div className="relative flex items-center justify-between bg-bg-topbar border-b border-border-color py-1 px-3 h-8 shrink-0 w-full z-10 select-none">
+            <div className="flex items-center gap-2">
               {activeRoom && (
                 <button
                   onClick={leaveRoom}
-                  className="flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold text-text-primary hover:text-accent-cyan bg-bg-card hover:bg-accent-cyan/10 border border-border-color hover:border-accent-cyan/30 rounded-none transition-colors cursor-pointer"
-                  title="Return to Inspection Rooms Dashboard"
+                  className="flex items-center justify-center p-0.5 text-text-muted hover:text-accent-cyan active:scale-90 transition-all cursor-pointer"
+                  title="Exit"
                 >
-                  <ArrowLeft size={13} />
-                  <span>Rooms</span>
+                  <MoveLeft size={22} strokeWidth={2} />
                 </button>
               )}
+            </div>
+
+            {/* Centered Room Name */}
+            <div className="absolute left-1/2 -translate-x-1/2 flex items-center pointer-events-none">
               <span className="text-xs font-bold text-text-primary uppercase tracking-wide">
                 {activeRoom ? (
                   <>
-                    <span className="text-text-muted font-normal">Room:</span>{" "}
+                    <span className="text-text-muted font-normal">ROOM:</span>{" "}
                     <span className="text-accent-cyan font-mono">{activeRoom.name}</span>
                   </>
                 ) : (
@@ -1094,10 +1437,11 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
             </div>
           )}
 
-          <div className="flex-grow h-full relative workspace-flexlayout-container" data-tour="cad-canvas">
+          <div ref={flexContainerRef} className="flex-grow h-full relative overflow-hidden workspace-flexlayout-container" data-tour="cad-canvas">
             <Layout
               model={model}
               factory={factory}
+              onRenderTab={handleRenderTab}
               onModelChange={handleModelChange}
               onAction={handleAction}
             />

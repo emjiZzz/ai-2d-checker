@@ -336,8 +336,13 @@ body {
   --color-splitter: var(--border-color) !important;
   --color-splitter-drag: var(--border-color) !important;
   --color-splitter-hover: var(--accent-cyan) !important;
-  --color-drag1: transparent !important;
-  --color-drag2: transparent !important;
+  --color-drag1: var(--accent-cyan) !important;
+  --color-drag2: var(--accent-cyan) !important;
+  --color-drag1-background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  --color-drag2-background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  --color-drag-rect: var(--text-primary) !important;
+  --color-drag-rect-border: var(--accent-cyan) !important;
+  --color-drag-rect-background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
 
   /* flexlayout-react >= 0.9 sizes the splitter from CSS, not from the model.
      Layout renders a hidden probe div (.flexlayout__splitter_horz) and feeds its
@@ -392,6 +397,7 @@ body {
 .workspace-flexlayout-container .flexlayout__tabset_header,
 .flexlayout__tabset_header {
   border-bottom: 1px solid var(--border-color) !important;
+  background-color: var(--bg-sidebar) !important;
 }
 
 .workspace-flexlayout-container .flexlayout__tab_button,
@@ -400,9 +406,13 @@ body {
   color: var(--text-muted) !important;
   border: none !important;
   border-right: 1px solid var(--border-color) !important;
-  box-shadow: inset 0 -2px 0 0 transparent !important;
-  transition: all 0.2s ease;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   cursor: grab !important;
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
 }
 
 .workspace-flexlayout-container .flexlayout__tab_button:active,
@@ -412,16 +422,7 @@ body {
 
 .workspace-flexlayout-container .flexlayout__tab_button_trailing,
 .flexlayout__tab_button_trailing {
-  cursor: pointer !important;
-  opacity: 0.6;
-  color: var(--text-muted) !important;
-  transition: all 0.2s;
-}
-
-.workspace-flexlayout-container .flexlayout__tab_button_trailing:hover,
-.flexlayout__tab_button_trailing:hover {
-  opacity: 1;
-  color: var(--accent-cyan) !important;
+  display: none !important;
 }
 
 .workspace-flexlayout-container .flexlayout__tab_button:hover,
@@ -434,7 +435,11 @@ body {
 .flexlayout__tab_button--selected {
   background-color: var(--bg-card) !important;
   color: var(--text-primary) !important;
-  box-shadow: inset 0 -2px 0 0 var(--accent-cyan) !important;
+  border-top: none !important;
+  border-bottom: 1px solid var(--bg-card) !important;
+  box-shadow: none !important;
+  position: relative !important;
+  z-index: 2 !important;
 }
 
 /* Thickness comes from --splitter-size above. Do not re-add width/height rules for
@@ -453,6 +458,27 @@ body {
   background-color: var(--accent-cyan) !important;
 }
 
+/* Permanently lock the splitter between Checklist and Reference Drawing */
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter,
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter::before,
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter::after,
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"],
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"]::before,
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"]::after {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter:hover,
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"]:hover {
+  background-color: var(--border-color) !important;
+}
+
+/* Disable drag cursor on Checklist tab */
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) .flexlayout__tab_button {
+  cursor: default !important;
+}
+
 .workspace-flexlayout-container .flexlayout__tab_button_content,
 .flexlayout__tab_button_content {
   font-size: 0.75rem;
@@ -460,6 +486,52 @@ body {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: inherit !important;
+}
+
+/* Drop Target / Dock Preview Overrides (high visibility and vibrant contrast) */
+.workspace-flexlayout-container .flexlayout__outline_rect,
+.flexlayout__outline_rect,
+.workspace-flexlayout-container .flexlayout__outline_rect_edge,
+.flexlayout__outline_rect_edge,
+.workspace-flexlayout-container .flexlayout__drag_rect,
+.flexlayout__drag_rect {
+  border: 2px solid var(--accent-cyan) !important;
+  background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  border-radius: 0 !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 45%, transparent), 0 0 20px color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  backdrop-filter: blur(2px) !important;
+  z-index: 100 !important;
+}
+
+/* Context-aware drop badge indicator */
+.workspace-flexlayout-container .flexlayout__outline_rect[data-drop-label]::after,
+.workspace-flexlayout-container .flexlayout__outline_rect_edge[data-drop-label]::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 12px color-mix(in srgb, var(--accent-cyan) 35%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+  border-radius: 4px;
+  z-index: 101;
+}
+
+.workspace-flexlayout-container .flexlayout__edge_rect,
+.flexlayout__edge_rect {
+  background-color: var(--accent-cyan) !important;
+  opacity: 0.85 !important;
+  border-radius: 0 !important;
 }
 
 /* FlexLayout Toolbar & Popup Menu Overrides */
@@ -484,6 +556,18 @@ body {
   opacity: 0.7;
   transition: all 0.2s ease;
   border-radius: 4px;
+}
+
+/* Remove popout/float window buttons and windows from system */
+.workspace-flexlayout-container button[data-layout-path*="/button/popout"],
+.workspace-flexlayout-container button[data-layout-path*="/button/popout-float"],
+.workspace-flexlayout-container .flexlayout__tab_toolbar_button-popout,
+.workspace-flexlayout-container .flexlayout__tab_toolbar_button-popout-float,
+.workspace-flexlayout-container .flexlayout__tabset_header_button_popout,
+.workspace-flexlayout-container .flexlayout__tabset_header_button_popout_float,
+.workspace-flexlayout-container .flexlayout__floating_window,
+.flexlayout__floating_window {
+  display: none !important;
 }
 
 .workspace-flexlayout-container .flexlayout__tab_toolbar_button:hover,

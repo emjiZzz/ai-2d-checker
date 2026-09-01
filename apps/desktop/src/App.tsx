@@ -26,6 +26,7 @@ function App() {
   
   const {
     isDragging,
+    handleDragEnter,
     handleDragOver,
     handleDragLeave,
     handleDrop
@@ -132,6 +133,7 @@ function App() {
       className={`flex flex-col h-screen w-screen overflow-hidden bg-bg-dark text-text-primary transition-colors ${
         isDragging ? "border-4 border-dashed border-accent-cyan" : ""
       }`}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
