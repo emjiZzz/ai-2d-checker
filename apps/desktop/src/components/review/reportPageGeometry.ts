@@ -20,6 +20,12 @@
 export const REPORT_PAGE_MM = Object.freeze({ width: 297, height: 210 });
 
 /**
+ * Checklist pages use A4 Portrait orientation (210 x 297 mm) with a two-column layout.
+ */
+export const CHECKLIST_PAGE_MM = Object.freeze({ width: 210, height: 297 });
+export const CHECKLIST_PAGE_ASPECT = CHECKLIST_PAGE_MM.width / CHECKLIST_PAGE_MM.height;
+
+/**
  * The margin on all four sides of a report page.
  *
  * Owner's call, 2026-08-24: 7 mm first, then "much smaller" once the drawing stopped floating

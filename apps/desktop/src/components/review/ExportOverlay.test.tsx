@@ -20,26 +20,38 @@ describe('ExportOverlay', () => {
   });
 
   it('still says something when no phase has been set', () => {
-    // An empty line would collapse the card's height mid-export, which reads as a flicker.
     render(<ExportOverlay active />);
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Preparing…');
   });
 
+  it('updates dynamic phase text sequentially as export progresses', () => {
+    const { rerender } = render(<ExportOverlay active phase="Rendering the drawing sheet…" />);
+    const dialog = screen.getByRole('alertdialog');
+
+    // Step 1 active
+    expect(dialog).toHaveTextContent('Rendering the drawing sheet…');
+    expect(dialog).not.toHaveTextContent('Building the checklist…');
+
+    // Transition to Step 2
+    rerender(<ExportOverlay active phase="Building the checklist…" />);
+    expect(dialog).toHaveTextContent('Building the checklist…');
+    expect(dialog).not.toHaveTextContent('Rendering the drawing sheet…');
+
+    // Transition to Step 3
+    rerender(<ExportOverlay active phase="Waiting for you to choose a folder…" />);
+    expect(dialog).toHaveTextContent('Waiting for you to choose a folder…');
+
+    // Transition to Step 4
+    rerender(<ExportOverlay active phase="Writing the PDFs…" />);
+    expect(dialog).toHaveTextContent('Writing the PDFs…');
+  });
+
   it('captures pointer events rather than passing them through', () => {
-    // Blocking input IS the feature. The sibling drag overlay in `App.tsx` sets
-    // `pointer-events-none` because it is decoration; copying that here would leave the canvas
-    // clickable while the store is being read to build the document, and a marking retracted
-    // halfway through yields a report whose page 1 and page 2 disagree.
     render(<ExportOverlay active phase="Writing the PDFs…" />);
     expect(screen.getByRole('alertdialog').style.pointerEvents).not.toBe('none');
   });
 
   it('sits BELOW the titlebar, so the window can still be minimised or closed', () => {
-    // The invariant, read from `AppHeader.tsx` rather than restated here — a second copy of
-    // 9999 would be correct until someone changed the header and silently wrong afterwards.
-    //
-    // If this inverts, a user is trapped in an app they cannot minimise for the length of a
-    // 17-second render, and cannot close at all if the export ever hangs.
     const header = readFileSync(APP_HEADER, 'utf-8');
     const match = header.match(/z-\[(\d+)\]/);
     expect(match, `no z-[N] class found in ${APP_HEADER}`).toBeTruthy();
@@ -47,9 +59,6 @@ describe('ExportOverlay', () => {
   });
 
   it('covers the viewport rather than its own panel', () => {
-    // Portalled to `document.body` and fixed to the viewport, because the button that starts the
-    // export lives in a toolbar inside an `overflow: hidden` panel — an absolutely positioned
-    // veil would be clipped to that panel and leave the rest of the app live.
     render(<ExportOverlay active />);
     const style = screen.getByRole('alertdialog').style;
     expect(style.position).toBe('fixed');

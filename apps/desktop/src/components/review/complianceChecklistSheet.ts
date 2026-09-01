@@ -1,5 +1,6 @@
 import { markerStyle } from './markerStyles';
-import { REPORT_PAGE_ASPECT } from './reportPageGeometry';
+import { cleanCadText } from './renderEntities';
+import { CHECKLIST_PAGE_ASPECT } from './reportPageGeometry';
 
 /**
  * The compliance report's checklist page, drawn onto a canvas rather than typed into the PDF.
@@ -14,9 +15,7 @@ import { REPORT_PAGE_ASPECT } from './reportPageGeometry';
  * the bundle for a page that is generated once per audit.
  *
  * The canvas already renders this text correctly — it is the same path the drawing page uses —
- * so the checklist is rasterised at 3x and embedded as an image. The trade is real and worth
- * naming: the text is not selectable or searchable in the resulting PDF. If that ever matters
- * more than the Japanese does, embed a font here; do not switch back to `doc.text`.
+ * so the checklist is rasterised at 3x and embedded as an image.
  */
 
 export interface ChecklistRow {
@@ -41,55 +40,34 @@ export interface ChecklistSheetMeta {
 }
 
 /**
- * The sheet's own drawing space, in logical units — 1200 across, and whatever height the report's
- * paper makes that.
- *
- * The height is DERIVED rather than chosen. It was a round 800, which is a 1.5 aspect against A4
- * landscape's 1.414, so placing the finished bitmap across the whole page stretched every row by
- * 6% vertically — a distortion that looks like nothing more than slightly heavy type until you
- * hold it beside the drawing on page 1.
+ * The sheet's own drawing space, in logical units — 1200 across, and A4 portrait height (1697).
  */
 export const CHECKLIST_PAGE_W = 1200;
-export const CHECKLIST_PAGE_H = CHECKLIST_PAGE_W / REPORT_PAGE_ASPECT;
+export const CHECKLIST_PAGE_H = Math.round(CHECKLIST_PAGE_W / CHECKLIST_PAGE_ASPECT); // 1697 for A4 portrait
 
 const SCALE = 3;
-const MARGIN = 50;
-const TABLE_HEAD_Y = 128;
-const TABLE_HEAD_H = 26;
-const BODY_TOP = TABLE_HEAD_Y + TABLE_HEAD_H + 12;
-const BODY_BOTTOM = CHECKLIST_PAGE_H - 46;
-const SECTION_H = 30;
-const LINE_H = 16;
-const ROW_PAD = 11;
-const MAX_LINES = 6;
+const MARGIN = 48;
+const GAP = 28;
+export const COL_W = Math.floor((CHECKLIST_PAGE_W - MARGIN * 2 - GAP) / 2); // 538 px
+export const COL_X = [MARGIN, MARGIN + COL_W + GAP]; // [48, 614]
+
+const BODY_TOP = 106;
+const BODY_BOTTOM = CHECKLIST_PAGE_H - 42;
+const SECTION_H = 22;
+const TABLE_HEAD_H = 20;
+const LINE_H = 15;
+const ROW_PAD = 7;
+const MAX_LINES = 5;
 
 /**
- * Print-friendly palette. A compliance report is a document on paper — dark mode has no
- * place in it. White background, near-black text, light grey bands for structure.
+ * Normal table clean palette: white background, standard borders, all black text except Status.
  */
 const COLORS = {
   bg: '#ffffff',
-  band: '#f0f0f5',
-  rowAlt: '#f8f8fa',
   border: '#d4d4d8',
+  darkBorder: '#000000',
   primary: '#000000',
-  muted: '#27272a',
-  accent: '#0f766e',
 };
-
-interface Column {
-  key: keyof ChecklistRow;
-  label: string;
-  x: number;
-  w: number;
-}
-
-const COLUMNS: Column[] = [
-  { key: 'status', label: 'STATUS', x: MARGIN, w: 118 },
-  { key: 'reference', label: 'REFERENCE', x: 178, w: 322 },
-  { key: 'revision', label: 'REVISION', x: 510, w: 322 },
-  { key: 'note', label: 'NOTES', x: 842, w: 308 },
-];
 
 const FONT = (size: number, weight: 400 | 700 = 400) =>
   weight + ' ' + size + 'px "Segoe UI", "Yu Gothic UI", Meiryo, "Hiragino Kaku Gothic ProN", sans-serif';
@@ -97,9 +75,7 @@ const FONT = (size: number, weight: 400 | 700 = 400) =>
 /**
  * Break `text` to fit `maxWidth`, measured in the ctx's CURRENT font.
  *
- * Splits on whitespace first, then inside a token that still does not fit. The second pass is not
- * a nicety — Japanese runs and part codes like `M745204N01-REV2` carry no spaces at all, so a
- * word-only wrap leaves them overflowing their column and painting over the next one.
+ * Splits on whitespace first, then inside a token that still does not fit.
  */
 export function wrapCellText(
   ctx: CanvasRenderingContext2D,
@@ -163,114 +139,155 @@ function newSheet(meta: ChecklistSheetMeta, continued: boolean): Sheet {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, CHECKLIST_PAGE_W, CHECKLIST_PAGE_H);
 
-  ctx.fillStyle = COLORS.accent;
-  ctx.font = FONT(22, 700);
+  // Top Page Header: "CHECKLIST" in black
+  ctx.fillStyle = COLORS.primary;
+  ctx.font = FONT(20, 700);
   ctx.textAlign = 'left';
-  ctx.fillText(continued ? meta.title + ' (CONTINUED)' : meta.title, MARGIN, 62);
+  ctx.fillText(continued ? 'CHECKLIST (CONTINUED)' : 'CHECKLIST', MARGIN, 52);
 
-  ctx.fillStyle = COLORS.muted;
-  ctx.font = FONT(12);
-  ctx.fillText(meta.subtitle, MARGIN, 86);
+  ctx.fillStyle = COLORS.primary;
+  ctx.font = FONT(11);
+  ctx.fillText(meta.subtitle, MARGIN, 74);
 
   if (meta.tally) {
     ctx.textAlign = 'right';
     ctx.fillStyle = COLORS.primary;
-    ctx.font = FONT(12, 700);
-    ctx.fillText(meta.tally, CHECKLIST_PAGE_W - MARGIN, 62);
+    ctx.font = FONT(11, 700);
+    ctx.fillText(meta.tally, CHECKLIST_PAGE_W - MARGIN, 52);
     ctx.textAlign = 'left';
   }
 
-  ctx.fillStyle = COLORS.band;
-  ctx.fillRect(MARGIN, TABLE_HEAD_Y, CHECKLIST_PAGE_W - MARGIN * 2, TABLE_HEAD_H);
-  ctx.font = FONT(10, 700);
-  ctx.fillStyle = COLORS.muted;
-  for (const col of COLUMNS) ctx.fillText(col.label, col.x + 10, TABLE_HEAD_Y + 17);
+  // Top header separator line
+  ctx.strokeStyle = COLORS.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN, 90.5);
+  ctx.lineTo(CHECKLIST_PAGE_W - MARGIN, 90.5);
+  ctx.stroke();
 
   return { canvas, ctx };
+}
+
+function drawTableHeader(ctx: CanvasRenderingContext2D, colX: number, y: number) {
+  ctx.strokeStyle = COLORS.darkBorder;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(colX, y + 0.5);
+  ctx.lineTo(colX + COL_W, y + 0.5);
+  ctx.stroke();
+
+  ctx.font = FONT(9, 700);
+  ctx.fillStyle = COLORS.primary;
+  ctx.fillText('STATUS', colX + 4, y + 14);
+  ctx.fillText('REFERENCE', colX + 96, y + 14);
+  ctx.fillText('REVISION', colX + 312, y + 14);
+
+  ctx.strokeStyle = COLORS.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(colX, y + TABLE_HEAD_H + 0.5);
+  ctx.lineTo(colX + COL_W, y + TABLE_HEAD_H + 0.5);
+  ctx.stroke();
 }
 
 function drawSectionHeading(
   ctx: CanvasRenderingContext2D,
   label: string,
   count: number,
+  colX: number,
   y: number,
 ) {
-  ctx.fillStyle = COLORS.band;
-  ctx.fillRect(MARGIN, y, CHECKLIST_PAGE_W - MARGIN * 2, SECTION_H);
-  ctx.fillStyle = COLORS.accent;
-  ctx.fillRect(MARGIN, y, 3, SECTION_H);
-  ctx.font = FONT(12, 700);
+  ctx.font = FONT(11, 700);
   ctx.fillStyle = COLORS.primary;
-  ctx.fillText(label.toUpperCase(), MARGIN + 14, y + 20);
-  ctx.font = FONT(11);
-  ctx.fillStyle = COLORS.muted;
+  ctx.fillText(label.toUpperCase(), colX, y + 16);
+  ctx.font = FONT(10, 700);
+  ctx.fillStyle = COLORS.primary;
   ctx.textAlign = 'right';
-  ctx.fillText(String(count), CHECKLIST_PAGE_W - MARGIN - 12, y + 20);
+  ctx.fillText(String(count), colX + COL_W, y + 16);
   ctx.textAlign = 'left';
 }
 
 function measureRow(
   ctx: CanvasRenderingContext2D,
   row: ChecklistRow,
-): { lines: string[][]; height: number } {
-  ctx.font = FONT(11);
-  const lines = COLUMNS.map((col) =>
-    col.key === 'status' ? [] : cellLines(ctx, row[col.key], col.w - 20),
-  );
-  const tallest = lines.reduce((max, l) => Math.max(max, l.length), 1);
-  return { lines, height: Math.max(34, tallest * LINE_H + ROW_PAD * 2) };
+): { linesRef: string[]; linesRev: string[]; linesNote: string[]; height: number } {
+  ctx.font = FONT(10);
+  const refText = cleanCadText(row.reference);
+  const revText = cleanCadText(row.revision);
+  const noteText = row.note ? cleanCadText(row.note) : '';
+  const linesRef = cellLines(ctx, refText, 202);
+  const linesRev = cellLines(ctx, revText, 210);
+  const linesNote = noteText ? cellLines(ctx, noteText, COL_W - 24) : [];
+  const baseLines = Math.max(linesRef.length, linesRev.length, 1);
+  const noteHeight = linesNote.length > 0 ? linesNote.length * LINE_H + 4 : 0;
+  const height = Math.max(28, baseLines * LINE_H + noteHeight + ROW_PAD * 2);
+  return { linesRef, linesRev, linesNote, height };
 }
 
 function drawRow(
   ctx: CanvasRenderingContext2D,
   row: ChecklistRow,
-  lines: string[][],
+  measured: { linesRef: string[]; linesRev: string[]; linesNote: string[] },
+  colX: number,
   y: number,
   height: number,
-  zebra: boolean,
 ) {
-  if (zebra) {
-    ctx.fillStyle = COLORS.rowAlt;
-    ctx.fillRect(MARGIN, y, CHECKLIST_PAGE_W - MARGIN * 2, height);
+  // Status pill (only Status has color)
+  const isAnnotationBadge = /^X[₀-₉0-9]*/i.test(row.status.trim());
+  let label: string;
+  let pillColor: string;
+
+  if (isAnnotationBadge) {
+    label = row.status.trim();
+    pillColor = '#dc2626'; // Red color for annotation badge (X₁, X₂, X₃)
+  } else {
+    const style = markerStyle(row.status);
+    label = style.glyph + ' ' + (row.status || style.label).replace(/_/g, ' ');
+    pillColor = style.uiLight;
   }
 
-  // The pill's colour and glyph come from the SHARED marker table, so a MATCHED row in the report
-  // is the same green, and the same tick, as the marker sitting on the drawing one page earlier.
-  // We use uiLight because the report is rendered on white paper.
-  const style = markerStyle(row.status);
-  const label = style.glyph + ' ' + (row.status || style.label).replace(/_/g, ' ');
-  ctx.font = FONT(10, 700);
-  const pillW = Math.min(COLUMNS[0].w - 12, ctx.measureText(label).width + 16);
+  ctx.font = FONT(9, 700);
+  const pillW = Math.min(86, ctx.measureText(label).width + 12);
   ctx.globalAlpha = 0.15;
-  ctx.fillStyle = style.uiLight;
-  ctx.fillRect(COLUMNS[0].x + 10, y + ROW_PAD - 2, pillW, 18);
+  ctx.fillStyle = pillColor;
+  ctx.fillRect(colX + 2, y + ROW_PAD - 1, pillW, 16);
   ctx.globalAlpha = 1;
-  ctx.fillStyle = style.uiLight;
-  ctx.fillText(label, COLUMNS[0].x + 18, y + ROW_PAD + 11);
+  ctx.fillStyle = pillColor;
+  ctx.fillText(label, colX + 8, y + ROW_PAD + 11);
 
-  ctx.font = FONT(11);
-  COLUMNS.forEach((col, i) => {
-    if (col.key === 'status') return;
-    ctx.fillStyle = col.key === 'note' ? COLORS.muted : COLORS.primary;
-    lines[i].forEach((line, n) => {
-      ctx.fillText(line, col.x + 10, y + ROW_PAD + 11 + n * LINE_H);
-    });
+  // Reference & Revision in pure black
+  ctx.font = FONT(10);
+  ctx.fillStyle = COLORS.primary;
+  measured.linesRef.forEach((line, n) => {
+    ctx.fillText(line, colX + 96, y + ROW_PAD + 11 + n * LINE_H);
+  });
+  measured.linesRev.forEach((line, n) => {
+    ctx.fillText(line, colX + 312, y + ROW_PAD + 11 + n * LINE_H);
   });
 
+  // Notes in pure black if present
+  if (measured.linesNote.length > 0) {
+    const noteTop = y + ROW_PAD + Math.max(measured.linesRef.length, measured.linesRev.length, 1) * LINE_H + 11;
+    ctx.font = FONT(9);
+    ctx.fillStyle = COLORS.primary;
+    measured.linesNote.forEach((line, n) => {
+      ctx.fillText(line, colX + 8, noteTop + n * LINE_H);
+    });
+  }
+
+  // Bottom row divider line
   ctx.strokeStyle = COLORS.border;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(MARGIN, y + height + 0.5);
-  ctx.lineTo(CHECKLIST_PAGE_W - MARGIN, y + height + 0.5);
+  ctx.moveTo(colX, y + height + 0.5);
+  ctx.lineTo(colX + COL_W, y + height + 0.5);
   ctx.stroke();
 }
 
 /**
  * Every checklist page, as PNG data URLs in order.
  *
- * Always returns at least one page. An empty check is a result — "nothing was recorded" printed
- * on a page is a statement an engineer can act on, whereas a report that silently drops its
- * second page is indistinguishable from one that failed to generate.
+ * Rendered in Portrait orientation with a clean normal Two-Column table layout.
  */
 export function renderChecklistSheets(
   sections: ChecklistSectionData[],
@@ -279,58 +296,73 @@ export function renderChecklistSheets(
   const sheets: Sheet[] = [];
   let sheet = newSheet(meta, false);
   sheets.push(sheet);
+
+  let colIdx = 0; // 0 (left) or 1 (right)
   let y = BODY_TOP;
 
-  const nextPage = () => {
-    sheet = newSheet(meta, true);
-    sheets.push(sheet);
-    y = BODY_TOP;
+  const nextColumn = () => {
+    if (colIdx === 0) {
+      colIdx = 1;
+      y = BODY_TOP;
+    } else {
+      sheet = newSheet(meta, true);
+      sheets.push(sheet);
+      colIdx = 0;
+      y = BODY_TOP;
+    }
   };
 
   const populated = sections.filter((s) => s.rows.length > 0);
 
   if (populated.length === 0) {
     sheet.ctx.font = FONT(12);
-    sheet.ctx.fillStyle = COLORS.muted;
+    sheet.ctx.fillStyle = COLORS.primary;
     sheet.ctx.fillText(
       'No checklist items were recorded for this drawing revision.',
       MARGIN,
-      y + 14,
+      y + 24,
     );
   }
 
   for (const section of populated) {
-    // A heading with no room for its first row underneath is an orphan — it lands at the foot of
-    // one page while the rows it names begin on the next, so both pages misdescribe what they
-    // hold.
-    if (y + SECTION_H + 34 > BODY_BOTTOM) nextPage();
-    drawSectionHeading(sheet.ctx, section.label, section.rows.length, y);
-    y += SECTION_H + 6;
+    // Check if section heading + table header + 1 row can fit
+    const headerBlockH = SECTION_H + TABLE_HEAD_H + 30;
+    if (y + headerBlockH > BODY_BOTTOM) {
+      nextColumn();
+    }
 
-    section.rows.forEach((row, index) => {
-      const { lines, height } = measureRow(sheet.ctx, row);
-      if (y + height > BODY_BOTTOM) {
-        nextPage();
-        drawSectionHeading(sheet.ctx, section.label + ' (cont.)', section.rows.length, y);
-        y += SECTION_H + 6;
+    const colX = COL_X[colIdx];
+    drawSectionHeading(sheet.ctx, section.label, section.rows.length, colX, y);
+    y += SECTION_H;
+    drawTableHeader(sheet.ctx, colX, y);
+    y += TABLE_HEAD_H + 2;
+
+    section.rows.forEach((row) => {
+      const measured = measureRow(sheet.ctx, row);
+      if (y + measured.height > BODY_BOTTOM) {
+        nextColumn();
+        const nextColX = COL_X[colIdx];
+        drawSectionHeading(sheet.ctx, section.label + ' (cont.)', section.rows.length, nextColX, y);
+        y += SECTION_H;
+        drawTableHeader(sheet.ctx, nextColX, y);
+        y += TABLE_HEAD_H + 2;
       }
-      drawRow(sheet.ctx, row, lines, y, height, index % 2 === 1);
-      y += height;
+      drawRow(sheet.ctx, row, measured, COL_X[colIdx], y, measured.height);
+      y += measured.height;
     });
 
-    y += 16;
+    y += 14; // gap between sections
   }
 
-  // Footers last, because the total is only known once every row has been placed. Numbered from
-  // 2: the drawing is page 1 of the report and is not one of these sheets.
+  // Footers last, numbered from 2 (the drawing is page 1 of the report)
   return sheets.map(({ canvas, ctx }, index) => {
     ctx.font = FONT(10);
-    ctx.fillStyle = COLORS.muted;
+    ctx.fillStyle = COLORS.primary;
     ctx.textAlign = 'right';
     ctx.fillText(
       'Page ' + (index + 2) + ' of ' + (sheets.length + 1),
       CHECKLIST_PAGE_W - MARGIN,
-      CHECKLIST_PAGE_H - 24,
+      CHECKLIST_PAGE_H - 18,
     );
     ctx.textAlign = 'left';
     return canvas.toDataURL('image/png');

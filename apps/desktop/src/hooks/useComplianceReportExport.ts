@@ -4,6 +4,7 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 
 import { exportCanvasImage } from "../components/review/canvasExportRegistry";
+import { cleanCadText } from "../components/review/renderEntities";
 import { fetchVectorSheet, type VectorSheetMarker } from "../services/exportApi";
 import {
   ChecklistRow,
@@ -12,6 +13,7 @@ import {
 } from "../components/review/complianceChecklistSheet";
 import { CATEGORY_KEYS, categoryLabel } from "../components/review/manualCheckCategories";
 import {
+  CHECKLIST_PAGE_MM,
   REPORT_CONTENT_MM,
   REPORT_MARGIN_MM,
   REPORT_PAGE_MM,
@@ -178,9 +180,9 @@ export function useComplianceReportExport() {
           .filter((m) => m.category === key && !m.retracted_at)
           .map<ChecklistRow>((m) => ({
             status: m.status,
-            reference: m.ref_text || "—",
-            revision: m.rev_text || "—",
-            note: [m.notes, m.is_bulk ? "bulk" : ""].filter(Boolean).join(" · "),
+            reference: cleanCadText(m.ref_text) || "—",
+            revision: cleanCadText(m.rev_text) || "—",
+            note: [cleanCadText(m.notes), m.is_bulk ? "bulk" : ""].filter(Boolean).join(" · "),
           }));
         if (rows.length) sections.push({ label: categoryLabel(key), rows: sortRows(rows) });
       }
@@ -194,9 +196,9 @@ export function useComplianceReportExport() {
           // it is the engine's own verdict, and a report that renames CHANGED to HIGH describes
           // the finding in a vocabulary the drawing's marker does not use.
           status: markerTypeOf(v) ?? severityStatus(v.severity),
-          reference: v.original_value || "—",
-          revision: v.description || "—",
-          note: [v.recommendation, v.standard_reference].filter(Boolean).join(" · "),
+          reference: cleanCadText(v.original_value) || "—",
+          revision: cleanCadText(v.description) || "—",
+          note: [cleanCadText(v.recommendation), cleanCadText(v.standard_reference)].filter(Boolean).join(" · "),
         });
         byCategory.set(key, rows);
       }
@@ -212,10 +214,10 @@ export function useComplianceReportExport() {
       sections.push({
         label: "Annotations",
         rows: pins.map<ChecklistRow>((a) => ({
-          status: "ADDED",
+          status: badgeMap[a.id] || "X",
           reference: "—",
           revision: a.content || "Annotation pin",
-          note: badgeMap[a.id] || "X",
+          note: "",
         })),
       });
     }
@@ -316,9 +318,11 @@ export function useComplianceReportExport() {
       // In the vector path this document holds ONLY the checklist; page 1 arrives from the
       // backend and the two are bound below.
       const doc = new jsPDF({
-        orientation: "landscape",
+        orientation: sheetBytes ? "portrait" : "landscape",
         unit: "mm",
-        format: [REPORT_PAGE_MM.width, REPORT_PAGE_MM.height],
+        format: sheetBytes
+          ? [CHECKLIST_PAGE_MM.width, CHECKLIST_PAGE_MM.height]
+          : [REPORT_PAGE_MM.width, REPORT_PAGE_MM.height],
       });
 
       if (!sheetBytes) {
@@ -380,7 +384,7 @@ export function useComplianceReportExport() {
 
       setExportPhase(PHASE.checklist);
       const checklistPages = renderChecklistSheets(sections, {
-        title: isManualCheckRoom ? "MANUAL CHECK CHECKLIST" : "COMPLIANCE CHECKLIST",
+        title: "CHECKLIST",
         subtitle:
           sanitizeFileStem(newDrawing?.file_name) +
           "  ·  checked against  " +
@@ -390,24 +394,23 @@ export function useComplianceReportExport() {
         tally: itemCount + " items  ·  " + findingCount + " findings",
       });
 
-      // Full-bleed: the checklist sheet draws its own 12 mm inner margin, and its canvas is cut to
+      // Full-bleed: the checklist sheet draws its own inner margin, and its canvas is cut to
       // the paper's aspect ratio (`CHECKLIST_PAGE_H` is derived from it), so placing it edge to
-      // edge neither stretches it nor leaves a seam.
+      // edge in portrait format neither stretches it nor leaves a seam.
       //
-      // In the vector path `doc` is still empty, so the FIRST checklist sheet goes onto the page
-      // jsPDF already created rather than after a blank one — a `new jsPDF()` always starts with
-      // a page whether you wanted it or not.
+      // In the vector path `doc` is still empty and initialized in portrait, so the FIRST checklist
+      // sheet goes onto the page jsPDF already created rather than after a blank one.
       checklistPages.forEach((page, index) => {
         if (index > 0 || !sheetBytes) {
-          doc.addPage([REPORT_PAGE_MM.width, REPORT_PAGE_MM.height], "landscape");
+          doc.addPage([CHECKLIST_PAGE_MM.width, CHECKLIST_PAGE_MM.height], "portrait");
         }
         doc.addImage(
           page,
           "PNG",
           0,
           0,
-          REPORT_PAGE_MM.width,
-          REPORT_PAGE_MM.height,
+          CHECKLIST_PAGE_MM.width,
+          CHECKLIST_PAGE_MM.height,
           undefined,
           IMAGE_COMPRESSION,
         );
@@ -458,9 +461,13 @@ export function useComplianceReportExport() {
         const names = reportFileNames(stem);
         const written: string[] = [names.drawing];
 
-        await writeFile(await join(folder, names.drawing), drawingBytes);
+        const drawingPath = await join(folder, names.drawing);
+        await writeFile(drawingPath, drawingBytes);
+
+        let checklistPath: string | null = null;
         if (checklistBytes) {
-          await writeFile(await join(folder, names.checklist), checklistBytes);
+          checklistPath = await join(folder, names.checklist);
+          await writeFile(checklistPath, checklistBytes);
           written.push(names.checklist);
         } else {
           // Not an alert: an export with no rows is a legitimate outcome, not a downgrade. But a
@@ -468,14 +475,37 @@ export function useComplianceReportExport() {
           console.info("No checklist rows, so only the drawing was written.");
         }
 
+        const savedPaths = await Promise.all(written.map((name) => join(folder, name)));
+
         // The names are decided here and the folder was chosen by the user, so neither is
         // guessable from the button. Saying WHAT was written and WHERE is the whole confirmation.
         setExportStatus({
           kind: "saved",
           folder,
           names: written,
-          paths: await Promise.all(written.map((name) => join(folder, name))),
+          paths: savedPaths,
         });
+
+        // Automatically open both exported PDFs with the system default PDF reader (or browser tab fallback)
+        try {
+          const { openPath } = await import("@tauri-apps/plugin-opener");
+          await openPath(drawingPath);
+          if (checklistPath) {
+            await openPath(checklistPath);
+          }
+        } catch (openError) {
+          console.warn("Could not automatically open exported PDF via Tauri opener, trying browser fallback:", openError);
+          try {
+            const drawingBlob = new Blob([drawingBytes], { type: "application/pdf" });
+            window.open(URL.createObjectURL(drawingBlob), "_blank");
+            if (checklistBytes) {
+              const checklistBlob = new Blob([checklistBytes], { type: "application/pdf" });
+              window.open(URL.createObjectURL(checklistBlob), "_blank");
+            }
+          } catch (blobErr) {
+            console.warn("Could not open PDF via blob URL:", blobErr);
+          }
+        }
 
         if (vectorFailure) {
           console.warn("Vector sheet unavailable, exported the canvas capture:", vectorFailure);

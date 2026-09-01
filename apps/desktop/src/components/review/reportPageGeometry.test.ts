@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 
 import { CHECKLIST_PAGE_H, CHECKLIST_PAGE_W } from './complianceChecklistSheet';
 import {
+  CHECKLIST_PAGE_ASPECT,
+  CHECKLIST_PAGE_MM,
   REPORT_CONTENT_MM,
   REPORT_MARGIN_MM,
   REPORT_PAGE_ASPECT,
@@ -24,6 +26,7 @@ describe('report page geometry', () => {
     // decision about what people print on, not a refactor, so it should not move silently.
     expect([REPORT_PAGE_MM.width, REPORT_PAGE_MM.height]).toEqual([297, 210]);
     expect(REPORT_PAGE_MM.width).toBeGreaterThan(REPORT_PAGE_MM.height);
+    expect(REPORT_PAGE_MM.width / REPORT_PAGE_MM.height).toBeCloseTo(REPORT_PAGE_ASPECT, 10);
   });
 
   test('the content box is inset by the margin on all four sides', () => {
@@ -46,10 +49,15 @@ describe('report page geometry', () => {
     expect(REPORT_CONTENT_MM.height).toBe(204);
   });
 
-  test('the checklist canvas has the paper’s aspect ratio', () => {
-    // Placed full-bleed by the exporter, so any disagreement here is a silent vertical stretch of
+  test('the checklist page is A4 portrait', () => {
+    expect([CHECKLIST_PAGE_MM.width, CHECKLIST_PAGE_MM.height]).toEqual([210, 297]);
+    expect(CHECKLIST_PAGE_MM.height).toBeGreaterThan(CHECKLIST_PAGE_MM.width);
+  });
+
+  test('the checklist canvas has the portrait paper’s aspect ratio', () => {
+    // Placed full-bleed by the exporter, so any disagreement here is a silent stretch of
     // every row of type on the page.
-    expect(CHECKLIST_PAGE_W / CHECKLIST_PAGE_H).toBeCloseTo(REPORT_PAGE_ASPECT, 10);
+    expect(CHECKLIST_PAGE_W / CHECKLIST_PAGE_H).toBeCloseTo(CHECKLIST_PAGE_ASPECT, 3);
   });
 
   test('the drawing is captured at print resolution', () => {

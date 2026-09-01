@@ -17,7 +17,7 @@ import { HIDE_SECTION_CALLOUTS, sectionCalloutsForLayers } from './sectionCallou
 
 
 // Helper utility to strip any residual AutoCAD MTEXT formatting/styling tags and convert escape codes
-export const cleanCadText = (text: string): string => {
+export const cleanCadText = (text?: string | null): string => {
   if (!text) return "";
   let clean = text;
   clean = clean.replace(/ラ/g, "x");

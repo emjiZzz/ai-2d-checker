@@ -53,7 +53,7 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
-const META = { title: 'MANUAL CHECK CHECKLIST', subtitle: 'rev vs ref', tally: '1 items' };
+const META = { title: 'CHECKLIST', subtitle: 'rev vs ref', tally: '1 items' };
 
 const textOn = (page: number) => contexts[page].calls.map((c) => c.text).join('\n');
 const allText = () => contexts.map((c) => c.calls.map((k) => k.text).join('\n')).join('\n');
@@ -72,7 +72,7 @@ describe('renderChecklistSheets', () => {
   });
 
   test('every row reaches a page, however many there are', () => {
-    const rows = Array.from({ length: 60 }, (_, i) => ({
+    const rows = Array.from({ length: 120 }, (_, i) => ({
       status: 'CHANGED',
       reference: 'ref-value-' + i,
       revision: 'rev-value-' + i,
@@ -82,14 +82,14 @@ describe('renderChecklistSheets', () => {
 
     expect(pages.length).toBeGreaterThan(1);
     const printed = allText();
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       expect(printed).toContain('ref-value-' + i);
       expect(printed).toContain('rev-value-' + i);
     }
   });
 
-  test('a continued section repeats its heading, so no page misdescribes its rows', () => {
-    const rows = Array.from({ length: 60 }, (_, i) => ({
+  test('a continued section repeats its heading across columns/pages, so no section misdescribes its rows', () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
       status: 'MATCHED',
       reference: 'r' + i,
       revision: 'v' + i,
@@ -98,7 +98,7 @@ describe('renderChecklistSheets', () => {
     renderChecklistSheets([{ label: 'Drawing Views', rows }], META);
 
     expect(contexts.length).toBeGreaterThan(1);
-    expect(textOn(1)).toContain('DRAWING VIEWS (CONT.)');
+    expect(allText()).toContain('DRAWING VIEWS (CONT.)');
     expect(textOn(1)).toContain('(CONTINUED)');
   });
 
@@ -115,6 +115,37 @@ describe('renderChecklistSheets', () => {
     renderChecklistSheets(sections, META);
     const texts = contexts[0].calls.map((c) => c.text);
     expect(texts.indexOf('A')).toBeLessThan(texts.indexOf('C'));
+  });
+
+  test('transcodes AutoCAD %%c, %%d, %%p escape codes to clean symbols on the sheet', () => {
+    const sections: ChecklistSectionData[] = [
+      {
+        label: 'BOM',
+        rows: [
+          { status: 'CHANGED', reference: '%%c55-15', revision: '%%c55×15', note: '12.5%%d ± 0.05%%p' },
+        ],
+      },
+    ];
+    renderChecklistSheets(sections, META);
+    const printed = allText();
+    expect(printed).toContain('⌀55-15');
+    expect(printed).toContain('⌀55×15');
+    expect(printed).not.toContain('%%c');
+  });
+
+  test('renders annotation status badge like X₁ in status pill', () => {
+    const sections: ChecklistSectionData[] = [
+      {
+        label: 'Annotations',
+        rows: [
+          { status: 'X₁', reference: '—', revision: 'wrong dimension', note: '' },
+        ],
+      },
+    ];
+    renderChecklistSheets(sections, META);
+    const printed = allText();
+    expect(printed).toContain('X₁');
+    expect(printed).not.toContain('+ ADDED');
   });
 
   test('page footers count the drawing as page 1', () => {
