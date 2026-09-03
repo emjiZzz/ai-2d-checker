@@ -3,7 +3,7 @@ r"""The Tauri shell's storage-root search must not escape the project it belongs
 `find_storage_root()` walks up to six parents from the working directory and from the executable
 looking for a directory named `storage`. In a checkout that finds the repository's own. From an
 installed build there is nothing to find -- so it keeps ascending, and an app installed under
-`%LOCALAPPDATA%\KMTI Checker\` is five parents below `C:\`, which puts a stray `C:\storage`
+`%LOCALAPPDATA%\DraftCheck\` is five parents below `C:\`, which puts a stray `C:\storage`
 inside the budget.
 
 🔴 That is what shipped. On 2026-08-28 the installed 0.1.8 build read

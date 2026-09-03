@@ -1,9 +1,9 @@
 """Console entry point for the packaged backend server.
 
-Frozen by `tools/kmti_2dchecker_server.spec` into `KMTI_2DChecker_Server.exe` and run on the LAN
+Frozen by `tools/draftcheck_server.spec` into `DraftCheck_Server.exe` and run on the LAN
 server, matching how `KMTI_iCAD_Server.exe` and `KMTI_FMS_Server.exe` are deployed:
 
-    C:\\Users\\Administrator\\Desktop\\KMTI 2D Checker\\dist\\KMTI_2DChecker_Server.exe
+    C:\\Users\\Administrator\\Desktop\\DraftCheck\\dist\\DraftCheck_Server.exe
 
 ## Why a script rather than `-m uvicorn`
 
@@ -55,7 +55,7 @@ def main() -> int:
     mongo_display = mongo.split("@")[-1].split("/")[0] if "@" in mongo else mongo
 
     print("=" * 62)
-    print("  KMTI 2D Checker -- Backend Server")
+    print("  DraftCheck -- Backend Server")
     print("=" * 62)
     print(f"  Mode        : {'FROZEN' if is_frozen() else 'source'}")
     print(f"  App root    : {app_root()}")

@@ -28,7 +28,7 @@ export const LoginPage: React.FC = () => {
           <div className="flex flex-col items-center text-center mb-8">
             <img src={kmtiLogo} alt="KMTI Logo" className="w-16 h-16 object-contain mb-5 shrink-0" />
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text-primary mb-1">
-              AI-2D-Checker
+              DraftCheck
             </h1>
             <p className="text-[10px] font-bold text-text-muted tracking-widest uppercase">
               Enterprise Compliance Portal
@@ -127,7 +127,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Bottom Footer */}
         <div className="mt-8 text-[11px] font-medium text-text-muted tracking-wide text-center">
-          KMTI Checker · Enterprise Edition
+          DraftCheck · Enterprise Edition
         </div>
       </main>
     </div>

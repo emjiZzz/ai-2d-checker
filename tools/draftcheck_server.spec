@@ -3,9 +3,9 @@
 
 Build from the repo root:
 
-    services/backend/.venv/Scripts/python.exe -m PyInstaller tools/kmti_2dchecker_server.spec --noconfirm
+    services/backend/.venv/Scripts/python.exe -m PyInstaller tools/draftcheck_server.spec --noconfirm
 
-Produces `dist/KMTI_2DChecker_Server.exe` -- a console application, matching how
+Produces `dist/DraftCheck_Server.exe` -- a console application, matching how
 `KMTI_iCAD_Server.exe` and `KMTI_FMS_Server.exe` are deployed on 192.168.200.105.
 
 ## Why onedir and not onefile
@@ -78,7 +78,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="KMTI_2DChecker_Server",
+    name="DraftCheck_Server",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -98,5 +98,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="KMTI_2DChecker_Server",
+    name="DraftCheck_Server",
 )

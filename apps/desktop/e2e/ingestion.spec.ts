@@ -70,7 +70,7 @@ test.describe('CAD Ingestion Critical Path', () => {
     await page.goto('/');
 
     // Wait for the app to finish its initial health check / restore attempt
-    await expect(page).toHaveTitle(/KMTI Checker/i);
+    await expect(page).toHaveTitle(/DraftCheck/i);
 
     // 2. We should see the Login page
     const usernameInput = page.getByLabel(/Username or ID/i).first();

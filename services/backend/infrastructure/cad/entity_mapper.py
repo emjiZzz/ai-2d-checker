@@ -610,6 +610,17 @@ class EntityMapper:
                             wf, tr = EntityMapper._parse_mtext_formatting(raw_render_text)
                             text_meta["width_factor"] = wf
                             text_meta["tracking"] = tr
+
+                            # Stacked tolerances: \S<upper>^<lower>;
+                            # In CAD (iCAD SX / DXF standard), dimension tolerances are formatted
+                            # as stacked fractions with a caret divider (\S+0.4^ +0.2;).
+                            tol_match = re.search(r"\\S([^^;]*)\^([^;]*);", raw_render_text)
+                            if tol_match:
+                                u = tol_match.group(1).strip()
+                                l = tol_match.group(2).strip()
+                                if u or l:
+                                    text_meta["tolerance_upper"] = u
+                                    text_meta["tolerance_lower"] = l
                         # MTEXT keeps its orientation in `text_direction` (a vector), not in
                         # `rotation` -- which reads None here and silently degrades to 0, so
                         # every rotated dimension drew its value horizontally. On this corpus
@@ -718,6 +729,19 @@ class EntityMapper:
         if rendered["fills"]:
             geometry["render_fills"] = rendered["fills"]
         props.update(rendered["text"])
+
+        # Fallback: if MTEXT did not carry stacked \S codes, check dimtol/dimtp/dimtm overrides
+        if "tolerance_upper" not in props and hasattr(entity, "dxf"):
+            try:
+                dimtol = _dxf_get(entity.dxf, "dimtol", 0)
+                if dimtol:
+                    tp = _dxf_get(entity.dxf, "dimtp", None)
+                    tm = _dxf_get(entity.dxf, "dimtm", None)
+                    if tp is not None or tm is not None:
+                        props["tolerance_upper"] = f"+{tp}" if tp and tp > 0 else (str(tp) if tp is not None else "")
+                        props["tolerance_lower"] = f"-{tm}" if tm and tm > 0 else (str(-tm) if tm is not None else "")
+            except Exception:
+                pass
 
         # Lives in geometry, not properties, so the model->paper projection reaches it through
         # the schema's `points` tuple. A text anchor left in properties would stay in model

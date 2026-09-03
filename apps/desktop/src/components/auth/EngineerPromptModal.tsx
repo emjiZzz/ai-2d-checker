@@ -181,8 +181,8 @@ export const EngineerPromptModal: React.FC = () => {
           <div className="flex items-center gap-4 border-b border-border-color pb-5">
             <img src={kmtiLogo} alt="KMTI Logo" className="w-12 h-12 object-contain shrink-0" />
             <div className="flex flex-col">
-              <h2 className="text-lg md:text-xl font-black tracking-wider uppercase text-text-primary font-mono">
-                AI Checker (Prototype)
+              <h2 className="text-lg md:text-xl font-black tracking-wide text-text-primary font-mono">
+                DraftCheck (Prototype)
               </h2>
               <p className="text-sm text-text-muted mt-0.5">
                 Data Collection and Model Training for 2D CAD dxf files

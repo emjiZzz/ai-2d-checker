@@ -1,5 +1,5 @@
 # ==============================================================================
-# Register the KMTI 2D Checker backend to run in the background, every logon.
+# Register the DraftCheck backend to run in the background, every logon.
 # ==============================================================================
 #
 #     powershell -ExecutionPolicy Bypass -File .\install-service.ps1 [-ServerDir <path>]
@@ -27,13 +27,13 @@
 param(
     # Defaults to the folder holding this script, which is where the installer puts everything.
     [string]$ServerDir = $PSScriptRoot,
-    [string]$TaskName = "KMTI 2D Checker Backend"
+    [string]$TaskName = "DraftCheck Backend"
 )
 
 $ErrorActionPreference = "Stop"
 
 $launcher = Join-Path $ServerDir "start-hidden.vbs"
-$exe = Join-Path $ServerDir "KMTI_2DChecker_Server.exe"
+$exe = Join-Path $ServerDir "DraftCheck_Server.exe"
 
 if (-not (Test-Path $exe)) { throw "Backend executable not found: $exe" }
 if (-not (Test-Path $launcher)) { throw "Hidden launcher not found: $launcher" }
@@ -129,7 +129,7 @@ try { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction 
 
 Register-ScheduledTask -TaskName $TaskName `
     -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-    -Description "Runs the KMTI 2D Checker backend in the background so the desktop app can be opened and closed freely." | Out-Null
+    -Description "Runs the DraftCheck backend in the background so the desktop app can be opened and closed freely." | Out-Null
 
 Write-Host "  task registered: $TaskName" -ForegroundColor Green
 

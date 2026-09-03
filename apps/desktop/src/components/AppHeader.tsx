@@ -119,8 +119,8 @@ export const AppHeader: React.FC = () => {
         className="flex items-center gap-2 px-2 h-full cursor-default"
       >
         <img src={kmtiLogo} alt="KMTI Logo" className="h-6 w-auto object-contain shrink-0" />
-        <span className="text-xs font-black tracking-wider uppercase text-text-primary">
-          KMTI Checker
+        <span className="text-xs font-black tracking-wide text-text-primary">
+          DraftCheck
         </span>
       </div>
 

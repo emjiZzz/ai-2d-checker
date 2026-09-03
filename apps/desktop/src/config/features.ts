@@ -1,5 +1,5 @@
 /**
- * Prototype-mode detection for the KMTI 2D Checker.
+ * Prototype-mode detection for DraftCheck.
  *
  * One build-time flag, `VITE_PROTOTYPE_MODE=true`, read here and nowhere else. Vite inlines it,
  * so `isPrototypeMode()` folds to a constant at build time and the untaken branches are dropped

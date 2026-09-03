@@ -626,11 +626,22 @@ Non-allowlisted external hosts are strictly rejected (`connectionStore.csp.test.
 
 ✅ **There IS a bundled backend now — this paragraph read "There is no sidecar" until 2026-08-28,
 and had been false since `27fb0ab`.** The FastAPI backend is frozen with PyInstaller
-(`tools/kmti_2dchecker_server.spec`), shipped as a Tauri **resource** rather than an
+(`tools/draftcheck_server.spec`), shipped as a Tauri **resource** rather than an
 `externalBin`, and installed to `$INSTDIR\server\` with its own Python runtime; NSIS hooks
 register a per-user logon Scheduled Task. `lib.rs::start_backend` also spawns it directly when the
-task has not fired. Measured on an installed 0.1.8 build: `KMTI_2DChecker_Server.exe` running from
-`%LOCALAPPDATA%\KMTI Checker\server\`, answering on 8080.
+task has not fired. Measured on an installed 0.1.8 build: the server exe running from the install
+directory's `server\`, answering on 8080.
+
+⚠ **The app was renamed KMTI Checker → DraftCheck on 2026-09-03, and every name below moved with
+it**: `DraftCheck_Server.exe`, `%LOCALAPPDATA%\DraftCheck\`, the bundle identifier
+`com.kmti.draftcheck`, the token directory `%LOCALAPPDATA%\draftcheck\` and the Scheduled Task
+*DraftCheck Backend*. Windows treats the new identifier as a **different application**, so a machine
+carrying a pre-rename install has an orphaned `KMTI Checker` directory, an orphaned
+`kmti-2d-checker` token directory and a still-registered *KMTI 2D Checker Backend* task pointing at
+a `KMTI_2DChecker_Server.exe` the new build does not install. Uninstall the old build first — the
+new uninstaller looks up both the task and the process by their new names and will not find the old
+ones. "KMTI" elsewhere is the **company** (layer names, title blocks, the eval corpus,
+`KMTI_iCAD_Server.exe` / `KMTI_FMS_Server.exe` on the LAN box) and did not move.
 
 ⚠ **NSIS only, so there is no working `.msi`.** `installerHooks` apply to NSIS alone — an `.msi`
 would install the app and the server files and never register the task, which is an install that
@@ -641,10 +652,10 @@ single-file Python executable with PyInstaller..."* and writes a **text file** c
 `"Scaffold mock executable binary"`, reporting success. It is not what packages the backend
 (`package-server.ps1` is). Do not read its success as evidence of anything.
 
-🔴 **An installed build's storage root is `%LOCALAPPDATA%\kmti-2d-checker`, and the search that
+🔴 **An installed build's storage root is `%LOCALAPPDATA%\draftcheck`, and the search that
 finds it used to escape to the drive root.** `security::find_storage_root()` (Rust) ascends six
 parents from the working directory and from the executable looking for any directory named
-`storage`. An app installed to `%LOCALAPPDATA%\KMTI Checker\` is five parents below `C:\`, so a
+`storage`. An app installed to `%LOCALAPPDATA%\DraftCheck\` is five parents below `C:\`, so a
 stray `C:\storage` — which the frozen backend creates if it is ever launched from `C:\` — was found
 first, and the app read a token from it that the running backend had never issued. Every
 authenticated request 401'd with *"Access Denied: Invalid security API Token"* while `/health`,

@@ -33,7 +33,9 @@ from pymongo import ASCENDING, IndexModel
 # v8: a dimension's `geometry.render_fills` carried a synthetic triangle for open arrowhead blocks.
 # v9: open arrowhead blocks (_OPEN30) remain wireframe strokes in `render_paths` without synthetic
 # solid fills, matching original CAD drawings (iCAD SX / Japanese drafting) where arrowheads are not solid.
-EXTRACTION_SCHEMA_VERSION = 9
+# v10: dimensions harvest stacked tolerances (`tolerance_upper` and `tolerance_lower`) from MTEXT `\S` codes
+# and dimtol overrides so the 2D review canvas can render stacked tolerance text beside nominal measurements.
+EXTRACTION_SCHEMA_VERSION = 10
 
 
 class ExtractedEntity(Document):

@@ -1,5 +1,5 @@
 ' ============================================================================
-' Launch KMTI_2DChecker_Server.exe with NO visible window.
+' Launch DraftCheck_Server.exe with NO visible window.
 ' ============================================================================
 '
 ' Why a VBScript and not the Scheduled Task's own "Hidden" option:
@@ -28,13 +28,13 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' Resolve relative to this script so the whole folder can be moved or installed anywhere.
 here = fso.GetParentFolderName(WScript.ScriptFullName)
-exePath = fso.BuildPath(here, "KMTI_2DChecker_Server.exe")
+exePath = fso.BuildPath(here, "DraftCheck_Server.exe")
 
 If Not fso.FileExists(exePath) Then
     ' Surface this one loudly. A silent no-op here means the app shows "Connection Lost" forever
     ' with nothing anywhere explaining why.
-    MsgBox "KMTI 2D Checker: backend executable not found at" & vbCrLf & exePath, _
-           vbCritical, "KMTI 2D Checker"
+    MsgBox "DraftCheck: backend executable not found at" & vbCrLf & exePath, _
+           vbCritical, "DraftCheck"
     WScript.Quit 1
 End If
 

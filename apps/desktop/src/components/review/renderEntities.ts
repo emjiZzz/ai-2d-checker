@@ -338,6 +338,10 @@ interface CadTextOptions {
   align?: CanvasTextAlign;
   vAlign?: VerticalAnchor;
   isExport?: boolean;
+  /** Upper stacked tolerance (e.g. "+0.4", "-0.1", "0"). */
+  toleranceUpper?: string;
+  /** Lower stacked tolerance (e.g. "+0.2", "-0.2", "0"). */
+  toleranceLower?: string;
 }
 
 /**
@@ -356,6 +360,7 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
     x, y, text, capHeightPx, color, rotation = 0,
     attachmentPoint, widthFactor, columnWidthPx = 0,
     isExport = false,
+    toleranceUpper, toleranceLower,
   } = opts;
   if (!text || capHeightPx <= 0) return;
 
@@ -397,17 +402,62 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   if (rotation) ctx.rotate((-rotation * Math.PI) / 180);
   if (horizontalScale !== 1) ctx.scale(horizontalScale, 1);
 
-  // Wrapping is measured in the post-scale space, which is where the column width lives.
-  const lines =
-    columnWidthPx > 0
-      ? wrapCadText(ctx, text, columnWidthPx / (horizontalScale || 1))
-      : [text];
+  const hasTolerance = Boolean(toleranceUpper || toleranceLower);
+  if (hasTolerance) {
+    const uText = toleranceUpper ? toleranceUpper.trim() : '';
+    const lText = toleranceLower ? toleranceLower.trim() : '';
+    // Stacked tolerance font is ~55% of nominal cap height
+    const tolCapHeightPx = capHeightPx * 0.55;
+    const tolEmPx = (tolCapHeightPx * 0.80) / getCapHeightRatio(ctx, CAD_FONT_STACK);
+    const tolFont = `${fontWeight} ${tolEmPx}px ${CAD_FONT_STACK}`;
 
-  // MTEXT grows downward from its attachment row: a bottom-anchored block has its LAST line on
-  // the anchor, a top-anchored block its first, and a middle-anchored block is centred.
-  const advance = capHeightPx * MTEXT_LINE_ADVANCE;
-  const firstBaseline = baselineOffsetPx(vAlign, capHeightPx, lines.length, advance);
-  lines.forEach((line, i) => ctx.fillText(line, 0, firstBaseline + i * advance));
+    // Measure widths to align the composite nominal + tolerance stack
+    const nominalWidth = ctx.measureText(text).width;
+    ctx.font = tolFont;
+    const uWidth = uText ? ctx.measureText(uText).width : 0;
+    const lWidth = lText ? ctx.measureText(lText).width : 0;
+    const tolWidth = Math.max(uWidth, lWidth);
+    const gap = capHeightPx * 0.15;
+    const totalWidth = nominalWidth + gap + tolWidth;
+
+    let startX = 0;
+    if (align === 'center') {
+      startX = -totalWidth / 2;
+    } else if (align === 'right') {
+      startX = -totalWidth;
+    }
+
+    const advance = capHeightPx * MTEXT_LINE_ADVANCE;
+    const firstBaseline = baselineOffsetPx(vAlign, capHeightPx, 1, advance);
+
+    // Draw nominal text
+    ctx.font = `${fontWeight} ${emPx}px ${CAD_FONT_STACK}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, startX, firstBaseline);
+
+    // Draw stacked tolerances to the right
+    ctx.font = tolFont;
+    const tolX = startX + nominalWidth + gap;
+    // Upper tolerance sits in the top half of the nominal height
+    const upperBaseline = firstBaseline - capHeightPx * 0.40;
+    // Lower tolerance sits near the bottom baseline
+    const lowerBaseline = firstBaseline + capHeightPx * 0.10;
+
+    if (uText) ctx.fillText(uText, tolX, upperBaseline);
+    if (lText) ctx.fillText(lText, tolX, lowerBaseline);
+  } else {
+    // Wrapping is measured in the post-scale space, which is where the column width lives.
+    const lines =
+      columnWidthPx > 0
+        ? wrapCadText(ctx, text, columnWidthPx / (horizontalScale || 1))
+        : [text];
+
+    // MTEXT grows downward from its attachment row: a bottom-anchored block has its LAST line on
+    // the anchor, a top-anchored block its first, and a middle-anchored block is centred.
+    const advance = capHeightPx * MTEXT_LINE_ADVANCE;
+    const firstBaseline = baselineOffsetPx(vAlign, capHeightPx, lines.length, advance);
+    lines.forEach((line, i) => ctx.fillText(line, 0, firstBaseline + i * advance));
+  }
 
   ctx.restore();
 };
@@ -839,6 +889,16 @@ export const renderEntities = ({
             // rather than derived from an attachment point. The width factor and tracking come
             // from the block's MTEXT (all four dimensions here carry \W0.8;\T0.875;), which
             // the DIMENSION entity itself never records.
+            let tolUpper = ent.properties?.tolerance_upper;
+            let tolLower = ent.properties?.tolerance_lower;
+            if (!tolUpper && !tolLower && rawDimText.includes('\\S')) {
+              const m = rawDimText.match(/\\S([^^;]*)\^([^;]*);/);
+              if (m) {
+                tolUpper = m[1].trim();
+                tolLower = m[2].trim();
+              }
+            }
+
             drawCadText(ctx, {
               x: tx,
               y: ty,
@@ -850,6 +910,8 @@ export const renderEntities = ({
               align: 'center',
               vAlign: 'middle',
               isExport,
+              toleranceUpper: tolUpper,
+              toleranceLower: tolLower,
             });
             ctx.restore();
           }

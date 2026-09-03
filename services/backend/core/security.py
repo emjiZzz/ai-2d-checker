@@ -35,7 +35,7 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
 
 #: Folder name under the per-user data root that the token is published to.
 #:
-#: 🔴 **Deliberately NOT the Tauri bundle identifier** (`com.kmti.checker`), which this used to be.
+#: 🔴 **Deliberately NOT the Tauri bundle identifier** (`com.kmti.draftcheck`), which this used to be.
 #: That directory is the desktop app's OWN data directory: WebView2 stores its profile there, and
 #: the uninstaller deletes it. Publishing the credential inside it meant an uninstall/reinstall
 #: cycle removed the token -- and because it was written only at backend startup, nothing put it
@@ -46,11 +46,11 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
 #: A sibling directory is not touched by the uninstaller and does not collide with the webview's
 #: own storage. Kept in step with the Rust side by `tests/test_user_token_dir.py`, which parses
 #: `security/mod.rs` rather than trusting this comment.
-TOKEN_DIR_NAME = "kmti-2d-checker"
+TOKEN_DIR_NAME = "draftcheck"
 
 #: The bundle identifier, recorded only so the test above can assert the token directory is NOT
 #: it. Never join a path from this.
-APP_IDENTIFIER = "com.kmti.checker"
+APP_IDENTIFIER = "com.kmti.draftcheck"
 
 
 def user_storage_root() -> Path:
@@ -61,7 +61,7 @@ def user_storage_root() -> Path:
     `get_storage_root()` resolves to `<repo>/storage`, which is correct for the backend and
     useless to an installed client. The Tauri app looks for `<storage root>/secure/.api-token` by
     walking up from its own executable and from the working directory -- and an app installed to
-    `C:\\Program Files\\KMTI Checker\\` has no `storage` anywhere up that tree.
+    `C:\\Program Files\\DraftCheck\\` has no `storage` anywhere up that tree.
 
     The result was not a visible error. `GET /health` requires no token and returned 200, so the
     app reported itself **connected** while every authenticated call answered 401: the rooms list

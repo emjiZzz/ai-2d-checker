@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "KMTI Checker",
+  "productName": "DraftCheck",
   "version": "0.1.9",
-  "identifier": "com.kmti.checker",
+  "identifier": "com.kmti.draftcheck",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "KMTI Checker",
+        "title": "DraftCheck",
         "width": 1680,
         "height": 1050,
         "decorations": false,

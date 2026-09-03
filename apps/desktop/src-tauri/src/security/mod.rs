@@ -10,7 +10,7 @@ use std::env;
 ///
 /// The searches in `find_storage_root` accept any directory named `storage`, and from an
 /// installed build they ascend all the way to the drive root: an app at
-/// `C:\Users\<user>\AppData\Local\KMTI Checker\` is five parents below `C:\`, inside the
+/// `C:\Users\<user>\AppData\Local\DraftCheck\` is five parents below `C:\`, inside the
 /// six-parent budget. So a stray `C:\storage` is found first and the per-user branch below --
 /// whose comment claims to be "the only branch an INSTALLED build can reach" -- is never reached.
 ///
@@ -102,7 +102,7 @@ pub fn find_storage_root() -> Result<PathBuf, String> {
     //
     // Every search above walks outward from the working directory or the executable looking for a
     // `storage` folder, which only exists inside a source checkout. An app installed to
-    // `C:\Program Files\KMTI Checker\` has none anywhere up its tree, so this returned Err, the
+    // `C:\Program Files\DraftCheck\` has none anywhere up its tree, so this returned Err, the
     // token could not be read, and every authenticated request answered 401 -- while `/health`
     // needs no token and returned 200, so the app reported itself CONNECTED. Rooms came back
     // empty and "Create Room" did nothing, with no error shown anywhere.
@@ -142,7 +142,7 @@ pub fn find_storage_root() -> Result<PathBuf, String> {
 /// **Local, not roaming**: the encryption key is derived from machine identity, so a roamed copy
 /// would not decrypt on the machine it roamed to.
 pub fn user_app_data_root() -> Option<PathBuf> {
-    // 🔴 Deliberately NOT the bundle identifier `com.kmti.checker`, which this was until
+    // 🔴 Deliberately NOT the bundle identifier `com.kmti.draftcheck`, which this was until
     // 2026-08-27. That directory is this app's OWN data directory -- WebView2 keeps its profile
     // there and the uninstaller deletes it -- so an uninstall/reinstall cycle removed the token
     // the backend had published, and every authenticated request 401'd until the backend was
@@ -152,7 +152,7 @@ pub fn user_app_data_root() -> Option<PathBuf> {
     //
     // Mirrors TOKEN_DIR_NAME in services/backend/core/security.py; pinned by
     // tests/test_user_token_dir.py.
-    const TOKEN_DIR_NAME: &str = "kmti-2d-checker";
+    const TOKEN_DIR_NAME: &str = "draftcheck";
 
     #[cfg(target_os = "windows")]
     let base = env::var("LOCALAPPDATA").ok().or_else(|| env::var("APPDATA").ok());
@@ -180,7 +180,7 @@ mod tests {
     /// trees with the same shape, so a fixed name makes them fail only when run together.
     fn scratch(tag: &str) -> PathBuf {
         let unique = format!(
-            "kmti-storage-root-{}-{}-{:?}",
+            "draftcheck-storage-root-{}-{}-{:?}",
             tag,
             std::process::id(),
             std::thread::current().id()
@@ -226,7 +226,7 @@ mod tests {
             .join("someone")
             .join("AppData")
             .join("Local")
-            .join("KMTI Checker");
+            .join("DraftCheck");
         fs::create_dir_all(&install).unwrap();
 
         let previous = env::current_dir().unwrap();
@@ -330,7 +330,7 @@ mod tests {
         // previous defect was joining a path from it. Naming it here to prove it is unused is
         // indistinguishable, to a grep, from using it.
         if let Some(root) = user_app_data_root() {
-            assert_eq!(root.file_name().unwrap(), "kmti-2d-checker");
+            assert_eq!(root.file_name().unwrap(), "draftcheck");
         }
     }
 }

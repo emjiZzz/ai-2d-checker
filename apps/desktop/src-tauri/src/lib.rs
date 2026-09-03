@@ -125,7 +125,7 @@ fn start_backend() -> Result<String, String> {
         let exe = std::env::current_exe()
             .map_err(|e| format!("Cannot locate the app executable: {e}"))?
             .parent()
-            .map(|dir| dir.join("server").join("KMTI_2DChecker_Server.exe"))
+            .map(|dir| dir.join("server").join("DraftCheck_Server.exe"))
             .ok_or_else(|| "App executable has no parent directory".to_string())?;
 
         if !exe.exists() {

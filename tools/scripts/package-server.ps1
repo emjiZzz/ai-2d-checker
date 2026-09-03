@@ -5,7 +5,7 @@
 #     powershell -ExecutionPolicy Bypass -File .\tools\scripts\package-server.ps1
 #
 # Freezes the backend and leaves a folder that is SAFE TO COPY to
-# `C:\Users\Administrator\Desktop\KMTI 2D Checker\`.
+# `C:\Users\Administrator\Desktop\DraftCheck\`.
 #
 # ## Why this exists rather than "just run PyInstaller"
 #
@@ -29,12 +29,12 @@
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $python = Join-Path $repoRoot "services\backend\.venv\Scripts\python.exe"
-$outDir = Join-Path $repoRoot "dist\server\KMTI_2DChecker_Server"
+$outDir = Join-Path $repoRoot "dist\server\DraftCheck_Server"
 
 if (-not (Test-Path $python)) { throw "Backend venv not found at $python" }
 
 Write-Host "Freezing backend..." -ForegroundColor Yellow
-& $python -m PyInstaller (Join-Path $repoRoot "tools\kmti_2dchecker_server.spec") `
+& $python -m PyInstaller (Join-Path $repoRoot "tools\draftcheck_server.spec") `
     --noconfirm `
     --distpath (Join-Path $repoRoot "dist\server") `
     --workpath (Join-Path $repoRoot "build\server")
@@ -88,7 +88,7 @@ if (Test-Path $repoEnv) {
     Write-Host "  WARNING: no .env at $repoEnv - template keeps its placeholder." -ForegroundColor Yellow
 }
 
-$exe = Join-Path $outDir "KMTI_2DChecker_Server.exe"
+$exe = Join-Path $outDir "DraftCheck_Server.exe"
 if (-not (Test-Path $exe)) { throw "Build reported success but $exe is missing." }
 
 # Stage into the Tauri project so `bundle.resources` can pick it up. Tauri resolves resource

@@ -20,7 +20,7 @@
 # deliberate act.
 
 [CmdletBinding()]
-param([string]$TaskName = "KMTI 2D Checker Backend")
+param([string]$TaskName = "DraftCheck Backend")
 
 $ErrorActionPreference = "Continue"
 
@@ -41,7 +41,7 @@ try {
 #    launched -- the task's action was wscript.exe, which exited immediately after spawning the
 #    backend, so as far as the scheduler is concerned the action already finished.
 $stopped = 0
-foreach ($p in (Get-Process -Name "KMTI_2DChecker_Server" -ErrorAction SilentlyContinue)) {
+foreach ($p in (Get-Process -Name "DraftCheck_Server" -ErrorAction SilentlyContinue)) {
     try { Stop-Process -Id $p.Id -Force -ErrorAction Stop; $stopped++ } catch {}
 }
 if ($stopped -gt 0) { Write-Host "  stopped $stopped backend process(es)" -ForegroundColor DarkGray }

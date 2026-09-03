@@ -105,6 +105,25 @@ def test_dimension_recovers_the_width_factor_from_its_block():
     assert mapped["properties"]["tracking"] == pytest.approx(0.875)
 
 
+def test_dimension_recovers_stacked_tolerances_from_its_block():
+    r"""`\S<upper>^<lower>;` stacked tolerances are harvested into tolerance_upper and tolerance_lower."""
+    doc = ezdxf.new(setup=True)
+    dim = doc.modelspace().add_linear_dim(base=(0, 20), p1=(0, 0), p2=(12, 0))
+    dim.render()
+
+    block = doc.blocks.get(dim.dimension.dxf.geometry)
+    for child in block:
+        if child.dxftype() == "MTEXT":
+            child.text = r"\A1;\W0.800000;\T0.875000;12{\H2.800000;\S+0.4^ +2;}"
+            break
+
+    mapped = EntityMapper.map_dimension(dim.dimension)
+
+    assert mapped["properties"]["render_text"] == "12"
+    assert mapped["properties"]["tolerance_upper"] == "+0.4"
+    assert mapped["properties"]["tolerance_lower"] == "+2"
+
+
 def test_dimension_text_anchors_on_the_block_mtext_not_on_text_midpoint():
     """`text_midpoint` sits ON the dimension line; the block's MTEXT is offset off it.
 

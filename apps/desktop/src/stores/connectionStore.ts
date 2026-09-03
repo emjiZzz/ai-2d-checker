@@ -144,7 +144,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
    * the app, with an error that says "Invalid security API Token" and nothing about why.
    *
    * Observed exactly that: the packaged sidecar and a development backend both publish to
-   * `%LOCALAPPDATA%/kmti-2d-checker/secure/.api-token`, so whichever started last owned it, and an
+   * `%LOCALAPPDATA%/draftcheck/secure/.api-token`, so whichever started last owned it, and an
    * app opened before that point held a token the running backend had never issued.
    *
    * 🔴 **This used to `set({ apiToken: null })` first, and that null was itself a bug.** The

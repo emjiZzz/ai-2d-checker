@@ -25,7 +25,7 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   ${If} ${FileExists} "$INSTDIR\server\install-service.ps1"
-    DetailPrint "Registering KMTI 2D Checker backend service..."
+    DetailPrint "Registering DraftCheck backend service..."
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\server\install-service.ps1" -ServerDir "$INSTDIR\server"'
     Pop $0
     ${If} $0 != 0
@@ -44,7 +44,7 @@
     ; executable lives in $INSTDIR -- and a running exe cannot be deleted, so leaving this until
     ; afterwards makes the uninstall fail to remove its own files AND strand the backend holding
     ; port 8080 until the next reboot.
-    DetailPrint "Removing KMTI 2D Checker backend service..."
+    DetailPrint "Removing DraftCheck backend service..."
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\server\uninstall-service.ps1"'
     Pop $0
     DetailPrint "Backend service removal returned $0."

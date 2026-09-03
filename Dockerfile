@@ -1,7 +1,7 @@
 # Cloud backend image (Render). See `render.yaml` for the service definition.
 #
 # This is the THIRD topology this backend runs in, alongside the per-workstation sidecar
-# (PyInstaller, `tools/kmti_2dchecker_server.spec`) and the LAN server at 192.168.200.105.
+# (PyInstaller, `tools/draftcheck_server.spec`) and the LAN server at 192.168.200.105.
 # The other two are Windows-native; this is the only Linux one, which is why the font work
 # below exists.
 #
