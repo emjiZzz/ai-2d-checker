@@ -10,6 +10,8 @@ import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 export interface ChecklistSectionProps {
   /** Category name, rendered uppercase. */
   label: string;
+  /** Optional category icon. */
+  icon?: React.ReactNode;
   /** Pill text — a status, or a count. Omit for no pill. */
   statusLabel?: string;
   /** Pill colour; the background is the same colour at 8% opacity. */
@@ -25,6 +27,7 @@ export interface ChecklistSectionProps {
 
 export const ChecklistSection: React.FC<ChecklistSectionProps> = ({
   label,
+  icon,
   statusLabel,
   statusColor = "var(--text-muted)",
   statusIsMatched = false,
@@ -51,7 +54,7 @@ export const ChecklistSection: React.FC<ChecklistSectionProps> = ({
         padding: "8px 10px",
         cursor: "pointer",
         userSelect: "none",
-        flexWrap: "wrap",
+        flexWrap: "nowrap",
         gap: "6px",
         minWidth: 0,
         background: expanded ? "var(--sidebar-item-hover)" : "var(--bg-card)",
@@ -60,7 +63,8 @@ export const ChecklistSection: React.FC<ChecklistSectionProps> = ({
         transition: "all 0.15s ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: "1 1 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}>
+        {icon && <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>{icon}</span>}
         {eye && (
           <div
             onClick={(e) => {

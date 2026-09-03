@@ -3,7 +3,19 @@ import { ChecklistSection } from './ChecklistSection';
 import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
 import { useThemeStore } from '../../stores/themeStore';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Trash2, ClipboardCheck, Download } from 'lucide-react';
+import {
+  Trash2,
+  ClipboardCheck,
+  Download,
+  ChevronDown,
+  ChevronRight,
+  Layers,
+  FileText,
+  Table,
+  CreditCard,
+  Box,
+  MoreHorizontal,
+} from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useRoomStore } from '../../stores/roomStore';
 import { useIsManualCheckRoom } from '../../hooks/useManualCheckRoom';
@@ -32,7 +44,22 @@ import { getAnnotationBadgeMap } from '../../stores/workspace/types';
 
 // Shared with the canvas badges rather than restated: a list dot and its badge disagreeing
 // about what ADDED looks like is small, silent and exactly the drift this codebase keeps paying
-// for. One map, imported by both.
+function getCategoryIcon(key: string) {
+  switch (key) {
+    case 'drawing_views':
+      return <Layers size={13} style={{ color: '#00e5ff' }} />;
+    case 'notes':
+      return <FileText size={13} style={{ color: '#f59e0b' }} />;
+    case 'bill_of_materials':
+      return <Table size={13} style={{ color: '#10b981' }} />;
+    case 'title_block':
+      return <CreditCard size={13} style={{ color: '#3b82f6' }} />;
+    case 'isometric_view':
+      return <Box size={13} style={{ color: '#a855f7' }} />;
+    default:
+      return <MoreHorizontal size={13} style={{ color: 'var(--text-muted)' }} />;
+  }
+}
 
 export const ManualMarkingList: React.FC = () => {
   const isManualCheckRoom = useIsManualCheckRoom();
@@ -48,33 +75,28 @@ export const ManualMarkingList: React.FC = () => {
   const deleteAnnotationById = useWorkspaceStore((s) => s.deleteAnnotationById);
   const manualSessionId = useWorkspaceStore((s) => s.manualSessionId);
   const manualSessionError = useWorkspaceStore((s) => s.manualSessionError);
-  const startManualSession = useWorkspaceStore((s) => s.startManualSession);
-
-  const { exportToPDF, isExporting, exportPhase, exportStatus, revealExport } =
-    useComplianceReportExport();
-
-  // Retry re-runs the open with the SAME identity the effect would have used. It does not clear
-  // the error first: if the second attempt fails too, the message must not flicker away and
-  // leave the empty invitation behind, which is the very confusion this block exists to end.
-  const retryOpen = useCallback(() => {
-    const room = useRoomStore.getState().activeRoom;
-    const ws = useWorkspaceStore.getState();
-    if (!room?.id || !ws.oldDrawing?.id || !ws.newDrawing?.id) return;
-    startManualSession(String(room.id), String(ws.oldDrawing.id), String(ws.newDrawing.id));
-  }, [startManualSession]);
-  const pendingPairRef = useWorkspaceStore((s) => s.pendingPairRef);
-  const pendingPairTool = useWorkspaceStore((s) => s.pendingPairTool);
-  const retractManualMarking = useWorkspaceStore((s) => s.retractManualMarking);
-  const submitManualSession = useWorkspaceStore((s) => s.submitManualSession);
-  const markingError = useWorkspaceStore((s) => s.markingError);
-  const clearMarkingError = useWorkspaceStore((s) => s.clearMarkingError);
-
-  const [submitting, setSubmitting] = useState(false);
-  // Open by default: this panel is short and the engineer is reading their own work, not
-  // triaging someone else's. Collapsed-by-default would hide the thing they came here for.
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const manualSessionStatus = useWorkspaceStore((s) => s.manualSessionStatus);
   const isSubmitted = manualSessionStatus === 'submitted' || manualSessionStatus === 'completed';
+  const startManualSession = useWorkspaceStore((s) => s.startManualSession);
+  const submitManualSession = useWorkspaceStore((s) => s.submitManualSession);
+  const retractManualMarking = useWorkspaceStore((s) => s.retractManualMarking);
+  const markingError = useWorkspaceStore((s) => s.markingError);
+  const clearMarkingError = useWorkspaceStore((s) => s.clearMarkingError);
+  const pendingPairRef = useWorkspaceStore((s) => s.pendingPairRef);
+  const pendingPairTool = useWorkspaceStore((s) => s.pendingPairTool);
+
+  const activeRoom = useRoomStore((s) => s.activeRoom);
+
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const { isExporting, exportPhase, exportStatus, exportToPDF, revealExport } =
+    useComplianceReportExport();
+
+  const retryOpen = useCallback(() => {
+    if (!activeRoom || !oldDrawing?.id || !newDrawing?.id) return;
+    startManualSession(String(activeRoom.id), String(oldDrawing.id), String(newDrawing.id));
+  }, [activeRoom, oldDrawing?.id, newDrawing?.id, startManualSession]);
 
   const grouped = useMemo(() => {
     const map: Record<string, typeof markings> = {};
@@ -105,49 +127,108 @@ export const ManualMarkingList: React.FC = () => {
   const totalCount = markings.length + annotations.length;
   const canSubmit = Boolean(manualSessionId) && totalCount > 0 && !submitting && !isSubmitted;
 
+  const matchedCount = markings.filter((m) => m.status === 'MATCHED').length;
+  const changedCount = markings.filter((m) => m.status === 'CHANGED' || m.status === 'MISMATCHED').length;
+  const diffCount = markings.filter((m) => m.status === 'ADDED' || m.status === 'REMOVED').length;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div
         style={{
           padding: '10px 12px',
           borderBottom: '1px solid var(--border-color)',
+          background: 'var(--bg-card)',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: 8,
         }}
       >
-        <div
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: 4,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(16,185,129,0.12)',
-            border: '1px solid rgba(16,185,129,0.28)',
-            flexShrink: 0,
-          }}
-        >
-          <ClipboardCheck size={13} color="#10b981" />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--text-primary)',
-            }}
-          >
-            Ground Truth Markings
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: totalCount > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(0,229,255,0.12)',
+                border: `1px solid ${totalCount > 0 ? 'rgba(16,185,129,0.28)' : 'rgba(0,229,255,0.28)'}`,
+                flexShrink: 0,
+              }}
+            >
+              <ClipboardCheck size={13} color={totalCount > 0 ? '#10b981' : '#00e5ff'} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                Ground Truth Markings
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                {manualSessionId
+                  ? `${totalCount} item${totalCount === 1 ? '' : 's'} recorded`
+                  : 'Opening session…'}
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-            {manualSessionId
-              ? `${totalCount} item${totalCount === 1 ? '' : 's'} recorded`
-              : 'Opening session…'}
-          </div>
+
+          {totalCount > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {matchedCount > 0 && (
+                <span
+                  title={`${matchedCount} Matched`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 999,
+                    color: '#10b981',
+                    background: 'rgba(16,185,129,0.12)',
+                  }}
+                >
+                  ✓ {matchedCount}
+                </span>
+              )}
+              {changedCount > 0 && (
+                <span
+                  title={`${changedCount} Changed / Mismatched`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 999,
+                    color: '#ff6b00',
+                    background: 'rgba(255,107,0,0.12)',
+                  }}
+                >
+                  ⚠ {changedCount}
+                </span>
+              )}
+              {diffCount > 0 && (
+                <span
+                  title={`${diffCount} Added / Removed`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 999,
+                    color: '#a855f7',
+                    background: 'rgba(168,85,247,0.12)',
+                  }}
+                >
+                  ± {diffCount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -406,14 +487,14 @@ export const ManualMarkingList: React.FC = () => {
           const hasChanged = rows.some((m) => m.status !== 'MATCHED');
           const allMatched = hasRows && !hasChanged;
 
-          let statusLabel = '⚪ Pending';
+          let statusLabel = undefined;
           let sectionColor = 'var(--text-muted)';
           if (hasChanged) {
             const discCount = rows.filter((m) => m.status !== 'MATCHED').length;
-            statusLabel = `${discCount}`;
+            statusLabel = `${discCount} changed`;
             sectionColor = '#ff6b00';
           } else if (hasRows) {
-            statusLabel = `${rows.length}`;
+            statusLabel = `${rows.length} checked`;
             sectionColor = markerUi('MATCHED', isLight).color;
           }
 
@@ -422,6 +503,7 @@ export const ManualMarkingList: React.FC = () => {
           return (
             <ChecklistSection
               key={key}
+              icon={getCategoryIcon(key)}
               label={categoryLabel(key)}
               statusLabel={statusLabel}
               statusColor={sectionColor}
@@ -431,24 +513,26 @@ export const ManualMarkingList: React.FC = () => {
                 setExpanded((prev) => ({ ...prev, [key]: !isCatExpanded }))
               }
             >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {featureItems.map((feat) => {
+              <div
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 6,
+                  overflow: 'hidden',
+                }}
+              >
+                {featureItems.map((feat, idx) => {
                   const featRows = resolved.filter((r) => r.feature === feat.key).map((r) => r.m);
                   const featHasRows = featRows.length > 0;
                   const featHasChanged = featRows.some((m) => m.status !== 'MATCHED');
                   const featAllMatched = featHasRows && !featHasChanged;
+                  const isLast = idx === featureItems.length - 1;
 
                   const featPillColor = featHasChanged
                     ? '#ff6b00'
                     : featAllMatched
                     ? markerUi('MATCHED', isLight).color
                     : 'var(--text-muted)';
-
-                  const featPillText = featHasChanged
-                    ? `${featRows.filter((m) => m.status !== 'MATCHED').length}`
-                    : featAllMatched
-                    ? `✓ ${featRows.length}`
-                    : '⚪ Pending';
 
                   const featExpandedKey = `${key}_${feat.key}`;
                   const isFeatExpanded = expanded[featExpandedKey] ?? featHasRows;
@@ -457,49 +541,133 @@ export const ManualMarkingList: React.FC = () => {
                     <div
                       key={feat.key}
                       style={{
-                        background: 'var(--bg-card)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 4,
-                        padding: '6px 8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
+                        borderBottom: isLast && (!isFeatExpanded || !featHasRows) ? 'none' : '1px solid var(--border-color)',
                       }}
                     >
                       <div
-                        onClick={() =>
-                          setExpanded((prev) => ({
-                            ...prev,
-                            [featExpandedKey]: !isFeatExpanded,
-                          }))
-                        }
+                        onClick={() => {
+                          if (featHasRows) {
+                            setExpanded((prev) => ({
+                              ...prev,
+                              [featExpandedKey]: !isFeatExpanded,
+                            }));
+                          }
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          cursor: 'pointer',
+                          padding: '7px 10px',
+                          cursor: featHasRows ? 'pointer' : 'default',
                           userSelect: 'none',
+                          background: isFeatExpanded && featHasRows ? 'var(--sidebar-item-hover)' : 'transparent',
+                          transition: 'background 0.15s ease',
                         }}
                       >
-                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {feat.label}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: featPillColor,
-                            background: `${featPillColor}15`,
-                            padding: '1px 6px',
-                            borderRadius: 999,
-                          }}
-                        >
-                          {featPillText}
-                        </span>
+                        {/* Left: subtle status indicator dot + label */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                          {featHasChanged ? (
+                            <span
+                              title="Discrepancy recorded"
+                              style={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: '50%',
+                                background: '#ff6b00',
+                                boxShadow: '0 0 5px rgba(255, 107, 0, 0.7)',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : featAllMatched ? (
+                            <span
+                              title="All matched"
+                              style={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: '50%',
+                                background: '#10b981',
+                                boxShadow: '0 0 5px rgba(16, 185, 129, 0.7)',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              title="Pending"
+                              style={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: '50%',
+                                border: '1.5px solid var(--text-muted)',
+                                opacity: 0.35,
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: featHasRows ? 700 : 500,
+                              color: featHasRows ? 'var(--text-primary)' : 'var(--text-muted)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {feat.label}
+                          </span>
+                        </div>
+
+                        {/* Right: compact status pill or subtle pending */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          {featHasRows ? (
+                            <>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  color: featPillColor,
+                                  background: `${featPillColor}18`,
+                                  padding: '1px 6px',
+                                  borderRadius: 999,
+                                }}
+                              >
+                                {featHasChanged
+                                  ? `${featRows.filter((m) => m.status !== 'MATCHED').length} changed`
+                                  : `✓ ${featRows.length}`}
+                              </span>
+                              {isFeatExpanded ? (
+                                <ChevronDown size={12} color="var(--text-muted)" />
+                              ) : (
+                                <ChevronRight size={12} color="var(--text-muted)" />
+                              )}
+                            </>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: 'var(--text-muted)',
+                                opacity: 0.35,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Pending
+                            </span>
+                          )}
+                        </div>
                       </div>
 
+                      {/* Findings Tray (only when markings are recorded!) */}
                       {isFeatExpanded && featHasRows && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                        <div
+                          style={{
+                            padding: '8px 10px',
+                            background: 'var(--bg-dark)',
+                            borderTop: '1px solid var(--border-color)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 6,
+                          }}
+                        >
                           {featRows.map((m) => {
                             const { color: statusColor, background: statusBg } = markerUi(m.status, isLight);
                             const glyph = m.status === 'MISMATCHED' ? '✕' : (markerStyle(m.status)?.glyph || '✓');
@@ -555,12 +723,6 @@ export const ManualMarkingList: React.FC = () => {
                           })}
                         </div>
                       )}
-
-                      {isFeatExpanded && !featHasRows && (
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic', padding: '2px 0' }}>
-                          No markings recorded for this checkpoint.
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -613,17 +775,18 @@ export const ManualMarkingList: React.FC = () => {
               fontSize: 12,
               fontWeight: 700,
               cursor: canSubmit ? 'pointer' : 'not-allowed',
-              background: canSubmit ? '#059669' : 'var(--bg-dark)',
-              border: `1.5px solid ${canSubmit ? '#059669' : 'var(--border-color)'}`,
+              background: canSubmit ? '#10b981' : 'var(--sidebar-item-hover)',
+              border: `1.5px solid ${canSubmit ? '#10b981' : 'var(--border-color)'}`,
               color: canSubmit ? '#fff' : 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
+              boxShadow: canSubmit ? '0 2px 8px rgba(16, 185, 129, 0.35)' : 'none',
               transition: 'all 0.15s ease',
             }}
           >
-            {submitting ? 'Finalising…' : 'Finish check'}
+            {submitting ? 'Finalising…' : canSubmit ? `Finish check (${totalCount} item${totalCount === 1 ? '' : 's'})` : 'Finish check'}
           </button>
         )}
         <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, textAlign: 'center' }}>
