@@ -104,42 +104,61 @@ fn get_api_token() -> Result<String, String> {
 fn start_backend() -> Result<String, String> {
     use crate::security::logging;
 
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("Cannot locate the app executable: {e}"))?
-        .parent()
-        .map(|dir| dir.join("server").join("KMTI_2DChecker_Server.exe"))
-        .ok_or_else(|| "App executable has no parent directory".to_string())?;
-
-    if !exe.exists() {
-        // A dev run has no bundled server; the developer starts one themselves. Not an error.
-        let msg = format!("No bundled backend at {}", exe.display());
+    // In a development build, the backend is run from source by the developer (or launcher script).
+    // Never attempt to launch a stale bundled binary that may linger in target/ or cache.
+    #[cfg(debug_assertions)]
+    {
+        let msg = "Dev build: skipping bundled backend launch (backend is managed from source)".to_string();
         logging::log("info", "StartBackend", &msg);
         return Ok(msg);
     }
 
-    let mut command = std::process::Command::new(&exe);
-    // Working directory is the server folder so relative paths land beside the executable.
-    if let Some(dir) = exe.parent() {
-        command.current_dir(dir);
-    }
-
-    #[cfg(target_os = "windows")]
+    #[cfg(not(debug_assertions))]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    match command.spawn() {
-        Ok(child) => {
-            let msg = format!("Backend starting (pid {})", child.id());
+        // Avoid socket collisions and token overwrites if a backend is already running on 127.0.0.1:8080.
+        if std::net::TcpStream::connect("127.0.0.1:8080").is_ok() {
+            let msg = "Backend is already listening on 127.0.0.1:8080".to_string();
             logging::log("info", "StartBackend", &msg);
-            Ok(msg)
+            return Ok(msg);
         }
-        Err(e) => {
-            let msg = format!("Failed to start backend: {e}");
-            logging::log("error", "StartBackend", &msg);
-            Err(msg)
+
+        let exe = std::env::current_exe()
+            .map_err(|e| format!("Cannot locate the app executable: {e}"))?
+            .parent()
+            .map(|dir| dir.join("server").join("KMTI_2DChecker_Server.exe"))
+            .ok_or_else(|| "App executable has no parent directory".to_string())?;
+
+        if !exe.exists() {
+            // A build with no bundled server; not an error.
+            let msg = format!("No bundled backend at {}", exe.display());
+            logging::log("info", "StartBackend", &msg);
+            return Ok(msg);
+        }
+
+        let mut command = std::process::Command::new(&exe);
+        // Working directory is the server folder so relative paths land beside the executable.
+        if let Some(dir) = exe.parent() {
+            command.current_dir(dir);
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        match command.spawn() {
+            Ok(child) => {
+                let msg = format!("Backend starting (pid {})", child.id());
+                logging::log("info", "StartBackend", &msg);
+                Ok(msg)
+            }
+            Err(e) => {
+                let msg = format!("Failed to start backend: {e}");
+                logging::log("error", "StartBackend", &msg);
+                Err(msg)
+            }
         }
     }
 }

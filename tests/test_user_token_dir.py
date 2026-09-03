@@ -123,3 +123,29 @@ def test_the_mirror_is_not_fatal_when_the_directory_cannot_be_written(monkeypatc
 
     monkeypatch.setattr(security, "user_storage_root", _explode)
     security._mirror_token_for_installed_clients("deadbeef")  # must not raise
+
+
+def test_ensure_token_published_heals_mismatched_token(tmp_path: Path, monkeypatch) -> None:
+    """If the mirrored token file holds a stale, mismatched, or corrupt token, ensure_token_published restores the active token."""
+    from services.backend.core import security
+    from services.backend.core.encryption import encryptor
+    from services.backend.config import settings
+
+    fake_user_dir = tmp_path / "appdata_root"
+    secure_dir = fake_user_dir / "secure"
+    secure_dir.mkdir(parents=True)
+    token_file = secure_dir / security.TOKEN_FILE_NAME
+
+    # Pre-populate with stale / corrupt token
+    token_file.write_text(encryptor.encrypt("stale_token_12345"), encoding="utf-8")
+
+    monkeypatch.setattr(security, "user_storage_root", lambda: fake_user_dir)
+    monkeypatch.setattr(settings, "API_TOKEN", "active_correct_token_99999")
+
+    # Run ensure_token_published
+    security.ensure_token_published()
+
+    # The file should now contain the active token
+    decrypted = encryptor.decrypt(token_file.read_text(encoding="utf-8").strip())
+    assert decrypted == "active_correct_token_99999"
+

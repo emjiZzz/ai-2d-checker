@@ -30,7 +30,10 @@ from pymongo import ASCENDING, IndexModel
 # a dimension the sheet reads as `60°` — a value printed nowhere on the drawing. Comparison is
 # unaffected (it keys on `measurement` + kind, never this string), but anything showing the text
 # to a person, or capturing it as ground truth via `EntityAddress.text`, is wrong on v6 rows.
-EXTRACTION_SCHEMA_VERSION = 7
+# v8: a dimension's `geometry.render_fills` carried a synthetic triangle for open arrowhead blocks.
+# v9: open arrowhead blocks (_OPEN30) remain wireframe strokes in `render_paths` without synthetic
+# solid fills, matching original CAD drawings (iCAD SX / Japanese drafting) where arrowheads are not solid.
+EXTRACTION_SCHEMA_VERSION = 9
 
 
 class ExtractedEntity(Document):

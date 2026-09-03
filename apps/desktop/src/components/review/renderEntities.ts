@@ -771,7 +771,6 @@ export const renderEntities = ({
         // the sheet renders as nothing at all, which is exactly what sank the first attempt
         // to make vectors the default.
         const renderPaths: number[][][] = Array.isArray(geo.render_paths) ? geo.render_paths : [];
-        const renderFills: number[][][] = Array.isArray(geo.render_fills) ? geo.render_fills : [];
         // `render_text` is the string the dimension's anonymous block ACTUALLY draws, harvested
         // at extraction by `_dimension_render_geometry`. Preferred over `properties.text`,
         // which `map_dimension` rebuilds from `actual_measurement` and which therefore loses
@@ -785,7 +784,7 @@ export const renderEntities = ({
         // stamp "<>" onto the drawing exactly where a reviewer expects the measured value.
         const rawDimText = String(ent.properties?.render_text ?? ent.properties?.text ?? '');
         const dimText = rawDimText.includes('<>') ? '' : cleanCadText(rawDimText);
-        if (!renderPaths.length && !renderFills.length && !dimText) return;
+        if (!renderPaths.length && !dimText) return;
 
         // Cull once against the union of every point rather than per sub-path.
         let dMinX = Infinity, dMaxX = -Infinity, dMinY = Infinity, dMaxY = -Infinity;
@@ -798,7 +797,6 @@ export const renderEntities = ({
           if (py > dMaxY) dMaxY = py;
         }));
         scan(renderPaths);
-        scan(renderFills);
         if (dMinX !== Infinity && (dMaxX < minX || dMinX > maxX || dMaxY < minY || dMinY > maxY)) return;
         drawnEntities++;
 
@@ -807,19 +805,6 @@ export const renderEntities = ({
           p2d.moveTo(pts[0][0], flipY(pts[0][1]));
           for (let i = 1; i < pts.length; i++) p2d.lineTo(pts[i][0], flipY(pts[i][1]));
         });
-
-        if (renderFills.length) {
-          if (!fillBatches[strokeColor]) {
-            fillBatches[strokeColor] = { color: strokeColor, path: new Path2D() };
-          }
-          const fp = fillBatches[strokeColor].path;
-          renderFills.forEach((pts) => {
-            if (pts.length < 3) return;
-            fp.moveTo(pts[0][0], flipY(pts[0][1]));
-            for (let i = 1; i < pts.length; i++) fp.lineTo(pts[i][0], flipY(pts[i][1]));
-            fp.closePath();
-          });
-        }
 
         // The measurement string, anchored where the CAD actually put it.
         //
@@ -921,7 +906,7 @@ export const renderEntities = ({
         // ezdxf records two extra primitives at the tip and we drew none of them.
         //
         // DXF orders leader vertices FROM the arrow, so vertex 0 is the tip and the head points
-        // along 1 -> 0. Filled, matching the solid arrow iCAD SX draws.
+        // along 1 -> 0. Open wireframe arrow matching CAD drawings (e.g. iCAD SX _OPEN30).
         const arrowSize = Number(ent.properties?.arrow_size) || 0;
         const wantsArrow =
           (ent.type === 'leader' || ent.type === 'multileader') &&
@@ -937,22 +922,19 @@ export const renderEntities = ({
           if (len > 0) {
             const ux = dx / len;
             const uy = dy / len;
-            // Drawing units, NOT screen: these batches are stroked under a world-space
-            // transform (see `ctx.lineWidth = ... / scale` below), and `arrow_size` is already
-            // viewport-scaled at extraction. Multiplying by `scale` here would grow the
-            // arrowhead with the zoom.
-            // Half-width from the DXF convention for a closed filled head: length / 6.
-            const half = arrowSize / 6;
-            const backX = tipX - ux * arrowSize;
-            const backY = tipY - uy * arrowSize;
-            if (!fillBatches[strokeColor]) {
-              fillBatches[strokeColor] = { color: strokeColor, path: new Path2D() };
-            }
-            const fp = fillBatches[strokeColor].path;
-            fp.moveTo(tipX, tipY);
-            fp.lineTo(backX - uy * half, backY + ux * half);
-            fp.lineTo(backX + uy * half, backY - ux * half);
-            fp.closePath();
+            // Open V arrowhead (30-degree included angle, 15-degree half-angle) matching _OPEN30.
+            // Barbs extend back from the tip by length 1.5 * DIMASZ and spread out by length * tan(15°).
+            const barbLen = arrowSize * 1.5;
+            const tan15 = 0.2679491924311227; // Math.tan((15 * Math.PI) / 180)
+            const backX = tipX - ux * barbLen;
+            const backY = tipY - uy * barbLen;
+            const spreadX = uy * barbLen * tan15;
+            const spreadY = -ux * barbLen * tan15;
+
+            // Stroke the two open barbs meeting at the tip
+            p2d.moveTo(backX + spreadX, backY + spreadY);
+            p2d.lineTo(tipX, tipY);
+            p2d.lineTo(backX - spreadX, backY - spreadY);
           }
         }
       }

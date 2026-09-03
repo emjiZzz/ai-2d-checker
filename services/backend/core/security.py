@@ -121,26 +121,29 @@ def _mirror_token_for_installed_clients(token: str) -> None:
 
 
 def ensure_token_published() -> None:
-    """Re-publish the token for installed clients if the file has gone missing.
+    """Re-publish the token for installed clients if the file is missing or out of sync.
 
     Publishing only at startup was not enough. The file can disappear while the backend keeps
     running -- an uninstall of the desktop app took it with the app's data directory before
-    `TOKEN_DIR_NAME` moved out of that tree, and a user clearing app data can still do it. Once
-    gone, every authenticated request from an installed client answered 401 until somebody
-    restarted the backend, with nothing pointing at the cause.
+    `TOKEN_DIR_NAME` moved out of that tree, and a user clearing app data can still do it. A
+    crashed server instance or foreign process could also overwrite it with a mismatched credential.
+    Once gone or desynchronized, every authenticated request from a desktop client answered 401.
 
     Called from `/health`, which is the one endpoint that needs no token and which the desktop
     client already polls every few seconds -- so the repair happens before the user notices,
-    without adding a scheduler. Guarded by an `exists()` check so the common case is a stat, not
-    a write.
+    without adding a scheduler.
     """
     if not settings.API_TOKEN:
         return
     try:
         mirrored = user_storage_root() / "secure" / TOKEN_FILE_NAME
         if mirrored.is_file():
-            return
-    except Exception:  # noqa: BLE001 - an unreadable path is a reason to try republishing
+            from .encryption import encryptor
+
+            existing = encryptor.decrypt(mirrored.read_text(encoding="utf-8").strip())
+            if existing == settings.API_TOKEN:
+                return
+    except Exception:  # noqa: BLE001 - an unreadable, corrupt, or mismatched file requires republishing
         pass
     _mirror_token_for_installed_clients(settings.API_TOKEN)
 

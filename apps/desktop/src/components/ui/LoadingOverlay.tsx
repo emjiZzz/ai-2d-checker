@@ -73,7 +73,7 @@ export function SquareAccordion({
       <span
         role="status"
         className={cn(
-          "relative inline-flex font-mono leading-none select-none text-cyan-400",
+          "relative inline-flex font-mono leading-none select-none text-accent-cyan",
           className,
         )}
         style={
@@ -92,7 +92,7 @@ export function SquareAccordion({
         {/* Outer Perimeter Track Grid */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 grid text-slate-500/50"
+          className="pointer-events-none absolute inset-0 grid text-border-color"
           style={{
             gridTemplateColumns: `repeat(${cells}, ${cellSize}px)`,
             gridTemplateRows: `repeat(${cells}, ${cellSize}px)`,
@@ -120,7 +120,7 @@ export function SquareAccordion({
             key={`${glyph}-${index}`}
             aria-hidden="true"
             className={cn(
-              "pointer-events-none absolute top-0 left-0 flex items-center justify-center text-cyan-300",
+              "pointer-events-none absolute top-0 left-0 flex items-center justify-center text-accent-cyan font-bold",
               ["z-30", "z-20", "z-10"][index],
             )}
             style={{

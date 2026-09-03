@@ -24,6 +24,23 @@ class BackgroundProcessingQueue:
         loop = loop or asyncio.get_event_loop()
         self.worker_task = loop.create_task(self._worker())
 
+    async def recover_orphaned_jobs(self) -> None:
+        """
+        Scans for extraction jobs left in 'queued' or 'processing' states from a previous
+        crashed or reloaded server process and re-enqueues them for execution.
+        """
+        try:
+            from ...domain.models.extraction_job import ExtractionJob
+            orphaned_jobs = await ExtractionJob.find(
+                {"status": {"$in": ["queued", "processing"]}}
+            ).to_list()
+            if orphaned_jobs:
+                logger.info(f"Found {len(orphaned_jobs)} orphaned extraction job(s) from previous run. Re-enqueuing...")
+                for job in orphaned_jobs:
+                    await self.enqueue(job.drawing_id, str(job.id))
+        except Exception as err:
+            logger.warning(f"Could not recover orphaned extraction jobs on startup: {err}")
+
     async def stop(self) -> None:
         """
         Stops the background worker loop gracefully.

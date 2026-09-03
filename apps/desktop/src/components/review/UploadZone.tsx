@@ -1,7 +1,7 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
 import { DrawingItem, UploadState } from "../../stores/workspaceStore";
-import { LoadingOverlay, SquareAccordion } from "../ui/LoadingOverlay";
+import { SquareAccordion } from "../ui/LoadingOverlay";
 
 export interface UploadZoneProps {
   side: "old" | "new";
@@ -181,99 +181,98 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       )}
 
       {uploadState === "uploading" && (
-        <>
-          <LoadingOverlay
-            active={true}
-            title="Uploading CAD Draft…"
-            phase={fileName ? `${fileName} · ${progress}% Network Transfer` : "Network Transfer…"}
-          />
-          <div className="w-full flex flex-col items-center text-center p-8">
-            <div className="relative p-3 flex items-center justify-center mb-6">
-              <SquareAccordion size={4} cellSize={18} />
+        <div className="flex flex-col items-center text-center gap-3.5 w-full max-w-[320px]">
+          <div className="flex items-center justify-center">
+            <SquareAccordion size={4} cellSize={18} />
+          </div>
+
+          <div className="flex flex-col items-center gap-1 w-full">
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              Uploading Drawing…
+            </span>
+            {fileName && (
+              <span className="text-xs font-mono text-text-muted truncate max-w-[280px]">
+                {fileName}
+              </span>
+            )}
+          </div>
+
+          <div className="w-full max-w-[280px] flex flex-col gap-1.5 mt-1">
+            <div className="flex justify-between items-center text-[11px] font-mono">
+              <span className="text-text-muted uppercase tracking-wider">Network Transfer</span>
+              <span className="font-bold text-accent-cyan ml-2 shrink-0">{progress}%</span>
             </div>
-            <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
-              <span className="text-base font-bold text-zinc-100">Uploading CAD Draft...</span>
-              <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
-            </div>
-            
-            <div className="w-full max-w-[320px]">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Network Transfer</span>
-                <span className="text-xs font-mono font-bold text-accent-cyan">{progress}%</span>
-              </div>
-              <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
-                <div
-                  className="h-full bg-accent-cyan transition-all duration-300 shadow-[0_0_10px_rgba(0,229,255,0.4)]"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
+            <div className="w-full h-1 bg-border-color/60 rounded-xs overflow-hidden">
+              <div
+                className="h-full bg-accent-cyan transition-all duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {(uploadState === "processing" || uploadState === "validating") && (
-        <>
-          <LoadingOverlay
-            active={true}
-            title={uploadState === "validating" ? "Validating Drawing…" : "Processing File…"}
-            phase={fileName ? `${fileName} · ${uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}` : null}
-          />
-          <div className="w-full flex flex-col items-center text-center p-8">
-            <div className="relative p-3 flex items-center justify-center mb-6">
-              <SquareAccordion size={4} cellSize={18} />
-            </div>
-            <div className="flex flex-col items-center gap-1.5 w-full max-w-[320px] mb-6">
-              <span className="text-base font-bold text-zinc-100">
-                {uploadState === "validating" ? "Validating Drawing..." : "Processing File..."}
+        <div className="flex flex-col items-center text-center gap-3.5 w-full max-w-[320px]">
+          <div className="flex items-center justify-center">
+            <SquareAccordion size={4} cellSize={18} />
+          </div>
+
+          <div className="flex flex-col items-center gap-1 w-full">
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              {uploadState === "validating" ? "Validating Drawing…" : "Processing Drawing…"}
+            </span>
+            {fileName && (
+              <span className="text-xs font-mono text-text-muted truncate max-w-[280px]">
+                {fileName}
               </span>
-              <span className="text-sm text-zinc-400 truncate w-full">{fileName}</span>
+            )}
+          </div>
+
+          <div className="w-full max-w-[280px] flex flex-col gap-1.5 mt-1">
+            <div className="flex justify-between items-center text-[11px] font-mono">
+              <span className="text-text-muted uppercase tracking-wider truncate">
+                {uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}
+              </span>
+              <span className="font-bold text-accent-cyan ml-2 shrink-0">
+                {Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%
+              </span>
             </div>
-            
-            <div className="w-full max-w-[320px]">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
-                  {uploadState === "validating" ? "Validating Output" : ingestSteps[tipIndex]}
-                </span>
-                <span className="text-xs font-mono font-bold text-accent-cyan">
-                  {Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%
-                </span>
-              </div>
-              <div className="w-full h-2 bg-sidebar-item-hover rounded-full overflow-hidden border border-border-color">
-                <div
-                  className="h-full bg-accent-cyan transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(0,229,255,0.4)]"
-                  style={{ width: `${Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%` }}
-                ></div>
-              </div>
+            <div className="w-full h-1 bg-border-color/60 rounded-xs overflow-hidden">
+              <div
+                className="h-full bg-accent-cyan transition-all duration-500 ease-out"
+                style={{ width: `${Math.min(99, Math.floor(100 - (100 / (1 + elapsed * 0.1))))}%` }}
+              />
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {uploadState === "failed" && (
-        <div className="w-full flex flex-col items-center text-center p-8 relative">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-red-500/10 rounded-full blur-[60px] pointer-events-none"></div>
-          
-          <div className="relative w-16 h-16 rounded-full bg-bg-dark border border-red-500/30 flex items-center justify-center mb-5 shadow-lg text-red-500">
-            <AlertTriangle size={28} />
+        <div className="flex flex-col items-center text-center gap-3 w-full max-w-[320px]">
+          <div className="w-8 h-8 rounded-sm bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500">
+            <AlertTriangle size={18} />
           </div>
-          
-          <h3 className="text-xl font-bold text-zinc-100 tracking-tight mb-2 relative z-10">
-            Ingestion Failed
-          </h3>
-          
-          <div className="relative z-10 w-full max-w-[340px] bg-red-950/30 border border-red-500/20 rounded-xl p-4 shadow-xl backdrop-blur-sm mb-5">
-            <p className="text-sm text-red-200 leading-relaxed m-0 font-medium">
-              {error || "An unknown ingestion pipeline error occurred. Please verify your vector formats."}
+
+          <div className="flex flex-col items-center gap-1 w-full">
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              Ingestion Failed
+            </span>
+            <p className="text-xs text-red-500/90 leading-relaxed m-0 max-w-[280px]">
+              {error || "An unknown error occurred while parsing vector entities."}
             </p>
           </div>
 
-          <div 
-            className="relative z-10 text-sm font-bold bg-transparent border border-red-500/40 text-red-400 hover:bg-red-500 hover:border-red-500 hover:text-white px-6 py-2 rounded-md transition-all cursor-pointer shadow-lg"
-            onClick={(e) => { e.stopPropagation(); triggerFileInput(); }}
+          <button
+            type="button"
+            className="mt-1 text-[11px] font-semibold px-3 py-1 rounded-sm border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-all cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerFileInput();
+            }}
           >
             Try Another File
-          </div>
+          </button>
         </div>
       )}
     </div>

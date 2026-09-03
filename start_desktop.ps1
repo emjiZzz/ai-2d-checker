@@ -61,8 +61,17 @@ if (-not $isProdTarget) {
     if (-not $backendRunning) {
         Write-Host "Backend is not running on port $port. Launching FastAPI Backend Service..." -ForegroundColor Yellow
         Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoExit -File .\services\backend\start.ps1" -WorkingDirectory $PWD
-        Write-Host "Waiting a few seconds for backend to initialize..." -ForegroundColor Gray
-        Start-Sleep -Seconds 5
+        Write-Host "Waiting for backend service to be ready on port $port..." -ForegroundColor Gray
+        $timeoutSec = 20
+        $elapsed = 0
+        while ($elapsed -lt $timeoutSec) {
+            Start-Sleep -Seconds 1
+            $elapsed += 1
+            if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
+                Write-Host "✅ Local Backend is ready on port $port ($elapsed s)." -ForegroundColor Green
+                break
+            }
+        }
     }
     else {
         Write-Host "✅ Local Backend is already running on port $port." -ForegroundColor Green

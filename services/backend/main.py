@@ -162,6 +162,7 @@ async def startup_event() -> None:
     processing_queue.start()
     audit_queue.start()
     summarization_queue.start()
+    await processing_queue.recover_orphaned_jobs()
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:

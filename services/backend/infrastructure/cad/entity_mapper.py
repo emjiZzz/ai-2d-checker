@@ -84,6 +84,9 @@ _DEFAULT_DIMASZ = 2.5
 # chord error at any zoom the review canvas reaches.
 _DIM_ARC_SEGMENTS = 32
 
+#: A filled region needs three distinct corners; below that there is nothing to paint.
+_MIN_FILL_VERTICES = 3
+
 
 def _dxf_get(dxf: Any, name: str, default: Any = None) -> Any:
     """Read a DXF attribute tolerantly.
@@ -147,6 +150,8 @@ def _as_xyz(point: Any, default: tuple[float, float, float] = (0.0, 0.0, 0.0)) -
         return [float(point[0]), float(point[1]), z]
     except Exception:
         return list(default)
+
+
 
 
 def common_properties(entity: Any) -> dict[str, Any]:
@@ -529,17 +534,28 @@ class EntityMapper:
                     elif t in ("SOLID", "TRACE"):
                         # Arrowheads. The DXF quad order is vtx0, vtx1, vtx3, vtx2 --
                         # reading them in numeric order draws a bowtie, not a triangle.
-                        fills.append([
+                        # A triangular SOLID repeats its last corner (vtx2 == vtx3), which
+                        # that order lands side by side, so collapsing runs of coincident
+                        # vertices covers the degenerate case without a second rule for it.
+                        corners = [
                             _as_xy(e.dxf.vtx0), _as_xy(e.dxf.vtx1),
                             _as_xy(e.dxf.vtx3), _as_xy(e.dxf.vtx2),
-                        ])
+                        ]
+                        distinct: list[list[float]] = []
+                        for corner in corners:
+                            if not distinct or corner != distinct[-1]:
+                                distinct.append(corner)
+                        if len(distinct) >= _MIN_FILL_VERTICES:
+                            fills.append(distinct)
                     elif t == "HATCH":
                         for p in getattr(e, "paths", []):
                             pts = [[float(v[0]), float(v[1])] for v in getattr(p, "vertices", [])]
-                            if len(pts) >= 3:
+                            if len(pts) >= _MIN_FILL_VERTICES:
                                 fills.append(pts)
                     elif t == "INSERT":
-                        # Arrowheads are blocks under most dimstyles.
+                        # Arrowheads are blocks under most dimstyles (such as _OPEN30).
+                        # Flattening recurses into the block so its constituent lines
+                        # (e.g. open arrow barbs) are added directly to paths.
                         flatten(e, depth + 1)
                     elif t in ("TEXT", "MTEXT", "ATTRIB") and not text_meta:
                         height = _dxf_get(e.dxf, "char_height", 0.0) or _dxf_get(e.dxf, "height", 0.0)
