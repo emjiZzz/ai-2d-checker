@@ -41,7 +41,7 @@ class FakePath2D {
 }
 (globalThis as any).Path2D = FakePath2D;
 
-const { renderEntities } = await import('./renderEntities');
+const { renderEntities, mergeAdjacentDatePrefixes } = await import('./renderEntities');
 
 interface FillTextCall {
   text: string;
@@ -270,6 +270,63 @@ describe('CAD text metrics', () => {
 
     expect(fillTexts).toHaveLength(1);
     expect(fillTexts[0].text).toBe('ABCDEF)');
+  });
+
+  it('distributes characters across cell width when column_width exceeds natural width (title block alignment)', () => {
+    const { ctx, fillTexts } = makeCtx();
+    // 5 chars = 20px natural width (at 4px/char). column_width = 30px (scaled 30 / SCALE).
+    // ratio = 1.5, in the distribution range [1.05 .. 2.8].
+    run([textEntity({ text: 'FSRS2', column_width: 30 / SCALE, attachment_point: 4 })], ctx);
+
+    // Instead of one clustered string, characters are distributed individually across the cell width.
+    expect(fillTexts).toHaveLength(5);
+    expect(fillTexts.map((f) => f.text).join('')).toBe('FSRS2');
+    expect(fillTexts[0].x).toBe(0);
+    expect(fillTexts[4].x + 4).toBeCloseTo(30 * 0.915, 1);
+  });
+
+  it('does not distribute short 2-character tokens like "20" across column_width', () => {
+    const { ctx, fillTexts } = makeCtx();
+    // 2 chars = 8px natural width. column_width = 15px.
+    // Short 2-character tokens like century '20' must stay together and not be stretched with a huge gap.
+    run([textEntity({ text: '20', column_width: 15 / SCALE, attachment_point: 7 })], ctx);
+
+    expect(fillTexts).toHaveLength(1);
+    expect(fillTexts[0].text).toBe('20');
+  });
+
+  it('merges adjacent date prefix "20" and "04/12/22" into unified "2004/12/22"', () => {
+    const entPrefix = {
+      id: 'e_prefix',
+      type: 'text',
+      geometry: { insert: [404.72, 51.12, 0.0] },
+      properties: {
+        text: '20',
+        render_text: '20',
+        column_width: 8.5,
+        bbox: [[404.72, 51.12], [413.22, 57.83]],
+      },
+    };
+    const entDate = {
+      id: 'e_date',
+      type: 'text',
+      geometry: { insert: [413.03, 51.15, 0.0] },
+      properties: {
+        text: '04/12/22',
+        render_text: '04/12/22',
+        column_width: 34.85,
+        bbox: [[413.03, 51.15], [447.88, 57.86]],
+      },
+    };
+
+    const merged = mergeAdjacentDatePrefixes([entPrefix, entDate]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].properties.text).toBe('2004/12/22');
+    expect(merged[0].properties.render_text).toBe('2004/12/22');
+    expect(merged[0].geometry.insert[0]).toBe(404.72);
+    expect(merged[0].properties.column_width).toBeCloseTo(43.35, 2);
+    expect(merged[0].properties.bbox[0][0]).toBe(404.72);
+    expect(merged[0].properties.bbox[1][0]).toBe(447.88);
   });
 });
 

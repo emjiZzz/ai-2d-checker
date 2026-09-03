@@ -12,6 +12,7 @@ import { AnnotationCreateModal } from './AnnotationCreateModal';
 import { AnnotationCardPopover } from './AnnotationCardPopover';
 import { ErrorBoundary } from 'react-error-boundary';
 import { AlertTriangle } from 'lucide-react';
+import { mergeAdjacentDatePrefixes } from './renderEntities';
 import './DrawingCanvas.css';
 
 import { z } from 'zod';
@@ -85,7 +86,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           result[layerName] = [];
           return;
         }
-        result[layerName] = rawLayer.filter((item) => {
+        const filtered = rawLayer.filter((item) => {
           const res = entityPayloadSchema.safeParse(item);
           if (!res.success) {
             console.warn(`Filtering invalid entity in layer ${layerName}:`, res.error);
@@ -93,6 +94,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           }
           return true;
         });
+        result[layerName] = mergeAdjacentDatePrefixes(filtered);
       });
       return result;
     }, [layers]);

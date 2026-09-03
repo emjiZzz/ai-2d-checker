@@ -11,6 +11,7 @@ import {
 import {
   EntityHitIndex,
   entityValueOf,
+  entityDisplayText,
   dimensionKindOf,
   zoneKeyForBox,
   zoneRelativePos,
@@ -163,9 +164,9 @@ export function useEntityPicking(params: {
         parentHandle: entity.properties?.parent_handle ?? null,
         entityType: String(entity.type ?? entity.entity_type ?? 'unknown'),
         layer: String(entity.layer ?? entity.properties?.layer ?? '0'),
-        // Read, never typed. Committed labels preserve full-width characters and stray drawing
-        // artifacts exactly; retyping normalises away the very characters comparison turns on.
-        text: String(
+        // Read, never typed. Committed labels preserve full-width characters and clean CAD symbols;
+        // retyping normalises away the very characters comparison turns on.
+        text: entityDisplayText(entity) || String(
           entity.geometry?.text ?? entity.geometry?.content ?? entity.properties?.text ?? '',
         ),
         coordinates: [world.x, world.y],

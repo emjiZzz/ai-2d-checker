@@ -457,11 +457,159 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
     // the anchor, a top-anchored block its first, and a middle-anchored block is centred.
     const advance = capHeightPx * MTEXT_LINE_ADVANCE;
     const firstBaseline = baselineOffsetPx(vAlign, capHeightPx, lines.length, advance);
-    lines.forEach((line, i) => ctx.fillText(line, 0, firstBaseline + i * advance));
+
+    const isSingleLine = lines.length === 1;
+    const colW = columnWidthPx > 0 ? columnWidthPx / (horizontalScale || 1) : 0;
+    const trimmed = isSingleLine ? lines[0].trim() : '';
+    const chars = isSingleLine ? [...trimmed] : [];
+    const naturalWidth = isSingleLine && chars.length > 1 ? ctx.measureText(trimmed).width : 0;
+    // In CAD title blocks (e.g. iCAD SX), single-line text with an authored column width is
+    // distributed (均等割付 / justified) across the cell width rather than clustered tightly.
+    // We scale by 0.915 to respect CAD cell padding and prevent the final glyph from crossing
+    // the cell divider line. Short 1-2 character tokens (e.g. '20') must NOT be spaced out.
+    const shouldDistribute =
+      isSingleLine &&
+      chars.length > 2 &&
+      colW > naturalWidth * 1.05 &&
+      colW <= naturalWidth * 2.8;
+
+    if (shouldDistribute) {
+      // 0.915 fit scale provides standard CAD cell padding (~4% on each side) so that the
+      // final glyph (e.g. '1' in 'M745221N01') sits cleanly centered in the last column
+      // (訂正番号 Amd.) rather than overflowing into the divider line or border.
+      const fitWidth = colW * 0.915;
+      const charWidths = chars.map((c) => ctx.measureText(c).width);
+      const totalCharWidth = charWidths.reduce((a, b) => a + b, 0);
+      const gap = Math.max(0, (fitWidth - totalCharWidth) / (chars.length - 1));
+
+      let startX = 0;
+      if (align === 'center') {
+        startX = -fitWidth / 2;
+      } else if (align === 'right') {
+        startX = -fitWidth;
+      }
+
+      const prevAlign = ctx.textAlign;
+      ctx.textAlign = 'left';
+      let curX = startX;
+      for (let i = 0; i < chars.length; i++) {
+        ctx.fillText(chars[i], curX, firstBaseline);
+        curX += charWidths[i] + gap;
+      }
+      ctx.textAlign = prevAlign;
+    } else {
+      lines.forEach((line, i) => ctx.fillText(line, 0, firstBaseline + i * advance));
+    }
   }
 
   ctx.restore();
 };
+
+/**
+ * Merges split date prefix entities (e.g. static template '20' sitting immediately before '04/12/22')
+ * into a single unified date entity '2004/12/22' with contiguous bounding box and column width.
+ */
+export function mergeAdjacentDatePrefixes(entities: any[]): any[] {
+  if (!Array.isArray(entities) || entities.length < 2) return entities;
+
+  const prefixIndices: number[] = [];
+  const dateRegex = /^\d{2}[\/.-]\d{1,2}[\/.-]\d{1,2}$/;
+
+  for (let i = 0; i < entities.length; i++) {
+    const ent = entities[i];
+    if (ent?.type === 'text') {
+      const txt = String(ent.properties?.text ?? ent.geometry?.text ?? '').trim();
+      if (txt === '20' || txt === '19') {
+        prefixIndices.push(i);
+      }
+    }
+  }
+
+  if (prefixIndices.length === 0) return entities;
+
+  const droppedPrefixIndices = new Set<number>();
+  const mergedReplacements = new Map<number, any>();
+
+  for (const pIdx of prefixIndices) {
+    const pEnt = entities[pIdx];
+    const pGeo = pEnt.geometry;
+    const pPt = pGeo?.insert || pGeo?.location;
+    if (!Array.isArray(pPt) || pPt.length < 2) continue;
+    const px = Number(pPt[0]);
+    const py = Number(pPt[1]);
+
+    // Find adjacent date entity
+    for (let dIdx = 0; dIdx < entities.length; dIdx++) {
+      if (dIdx === pIdx || droppedPrefixIndices.has(dIdx)) continue;
+      const dEnt = entities[dIdx];
+      if (dEnt?.type !== 'text') continue;
+      const dTxt = String(dEnt.properties?.text ?? dEnt.geometry?.text ?? '').trim();
+      if (!dateRegex.test(dTxt)) continue;
+
+      const dGeo = dEnt.geometry;
+      const dPt = dGeo?.insert || dGeo?.location;
+      if (!Array.isArray(dPt) || dPt.length < 2) continue;
+      const dx = Number(dPt[0]);
+      const dy = Number(dPt[1]);
+
+      // Check vertical alignment and horizontal adjacency (prefix immediately to the left)
+      if (Math.abs(py - dy) < 2.0 && dx > px && dx - px < 15.0) {
+        const pTxt = String(pEnt.properties?.text ?? pEnt.geometry?.text ?? '').trim();
+        const combinedText = `${pTxt}${dTxt}`;
+        const pRender = String(pEnt.properties?.render_text ?? pTxt).trim();
+        const dRender = String(dEnt.properties?.render_text ?? dTxt).trim();
+        const combinedRender = `${pRender}${dRender}`;
+        const combinedWidth =
+          (Number(pEnt.properties?.column_width) || 0) + (Number(dEnt.properties?.column_width) || 0);
+
+        let combinedBbox = dEnt.properties?.bbox;
+        if (Array.isArray(pEnt.properties?.bbox) && Array.isArray(dEnt.properties?.bbox)) {
+          const pb = pEnt.properties.bbox;
+          const db = dEnt.properties.bbox;
+          combinedBbox = [
+            [Math.min(pb[0][0], db[0][0]), Math.min(pb[0][1], db[0][1])],
+            [Math.max(pb[1][0], db[1][0]), Math.max(pb[1][1], db[1][1])],
+          ];
+        }
+
+        const merged = {
+          ...dEnt,
+          geometry: {
+            ...dEnt.geometry,
+            insert: pEnt.geometry?.insert ? [...pEnt.geometry.insert] : dEnt.geometry?.insert,
+            location: pEnt.geometry?.location ? [...pEnt.geometry.location] : dEnt.geometry?.location,
+            text: combinedText,
+            content: combinedText,
+          },
+          properties: {
+            ...dEnt.properties,
+            text: combinedText,
+            render_text: combinedRender,
+            column_width: combinedWidth,
+            bbox: combinedBbox,
+          },
+        };
+
+        droppedPrefixIndices.add(pIdx);
+        mergedReplacements.set(dIdx, merged);
+        break;
+      }
+    }
+  }
+
+  if (droppedPrefixIndices.size === 0) return entities;
+
+  const result: any[] = [];
+  for (let i = 0; i < entities.length; i++) {
+    if (droppedPrefixIndices.has(i)) continue;
+    if (mergedReplacements.has(i)) {
+      result.push(mergedReplacements.get(i));
+    } else {
+      result.push(entities[i]);
+    }
+  }
+  return result;
+}
 
 import { EntityHitIndex, entityWorldBounds, displayValueOf } from './entityPicking';
 import { markerInkFor, markerTypeOf, MARKER_SIDE } from './markerStyles';
@@ -572,8 +720,9 @@ export const renderEntities = ({
   // rather than `stroke()`. In practice these are dimension arrowheads.
   const fillBatches: Record<string, { color: string, path: Path2D }> = {};
 
-  Object.entries(layers).forEach(([layerName, entities]) => {
+  Object.entries(layers).forEach(([layerName, rawEntities]) => {
     if (activeLayers[layerName] === false) return;
+    const entities = mergeAdjacentDatePrefixes(rawEntities);
 
     entities.forEach((ent) => {
       // Counted before any cull so the HUD denominator is every entity in the payload —
@@ -2033,8 +2182,30 @@ export const renderSelectionHighlight = ({
 
     ctx.strokeStyle = '#22d3ee';
     ctx.fillStyle = 'rgba(34,211,238,0.10)';
-    ctx.fillRect(x0, y0, pw, ph);
-    ctx.strokeRect(x0, y0, pw, ph);
+
+    const rot = b.rotation ?? 0;
+    const isRotated =
+      Math.abs(rot) > 0.1 &&
+      b.localHalfW !== undefined &&
+      b.localHalfH !== undefined &&
+      b.cx !== undefined &&
+      b.cy !== undefined;
+
+    if (isRotated) {
+      const bcx = b.cx! * scale + transX;
+      const bcy = b.cy! * scale + transY;
+      const bw = b.localHalfW! * 2 * scale + pad * 2;
+      const bh = b.localHalfH! * 2 * scale + pad * 2;
+      ctx.save();
+      ctx.translate(bcx, bcy);
+      ctx.rotate((-rot * Math.PI) / 180);
+      ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+      ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
+      ctx.restore();
+    } else {
+      ctx.fillRect(x0, y0, pw, ph);
+      ctx.strokeRect(x0, y0, pw, ph);
+    }
 
     // The value, on the box the engineer is looking AT. It was drawn only on the hover box and
     // the cross-sheet match, so the one box that persists — the selection — was the one with no

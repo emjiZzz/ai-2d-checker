@@ -5,6 +5,7 @@ import { TOOL_SIDE } from '../../stores/workspace/slices/createManualCheckSlice'
 import { MARKER_STYLES, type MarkerType } from './markerStyles';
 import { CATEGORY_OPTIONS, findMarkingForEntity } from './manualCheckCategories';
 import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
+import { cleanCadText } from '../../utils/cadGlyphs';
 import { ChevronRight, ArrowLeft } from 'lucide-react';
 
 /**
@@ -433,12 +434,12 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
         className={`px-2.5 py-1 text-[0.62rem] font-mono truncate border-b ${
           theme === 'hc-light' ? 'border-zinc-200 text-zinc-500' : 'border-white/10 text-zinc-500'
         }`}
-        title={picked.text || picked.entityType}
+        title={cleanCadText(picked.text) || picked.entityType}
       >
         {picked.side === 'ref' ? 'REFERENCE' : 'REVISION'} ·{' '}
         {selectedEntities.length > 1
           ? `${selectedEntities.length} entities selected`
-          : picked.text || picked.entityType}
+          : cleanCadText(picked.text) || picked.entityType}
       </div>
 
       {MANUAL_TOOLS.filter(

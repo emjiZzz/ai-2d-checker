@@ -110,48 +110,85 @@ export const renderManualMarkings = ({
   // rather than the value printed across it, BEFORE you right-click.
   const hovered = entityHitIndex?.boundsFor(hoveredEntityId);
   if (hovered) {
-    // The index is already in flipped-world units, so it converts with the frame's own scale
-    // and translation rather than flipping a second time through `worldToCanvas`.
-    const x0 = hovered.x0 * scale + transX;
-    const y0 = hovered.y0 * scale + transY;
-    const x1 = hovered.x1 * scale + transX;
-    const y1 = hovered.y1 * scale + transY;
-    const w = x1 - x0;
-    const h = y1 - y0;
-
     ctx.strokeStyle = '#22d3ee';
     ctx.lineWidth = 1.5;
 
-    // Corner brackets, each a quarter of the shorter side, so they stay readable on a long thin
-    // entity without ever meeting in the middle.
-    const arm = Math.max(4, Math.min(14, Math.min(Math.abs(w), Math.abs(h)) * 0.25));
-    const corners: [number, number, number, number][] = [
-      [x0, y0, 1, 1],
-      [x1, y0, -1, 1],
-      [x0, y1, 1, -1],
-      [x1, y1, -1, -1],
-    ];
-    ctx.beginPath();
-    for (const [cx, cy, sx, sy] of corners) {
-      ctx.moveTo(cx + arm * sx, cy);
-      ctx.lineTo(cx, cy);
-      ctx.lineTo(cx, cy + arm * sy);
+    const rot = hovered.rotation ?? 0;
+    const isRotated =
+      Math.abs(rot) > 0.1 &&
+      hovered.localHalfW !== undefined &&
+      hovered.localHalfH !== undefined &&
+      hovered.cx !== undefined &&
+      hovered.cy !== undefined;
+
+    let chipX: number;
+    let chipTop: number;
+    let chipBottom: number;
+
+    if (isRotated) {
+      const bcx = hovered.cx! * scale + transX;
+      const bcy = hovered.cy! * scale + transY;
+      const lw = hovered.localHalfW! * 2 * scale;
+      const lh = hovered.localHalfH! * 2 * scale;
+
+      ctx.save();
+      ctx.translate(bcx, bcy);
+      ctx.rotate((-rot * Math.PI) / 180);
+
+      const arm = Math.max(4, Math.min(14, Math.min(lw, lh) * 0.25));
+      const corners: [number, number, number, number][] = [
+        [-lw / 2, -lh / 2, 1, 1],
+        [lw / 2, -lh / 2, -1, 1],
+        [-lw / 2, lh / 2, 1, -1],
+        [lw / 2, lh / 2, -1, -1],
+      ];
+      ctx.beginPath();
+      for (const [cx, cy, sx, sy] of corners) {
+        ctx.moveTo(cx + arm * sx, cy);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx, cy + arm * sy);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(34,211,238,0.06)';
+      ctx.fillRect(-lw / 2, -lh / 2, lw, lh);
+      ctx.restore();
+
+      chipX = hovered.x0 * scale + transX;
+      chipTop = hovered.y0 * scale + transY;
+      chipBottom = hovered.y1 * scale + transY;
+    } else {
+      const x0 = hovered.x0 * scale + transX;
+      const y0 = hovered.y0 * scale + transY;
+      const x1 = hovered.x1 * scale + transX;
+      const y1 = hovered.y1 * scale + transY;
+      const w = x1 - x0;
+      const h = y1 - y0;
+
+      const arm = Math.max(4, Math.min(14, Math.min(Math.abs(w), Math.abs(h)) * 0.25));
+      const corners: [number, number, number, number][] = [
+        [x0, y0, 1, 1],
+        [x1, y0, -1, 1],
+        [x0, y1, 1, -1],
+        [x1, y1, -1, -1],
+      ];
+      ctx.beginPath();
+      for (const [cx, cy, sx, sy] of corners) {
+        ctx.moveTo(cx + arm * sx, cy);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx, cy + arm * sy);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(34,211,238,0.06)';
+      ctx.fillRect(x0, y0, w, h);
+
+      chipX = x0;
+      chipTop = y0;
+      chipBottom = y1;
     }
-    ctx.stroke();
 
-    // A whisper of fill so the region still reads as one object, without claiming the area.
-    ctx.fillStyle = 'rgba(34,211,238,0.06)';
-    ctx.fillRect(x0, y0, w, h);
-
-    // The value, and only the value. It used to read `dimension - 183`, which was worth the
-    // space when the index also held arcs and lines and a large unexplained box needed to say
-    // `arc`. Now that only value carriers are indexed the type is the same answer every time
-    // and the number is the whole point — so the chip echoes what is printed on the sheet.
-    //
-    // Only the chip is skipped when there is no value, never the rest of the pass — the
-    // recorded markings and the cross-sheet boxes below are drawn from different state and an
-    // early return here would silently take them with it.
-    drawValueChip({ ctx, label: displayValueOf(hovered.entity), x: x0, boxTop: y0, boxBottom: y1 });
+    drawValueChip({ ctx, label: displayValueOf(hovered.entity), x: chipX, boxTop: chipTop, boxBottom: chipBottom });
   }
 
   // ── the same VALUE on the other sheet ─────────────────────────────────────────────
@@ -220,9 +257,28 @@ export const renderManualMarkings = ({
     ctx.lineWidth = 1.5;
     if (opts.dashed) ctx.setLineDash([5, 3]);
     for (const m of matches) {
-      const mx0 = m.x0 * scale + transX;
-      const my0 = m.y0 * scale + transY;
-      ctx.strokeRect(mx0, my0, (m.x1 - m.x0) * scale, (m.y1 - m.y0) * scale);
+      const rot = m.rotation ?? 0;
+      const isRotated =
+        Math.abs(rot) > 0.1 &&
+        m.localHalfW !== undefined &&
+        m.localHalfH !== undefined &&
+        m.cx !== undefined &&
+        m.cy !== undefined;
+      if (isRotated) {
+        const mcx = m.cx! * scale + transX;
+        const mcy = m.cy! * scale + transY;
+        const mw = m.localHalfW! * 2 * scale;
+        const mh = m.localHalfH! * 2 * scale;
+        ctx.save();
+        ctx.translate(mcx, mcy);
+        ctx.rotate((-rot * Math.PI) / 180);
+        ctx.strokeRect(-mw / 2, -mh / 2, mw, mh);
+        ctx.restore();
+      } else {
+        const mx0 = m.x0 * scale + transX;
+        const my0 = m.y0 * scale + transY;
+        ctx.strokeRect(mx0, my0, (m.x1 - m.x0) * scale, (m.y1 - m.y0) * scale);
+      }
     }
     ctx.setLineDash([]);
 

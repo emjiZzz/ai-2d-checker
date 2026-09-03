@@ -40,6 +40,11 @@ export interface EntityBox {
   y0: number;
   x1: number;
   y1: number;
+  rotation?: number;
+  localHalfW?: number;
+  localHalfH?: number;
+  cx?: number;
+  cy?: number;
 }
 
 /** Half-height added around a text entity's baseline anchor, as a multiple of cap height. */
@@ -404,12 +409,19 @@ export interface ValueMatchSpec {
   sfy: number | null;
 }
 
-function box(x0: number, y0: number, x1: number, y1: number) {
+function box(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  extra?: { rotation?: number; localHalfW?: number; localHalfH?: number; cx?: number; cy?: number },
+) {
   return {
     x0: Math.min(x0, x1),
     y0: Math.min(y0, y1),
     x1: Math.max(x0, x1),
     y1: Math.max(y0, y1),
+    ...extra,
   };
 }
 
@@ -583,8 +595,10 @@ export function entityWorldBounds(
 
     // `text` carries CAD markup (`%%c120` renders as ⌀120), so measure the rendered length
     // rather than the raw string — otherwise every diameter reads four characters too wide.
-    const raw = String(ent.properties?.text ?? '');
-    const shown = raw.replace(/%%[cdp]/gi, '#').trim() || String(ent.properties?.measurement ?? '');
+    const raw = preferredRawText(ent);
+    const shown =
+      raw.replace(/%%[cdp]/gi, '#').replace(MTEXT_CODES, '').trim() ||
+      String(ent.properties?.measurement ?? '');
 
     // (!) The height is `text_height`. A DIMENSION carries no `height` at all -- absent on every
     // dimension on both sides of `M745204N01` -- so this fell through to the constant 12.
@@ -601,8 +615,43 @@ export function entityWorldBounds(
     // box the same size on screen on both. The 12 stays only as a last resort.
     const height =
       Number(ent.properties?.text_height || ent.properties?.height || 12) || 12;
-    const halfWidth = Math.max(shown.length, 2) * height * 0.42;
-    return box(x - halfWidth, y - height * 0.7, x + halfWidth, y + height * 0.7);
+    const wf = Number(ent.properties?.width_factor);
+    const widthFactor = Number.isFinite(wf) && wf > 0 && wf <= 2 ? wf : 1.0;
+    const halfWidth = Math.max(shown.length, 2) * height * 0.42 * widthFactor;
+    const halfHeight = height * 0.7;
+
+    const rot = Number(ent.properties?.text_rotation ?? ent.properties?.rotation) || 0;
+    if (rot !== 0) {
+      const rad = (-rot * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const corners = [
+        [-halfWidth, -halfHeight],
+        [halfWidth, -halfHeight],
+        [halfWidth, halfHeight],
+        [-halfWidth, halfHeight],
+      ].map(([dx, dy]) => [
+        x + dx * cos - dy * sin,
+        y + dx * sin + dy * cos,
+      ]);
+      const xs = corners.map((c) => c[0]);
+      const ys = corners.map((c) => c[1]);
+      return box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), {
+        rotation: rot,
+        localHalfW: halfWidth,
+        localHalfH: halfHeight,
+        cx: x,
+        cy: y,
+      });
+    }
+
+    return box(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight, {
+      rotation: 0,
+      localHalfW: halfWidth,
+      localHalfH: halfHeight,
+      cx: x,
+      cy: y,
+    });
   }
 
   if (Array.isArray(geo.render_paths) && geo.render_paths.length) {

@@ -90,6 +90,24 @@ describe('entityWorldBounds', () => {
     expect(w(big) / 1386).toBeCloseTo(w(small) / 462, 6);
   });
 
+  it('orients the bounding box vertically for a rotated (90°) dimension', () => {
+    const unrotated = entityWorldBounds(
+      { id: 'd0', type: 'dimension', geometry: { render_text_point: [100, 100] },
+        properties: { text: 'ø145', text_height: 10, rotation: 0 } },
+      flipY,
+    )!;
+    const rotated = entityWorldBounds(
+      { id: 'd90', type: 'dimension', geometry: { render_text_point: [100, 100] },
+        properties: { text: 'ø145', text_height: 10, rotation: 90 } },
+      flipY,
+    )!;
+
+    expect(unrotated.x1 - unrotated.x0).toBeGreaterThan(unrotated.y1 - unrotated.y0);
+    expect(rotated.y1 - rotated.y0).toBeGreaterThan(rotated.x1 - rotated.x0);
+    expect(rotated.y1 - rotated.y0).toBeCloseTo(unrotated.x1 - unrotated.x0, 2);
+    expect(rotated.x1 - rotated.x0).toBeCloseTo(unrotated.y1 - unrotated.y0, 2);
+  });
+
   it('does not fall back to the constant when text_height is present', () => {
     // The regression: `properties.height` is absent on every dimension, so the old code used a
     // hard-coded 12 CAD units on both sheets. On the revision that is 3x too big.
