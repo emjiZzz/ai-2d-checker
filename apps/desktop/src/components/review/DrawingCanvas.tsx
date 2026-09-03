@@ -228,6 +228,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           <SelectionMenu
             x={selectionMenu.x}
             y={selectionMenu.y}
+            targetBounds={selectionMenu.targetBounds}
             canvasWidth={width}
             canvasHeight={height}
             theme={theme}

@@ -523,7 +523,12 @@ export interface ManualCheckSlice {
    * may be open: local state would leave the other pane's menu standing after a click over here.
    * `drawingId` is what each pane compares against to decide whether the menu is its own.
    */
-  selectionMenu: { x: number; y: number; drawingId: string } | null;
+  selectionMenu: {
+    x: number;
+    y: number;
+    drawingId: string;
+    targetBounds?: { x0: number; y0: number; x1: number; y1: number };
+  } | null;
   /**
    * The OTHER sheet's entity for the current selection, when exactly one was resolved.
    *
@@ -573,7 +578,14 @@ export interface ManualCheckSlice {
   setHoveredEntityId: (id: string | null) => void;
   setHoverLocator: (locator: EntityLocator | null) => void;
   setSelectionLocator: (locator: EntityLocator | null) => void;
-  setSelectionMenu: (menu: { x: number; y: number; drawingId: string } | null) => void;
+  setSelectionMenu: (
+    menu: {
+      x: number;
+      y: number;
+      drawingId: string;
+      targetBounds?: { x0: number; y0: number; x1: number; y1: number };
+    } | null,
+  ) => void;
   setSelectionCounterpart: (picked: PickedEntity | null) => void;
   setPendingPairRef: (picked: PickedEntity | null, tool?: StampTool) => void;
   clearMarkingError: () => void;

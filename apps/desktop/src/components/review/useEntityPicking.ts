@@ -425,16 +425,37 @@ export function useEntityPicking(params: {
       } else {
         const canvas = canvasRef.current;
         const rect = canvas?.getBoundingClientRect();
+        const b = indexRef.current.boundsFor(String(picked.entityId));
+        let targetBounds: { x0: number; y0: number; x1: number; y1: number } | undefined;
+        if (b && norm.hasBounds) {
+          const effectiveScale = viewport.scale * norm.normScale;
+          const sx0 = (b.x0 - norm.xmin) * effectiveScale + viewport.x;
+          const sx1 = (b.x1 - norm.xmin) * effectiveScale + viewport.x;
+          const sy0 = (b.y0 - norm.ymin) * effectiveScale + viewport.y;
+          const sy1 = (b.y1 - norm.ymin) * effectiveScale + viewport.y;
+          targetBounds = {
+            x0: Math.min(sx0, sx1),
+            y0: Math.min(sy0, sy1),
+            x1: Math.max(sx0, sx1),
+            y1: Math.max(sy0, sy1),
+          };
+        }
+
         setSelectionMenu(
           rect
-            ? { x: e.clientX - rect.left, y: e.clientY - rect.top, drawingId: String(drawing.id) }
+            ? {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+                drawingId: String(drawing.id),
+                targetBounds,
+              }
             : null,
         );
       }
     },
     [handlers, pickAt, toPicked, setSelectedEntities, setSelectionLocator, buildLocator,
      setSelectionMenu, isManualCheckMode, drawing?.id, canvasRef, alreadyMarked,
-     pendingCounterpart, setPendingCounterpart, pickedWorld, side],
+     pendingCounterpart, setPendingCounterpart, pickedWorld, side, norm, viewport],
   );
 
   /**

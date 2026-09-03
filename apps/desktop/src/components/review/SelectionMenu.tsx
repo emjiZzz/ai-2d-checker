@@ -116,6 +116,7 @@ const MANUAL_TOOLS: { tool: StampTool; marker: MarkerType }[] = [
 interface SelectionMenuProps {
   x: number;
   y: number;
+  targetBounds?: { x0: number; y0: number; x1: number; y1: number };
   canvasWidth?: number;
   canvasHeight?: number;
   theme: string;
@@ -125,6 +126,7 @@ interface SelectionMenuProps {
 export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   x,
   y,
+  targetBounds,
   canvasWidth,
   canvasHeight,
   theme,
@@ -170,12 +172,49 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   */
   if (findMarkingForEntity(markings, picked)) return null;
 
-  // Flip rather than clip. The menu is floated at the click, and a click near the right or
-  // bottom edge of a pane is ordinary — the title block and the BOM both live there.
-  const MENU_W = 210;
-  const MENU_H = 150;
-  const left = canvasWidth && x + MENU_W > canvasWidth ? Math.max(0, x - MENU_W) : x;
-  const top = canvasHeight && y + MENU_H > canvasHeight ? Math.max(0, y - MENU_H) : y;
+  // Position outside the entity rather than occluding it. If targetBounds are known,
+  // place the menu cleanly below the selection box (or flipped above if close to the bottom edge)
+  // so the drafter can clearly read the CAD text, leader lines, and counterpart data.
+  const MENU_W = 220;
+  const MENU_H = awaitingCategory ? 260 : awaitingPairDecision ? 180 : 160;
+  const GAP = 10;
+  const CHIP_H = 26;
+
+  let left = x;
+  let top = y;
+
+  if (targetBounds) {
+    // Default: place below the entity box
+    top = targetBounds.y1 + GAP;
+
+    // If overflowing below canvas, flip to above the entity (and above its value chip)
+    if (canvasHeight && top + MENU_H > canvasHeight - 10) {
+      top = targetBounds.y0 - GAP - MENU_H - CHIP_H;
+    }
+
+    // Horizontal: align with entity's left edge
+    left = targetBounds.x0;
+    if (canvasWidth && left + MENU_W > canvasWidth - 10) {
+      left = targetBounds.x1 - MENU_W;
+    }
+  } else {
+    // Fallback when bounds are not measured: offset cursor point so menu does not sprout under cursor
+    top = y + GAP;
+    if (canvasHeight && top + MENU_H > canvasHeight - 10) {
+      top = Math.max(10, y - MENU_H - GAP);
+    }
+    if (canvasWidth && left + MENU_W > canvasWidth - 10) {
+      left = Math.max(10, x - MENU_W);
+    }
+  }
+
+  // Ensure menu stays within canvas viewport
+  if (canvasWidth) {
+    left = Math.max(10, Math.min(left, canvasWidth - MENU_W - 10));
+  }
+  if (canvasHeight) {
+    top = Math.max(10, Math.min(top, canvasHeight - MENU_H - 10));
+  }
 
   // A pair completes only across the two sheets. A half waiting on the SAME side is the
   // engineer having picked the wrong entity, so the row below re-anchors it rather than
