@@ -14,6 +14,7 @@ import {
   type RegionFractions,
 } from '../../utils/zoneFractions';
 import { HIDE_SECTION_CALLOUTS, sectionCalloutsForLayers } from './sectionCallouts';
+import { appendDashedLine, appendDashedArc } from './cadLinetypes';
 
 
 // Moved to `utils/cadGlyphs.ts` on 2026-09-01 and re-exported here, because the taxonomy
@@ -788,8 +789,27 @@ export const renderEntities = ({
         } else if (Math.abs(x1 - x2) <= 1e-9) {
           sx1 = sx2 = snapX(x1, phase);
         }
-        p2d.moveTo(sx1, y1);
-        p2d.lineTo(sx2, y2);
+        const lineLen = Math.hypot(sx2 - sx1, y2 - y1);
+        const cycle = dashPattern ? dashPattern.reduce((a, b) => a + b, 0) : 11.76;
+        const isShortDashed = isCenterOrDash && (lineLen < Math.max(cycle * 2.0, (dashPattern?.[0] ?? 7.35) * 2.5));
+
+        if (isShortDashed) {
+          const solidBatchKey = `${strokeColor}_${strokeWidth}_solid_none_${isThinLine ? 'thin' : 'geo'}`;
+          if (!pathBatches[solidBatchKey]) {
+            pathBatches[solidBatchKey] = {
+              stroke: strokeColor,
+              width: strokeWidth as number,
+              dash: null,
+              dashUnits: 'none',
+              isAnnotation: isThinLine,
+              path: new Path2D(),
+            };
+          }
+          appendDashedLine(pathBatches[solidBatchKey].path, sx1, y1, sx2, y2, ent.properties?.linetype, dashPattern, scale);
+        } else {
+          p2d.moveTo(sx1, y1);
+          p2d.lineTo(sx2, y2);
+        }
       }
       else if (ent.type === 'circle' && (geo.center || geo.location)) {
         const [cx, cyRaw] = geo.center || geo.location;
@@ -797,8 +817,27 @@ export const renderEntities = ({
         const r = geo.radius || ent.properties?.radius || 1;
         if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
         drawnEntities++;
-        p2d.moveTo(cx + r, cy);
-        p2d.arc(cx, cy, r, 0, 2 * Math.PI);
+        const circLen = 2 * Math.PI * r;
+        const cycle = dashPattern ? dashPattern.reduce((a, b) => a + b, 0) : 11.76;
+        const isShortDashedCirc = isCenterOrDash && (circLen < Math.max(cycle * 2.0, (dashPattern?.[0] ?? 7.35) * 2.5));
+
+        if (isShortDashedCirc) {
+          const solidBatchKey = `${strokeColor}_${strokeWidth}_solid_none_${isThinLine ? 'thin' : 'geo'}`;
+          if (!pathBatches[solidBatchKey]) {
+            pathBatches[solidBatchKey] = {
+              stroke: strokeColor,
+              width: strokeWidth as number,
+              dash: null,
+              dashUnits: 'none',
+              isAnnotation: isThinLine,
+              path: new Path2D(),
+            };
+          }
+          appendDashedArc(pathBatches[solidBatchKey].path, cx, cy, r, 0, 2 * Math.PI, false, ent.properties?.linetype, dashPattern, scale);
+        } else {
+          p2d.moveTo(cx + r, cy);
+          p2d.arc(cx, cy, r, 0, 2 * Math.PI);
+        }
       }
       else if (ent.type === 'arc' && (geo.center || geo.location)) {
         const [cx, cyRaw] = geo.center || geo.location;
@@ -810,8 +849,31 @@ export const renderEntities = ({
         const endAngle = norm.hasBounds ? ((-rawStart) * Math.PI) / 180 : (rawEnd * Math.PI) / 180;
         if (cx + r < minX || cx - r > maxX || cy + r < minY || cy - r > maxY) return;
         drawnEntities++;
-        p2d.moveTo(cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
-        p2d.arc(cx, cy, r, startAngle, endAngle, false);
+
+        let sweep = endAngle - startAngle;
+        while (sweep < 0) sweep += 2 * Math.PI;
+        while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+        const arcLen = r * sweep;
+        const cycle = dashPattern ? dashPattern.reduce((a, b) => a + b, 0) : 11.76;
+        const isShortDashedArc = isCenterOrDash && (arcLen < Math.max(cycle * 2.0, (dashPattern?.[0] ?? 7.35) * 2.5));
+
+        if (isShortDashedArc) {
+          const solidBatchKey = `${strokeColor}_${strokeWidth}_solid_none_${isThinLine ? 'thin' : 'geo'}`;
+          if (!pathBatches[solidBatchKey]) {
+            pathBatches[solidBatchKey] = {
+              stroke: strokeColor,
+              width: strokeWidth as number,
+              dash: null,
+              dashUnits: 'none',
+              isAnnotation: isThinLine,
+              path: new Path2D(),
+            };
+          }
+          appendDashedArc(pathBatches[solidBatchKey].path, cx, cy, r, startAngle, endAngle, false, ent.properties?.linetype, dashPattern, scale);
+        } else {
+          p2d.moveTo(cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
+          p2d.arc(cx, cy, r, startAngle, endAngle, false);
+        }
       }
       else if (ent.type === 'dimension') {
         // A DIMENSION carries no drawable geometry of its own — only anchors, a
