@@ -5,23 +5,26 @@ services:
     plan: free
     healthCheckPath: /health
 
-    # ⚠ TEMPORARY, and both lines have to move together before this merges.
-    #
-    # Without a `branch` key Render tracks the repo's DEFAULT branch (`main`), which does not
-    # carry the Dockerfile or this file yet -- so the blueprint would build a commit with no
-    # container in it. Pinned to `3D` so the deployment can be brought up and debugged on the
-    # branch that actually has the work.
-    #
-    # `autoDeploy: true` is deliberate for the same window: while one person is iterating on
-    # getting the container to boot, waiting on pytest plus a full image build for every push is
-    # the wrong loop, and nobody else is pushing.
-    #
-    # 🔴 BEFORE MERGING TO `main`: drop `branch`, and set `autoDeploy: false`. Otherwise Render
-    # deploys straight off the push, in parallel with `.github/workflows/deploy-backend.yml` and
-    # without waiting for it -- which leaves the workflow's `needs: [test, build-docker]` gate
-    # documented in ADR-013 but not actually in the path of anything.
+    # `branch` is still pinned and cannot be dropped yet. Without it Render tracks the repo's
+    # DEFAULT branch (`main`), which carries neither the Dockerfile nor this file -- verified
+    # 2026-09-04 -- so the blueprint would build a commit with no container in it. It comes out
+    # when this work merges, not before.
     branch: 3D
-    autoDeploy: true
+
+    # Off, because on it bypassed the gate this deployment is supposed to have. Render deployed
+    # straight off every push to `3D`, in parallel with `.github/workflows/deploy-backend.yml` and
+    # without waiting for it, which left that workflow's `needs: [test, build-docker]` -- the
+    # quality boundary ADR-013 describes -- in the path of nothing.
+    #
+    # It also made the free tier's ephemeral disk expensive. `/app/storage` resets on every
+    # deploy, so a push discarded whatever drawings the engineers had uploaded; the markings
+    # survive in Atlas but the source files do not, and `/reextract` then answers 422 forever.
+    # Deploying on a push meant doing that on someone else's editing schedule.
+    #
+    # While this stays on `3D` the workflow cannot deploy either -- it fires on `main` -- so
+    # deploys are manual from the Render dashboard until the merge. That is the intended state:
+    # deliberate, and rare enough that losing the uploads is a decision rather than a side effect.
+    autoDeploy: false
     envVars:
       # Important: MongoDB Atlas Network Access must allow 0.0.0.0/0 since Render free tier has dynamic outbound IPs
       - key: MONGO_URI

@@ -189,12 +189,30 @@ if ($installers.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "This installer bundles the backend and registers it as a background service:" -ForegroundColor Cyan
-Write-Host "  - server\ is installed beside the app (frozen Python, no install needed)" -ForegroundColor White
-Write-Host "  - a logon Scheduled Task starts it hidden and keeps it running" -ForegroundColor White
-Write-Host "  - the app can be opened and closed freely; uninstall removes the task" -ForegroundColor White
-Write-Host "  - storage\ is NOT removed on uninstall - it holds drawings and markings" -ForegroundColor White
-Write-Host ""
-Write-Host "NSIS only: an .msi cannot run installerHooks, so it would install the app" -ForegroundColor Yellow
-Write-Host "with no registered backend - a silently broken install." -ForegroundColor Yellow
+# Branch on what was ACTUALLY built. This described the bundled backend unconditionally, while
+# -LeanCloud defaults to true and purges `src-tauri\server\` twenty lines earlier -- so the
+# default build ended by describing four things it had just removed, to an operator about to hand
+# the installer to 21 engineers. Same defect as the bundle path this script already fixed once:
+# a closing message that reads like a fact and is derived from nothing.
+if ($LeanCloud) {
+    Write-Host "This is a CLOUD CLIENT. No backend is bundled:" -ForegroundColor Cyan
+    Write-Host "  - server\ was purged before packaging; nothing is installed beside the app" -ForegroundColor White
+    Write-Host "  - no Scheduled Task is registered - installer-hooks.nsh skips it when" -ForegroundColor White
+    Write-Host "    server\install-service.ps1 is absent, which is why this install is not broken" -ForegroundColor White
+    Write-Host "  - it talks to $env:VITE_BACKEND_URL and needs network access to reach it" -ForegroundColor White
+    Write-Host "  - drawings and markings live on that server, not on the engineer's disk" -ForegroundColor White
+    Write-Host ""
+    Write-Host "The API token is baked from -ApiToken. Rotating the token on the server" -ForegroundColor Yellow
+    Write-Host "invalidates this installer: rebuild and reissue, or every client reports" -ForegroundColor Yellow
+    Write-Host "'No API token for this backend' until someone pastes the new one." -ForegroundColor Yellow
+} else {
+    Write-Host "This installer bundles the backend and registers it as a background service:" -ForegroundColor Cyan
+    Write-Host "  - server\ is installed beside the app (frozen Python, no install needed)" -ForegroundColor White
+    Write-Host "  - a logon Scheduled Task starts it hidden and keeps it running" -ForegroundColor White
+    Write-Host "  - the app can be opened and closed freely; uninstall removes the task" -ForegroundColor White
+    Write-Host "  - storage\ is NOT removed on uninstall - it holds drawings and markings" -ForegroundColor White
+    Write-Host ""
+    Write-Host "NSIS only: an .msi cannot run installerHooks, so it would install the app" -ForegroundColor Yellow
+    Write-Host "with no registered backend - a silently broken install." -ForegroundColor Yellow
+}
 Write-Host "=====================================================" -ForegroundColor Green
