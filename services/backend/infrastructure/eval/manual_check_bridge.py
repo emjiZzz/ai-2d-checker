@@ -1,64 +1,38 @@
 """Converts an app Manual Check session into an eval-corpus label draft.
 
-## Why this exists
+The projection between two ground-truth stores that never met: Manual Check writes markings to
+Mongo and is the only path with a UI, while the eval corpus reads `labels/*.json` and is the only
+path `eval_corpus.py status` counts. See
+`06 - .../Gotcha - Two Ground-Truth Stores That Never Met.md`.
 
-This project grew two ground-truth stores that never met:
+It emits a draft and never installs one. `validate` and `label` enforce the guideline version and
+refuse an anonymous annotator; a corpus a script can append to is one whose provenance is no
+longer "a human said so".
 
-* Manual Check (2026-08-18) writes `ground_truth_markings` to Mongo. It is the only path
-  with a UI, so it is the one an engineer actually uses.
-* The eval corpus reads `tests/fixtures/eval/labels/*.json`. It is the only path
-  `tools/eval_corpus.py status` counts, so it is the one that moves Stage 0b and the rung gate.
+| Marking status | Corpus |
+| :--- | :--- |
+| `ADDED` | finding `ADDED`, anchored on `rev_address` |
+| `REMOVED` | finding `REMOVED`, anchored on `ref_address` -- a removal exists only on the reference |
+| `CHANGED` | finding `CHANGED`, anchored on `rev_address`, matching `ExpectedFinding.default_side` |
+| `MATCHED` | `not_findings` -- a verified non-change is not a finding, but recording it makes a false positive there attributable rather than merely counted |
+| `NOT_A_FINDING` | `not_findings` |
+| `retracted_at` set | dropped |
 
-Work in the first was invisible to the second. Measured 2026-08-20: three sessions, 7 live
-markings, and Stage 0b reading 4 / 8 as though none of it existed. An annotator had no way to
-tell that the UI they were given does not feed the metric it appears to serve.
+The retraction rule is not a detail: 31 of the 38 markings in the session that prompted this were
+retracted, so a converter ignoring `retracted_at` manufactures 31 findings the engineer had
+explicitly taken back.
 
-`GroundTruthMarking`'s own docstring anticipated this -- *"a corpus-style label wants an address,
-a category, a status, both texts and `is_bulk`"* -- so the capture schema is already a superset
-of what a label needs. This module is the projection, not a redesign of either side.
+`category_source` has nowhere to go, and that matters because the human pairs are the first
+non-tautological attribution numbers here -- which holds only while the engineer's category is
+independent of `zone_detector`. `ExpectedFinding` has no field for it, so a zone-derived category
+is tagged `[category:zone]` in `notes` and counted separately in `BridgeResult` rather than folded
+in where nothing downstream could tell them apart. A mitigation; the fix is a corpus schema change
+and not this module's call.
 
-## What it deliberately does NOT do
-
-It emits a draft. It never installs one. The output goes to `validate` and `label`, which
-already enforce the guideline version and refuse an anonymous annotator. A conversion is a
-*proposal*: the mapping below is lossy in ways only a person can adjudicate, and a corpus that
-can be appended to by a script is a corpus whose provenance is no longer "a human said so".
-
-## The mapping, and where it loses information
-
-| Marking status | Corpus | Why |
-| :--- | :--- | :--- |
-| `ADDED` | finding `ADDED`, anchored on `rev_address` | |
-| `REMOVED` | finding `REMOVED`, anchored on `ref_address` | a removal only exists on the reference |
-| `CHANGED` | finding `CHANGED`, anchored on `rev_address` | matches `ExpectedFinding.default_side` |
-| `MATCHED` | `not_findings` | `VALID_STATUSES` is `{ADDED, REMOVED, CHANGED}`; a verified non-change is not a finding, but recording it is what makes a false positive there *attributable* rather than merely counted |
-| `NOT_A_FINDING` | `not_findings` | exactly the corpus's own definition of one |
-| `retracted_at` set | dropped | a retraction is the engineer withdrawing the statement |
-
-The retraction rule is not a detail: of the 38 markings in the session that prompted this, 31
-are retracted. A converter that ignored `retracted_at` would have manufactured 31 findings the
-engineer had explicitly taken back.
-
-WARNING: `category_source` has nowhere to go. `GroundTruthMarking` records whether a human
-chose the category or it was derived from the entity's zone, and says why that matters: the
-mutation corpus's attribution figure is a known tautology because its labels come from
-`zone_detector`, and the human pairs were *the first non-tautological attribution numbers in
-this project* -- which holds only while the engineer's category is independent of the detector.
-`ExpectedFinding` has no field for it. So a zone-derived category is tagged `[category:zone]` in
-the finding's `notes` and counted separately in `BridgeResult`, rather than being silently
-folded in where nothing downstream could ever tell the two apart. That is a mitigation, not a
-fix -- the honest fix is a field on `ExpectedFinding`, which is a corpus schema change and not
-this module's call to make.
-
-## Addresses are re-resolved, never copied
-
-A marking stores a `handle`; a label needs an address that resolves *inside the frozen payload*.
-Those are not the same claim. So every marking is re-resolved against the pair's payload
-entities through `ground_truth.address_resolver` -- the same tiered resolver the app uses,
-called rather than reimplemented, because a second opinion about which entity a human meant
-would be invisible: a mis-resolved label reads perfectly and silently attributes a person's
-judgement to the wrong entity. Anything the resolver declines to match is reported as unresolved
-and excluded, never guessed at.
+Addresses are re-resolved against the frozen payload through `ground_truth.address_resolver`,
+never copied from the marking's handle, and called rather than reimplemented -- a second opinion
+about which entity a human meant would be invisible, because a mis-resolved label reads perfectly.
+Anything the resolver declines is reported unresolved and excluded, never guessed at.
 """
 
 from __future__ import annotations

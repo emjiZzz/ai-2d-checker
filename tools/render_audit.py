@@ -1,62 +1,46 @@
 #!/usr/bin/env python
 """Render-fidelity harness: what the vector canvas draws vs what ezdxf draws.
 
-## Why this exists
+The canvas draws vectors from the extracted payload and nothing else -- ADR-011 deleted the raster
+display path, so there is no second rendering on screen to compare against. ezdxf's own `Frontend`
+is the oracle, generated here on demand, because judging the vector path by eye failed twice and
+both confident diagnoses cost a re-ingestion cycle. See
+`06 - .../Gotcha - A Blurry CAD Canvas and Its Four Causes.md`, which records both rounds and ends
+by naming this harness as the thing that should have been built first.
 
-The 2D review canvas can draw a sheet two ways: a downsampled PNG produced by ezdxf
-(`renderMode: 'raster'`) or real vectors from the extracted entity payload
-(`renderMode: 'vector'`). The raster is the ground truth -- it comes from ezdxf's own
-`Frontend`, so it cannot be missing anything -- and the vector path is the one with bugs.
+Reports two things.
 
-Judging the vector path by eye does not work. It has been tried twice, and both times a
-confident diagnosis was wrong in a way that cost a full re-ingestion cycle:
+The census reproduces the canvas HUD's `drawn/total` by classifying every extracted entity through
+a port of the `renderEntities.ts` branch table, answering "is anything missing". On
+`0029fc8cdf974f5e92fa7148a679255d.dxf` the healthy number is 490/518: 518 less 6 `layer` records
+and 12 `block` containers, which are never drawable, less 3 clipped model-space entities, less 7
+section-callout entities. If it moves, geometry was lost. Each cull is its own bucket rather than a
+smaller `drawn`, because folding a deliberate exclusion into the shortfall is how a harness built
+to detect loss stops being able to.
 
-  * The first switch to `'vector'` shipped green on 278 tests and silently deleted every
-    dimension from the drawing, because nothing in any suite asks "does the sheet look right".
-  * The follow-up fixed the count to a healthy 500/518 and the sheet was *still* wrong, because
-    an entity count says nothing about whether the entity is in the right place or the right
-    size. Two further defects (dimension text drawn horizontally, elliptical arcs swept
-    backwards) were only found by rendering the vectors beside the raster.
+The text placement oracle is the reason to build this at all. It renders the same layout through
+`ezdxf.addons.drawing.Frontend` into a `Recorder`, which yields the exact placed ink box per
+handle, then asks where the canvas renderer would put the same string and reports the delta. Three
+defects once overlapped here -- one moved text, one narrowed it, one shrank it -- and partly
+cancelled, leaving `width_ratio` at a healthy-looking 0.954 while half the sheet was misplaced.
+That is why it is measured rather than eyeballed.
 
-See `docs/vault/06 - Gotchas & Debugging Lessons/Gotcha - A Blurry CAD Canvas and Its Four
-Causes.md`, which records both rounds and ends by naming this harness as the thing that should
-have been built first.
+  * `dx`, `dy`    drawing units between the insert point and the point inside ezdxf's ink box the
+                  attachment point implies. Needs no width prediction, so it tests the anchor
+                  exactly. Was max 33.3, a full string width, when the renderer drew everything
+                  left/alphabetic.
+  * `width_ratio` predicted advance width over ezdxf's ink width. Tests that `\\W` is applied and
+                  that the DXF cap height is not passed to CSS `font-size` as an em size. Settles
+                  just above 1.0; the excess is glyph side bearing, the floor of an advance-vs-ink
+                  comparison.
 
-## What it reports
+Both must converge on 0 and ~1.0. Rotated, wrapped and off-axis strings are excluded from the
+statistics and counted as their own defects, their world-space box not being comparable to a
+single horizontal line.
 
-1. Census -- reproduces the canvas HUD's `drawn/total`, classifying every extracted entity
-   through a port of the `renderEntities.ts` branch table. Answers "is anything missing".
-   On M745221N01 the healthy number is 497/518: 518 minus 6 `layer` records and 12 `block`
-   containers (never drawable) minus 3 clipped model-space entities. If this moves, geometry
-   was lost.
-
-2. Text placement oracle -- the reason to build this at all. Renders the same layout
-   through `ezdxf.addons.drawing.Frontend` into a `Recorder` backend, which yields the exact
-   placed ink box for every entity, keyed by handle. Then asks where the canvas renderer would
-   put the same string under the rules it currently applies, and reports the delta.
-
-   Three defects overlapped here -- one moved text, one narrowed it, one shrank it -- and they
-   partly cancelled: `width_ratio` sat at a healthy-looking 0.954 while half the sheet was in
-   the wrong place. That is why this is measured rather than eyeballed. Per string:
-
-   * `dx`, `dy`     -- drawing units between the insert point and the point inside ezdxf's ink
-                       box that the attachment point implies. Needs no width prediction, so it
-                       is an exact test of the anchor. Was max 33.3 (a full string width) when
-                       the renderer drew everything left/alphabetic.
-   * `width_ratio`  -- predicted advance width / ezdxf's ink width. Tests that `\\W` is applied
-                       and that the DXF cap height is not being passed to CSS `font-size`
-                       as an em size. Settles just above 1.0; the excess is glyph side
-                       bearing, which is the floor of an advance-vs-ink comparison.
-
-   Both must converge on 0 and ~1.0. Rotated, wrapped and off-axis strings are excluded from
-   the statistics and counted as their own defects -- their world-space box is not comparable
-   to a single horizontal line.
-
-## Usage
+Usage, from the repo root (`pyproject.toml` sets `pythonpath`). No backend, no MongoDB:
 
     services/backend/.venv/Scripts/python.exe tools/render_audit.py <dxf> [--top N] [--json OUT]
-
-Run from the repo root; `pyproject.toml` sets `pythonpath = ["."]`. No backend, no MongoDB.
 """
 
 from __future__ import annotations
