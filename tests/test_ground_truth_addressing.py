@@ -3,8 +3,8 @@
 A marking outlives the extraction it was made against. `ExtractionPipeline.run` deletes and
 re-inserts a drawing's entities (`extraction_pipeline.py`, "Re-extraction: cleared N existing
 entities"), so every `ExtractedEntity` gets a fresh ObjectId on re-extraction —
-`EXTRACTION_SCHEMA_VERSION` is at 6, meaning that has already happened six times for reasons
-having nothing to do with this feature.
+every `EXTRACTION_SCHEMA_VERSION` bump has forced one, for reasons having nothing to do
+with this feature.
 
 So a marking that stored an entity id would dangle the first time anyone ran
 `POST /drawings/{id}/reextract`, and it would dangle silently: the marking still reads
