@@ -13,8 +13,8 @@ human disagree with us about this" the same question, and they are not.
 ## Why an address is a composite and not an entity id
 
 `ExtractionPipeline.run` deletes and re-inserts a drawing's entities, so every
-`ExtractedEntity` gets a fresh ObjectId on re-extraction. `EXTRACTION_SCHEMA_VERSION` is at 6,
-which is six occasions on which a fix required exactly that. A marking keyed on an entity id
+`ExtractedEntity` gets a fresh ObjectId on re-extraction, and every
+`EXTRACTION_SCHEMA_VERSION` bump has required exactly that. A marking keyed on an entity id
 would dangle the first time anyone ran `POST /drawings/{id}/reextract` -- and it would dangle
 *silently*: the marking still reads fine, it just no longer points at anything.
 
