@@ -251,8 +251,8 @@ def test_no_new_comment_block_over_twenty_lines():
     still inside it. The gap is known and left, because a metric nobody can game is not worth the
     complexity here when the reviewer can see the diff.
     """
-    baseline_blocks = 154
-    baseline_lines = 4515
+    baseline_blocks = 152
+    baseline_lines = 4311
 
     blocks = oversized_blocks()
     lines = sum(n for _, _, n in blocks)

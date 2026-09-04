@@ -1,71 +1,18 @@
-"""
-zone_ownership.py
-=================
-Who owns an entity when two zone boxes overlap.
+"""Who owns an entity when two zone boxes overlap.
 
-Zones overlap. That is not a defect to be tuned away — it is how the sheet is laid out and how
-the detector's quadrant priors are written. Measured over the corpus (12 sides), counting the
-*text entities* that fall inside each intersection rather than the empty paper:
+Zones overlap by design, and one arbitration answers this rather than the four ad-hoc exclusion
+lists that used to. The order: a zone with a drawn border outranks one without, so `title` and
+`tolerance` win, `bom` and `title_upper_left` follow, and `notes` and `iso` rank last because
+these sheets draw no box around either. `views` has the best border of all and still yields to
+everyone, because it is not a block -- it is the drawing area, defined by exclusion. `notes` and
+`iso` tie deliberately, and the tie is broken by content in `notes_classifier.py` rather than by
+an arbitrary rung here.
 
-| zone pair                    | pinned | detected |
-| ---------------------------- | -----: | -------: |
-| `views` x `tolerance`        |     72 |     1840 |
-| `views` x `title`            |     36 |      818 |
-| `title` x `tolerance`        |    570 |      622 |
-| `views` x `bom`              |    241 |      240 |
-| `views` x `title_upper_left` |    147 |      216 |
-| `bom` x `tolerance`          |      0 |       72 |
-| `title_upper_left` x `tolerance` |  0 |       54 |
-| `title_upper_left` x `notes` |      1 |       31 |
-| `bom` x `iso`                |      1 |       24 |
-
-Collisions are 5-30x worse without a hand-aligned template, which is exactly the direction
-this system is trying to move in. Two of those pairs are structural, not accidental: `iso`'s
-quadrant prior is `x > 0.30w` with *no y bound*, so it strictly contains `bom`'s
-`x > 0.50w and y > 0.35h`; and `notes`' prior is `y > 0.15h` with *no x bound*, so it spans the
-whole of `title_upper_left`'s. Those two pairs cannot be separated by the priors at all.
-
-## Why this module exists
-
-Before it, ownership in an intersection was decided at four separate call sites, with an
-order that was implicit and incomplete:
-
-  * `views_exclusions()` / `VIEWS_EXCLUDED_ZONES` -- `views` yields to everyone
-  * `extract_zone_entities(exclude_bboxes=[tolerance, title, bom])` -- for `notes`
-  * the same list again -- for `iso`
-  * a fourth list added to `extract_title_ul_kv` on 2026-08-12 -- and reverted the same day
-    for costing detection-only F1 0.7736 -> 0.7339
-
-`notes` vs `iso` had no rule in any of them: neither pool excluded the other and the
-markings are concatenated with no de-duplication, so an entity in that intersection is diffed
-twice and emitted under two categories.
-
-That hole is latent, not live. The census above finds `notes` x `iso` firing on zero
-corpus sides, pinned or detected, so it has never produced a duplicate here and closing it moves
-no metric. It is closed because it costs nothing to close and because the priors permit it --
-not because it was hurting.
-
-## The precedence, and why it is this order
-
-A zone with a drawn border outranks a zone without one. The ruled-border spike measured, for
-each zone, the best-IoU rectangle that is actually *drawn* on the sheet (chosen knowing the
-answer, so it bounds any rule rather than describing one):
-
-    views 0.97 | title 0.95 | tolerance 0.85 | title_upper_left 0.62
-    bom   0.37 | notes 0.08 | iso       0.06
-
-`title` and `tolerance` are real ruled boxes and win. `bom` and `title_upper_left` are partially
-ruled and come next. `notes` and `iso` score 0.06-0.08 because these sheets contain no drawn
-box around either — their best candidate is the whole sheet frame — so they rank last among
-content zones.
-
-`views` has the *best* border of all and still yields to everyone, because it is not a block: it
-is the drawing AREA, defined by exclusion. That is a statement about what the zone means, not
-about how well it can be found.
-
-`notes` and `iso` tie, deliberately. They tie because geometry genuinely cannot rank them, which
-is the same reason the notes box is unreliable in the first place. The tie is broken by content
-— see `notes_classifier.py` — not by adding an arbitrary rung here.
+The overlap census, the ruled-border IoU numbers behind that ranking, and the four call sites this
+replaced are in
+`docs/vault/02 - Audit Comparison Engines/Zone Detector & Bounding Boxes.md`, under "Zone
+ownership when boxes overlap". Read it before reordering anything: two of the pairs overlap
+structurally, because the quadrant priors make it unavoidable, so the order is not tunable.
 """
 
 from __future__ import annotations

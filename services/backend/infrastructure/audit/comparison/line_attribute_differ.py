@@ -1,66 +1,21 @@
-"""Line attributes — the line types and thicknesses a drawing view is actually drawn with.
+"""Line attributes -- the line types and thicknesses a drawing view is actually drawn with.
 
-`line_attributes` has been a `drawing_views` sub-item since the checklist was grouped, and
-nothing has ever produced a finding for it. `feature_classifier` says so in its own module
-docstring: `origin`, `alignment_of_views`, `line_attributes` and `text_attributes` "have no
-reliable text-level signal at all and are never assigned by these rules", with Generator B —
-the one that reasoned visually over the rendered image — named as the intended source.
-ADR-006 removed Generator B. The card was therefore reachable only through its empty state,
-and that empty state reads "No changes detected."
+Exists because `line_attributes` was a checklist sub-item with no producer, so it reported "No
+changes detected." on every comparison this system had ever run.
 
-A check that never ran, reporting clean, is the one failure mode this system says it cannot
-detect. `line_name` is handled honestly for exactly this reason — it sits in
-`taxonomy.DEFERRED_FEATURES` and the frontend renders it "Not yet supported for automatic
-checking". `line_attributes` never got that treatment, so it has been claiming a clean result
-for every comparison this system has ever run.
+Deterministic, because nothing here infers: the drawing states these attributes and this reads
+them back from `common_properties`, resolving BYLAYER against the `layer` records.
 
-## Why this one can be deterministic
+Two rules, both measured rather than chosen. The key is `(linetype, lineweight)` and colour is
+deliberately not an axis -- adding it roughly doubles the rows, and on this corpus colour is a
+house convention on top of the line type rather than a line attribute, so the section cut plane
+and the part centreline differ only by ACI index. And presence decides the status while a stroke
+count never does: the revision is a re-trace rather than a copy, so counts differ on almost every
+sheet and a count-driven CHANGED would fire on nearly every comparison and mean nothing.
 
-Nothing here infers, guesses or thresholds. The drawing states its line attributes and this
-reads them back: `entity_mapper.common_properties` writes `linetype`, `lineweight`, `color`
-and `ltscale` onto every graphic entity, and `dxf_parser` records the same attributes on each
-`layer` record so a BYLAYER entity can be resolved against its layer.
-
-Measured across the 42 drawings in `storage/uploads`, the whole corpus draws with four
-line types: CONTINUOUS (16200 strokes), CENTER (818), DASHED (684) and HIDDEN (2).
-
-## The key is (linetype, lineweight). Colour is not an axis — measured, not assumed.
-
-Distinct profile rows per sheet, over the same 42 drawings:
-
-| key                            | min | median | max |
-| :----------------------------- | --: | -----: | --: |
-| (linetype, lineweight)         |   4 |      5 |   7 |
-| (linetype, lineweight, colour) |   8 |     11 |  15 |
-
-Five rows is a checklist card; eleven is a wall, and the reverted `geometry_differ` is on
-record for drowning the panel. Colour is also the wrong axis for this item on this corpus: it
-is a house convention layered *on top of* the line type, not a line attribute in its own
-right. The section cut plane and the part centreline are both CENTER at 0.25mm and differ
-only by ACI index — `sectionCallouts.ts` identifies the cut plane by exactly that, and
-documents it as a client convention rather than something the DXF states. "Line attributes"
-in drafting review means 線種 and 線の太さ. Colour is carried in `details` for context and
-never splits a row.
-
-## Presence decides the status. A count difference never does.
-
-`geometry_differ` was built and reverted for emitting findings like `Geometry: 10 line` —
-"a count and a primitive type and nothing else", which a checker cannot act on. Its lesson is
-recorded as: a finding must say what changed, not how many primitives differ.
-
-So a row is MATCHED when both sides draw with that (linetype, lineweight), ADDED when only
-the revision does, and REMOVED when only the reference does. Stroke counts are reported in
-the ORIGINAL/REVISION cells and in `details`, and are never promoted to a status.
-
-That matters on real pairs specifically. The revision is a re-trace rather than a copy, so
-stroke counts differ on almost every sheet — the pair in the reported case draws the same
-feature as two arcs on one side and two full circles on the other. A count-driven CHANGED
-would fire on nearly every comparison and mean nothing, which is precisely how the reverted
-implementation trained a checker to skim past the panel. Presence is the half that carries
-engineering meaning: a HIDDEN line type that exists on one side and not the other is a real
-finding, and on this corpus HIDDEN appears exactly twice.
-
-See `docs/vault/06 - Gotchas & Debugging Lessons/Gotcha - The Differ Compared Text Only.md`.
+The measurements behind both, and the reverted `geometry_differ` that established the second, are
+in `06 - .../Gotcha - A Checklist Item With No Producer Reported Clean.md`. See also
+`06 - .../Gotcha - The Differ Compared Text Only.md`.
 """
 
 from collections import Counter

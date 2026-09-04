@@ -1,69 +1,27 @@
-"""
-notes_classifier.py
-===================
-Is this text a note? Answered from the text itself and its neighbours, not from a box.
+"""Is this text a note? Answered from the text itself and its neighbours, not from a box.
 
-## Why the box cannot answer it
+`notes` is the one zone these sheets draw no boundary around, so the box is a rectangle we impose
+on floating text, and adding a single note relocates it far enough to report every existing note
+as REMOVED. That is structural rather than mis-tuned: the anchor is the canonical Japanese word
+for "notes" and cannot be deleted the way a bad anchor could. A content predicate is
+side-independent instead, so both sides classify identically wherever the box went. That is the
+whole mechanism. See `06 - .../Gotcha - Adding a Note Destroys the Notes Zone.md` for the
+measurements and the pair that showed it.
 
-`notes` is the one zone with no drawn boundary on these sheets. The ruled-border spike
-measured a best-IoU ceiling of 0.08 for it — chosen knowing the answer, so that bounds any
-rule rather than describing one — because its best candidate is the whole sheet frame. The
-"notes zone" is a rectangle *we* impose on text that floats inside the frame, which is why every
-approach so far produced a different arbitrary box.
+Two stages, because content alone is not enough: seed on content, then admit neighbours by
+cohesion. Nothing about the item marker `１` says "note" -- it is one because it sits on the same
+row as an instruction, 12 units to its left.
 
-The cost is measured. Detection-only, `notes_section` scores P 0.59 / R 1.00: recall is
-perfect, so the box already catches every real change and only *adds*. That signature has one
-cause, and it is not tuning.
+The veto is not optional, which is why this module refuses to run without `regions`. The tolerance
+block contains `必要な場合は、粗さ区分を記入のこと`, an instruction in exactly the form of a real
+note, and no content rule separates it; it is excluded only because `tolerance` outranks `notes`
+in `zone_ownership`.
 
-On `M7452A0N01-rev-mut005` both sides carry the same four notes rows at identical
-coordinates, and:
-
-    REF  notes box = (38.0, 202.6,  60.0, 251.0)   -> all four rows INSIDE
-    REV  notes box = (65.0, 202.6, 254.0, 231.8)   -> all four rows OUTSIDE
-
-The mutation adds the text `追加注記` at x=264 — a legitimate `注記` anchor, 209 units from
-the real notes cluster at x=55. The anchor-cluster detector cannot represent two clusters, so it
-grows a box spanning x 65-254 that covers neither, and every notes row reports `REMOVED` on
-a sheet that plainly has them. Seven false positives from one added note.
-
-Adding a note destroys the notes zone. This is the same failure mode as the `仕上げ` anchor
-removed on 2026-08-12 for matching `仕上げ記号` in the tolerance block — except that anchor was
-wrong and could be deleted, while `注記` is the canonical Japanese word for "notes" and cannot
-be. The approach is structurally fragile, not mis-tuned. See
-docs/vault/06 - .../Gotcha - Adding a Note Destroys the Notes Zone.
-
-A content predicate is side-independent, so both sides classify identically no matter where the
-box went. That is the whole mechanism.
-
-## What a note looks like here, measured
-
-Taken from the text inside the pinned notes box across the corpus — the configuration that
-scores P 1.00 / R 1.00, so it is the closest thing to a label this corpus has:
-
-| kind | examples | len |
-| :--- | :--- | ---: |
-| instruction | `指示なき角部は糸面取りのこと`, `タップ、キリ穴は面取り仕上げのこと` | 14-17 |
-| instruction | `完成時、バリ、キリ粉はなきこと` | 15 |
-| numbered | `注１．グラインダ－ニテ滑ラカニ仕上ゲノコト。` | 22 |
-| spec | `素材調質施工　硬度HS35～38度`, `イソナイト施工　硬度HV500up` | 17-18 |
-| item marker | `１`, `1`, `a`, `b`, `c`, `d`, `C1` | 1-2 |
-
-The item markers are the reason content alone is not enough: nothing about `１` says "note". It
-is a note because it sits on the same row as an instruction, 12 units to its left. So the
-pass is two-stage — seed on content, then admit neighbours by cohesion.
-
-The nearest negative is the one that decides the design. The tolerance block contains
-`必要な場合は、粗さ区分を記入のこと` — an instruction ending in `のこと`, identical in form to a
-real note. No content rule separates it. It is excluded because `tolerance` outranks `notes`
-in `zone_ownership` (a real ruled box, IoU 0.85, against no box at all), which is why the veto
-is not optional and why this module refuses to run without `regions`.
-
-`ロール：` is deliberately not a seed token, though `4 ロール：12 (2x6台)` does sit inside
-the pinned box on some sides. Those lines land in `views` on others, so claiming them moves
-content between categories on a corpus whose labels come from the engine's own pool. Measure it
-as a separate change if it is wanted. Note this is a different mechanism from the vault's on
-adding `ロール` to `ZONE_ANCHORS` — that one *grew a box*; this one would only label an entity —
-but the caution transfers.
+`ロール：` is deliberately not a seed token. Those lines sit inside the pinned box on some sides
+and land in `views` on others, so claiming them moves content between categories on a corpus whose
+labels come from the engine's own pool. Measure it as a separate change if it is wanted. This is a
+different mechanism from the vault's caution about adding `ロール` to `ZONE_ANCHORS`, which grew a
+box where this would only label an entity, but the caution transfers.
 """
 
 from __future__ import annotations

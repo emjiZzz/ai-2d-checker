@@ -1,62 +1,33 @@
 #!/usr/bin/env python
 """Address-resolution census: does a click land on the entity the engineer meant?
 
-## Why this exists
+The harness for the pipeline that fails silently. A marking stores an `EntityAddress`,
+`address_resolver` re-binds it, `manual_check_bridge` turns that into a corpus label, and every
+step reads perfectly when it is wrong -- a mis-resolved marking attributes a person's judgement to
+the wrong entity, forever, in a file then used as ground truth. It runs against real frozen
+payloads because the unit-test fakes cannot reproduce two border lines sharing a corner or three
+concentric arcs sharing a centre, which is the geometry that broke.
+See `06 - .../Gotcha - The Click Was Never Where the Entity Was.md`.
 
-`render_audit.py` exists because judging the vector canvas by eye failed twice. This is the
-same harness for the *other* pipeline that fails silently -- ground-truth addressing.
+Reports three things:
 
-A manual-check marking stores an `EntityAddress`; `address_resolver` re-binds it to a live
-entity; `manual_check_bridge` turns that into a corpus label. Every step reads perfectly when
-it is wrong. A mis-resolved marking does not error, does not look odd, and cannot be detected
-downstream: it simply attributes a person's judgement to the wrong entity, forever, in a file
-that is then used as ground truth.
+1. Per-entity-type resolution, with the `MatchTier` mix. Read it column-wise -- a type at 100%
+   beside a type at 19% is the defect this was built for, and no aggregate shows it.
+2. Round trip through the bridge, asking whether the address `build_labels` emits resolves back
+   to the entity that was picked. Only that second claim is what lands in the corpus.
+3. Ambiguity refusals, so the cost of `_nearest` declining to guess stays visible rather than
+   looking like a silent loss of recall.
 
-Measured 2026-08-20, before the fix that prompted this tool: 33 of 3673 converted REMOVED
-findings landed on the wrong entity, one of them at distance 0.0 -- the strongest match the
-resolver can express. It survived design, implementation and review because every one of the
-1541 TEXT entities resolved correctly, and the unit tests, the committed labels and the
-feature demo were all text.
+The one thing that must not be got wrong: probe with a realistic click, never the entity's own
+anchor. `EntityAddress.point` is where the engineer clicked, and probing at `start` or `center` is
+the best case -- it makes every number look excellent and hides the entire defect class, since the
+bug was precisely that a click and an anchor are different quantities. So a line is clicked at its
+midpoint, a curve on its circumference, a polyline on its first span. An ellipse must be probed on
+its `points` run, because its `center` is not on its own outline and anchoring there invents 24
+wrong rows that are artifacts of the probe.
 
-The unit tests in `tests/test_ground_truth_addressing.py` pin the rules against hand-built
-fakes. Fakes cannot reproduce two border lines sharing a corner or three concentric arcs
-sharing a centre, which is the geometry that actually broke. This runs against real frozen
-payloads.
-
-## What it reports
-
-1. Per-entity-type resolution -- correct / wrong / unresolved, and the `MatchTier` mix.
-   Read this column-wise: a type at 100% next to a type at 19% is the shape of the defect this
-   tool was built for, and it is invisible in any aggregate.
-
-2. Round trip through the bridge -- takes the address `build_labels` actually emits and
-   asks whether it resolves back to the entity that was picked. Resolution being right is not
-   the same claim as the emitted label being right, and only the second one is what lands in
-   the corpus.
-
-3. Ambiguity refusals -- coincident geometry the address cannot separate, which
-   `_nearest` now declines to guess at. Reported so the cost of refusing stays visible rather
-   than looking like a silent loss of recall.
-
-## The one thing that must not be got wrong
-
-Probe with a realistic click, not with the entity's own anchor.
-
-`EntityAddress.point` is where the engineer clicked -- `useEntityPicking` sends the pointer's
-world position verbatim. Probing each entity at its canonical anchor (`start`, `center`) is the
-best case, makes every number look excellent, and hides the entire defect class: the whole bug
-was that a click and an anchor are different quantities. So a line is clicked at its midpoint,
-a curve on its circumference, a polyline on its first span.
-
-An ellipse must be probed on its `points` run. Its `center` is not on its own outline, so
-anchoring there produces "wrong" rows that are artifacts of the probe rather than defects in
-the resolver -- 24 of them on the one sheet where that was tried.
-
-## Verified against the defect it was built for
-
-Reverting `_entity_distance` in `address_resolver.py` must make this report ~59% correct and
-33 wrong. A census that cannot show the bug it exists for is not a census -- see
-`Gotcha - A Guard Test's Failure Path Had Never Run`.
+Calibration: reverting `_entity_distance` in `address_resolver.py` must make this report ~59%
+correct and 33 wrong. A census that cannot show the bug it exists for is not a census.
 
 Usage:
 
