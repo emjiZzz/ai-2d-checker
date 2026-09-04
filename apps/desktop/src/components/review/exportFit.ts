@@ -20,7 +20,7 @@
  * enormous margin no page setting could reach: a 7 mm page margin around a drawing that was
  * already floating inside its own bounds by ~14 mm a side.
  *
- * ⚠ **`render_bounds` itself must not be "fixed".** Every zone template stores its boxes as
+ * **`render_bounds` itself must not be "fixed".** Every zone template stores its boxes as
  * fractions of it, `zone_signature` derives a sheet's template identity from it, and every stored
  * `CadPoint` carries a snapshot of it for drift detection. Re-deriving it would silently
  * invalidate all three. The export crops to the ink instead, which is a question only the export

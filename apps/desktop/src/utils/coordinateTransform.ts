@@ -143,7 +143,7 @@ export interface CanvasTransform {
  * happened to occupy in the app's panel, so the whole set landed in the top-left corner of the
  * sheet — a report whose checkmarks pointed at nothing.
  *
- * ⚠ **Inside a render pass, use this. `worldToScreen` is for the pointer.** The two are
+ * **Inside a render pass, use this. `worldToScreen` is for the pointer.** The two are
  * interchangeable right up until someone renders at a size that is not the screen's.
  */
 export function worldToCanvas(

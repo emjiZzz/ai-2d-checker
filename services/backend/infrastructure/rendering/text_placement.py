@@ -14,7 +14,7 @@ This module was extracted from `render_audit.py` on 2026-08-25 rather than resta
 alternative was production code importing a harness out of `tools/`. It was proven inert first:
 `tools/render_audit.py --json` is byte-identical across the move.
 
-⚠ **What deliberately did NOT move**: `anchor_reference` and the `RENDERER_APPLIES_*` flags. Those
+**What deliberately did NOT move**: `anchor_reference` and the `RENDERER_APPLIES_*` flags. Those
 encode *what the canvas is modelled as doing* — a drift surface the harness exists to interrogate,
 not a fact about DXF. They stay with the harness and consume `ANCHOR_FRACTIONS` and `quadrant`
 from here.
@@ -50,7 +50,7 @@ CANVAS_FONT = "msgothic.ttc"
 #: event rather than a rendering change. This constant exists so the export can differ from it
 #: without touching it.
 #:
-#: ⚠ **The order is load-bearing.** Widths at equal cap height, relative to MS Gothic — and note
+#: **The order is load-bearing.** Widths at equal cap height, relative to MS Gothic — and note
 #: they are string-dependent, because MS Gothic's Latin is half-width while Mincho's is
 #: proportional, so a lowercase label and an all-caps drawing number do not scale alike:
 #:
@@ -63,7 +63,7 @@ CANVAS_FONT = "msgothic.ttc"
 #: MS Mincho last of the Minchos: it is the widest and re-creates the title-block collisions
 #: `CAD_TEXT_FIT_SCALE` exists to prevent, which presents as a scale bug rather than a font bug.
 #:
-#: ⚠ **Light before Regular, and this is a deliberate divergence from the canvas.** `CAD_FONT_STACK`
+#: **Light before Regular, and this is a deliberate divergence from the canvas.** `CAD_FONT_STACK`
 #: asks for `"Yu Mincho"`, which resolves to Regular. Regular's vertical stems are heavy — invisible
 #: on 3 mm labels and obvious on the 9.5 mm title-block values, which an engineer reading a printed
 #: sheet flagged as too bold. The underlying cause is unfixable by font choice: `txt.shx` is a
@@ -107,7 +107,7 @@ def resolve_report_font() -> tuple[str, str] | tuple[None, None]:
 #: column collisions"). The PDF has to apply it too or it disagrees with the sheet the engineer
 #: reviewed -- which is the one thing a compliance report may not do.
 #:
-#: ⚠ Mirrored by hand from `renderEntities.ts`, because no runtime type sharing exists between
+#: Mirrored by hand from `renderEntities.ts`, because no runtime type sharing exists between
 #: the two languages. Pinned by `tests/test_report_style_consistency.py`.
 CAD_TEXT_FIT_SCALE = 0.80
 
@@ -146,7 +146,7 @@ def cap_height_ratio(font_name: str = CANVAS_FONT) -> float:
     `fontsize` for a run whose ADVANCES come from this same font object, so any other source of
     "cap height" makes the size and the spacing disagree.
 
-    ⚠ **This replaced a `text_width("MMMM") / 2` estimate on 2026-08-25, which was exact for
+    **This replaced a `text_width("MMMM") / 2` estimate on 2026-08-25, which was exact for
     MS Gothic and 1.88x wrong for Yu Mincho.** That estimate hard-coded its own assumption in a
     comment -- *"Latin glyphs in MS Gothic are exactly half-width, so `MMMM` is 2 em"* -- and it
     holds only for a half-width-Latin face. `M` is 0.5000 em in `msgothic.ttc` and **0.9390 em**
@@ -158,7 +158,7 @@ def cap_height_ratio(font_name: str = CANVAS_FONT) -> float:
     `render_mode=3`: the defect is only visible as a selection rectangle twice the width of the
     glyphs it selects, and as six strings pushed past the page rect and dropped outright.
 
-    ⚠ **Inert for every face where the old assumption was true**, which is why the harness
+    **Inert for every face where the old assumption was true**, which is why the harness
     baselines do not move: `msgothic.ttc` returns 0.761719 and `MSMINCHO.TTF` 0.667969, both
     bit-identical to the estimate, because MS CJK faces really do set `M` at exactly 0.5 em.
     `tools/render_audit.py` calls this with the default and is untouched.

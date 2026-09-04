@@ -36,7 +36,7 @@ export const RoomsView: React.FC = () => {
   /**
    * Auto-launch the onboarding tour for first-time testers / users.
    *
-   * ⚠ **Waits for the engineer-identity prompt.** This effect used to fire on mount, and in a
+   * **Waits for the engineer-identity prompt.** This effect used to fire on mount, and in a
    * prototype build `RoomsView` mounts underneath `EngineerPromptModal` — so a first launch
    * opened the tour on top of the name prompt, before the tester had entered anything. It was
    * not even a z-index accident to be nudged: the prompt's backdrop is `z-[100000]` and
@@ -201,7 +201,7 @@ export const RoomsView: React.FC = () => {
         installed prototype as "I can't create a room and proceed", and the button genuinely looked
         dead.
 
-        ⚠ **Every cause looked identical, which is what made it expensive.** The real one was a 401:
+        **Every cause looked identical, which is what made it expensive.** The real one was a 401:
         an installed build cannot find `storage/secure/.api-token`, so it holds no bearer token --
         while `/health` needs none and returns 200, so the app reports itself connected. A network
         failure, a duplicate name and an auth failure were all rendered as "nothing happened".

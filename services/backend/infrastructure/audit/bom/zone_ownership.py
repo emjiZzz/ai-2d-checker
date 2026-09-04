@@ -40,7 +40,7 @@ order that was implicit and incomplete:
 markings are concatenated with no de-duplication, so an entity in that intersection is diffed
 twice and emitted under two categories.
 
-⚠ **That hole is latent, not live.** The census above finds `notes` x `iso` firing on **zero**
+**That hole is latent, not live.** The census above finds `notes` x `iso` firing on **zero**
 corpus sides, pinned or detected, so it has never produced a duplicate here and closing it moves
 no metric. It is closed because it costs nothing to close and because the priors permit it --
 not because it was hurting.
@@ -86,7 +86,7 @@ from .zone_geometry import point_in_shape, polygon_for
 #: **Tier 1 — no reliable box.** These may not evict each other, because none of them is
 #: trustworthy enough to overrule another's content.
 #:
-#: ⚠ `title_upper_left` was ranked ABOVE `notes` first, on its 0.62 border ceiling, and that was
+#: `title_upper_left` was ranked ABOVE `notes` first, on its 0.62 border ceiling, and that was
 #: **measured wrong**. Under detection its box swallows the notes block whole — the census finds
 #: 31 texts in that intersection at frac 1.00 over 6 of 12 sides — so on `M7452A0N01` it claims
 #: all five notes lines and vetoing on it dropped `notes_section` recall to **0.54**. Its box

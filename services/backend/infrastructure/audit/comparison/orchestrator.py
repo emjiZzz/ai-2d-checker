@@ -11,7 +11,7 @@ historical import site for the whole comparison surface -- seven test modules,
 `infrastructure/eval/{runner,sweep}.py` and `infrastructure/learning/inference.py` import
 these names from here -- so the façade is a compatibility contract, not convenience.
 
-⚠ `perform_drawing_comparison` calls `generate_deterministic_candidates` by its bare
+`perform_drawing_comparison` calls `generate_deterministic_candidates` by its bare
 module-global name on purpose. Python resolves that in *this* module's namespace at call time,
 which is what lets `tests/test_comparison_architecture.py` intercept the engine with
 `monkeypatch.setattr(orchestrator, "generate_deterministic_candidates", ...)`. Calling it as

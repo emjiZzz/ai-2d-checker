@@ -138,7 +138,7 @@ ZONE_ANCHORS: dict[str, list[str]] = {
     # NOTES SECTION (freeform text, typically left or bottom-center)
     # ------------------------------------------------------------------
     #
-    # ⚠ An anchor here must be a phrase that appears ONLY in a note. A term that also occurs in
+    # An anchor here must be a phrase that appears ONLY in a note. A term that also occurs in
     # the sheet furniture does not merely add noise — it drags the zone's bounding box across the
     # sheet toward the furniture, and the box then covers neither cluster. `仕上げ` was removed
     # 2026-08-12 for exactly that: it matches `仕上げ記号` ("finish symbol"), a label in the
@@ -148,7 +148,7 @@ ZONE_ANCHORS: dict[str, list[str]] = {
     # rows inside the detected box from 16/45 to 27/45 across the corpus, and took the three
     # `M7452A*` reference sides from 0/3 to 3/3.
     #
-    # ⛔ Do NOT add `ロール` to reach the roll-count lines. Measured and rejected: this family's
+    # Do NOT add `ロール` to reach the roll-count lines. Measured and rejected: this family's
     # drawing title is `ロールカセット 12"ミル`, so it matches the title block and repeats the same
     # failure. Coverage appears to rise to 39/45, but the gain is the box INFLATING to span from
     # the roll counts down to the title — on the three large pairs' reference sides the resulting

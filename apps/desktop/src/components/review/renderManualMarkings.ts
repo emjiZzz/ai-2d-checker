@@ -34,7 +34,7 @@ import type { EntityLocator } from '../../stores/workspace/types';
  * and no extra `flipWorldY` belongs here — adding one would mirror every badge about the
  * sheet's centreline, plausibly near the middle and far out at the edges.
  *
- * ⚠ `worldToCanvas`, taking the FRAME's `scale`/`transX`/`transY`, **not** `worldToScreen` taking
+ * `worldToCanvas`, taking the FRAME's `scale`/`transX`/`transY`, **not** `worldToScreen` taking
  * the viewport. The two are the same arithmetic on screen and diverge completely on export, where
  * the frame carries a fit-to-page transform and the viewport is whatever pan and zoom the user
  * left behind — which put every mark in the corner of the exported sheet.
@@ -215,11 +215,11 @@ export const renderManualMarkings = ({
   // zone — the one positional claim that holds, since a single view's contents do correspond
   // even though the sheets do not.
   //
-  // ⚠ When there is nothing to break a tie with — no zone on either side — every candidate is
+  // When there is nothing to break a tie with — no zone on either side — every candidate is
   // outlined rather than one being chosen. An arbitrary pick is indistinguishable from a
   // confident answer, which is the failure this overlay must not produce.
   //
-  // ⚠ This does suggest a pairing where the fraction version withheld one, which is a real cost
+  // This does suggest a pairing where the fraction version withheld one, which is a real cost
   // to the independence of a CHANGED marking (owner's call, 2026-08-18). The category selector
   // is still never pre-filled — that remains the load-bearing half of the guarantee.
   const flipY = (y: number) => flipWorldY(y, norm);

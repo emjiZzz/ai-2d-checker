@@ -197,7 +197,7 @@ def common_properties(entity: Any) -> dict[str, Any]:
 def _degree_sign_in_doc_bytes(entity: Any) -> str:
     """A degree sign in the BYTE domain this mapper actually works in.
 
-    ⚠ `entity_mapper` runs **before** `dxf_parser.transcode_value`. The DXF is read with
+    `entity_mapper` runs **before** `dxf_parser.transcode_value`. The DXF is read with
     `encoding="latin-1"` so bytes survive intact, which means every string here is raw
     document-codepage bytes with one character per byte -- see the header note in
     `infrastructure/utils/text.py`. Emitting a real U+00B0 therefore inserts the single byte
@@ -671,7 +671,7 @@ class EntityMapper:
         dim_kind = int(dim_type or 0) & 0b111
 
         if (not text or "<>" in text) and measurement is not None:
-            # ⚠ `actual_measurement` is RADIANS for an angular dimension (kinds 2 and 5) and
+            # `actual_measurement` is RADIANS for an angular dimension (kinds 2 and 5) and
             # drawing units for every other kind. Formatting it blindly stored a 60° dimension
             # as `1.05` and an 80° one as `1.4` -- a value that appears nowhere on the sheet.
             #
@@ -1042,7 +1042,7 @@ class EntityMapper:
         # a leader that never arrives; ezdxf records two extra primitives at the tip that we drew
         # none of. Stored as a length so the viewport projection scales it with everything else.
         #
-        # ⚠ ezdxf draws this arrow at ~1.5x DIMASZ (measured: its recorded tip box solves to a
+        # ezdxf draws this arrow at ~1.5x DIMASZ (measured: its recorded tip box solves to a
         # triangle 3.75 long against DIMASZ 2.5 on this sheet). That multiplier is not documented
         # anywhere we could find, so DIMASZ is used raw rather than fitted to one renderer — a
         # slightly small arrow is a size difference, no arrow is a missing feature.

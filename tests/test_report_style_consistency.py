@@ -14,7 +14,7 @@ Two things have to agree or the report is wrong in ways nobody will notice:
   the manual ones drifted to different colours for the same word, both rendered fine, and it was
   invisible until an engineer looked at one drawing carrying both kinds.
 
-⚠ This asserts on the values a *human* would compare, not on file bytes. It parses the TS source
+This asserts on the values a *human* would compare, not on file bytes. It parses the TS source
 rather than importing it, so a rename on either side fails loudly here rather than silently
 letting the two copies diverge.
 """
@@ -75,13 +75,13 @@ def test_the_two_sides_know_the_same_statuses():
 def test_the_mark_matches_the_canvas_column_of_marker_styles():
     """The mark itself is `color` — the same ink the review canvas paints.
 
-    ⚠ This assertion was inverted on 2026-08-25, by an explicit owner's call, and the reasoning it
+    This assertion was inverted on 2026-08-25, by an explicit owner's call, and the reasoning it
     replaced is kept because it was half right. It read *"Page 1 must use `uiLight`, NOT `color` …
     `#39ff14` and `#00ffff` on white paper are close to invisible"* — true of neon as a **stroke**
     on white, and `markerInkFor(type, 'print')` still says exactly that. The report deliberately
     diverges from that surface so the printed mark is the one the engineer saw on screen.
 
-    ⚠ **So `markerInkFor(..., 'print')` and this constant now disagree on purpose.** If they are
+    **So `markerInkFor(..., 'print')` and this constant now disagree on purpose.** If they are
     ever reconciled, reconcile them toward whichever surface the owner picks — do not assume this
     one drifted.
     """
@@ -122,7 +122,7 @@ def test_text_fit_scale_matches_the_canvas():
     stick font the title block was laid out for. At full height the labels overflow their cells:
     on M745206N01, `材料個数` runs 291.92 → 306.48 while `Material Weight(kg)` starts at 304.87.
 
-    ⚠ **That overlap is in the source data as rendered, not in either renderer** — ezdxf's ink
+    **That overlap is in the source data as rendered, not in either renderer** — ezdxf's ink
     and the canvas model agree on it to within 0.2 units. The canvas has compensated with 0.80
     since the vector path landed; the PDF applies the same factor. If one side changes it alone
     the report stops matching the sheet the engineer reviewed, and nothing else would say so.

@@ -94,7 +94,7 @@ def test_a_linear_dimension_has_no_radial_geometry(doc_with_radial_dims):
 
 
 def test_a_one_arrow_callout_is_never_reported_short(doc_with_radial_dims):
-    """⛔ The negative result this harness exists to hold on to.
+    """The negative result this harness exists to hold on to.
 
     A one-arrow callout's leader runs as far as its text placement asks and no further, including
     reach 0.0 when it points away from the centre with the value outside the circle. Measured

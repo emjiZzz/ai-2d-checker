@@ -18,7 +18,7 @@ Latency is linear in that one field across every room — 0 KB / 0.16 s, 32 KB /
 cost is bytes crossing the link to a remote cluster, exactly as for `entity_cache`, and
 nothing on the query side can reach it.
 
-⚠ **The second 2 s was not the write.** The `$set` note in `rooms.py::get_room` was half a
+**The second 2 s was not the write.** The `$set` note in `rooms.py::get_room` was half a
 fix: it stopped *sending* the field, but Beanie's `Document.update` issues
 `response_type=UpdateResponse.NEW_DOCUMENT` (`beanie/odm/documents.py`) — a
 `find_one_and_update` returning the document AFTER the update — and then `merge_models` it
@@ -36,7 +36,7 @@ That is sound because `physical_comparison_results` has exactly one writer — `
 `GET /rooms/{room_id}` stamps `last_opened_at` only, deliberately, so opening a room does not
 invalidate the room's own entry.
 
-⚠ **A second writer of that field must bump `updated_at` too, or it will serve a stale
+**A second writer of that field must bump `updated_at` too, or it will serve a stale
 checklist** — the failure mode this repo pays for most often, and here it would render as a
 plausible comparison rather than as an error.
 `tests/test_room_results_cache.py::test_physical_comparison_results_has_exactly_one_writer`

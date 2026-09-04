@@ -53,7 +53,7 @@ OTHER_FEATURE_LABEL = "Other / Unclassified"
 # (`line_attribute_differ`), which is the other honest resolution.
 # See docs/vault/06 - .../Gotcha - A Checklist Item With No Producer Reported Clean.md.
 #
-# ⚠ Membership here HIDES rows: `ChecklistPanel` checks `isDeferred` before `hasRows`, so a
+# Membership here HIDES rows: `ChecklistPanel` checks `isDeferred` before `hasRows`, so a
 # deferred item showing findings would render the "not yet supported" text and drop them on
 # the floor. Before adding a key, confirm nothing can assign it — and when you build a
 # producer for one of these, remove it from this set in the same change.

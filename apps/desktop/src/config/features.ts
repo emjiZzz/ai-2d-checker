@@ -24,7 +24,7 @@
  *
  * **Forces every room to be a manual check.** `useIsManualCheckRoom()` returns true regardless of
  * the room document, `RoomsView` creates rooms as `manual_check` and lists only those, and the
- * tour's Tutorial Room is created the same way. ⚠ **So no comparison engine runs in a prototype
+ * tour's Tutorial Room is created the same way. **So no comparison engine runs in a prototype
  * build.** `TwoDLeftPanel` renders `ManualMarkingList` outright, and its "CAD Comparison" header,
  * its START COMPARISON button and its prototype-specific idle copy are all unreachable —
  * this comment claimed prototype mode focused "100% on deterministic & physical CAD comparison",
@@ -36,7 +36,7 @@
  * opened — `loadWorkspaceState` still runs on `openRoom` and overwrites it, so this is a render
  * gate, not a data bypass.
  *
- * ⚠ There was a `FEATURES` object here declaring six of these as named flags. It had **zero
+ * There was a `FEATURES` object here declaring six of these as named flags. It had **zero
  * consumers** — every gate calls `isPrototypeMode()` directly — so it could not drift into being
  * wrong, only into being read as if it were the rule. It was, twice: it never declared `settings`
  * or the layout controls, and it declared an `aiEngine` toggle for a mode in which the engine is
@@ -49,7 +49,7 @@
  */
 
 /**
- * ⚠ **Keep this a single expression that names `import.meta.env` directly, twice.**
+ * **Keep this a single expression that names `import.meta.env` directly, twice.**
  *
  * It looks like it is begging to be tidied into a local:
  *

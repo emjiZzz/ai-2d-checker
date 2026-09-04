@@ -192,7 +192,7 @@ export const ManualMarkingList: React.FC = () => {
       {/*
         Stale-extraction warning for the pair being marked.
 
-        ⚠ **This is the only place it can appear in a prototype build.** `StaleExtractionBadge`
+        **This is the only place it can appear in a prototype build.** `StaleExtractionBadge`
         previously lived solely in `TwoDRightPanel`, which renders only when
         `isPhysicalComparisonEnabled || aiScanProgress === "completed" || isStandardsAuditCompleted`
         — and the first of those is set in exactly one place, after the comparison engine runs

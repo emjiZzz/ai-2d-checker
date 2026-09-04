@@ -6,15 +6,15 @@
 #
 # Called by the installer's NSIS pre-uninstall hook.
 #
-# ⚠ **Order matters: stop the process BEFORE removing the task.** Unregistering first leaves a
+# **Order matters: stop the process BEFORE removing the task.** Unregistering first leaves a
 # running backend with nothing to manage it -- it keeps port 8080 bound until the next reboot, so a
 # reinstall cannot start its own copy and the user gets an app that talks to an orphaned server
 # from the previous version.
 #
-# ⚠ **Never fatal.** An uninstaller that fails leaves the product half-removed, which is worse than
+# **Never fatal.** An uninstaller that fails leaves the product half-removed, which is worse than
 # a stray process. Every step reports what it did and carries on.
 #
-# 🔴 **Deliberately does NOT delete `storage\`.** That folder holds the engineer's uploaded
+# **Deliberately does NOT delete `storage\`.** That folder holds the engineer's uploaded
 # drawings and their ground-truth markings. An uninstall -- including the one that happens
 # silently as part of an UPGRADE -- must not destroy collected data. Removing it is a manual,
 # deliberate act.
@@ -56,7 +56,7 @@ try {
 
 # 4. Remove the generated config.
 #
-# 🔴 This is CONFIG, not data, and leaving it is how a wrong setting becomes permanent.
+# This is CONFIG, not data, and leaving it is how a wrong setting becomes permanent.
 #
 # NSIS did not create `.env` -- the post-install hook did -- so the uninstaller has no record of
 # it and would leave it behind. `install-service.ps1` then finds it on the next install and
@@ -65,7 +65,7 @@ try {
 # changed nothing. The fix has to be here, because the install side cannot tell a deliberate edit
 # from a stale leftover.
 #
-# ⚠ Deliberately narrower than `storage\`, which stays: that holds the engineer's drawings and
+# Deliberately narrower than `storage\`, which stays: that holds the engineer's drawings and
 # markings, and an UPGRADE runs this uninstaller silently. Config regenerates from the template;
 # data does not regenerate from anything.
 $envFile = Join-Path $PSScriptRoot ".env"

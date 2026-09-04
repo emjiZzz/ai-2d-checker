@@ -46,7 +46,7 @@ export const useEngineerStore = create<EngineerState>((set) => ({
  * repeated, because the two would drift into disagreeing about when the app is ready, and the
  * symptom of that disagreement is a modal with another modal on top of it.
  *
- * ⚠ **Prototype-scoped, and that is not incidental.** `App.tsx` renders `EngineerPromptModal`
+ * **Prototype-scoped, and that is not incidental.** `App.tsx` renders `EngineerPromptModal`
  * only when `isPrototypeMode()`, while `isModalOpen` initialises to
  * `!localStorage.getItem(STORAGE_KEY)` regardless of mode. So in a full build a user who has
  * never entered a name has `isModalOpen === true` with no modal on screen — gating on the raw

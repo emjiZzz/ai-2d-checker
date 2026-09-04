@@ -728,7 +728,7 @@ def test_angular_dimension_text_is_degrees_not_radians():
     # Kind lives in the low 3 bits; 2 and 5 are the angular forms.
     assert props["dim_type"] & 0b111 in (2, 5)
 
-    # ⚠ This mapper runs BEFORE `dxf_parser.transcode_value`, so its strings are raw
+    # This mapper runs BEFORE `dxf_parser.transcode_value`, so its strings are raw
     # document-codepage bytes carried one character per byte. The assertion applies the same
     # transcode the parser does, because that is what the value has to survive to reach the
     # database -- looking for a literal U+00B0 here passes for a CP1252 document and hides the

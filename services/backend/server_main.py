@@ -10,7 +10,7 @@ server, matching how `KMTI_iCAD_Server.exe` and `KMTI_FMS_Server.exe` are deploy
 PyInstaller freezes a *script*, not a module invocation. `python -m uvicorn services.backend.main:app`
 has no frozen equivalent, so the ASGI app is imported here and handed to `uvicorn.run` directly.
 
-⚠ **The app object is passed, never the `"module:attr"` string.** Uvicorn resolves a string by
+**The app object is passed, never the `"module:attr"` string.** Uvicorn resolves a string by
 importing it, which works from a checkout and fails inside a bundle where the import graph is not
 on disk in the same shape. Passing the object also rules out `--reload` and multiple workers, both
 of which re-import by string -- neither is wanted for this deployment anyway.
@@ -30,7 +30,7 @@ import sys
 def main() -> int:
     import uvicorn
 
-    # ⚠ ABSOLUTE imports, not relative. PyInstaller executes this file as `__main__`, which has
+    # ABSOLUTE imports, not relative. PyInstaller executes this file as `__main__`, which has
     # no parent package, so `from .config import ...` dies with "attempted relative import with no
     # known parent package" -- at startup, before anything is logged. Verified by running the
     # frozen exe; the build itself completes happily either way.

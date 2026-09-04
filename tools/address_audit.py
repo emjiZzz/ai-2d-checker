@@ -48,7 +48,7 @@ best case, makes every number look excellent, and hides the entire defect class:
 was that a click and an anchor are different quantities. So a line is clicked at its midpoint,
 a curve on its circumference, a polyline on its first span.
 
-⚠ An ellipse must be probed on its `points` run. Its `center` is not on its own outline, so
+An ellipse must be probed on its `points` run. Its `center` is not on its own outline, so
 anchoring there produces "wrong" rows that are artifacts of the probe rather than defects in
 the resolver -- 24 of them on the one sheet where that was tried.
 

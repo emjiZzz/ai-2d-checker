@@ -57,7 +57,7 @@ export const MULTIPLY_CHARS = '*xX×✕✖⨯⨉ｘ';
  *
  * `renderEntities.ts` re-exports it, so no existing importer changed.
  *
- * ⚠ **Classify what the user sees.** Any rule reading marking or finding text must run on this
+ * **Classify what the user sees.** Any rule reading marking or finding text must run on this
  * output, never on `ref_text`/`rev_text` directly.
  */
 export const cleanCadText = (text?: string | null): string => {

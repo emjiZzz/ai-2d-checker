@@ -287,7 +287,7 @@ def _pair_query(room_id: str, ref_drawing_id: str, rev_drawing_id: str,
     silent: a resume that looks in one place and a reopen that writes in another leaves an
     engineer's marking on a session the next open will not find.
 
-    ⚠ **A raw mapping, never Beanie's `Model.field == value` expressions.** Those resolve through
+    **A raw mapping, never Beanie's `Model.field == value` expressions.** Those resolve through
     descriptors that only exist after `init_beanie`, so a fully-mocked router test cannot
     construct them — it raises `AttributeError: room_id` — and the code path goes untested. That
     is not hypothetical: `_require_open` was written with expressions and was therefore the one
@@ -312,7 +312,7 @@ async def _require_open(session: ManualCheckSession) -> ManualCheckSession:
     An engineer who spots a miss after submitting should not have to start a new pass, so this
     deliberately reopens rather than refusing with a 409 (which is what it did until 2026-08-25).
 
-    ⚠ **The reopen rewrites the record a corpus label was taken from.** `submit` is the moment a
+    **The reopen rewrites the record a corpus label was taken from.** `submit` is the moment a
     pass becomes the thing `tools/eval_corpus.py from-manual-check` converts, so a silent
     amendment leaves a label whose source no longer matches it and nothing anywhere saying so.
     `reopened_at` / `reopen_count` are what make that visible; they are the reason this is an
@@ -333,7 +333,7 @@ async def _require_open(session: ManualCheckSession) -> ManualCheckSession:
             )
         ).update_many({"$set": {"status": "submitted"}})
     except PyMongoError as err:
-        # ⚠ Was a bare `except Exception: pass`. Narrowed and logged because the failure it hides
+        # Was a bare `except Exception: pass`. Narrowed and logged because the failure it hides
         # is not cosmetic: if this update does not land, the `save()` below hits the partial
         # unique index, is swallowed by the `DuplicateKeyError` branch, and the session stays
         # `submitted` in the database while this function returns it as `in_progress`. The

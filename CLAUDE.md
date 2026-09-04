@@ -67,7 +67,13 @@ This file and the code around it are what every session imitates, so the style i
 self-propagating. Keep it plain.
 
 - Comments state the constraint in one or two sentences and name what enforces it.
-- No emoji markers, no bold for emphasis, no markdown headings inside comments.
+- No decorative status emoji in comments or docstrings. Enforced by
+  `tests/test_comment_style.py`, which fails the suite; `tools/comment_style.py --fix` removes
+  them. User-facing strings are exempt and the scanner leaves them alone: a marker rendered in
+  JSX, yielded in a Copilot error, or written by a `Write-Host` is content, not decoration. The
+  set is deliberately narrow — `⌀`, `×`, `→` and the GD&T symbols are CAD semantics, and `✓` is
+  parsed by `complianceChecklistSheet.ts`, so none of them are markers.
+- No bold for emphasis, no markdown headings inside comments.
 - No rhetorical framing. Write "this was measured", not "this is a measurement, not a preference".
 - If an explanation needs more than about five lines, it belongs in a vault note or in a test name.
   Link the note; do not inline it.

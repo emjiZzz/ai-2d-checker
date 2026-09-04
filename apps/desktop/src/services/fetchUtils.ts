@@ -20,7 +20,7 @@ import { ZodType } from "zod";
 /**
  * An error carrying the HTTP status that produced it.
  *
- * ⚠ **Callers were reading the status back out of the message text, and it is not in there.**
+ * **Callers were reading the status back out of the message text, and it is not in there.**
  * `InteractiveTourOverlay` tested the message against `/\b40[13]\b|unauthor|forbidden/i` to decide
  * whether to explain an auth failure -- and the backend's own 401 detail is
  * *"Access Denied: Invalid security API Token."*, which contains no status code and none of those
@@ -69,7 +69,7 @@ export async function resolveApiToken(): Promise<string | null> {
  * The name the tester chose in `EngineerPromptModal`, sent so a SHARED backend can keep each
  * tester's workspaces and uploads separate.
  *
- * ⚠ **Identity, not authentication.** It is a name picked from a dropdown with no password, and
+ * **Identity, not authentication.** It is a name picked from a dropdown with no password, and
  * every installed client carries the same API bearer token — so the backend treats it as a label
  * for separation, never as a permission. `api/dependencies.resolve_username` says the same on the
  * far side, and prefers a verified session token whenever one exists.
@@ -159,7 +159,7 @@ export async function parseOrThrow<T>(res: Response): Promise<T> {
       caller has already been told it failed, and re-issuing a mutation on a 401 risks performing
       it twice if the failure was anything other than a stale token.
 
-      🔴 **This used to `setState({ apiToken: null })`, which made the next request worse, not
+      **This used to `setState({ apiToken: null })`, which made the next request worse, not
       better.** The synchronous `buildHeaders()` omits `Authorization` entirely when the token is
       null, so anything issued before the re-read completed went out unauthenticated and came back
       *"Access Denied: Missing Authorization Header"* -- a different error naming a different

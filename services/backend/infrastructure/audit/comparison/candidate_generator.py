@@ -421,7 +421,7 @@ def _normalize_value_text(t) -> str:
 def _collect_structured_text_values(*sources) -> set:
     """Structured title-block/BOM values, normalised, for the suppression net.
 
-    ⚠ `MIN_STRUCTURED_VALUE_LENGTH` is read **inside the body, on every call** — never as a
+    `MIN_STRUCTURED_VALUE_LENGTH` is read **inside the body, on every call** — never as a
     default argument and never captured at def time. `params.sweep_override` rebinds the
     module global, so a value frozen at definition would make the sweep report this
     parameter as having no effect while the engine quietly ran on the old number.
@@ -978,7 +978,7 @@ async def generate_deterministic_candidates(
     # So an unpairable value is RELEASED: dropped from this extractor's output and from the
     # suppression net, leaving it to whichever zone's pass covers it.
     #
-    # ⚠ Releasing is only safe when something else can catch it, and here it usually cannot:
+    # Releasing is only safe when something else can catch it, and here it usually cannot:
     # `title_upper_left` is in `VIEWS_EXCLUDED_ZONES`, so content inside that box is subtracted
     # from the `views` pool, and there is no other pass scoped to the UL box. A release with no
     # catcher is a SILENT FALSE NEGATIVE -- the one failure mode this system cannot detect --

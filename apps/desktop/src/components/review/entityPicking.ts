@@ -24,7 +24,7 @@ import { DIAMETER_CHARS } from "../../utils/cadGlyphs";
  * or a zoom without being rebuilt, and the hit test converts the cursor once instead of
  * converting every box.
  *
- * ⚠ **Y is flipped here and that is not optional.** Entity geometry is CAD Y-up; the canvas is
+ * **Y is flipped here and that is not optional.** Entity geometry is CAD Y-up; the canvas is
  * Y-down. `flipWorldY` is the one conversion (`coordinateTransform.ts`), and it is the *same*
  * function the renderer uses, passed in rather than reimplemented. Getting it backwards
  * produces a hit box mirrored about the sheet's centreline — which, as `renderViewOrigins`
@@ -61,7 +61,7 @@ const MIN_HALF_EXTENT = 0.5;
  * already in the payload as separate exploded entities, which is what the engineer can see and
  * therefore what they are aiming at.
  *
- * ⚠ Leaving `block` in was a real defect, and a nasty one because it fails *plausibly*: a block
+ * Leaving `block` in was a real defect, and a nasty one because it fails *plausibly*: a block
  * row carries only `insert`, so it used to get a small synthetic box from the fallback below —
  * and since `hitTest` returns the SMALLEST match, that box beat the real text sitting inside it.
  * The stamp modal then showed `block · handle 384` instead of the value. It bites hardest on
@@ -97,7 +97,7 @@ const ANNOTATION_TYPES = new Set(['text', 'dimension', 'leader']);
  * The diameter mark IS dropped, because that is the notation the two sides genuinely disagree
  * about.
  *
- * ⚠ The value lives in `properties.text`. `geometry.text` is `None` on every entity in the
+ * The value lives in `properties.text`. `geometry.text` is `None` on every entity in the
  * corpus — measured across dimension, text and mtext on both sides of `M745230A01`. Reading
  * only the geometry field yields an index that silently matches nothing.
  */
@@ -116,12 +116,12 @@ const DIAMETER_MARKS = new RegExp(`[${DIAMETER_CHARS}]`, 'g');
 /**
  * Multiplication signs, folded onto the letter `x`.
  *
- * ⚠ **NFKC does not do this.** It folds the revision's full-width digits, parens and colon onto
+ * **NFKC does not do this.** It folds the revision's full-width digits, parens and colon onto
  * the reference's half-width ones, so `４ロール：１２（２×６台）` and `4 ロール：12 (2x6台)` come
  * within one character of each other and then differ forever on U+00D7 versus the letter — the
  * only surviving difference in a string a person reads as identical.
  *
- * ⚠ **The backend already folded these; this layer did not.** `spatial_differ._normalize_text`
+ * **The backend already folded these; this layer did not.** `spatial_differ._normalize_text`
  * has done `× ✕ ✖ ⨯ → x` for as long as it has existed, and `infrastructure/utils/text.py`
  * folds `[xX×ラｘＸ]` (the `ラ` is a CP932 mis-decode of the same glyph). So the engine paired
  * this row and the manual-check overlay did not — two implementations of one rule, one of which
@@ -151,7 +151,7 @@ export function normalizeEntityValue(raw: unknown): string {
 /**
  * The raw string the sheet ACTUALLY draws, before any normalization.
  *
- * ⚠ **`render_text` first, and it is not the same as `text`.** `render_text` is harvested from
+ * **`render_text` first, and it is not the same as `text`.** `render_text` is harvested from
  * the dimension's anonymous block at extraction — what the CAD application composited — while
  * `properties.text` is the DXF override field, which `map_dimension` rebuilds from
  * `actual_measurement` and which therefore **loses every prefix, suffix and tolerance stack the
@@ -226,7 +226,7 @@ export function dimensionKindOf(ent: any): number | null {
 /**
  * Which semantic zone a box sits in, or `null`.
  *
- * ⚠ **Detected zone boxes are CAD Y-up; this index is flipped-world.** Comparing them without
+ * **Detected zone boxes are CAD Y-up; this index is flipped-world.** Comparing them without
  * flipping produces a zone assignment that is mirrored about the sheet centreline — correct
  * near the middle and wrong at the top and bottom, which is CLAUDE.md's constraint 3 and the
  * `renderViewOrigins` failure in another costume. The flip is applied to the zone, once, here.
@@ -533,7 +533,7 @@ function fromPoints(
  * function cannot measure is one the engineer can see but not click, and there is nothing on
  * screen to explain why.
  *
- * ⚠ **A DIMENSION anchors on `def_point`, not `insert`.** That mismatch is exactly the open
+ * **A DIMENSION anchors on `def_point`, not `insert`.** That mismatch is exactly the open
  * defect that stops `tools/eval_corpus.py worksheet` placing a dimension at all, and a labelling
  * tool that inherited it would be unable to record the one false-negative class the corpus has
  * already caught. `render_text_point` is preferred where present because it is where the
@@ -550,7 +550,7 @@ export function entityWorldBounds(
   // `properties.bbox` is the extractor's OWN measured extent, and for text it is present on
   // every entity (249/249 on `M7452A0N01_reference`). Prefer it over anything derived here.
   //
-  // ⚠ This is the fix for text being unclickable. The estimate below anchors on `insert` and
+  // This is the fix for text being unclickable. The estimate below anchors on `insert` and
   // pads symmetrically, which assumes `insert` is a baseline — but this client's sheets are
   // MTEXT with `attachment_point: 1`, where `insert` is the TOP-left and the glyphs hang
   // *below* it. Measured against the real bbox, the synthetic box was off by a median of 2.8
@@ -579,7 +579,7 @@ export function entityWorldBounds(
     return box(x, y - height * TEXT_BOX_PAD, x + halfWidth, y + height * TEXT_BOX_PAD);
   }
 
-  // ⚠ A DIMENSION is measured from its TEXT, and this branch must come before `render_paths`.
+  // A DIMENSION is measured from its TEXT, and this branch must come before `render_paths`.
   //
   // `render_paths` describes the whole dimension — extension lines, the dimension line, the
   // arrowheads — so on a re-extracted drawing it produced a box spanning the entire measured
@@ -673,7 +673,7 @@ export function entityWorldBounds(
     const r = Math.abs(Number(geo.radius)) || MIN_HALF_EXTENT;
     if (!Number.isFinite(cx) || !Number.isFinite(cyRaw)) return null;
 
-    // ⚠ An ARC is not its circle. Using `center ± radius` gave a 60° arc a box covering the
+    // An ARC is not its circle. Using `center ± radius` gave a 60° arc a box covering the
     // whole circle it is part of — which is what made the hover highlight look absurdly large,
     // and worse, let one arc blanket every entity inside its own radius.
     const a0 = Number(ent.properties?.start_angle);

@@ -44,7 +44,7 @@
  * layers fetch runs through `parseOrThrow` with no Zod schema to strip it), so it is the one
  * signal the canvas can actually use.
  *
- * ⚠ A sheet whose section callouts were authored in paper space would not be matched. That is the
+ * A sheet whose section callouts were authored in paper space would not be matched. That is the
  * safe direction: the label is drawn, exactly as it is today.
  */
 
@@ -160,7 +160,7 @@ const vertexListOf = (e: CanvasEntity): Point[] => {
  * Ties and single-colour sheets return nothing, which is the safe direction: the lines are drawn,
  * exactly as they are today.
  *
- * ⚠ A minority-colour `CENTER` line that is *not* a cut plane would be culled on a sheet that has
+ * A minority-colour `CENTER` line that is *not* a cut plane would be culled on a sheet that has
  * a section designation. No such line exists in this corpus; if one appears, this is where to add
  * the label-proximity gate that was left out for having no honest constant.
  */

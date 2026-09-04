@@ -296,7 +296,7 @@ class FindingSnapshot(BaseModel):
     ref_coord: Optional[list[float]] = None
     rev_coord: Optional[list[float]] = None
 
-    #: ⚠ The three below are ALWAYS null in stored rows, and that is correct — do not "fix" it.
+    #: The three below are ALWAYS null in stored rows, and that is correct — do not "fix" it.
     #:
     #: Measured 2026-08-19: non-null in 0 of 249 documents. That looks like a defect and is not.
     #: `feature_extractor.build_feature_row` derives each one whenever it arrives as `None`, and

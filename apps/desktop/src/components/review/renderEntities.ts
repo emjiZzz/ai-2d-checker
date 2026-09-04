@@ -73,7 +73,7 @@ const DEFAULT_CAP_HEIGHT_RATIO = 0.7617;
  * geometry, so CAD viewers display it at a constant screen thickness and iCAD SX is no
  * exception. 96/25.4 is the CSS reference (1 inch = 96 px).
  *
- * ⚠ This deliberately diverges from the ezdxf raster at high zoom. ezdxf's default
+ * This deliberately diverges from the ezdxf raster at high zoom. ezdxf's default
  * `LineweightPolicy.ABSOLUTE` bakes the weights into the PNG proportionally to the sheet, so
  * zooming the bitmap scales them; drawing vectors that way was tried and turns a 1.00mm frame
  * line into a ~15px slab once you zoom into the title block. Matching the live CAD viewer beats
@@ -376,7 +376,7 @@ const drawCadText = (ctx: CanvasRenderingContext2D, opts: CadTextOptions): void 
   // so every string rendered at its natural width — on this sheet 248 of 249 MTEXT entities
   // carry a `\W` between 0.60 and 0.91, i.e. essentially the whole drawing was 10-40% too wide.
   //
-  // ⛔ `\T` (tracking) is deliberately NOT applied, and this is a measured decision rather than
+  // `\T` (tracking) is deliberately NOT applied, and this is a measured decision rather than
   // an omission. Folding it into the same scale was tried first and made every string too
   // narrow by exactly the tracking factor: across the 81 comparable strings that carry a `\T`,
   // `width_ratio` came out equal to `tracking` to within 0.019. ezdxf — which draws the raster
@@ -1296,7 +1296,7 @@ const MARKER_DOT_PX = 5.5;
  * the pointer expects the target to be; on paper it means the value cannot be read underneath its
  * own checkmark. Printed marks step up off the centre by roughly half a tick.
  *
- * ⚠ Screen values are unchanged, and `markerPositionsRef` is not lifted. The rise is export-only
+ * Screen values are unchanged, and `markerPositionsRef` is not lifted. The rise is export-only
  * because the stored position is what a click is tested against — moving the drawn mark away from
  * its hit target is a different bug in the same place.
  */
@@ -1368,7 +1368,7 @@ export const renderViolationReticles = ({
     // Level-of-Detail (LOD): Skip entirely if zoomed way out, unless it's the actively selected
     // violation.
     //
-    // ⚠ `currentViewportScale`, not `viewport.scale`. They are the same number on screen and not
+    // `currentViewportScale`, not `viewport.scale`. They are the same number on screen and not
     // on export, where this used to read the pan/zoom the user happened to leave the app at — so
     // a checker who zoomed out past 0.1 exported a report with no markers on it at all, and
     // nothing said why.
@@ -1526,11 +1526,11 @@ export const renderViolationReticles = ({
     // rather than inside a ruled table cell, where a bigger dot would cover the neighbouring
     // value it is not about.
     //
-    // ⚠ Scaled by `viewport.scale`, so the dot tracks the sheet rather than the screen — zoom out
+    // Scaled by `viewport.scale`, so the dot tracks the sheet rather than the screen — zoom out
     // far enough and it shrinks with the geometry it marks. That is deliberate for the DOT (it
     // belongs to a place on the drawing) and deliberately NOT true of the check below, which is
     // a statement about that place and stays legible at any zoom.
-    // ⚠ `currentViewportScale` carries the resolution too, so there is no `resolutionMultiplier`
+    // `currentViewportScale` carries the resolution too, so there is no `resolutionMultiplier`
     // here. `scale / normScale` IS `viewport.scale` on screen and the export's own fit-to-page
     // zoom on export — one expression, correct in both, where the old product of a window-derived
     // multiplier and the live zoom made a marker's printed size depend on how big the user

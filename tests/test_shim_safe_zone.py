@@ -13,7 +13,7 @@ The cause was a cap smaller than the thing it capped. On M745227N01's reference 
 `_clamp_bbox` shrinks symmetrically, and the bottom row finished 35.8 units *below the bottom
 edge of its own zone*.
 
-⚠ No published number moves when this breaks. `M745227N01` is the only corpus pair carrying a
+No published number moves when this breaks. `M745227N01` is the only corpus pair carrying a
 shim table and it is one of the six the runner skips for having no labels, so both baselines
 are byte-identical either way. These tests are the only guard.
 """

@@ -186,7 +186,7 @@ class VectorStore:
                 f"the wrong chunk for a hit, which is worse than returning none."
             )
 
-        # ⚠ Every file is written to a temp path and renamed. `os.replace` is atomic, so a reader
+        # Every file is written to a temp path and renamed. `os.replace` is atomic, so a reader
         # never sees a half-written index — and more importantly the three files never come from
         # two different builds. `review_violation` rebuilds `lessons` on every verdict via
         # `asyncio.to_thread`, so two verdicts submitted close together genuinely run this method
@@ -200,7 +200,7 @@ class VectorStore:
         # method is reachable from tooling that does not hold it.
         self.directory.mkdir(parents=True, exist_ok=True)
 
-        # ⚠ The temp name keeps the `.npz` extension — `vectors.tmp.npz`, not `vectors.npz.tmp`.
+        # The temp name keeps the `.npz` extension — `vectors.tmp.npz`, not `vectors.npz.tmp`.
         # `scipy.sparse.save_npz` **appends `.npz`** when the filename does not already end in
         # it, so the obvious `.tmp` suffix silently produces `vectors.npz.tmp.npz` and the rename
         # below then fails with FileNotFoundError on a path that was never written.

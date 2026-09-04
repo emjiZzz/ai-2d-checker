@@ -28,7 +28,7 @@ def _function(name: str) -> ast.FunctionDef:
 def _source(name: str) -> str:
     """The function's code with **comments stripped**.
 
-    ⚠ Not `ast.get_source_segment`, which returns the comments too. Every assertion in this
+    Not `ast.get_source_segment`, which returns the comments too. Every assertion in this
     file is a substring match against a handler, and with comments included both directions
     are wrong: `"room.set(" not in src` matched the comment *explaining why room.set() is not
     used* (that is how it first failed against correct code), and every positive assertion
@@ -60,7 +60,7 @@ def test_the_detail_endpoint_still_returns_the_payload():
     """The counterpart, and the reason this cannot simply be dropped everywhere: `openRoom`
     restores a room's canvas markers from `physical_comparison_results.canvas_markings`.
 
-    ⚠ This originally asserted `"projection" not in src`, which pinned the *mechanism* — "the
+    This originally asserted `"projection" not in src`, which pinned the *mechanism* — "the
     detail endpoint fetches the whole document" — as a proxy for the behaviour. The detail
     endpoint now projects the field out of the fetch too and restores it from disk, so the
     proxy failed while the behaviour it stood for was intact. Rewritten to check what actually
@@ -82,7 +82,7 @@ def test_the_detail_endpoint_writes_only_the_timestamp():
     """`room.save()` rewrote the whole document — comparison payload included — to stamp
     `last_opened_at`.
 
-    ⚠ `room.set()` is now banned here too, and that is not a style preference. Beanie's
+    `room.set()` is now banned here too, and that is not a style preference. Beanie's
     `Document.update` issues `response_type=UpdateResponse.NEW_DOCUMENT` — a
     `find_one_and_update` returning the document AFTER the write — then merges it back into the
     instance. So the targeted `$set` sent one timestamp and pulled the entire 166 KB checklist

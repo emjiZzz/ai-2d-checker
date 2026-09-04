@@ -43,10 +43,10 @@ export interface UpdateRoomContext {
  * `?mine=true` in a prototype build, so a tester's workspace shows their own work plus the
  * SHARED (ownerless) corpus, rather than all 21 testers' uploads on one backend.
  *
- * ⚠ Off in a full build: ownership there comes from a real login, and this list also feeds admin
+ * Off in a full build: ownership there comes from a real login, and this list also feeds admin
  * views that are supposed to see everything.
  *
- * ⚠ Separation, not privacy — the backend says so too. Anything fetched by id is still served to
+ * Separation, not privacy — the backend says so too. Anything fetched by id is still served to
  * any caller holding the shared API token.
  */
 function mineQuery(): string {

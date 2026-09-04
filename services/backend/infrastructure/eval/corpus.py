@@ -567,7 +567,7 @@ class CorpusPair:
         the cache internally and offers no seam to pass a reading through. Idempotent: it
         only ever writes back exactly what the corpus captured.
 
-        ⚠ **It writes over a DIFFERING entry, and that is the point.** Until 2026-08-17 the
+        **It writes over a DIFFERING entry, and that is the point.** Until 2026-08-17 the
         write was guarded by `if not target.exists()`, so this filled a *gap* but could not
         repair a *stale* entry — while this docstring claimed it made a score reproducible
         and `run_corpus` claimed it made the score "a function of the corpus alone". Both

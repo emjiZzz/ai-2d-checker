@@ -150,7 +150,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       // rendering until all three had landed. The room LIST already carries both drawing ids,
       // so when the room was opened from it there is nothing to wait for.
       //
-      // ⚠ This is a prefetch, never a source of truth. `/rooms/{id}` stays authoritative for
+      // This is a prefetch, never a source of truth. `/rooms/{id}` stays authoritative for
       // WHICH drawings the room points at: the list can be stale, and a room re-pointed at a
       // different drawing elsewhere would otherwise load the old one and look perfectly normal.
       // Results are keyed by drawing id and consumed below only when the authoritative id
@@ -165,7 +165,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       // other the network — and they were awaited one after the other. Run together they cost
       // the slower of the two rather than their sum.
       //
-      // ⚠ `loadWorkspaceState` must still finish BEFORE the drawings below are applied: it can
+      // `loadWorkspaceState` must still finish BEFORE the drawings below are applied: it can
       // call `resetWorkspace()`, and a reset landing after them would blank the room that was
       // just opened. Awaiting both here keeps that ordering while removing the serial wait.
       const [, roomRes] = await Promise.all([

@@ -317,7 +317,7 @@ class ComparisonCacheManager:
     # `title_upper_left` is subtracted from the `views` pool and an uncaught release would be a
     # silent false negative. See tests/test_title_ul_release.py.
     #
-    # ⛔ A THIRD change was written under this bump and REVERTED the same day, before shipping:
+    # A THIRD change was written under this bump and REVERTED the same day, before shipping:
     # `extract_title_ul_kv` subtracting the sibling zones' shapes before banding. It measured
     # well on three unlabelled sheets and was a regression on the corpus that scores --
     # detection-only F1 0.7736 -> 0.7339, fp 10 -> 14, tp 41 -> 40, three new `title_block`
@@ -374,12 +374,12 @@ class ComparisonCacheManager:
     # Now 0 rows uncovered on both sides, and the only thing inside the box but outside the
     # drawn table is the table's own title, drawn above its top rule and part of it.
     #
-    # ⚠ This was invisible to every published number and will stay invisible: `M745227N01` is
+    # This was invisible to every published number and will stay invisible: `M745227N01` is
     # the ONLY corpus pair carrying a shim table and it is one of the six the runner skips for
     # having no labels. Both baselines are byte-identical across this change. Verified directly
     # on the pair instead -- see tests/test_shim_safe_zone.py.
     #
-    # ⛔ Not fixed by re-reading the drawn table. That was implemented on 2026-08-12 and
+    # Not fixed by re-reading the drawn table. That was implemented on 2026-08-12 and
     # reverted the same day on the owner's call; this is the minimal alternative and it touches
     # no pairing code.
     #

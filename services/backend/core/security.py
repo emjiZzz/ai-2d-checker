@@ -35,7 +35,7 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
 
 #: Folder name under the per-user data root that the token is published to.
 #:
-#: 🔴 **Deliberately NOT the Tauri bundle identifier** (`com.kmti.draftcheck`), which this used to be.
+#: **Deliberately NOT the Tauri bundle identifier** (`com.kmti.draftcheck`), which this used to be.
 #: That directory is the desktop app's OWN data directory: WebView2 stores its profile there, and
 #: the uninstaller deletes it. Publishing the credential inside it meant an uninstall/reinstall
 #: cycle removed the token -- and because it was written only at backend startup, nothing put it
@@ -76,7 +76,7 @@ def user_storage_root() -> Path:
     decrypt. Writing it under the user's own local app data is the same trust boundary as
     `<repo>/storage/secure`, not a wider one.
 
-    ⚠ **Local, never roaming.** On Windows this is `%LOCALAPPDATA%`, not `%APPDATA%`, precisely
+    **Local, never roaming.** On Windows this is `%LOCALAPPDATA%`, not `%APPDATA%`, precisely
     because the key is machine-bound: a roaming profile would sync a credential to machines where
     it cannot decrypt, which is all cost and no benefit.
     """

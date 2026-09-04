@@ -6,7 +6,7 @@ import { ApiError, isAuthFailure, parseOrThrow } from "./fetchUtils";
  * The backend's own 401 body, copied verbatim from
  * `services/backend/core/security.py::verify_api_token`.
  *
- * 🔴 This exact string is why these tests exist. It contains no status code and none of the words
+ * This exact string is why these tests exist. It contains no status code and none of the words
  * the previous check looked for, so an installed build showed the generic failure message where a
  * specific one had been written for it.
  */

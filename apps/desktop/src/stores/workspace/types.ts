@@ -25,7 +25,7 @@ export interface DrawingItem {
    * does not send them, and an absent `extraction_is_stale` means "cannot judge", never
    * "current". `StaleExtractionBadge` renders nothing in that case rather than warning.
    *
-   * ⚠ Do NOT recompute staleness by comparing the two numbers here. The server does it beside
+   * Do NOT recompute staleness by comparing the two numbers here. The server does it beside
    * `EXTRACTION_SCHEMA_VERSION`; a second copy of the rule in TypeScript is one more thing to
    * miss when the constant moves, with no shared types to catch it. The numbers are sent only
    * so the badge can say "v2 of v7".
@@ -369,7 +369,7 @@ export interface PickedEntity {
  * its two sides still place their views differently — so the same fraction is a different
  * feature. Owner's call, 2026-08-18: match the value, not the place.
  *
- * ⚠ This does now suggest a correspondence, which the position version deliberately withheld —
+ * This does now suggest a correspondence, which the position version deliberately withheld —
  * see the note in `renderManualMarkings`. The category selector stays unfilled.
  */
 /**
@@ -431,7 +431,7 @@ export interface PendingStamp {
 /**
  * Everything `recordStamp` needs beyond the stamp itself.
  *
- * ⚠ **`textWasEdited`, `isBulk` and `notes` are structurally always `false` / `false` / `''`.**
+ * **`textWasEdited`, `isBulk` and `notes` are structurally always `false` / `false` / `''`.**
  * They are on the wire model and on `GroundTruthMarking` because the capture schema is a
  * deliberate superset of what a corpus label needs, but the only surface that writes a marking
  * is `SelectionMenu`, and it has no field for any of the three.

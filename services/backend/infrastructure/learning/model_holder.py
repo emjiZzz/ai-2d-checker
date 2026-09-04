@@ -107,7 +107,7 @@ def save_bundle(bundle: dict) -> None:
     # current location even when the bundle it replaces was read from the vault. That is
     # what makes the migration happen by itself rather than needing a script.
     #
-    # ⚠ Written to a temp file and renamed, never in place. `os.replace` is atomic, so a reader
+    # Written to a temp file and renamed, never in place. `os.replace` is atomic, so a reader
     # sees either the whole previous bundle or the whole new one and never a half-written file.
     # Two retrains can overlap (they are queued from `BackgroundTasks` and their CPU half runs in
     # a worker thread), and `LearnedModelHolder.reload()` reads this path from a different thread
@@ -169,7 +169,7 @@ class LearnedModelHolder:
     def reload(self) -> None:
         """Force a re-read of the persisted bundle (call after a retrain).
 
-        ⚠ The re-read happens into a local and is published in a single assignment. Clearing
+        The re-read happens into a local and is published in a single assignment. Clearing
         `_bundle` first and then loading leaves a window in which a concurrent reader — inference
         runs on the event loop while a retrain reloads from a worker thread — sees `_loaded=True`
         with `_bundle=None` and silently skips the learned adjustment for that comparison.

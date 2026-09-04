@@ -247,7 +247,7 @@ def inject_bom_markings(
     # sets since their col_keys don't collide in meaning (NO/QTY/REMARK are shared
     # concepts in both). DWG_NO and TITLE genuinely have no taxonomy item and fall to OTHER.
     #
-    # ⚠ CODE and DIMENSION were both mis-filed until 2026-09-01, and the note here said so in
+    # CODE and DIMENSION were both mis-filed until 2026-09-01, and the note here said so in
     # good faith -- "CODE ... maps to material_specification as the closest real match". It is
     # not the closest match, it is the wrong one, and `table_extractor` is where you can read
     # that off: CODE is built from `MATERIAL`/`材質` under the header `材質 / Code`, so it holds

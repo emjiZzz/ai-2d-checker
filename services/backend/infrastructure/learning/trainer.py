@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover
 # Verdict label mapping. Label 1 == "this IS a true discrepancy", label 0 == "not a real
 # discrepancy / false alarm / actually matched".
 #
-# ⚠ Do NOT add a `mispaired_*` verb here. "Badly paired" is not a verdict, and the reasoning is
+# Do NOT add a `mispaired_*` verb here. "Badly paired" is not a verdict, and the reasoning is
 # in MATCHER_FEEDBACK below — read it before editing this line. That addition was made once,
 # and it silently routes the corpus's single most-used verb into the suppression direction.
 VERDICT_ZERO = {"dismissed", "verdict_matched"}
@@ -346,7 +346,7 @@ async def train_from_feedback() -> dict:
 
     Returns the same shape as LearnedModelHolder.status() so callers can report it.
 
-    ⚠ **Everything after the fetch runs in a worker thread, and that is load-bearing rather than
+    **Everything after the fetch runs in a worker thread, and that is load-bearing rather than
     tidy.** `build_bundle` fits a classifier and then cross-validates it — `_cv_accuracy` runs a
     3-fold `StratifiedKFold`, fitting a model per fold and calling `predict_one` per test row.
     Measured on the live corpus at 112 verdict labels: **7.2 s, every call.**

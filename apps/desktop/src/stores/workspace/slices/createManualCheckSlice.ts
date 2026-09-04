@@ -58,7 +58,7 @@ import { useEngineerStore } from "../../engineerStore";
  * No violations, no audit, no learned model. Markings land in their own collections and stop
  * there.
  *
- * ⚠ **`textWasEdited`, `isBulk` and `notes` are never populated** — no UI writes them. See
+ * **`textWasEdited`, `isBulk` and `notes` are never populated** — no UI writes them. See
  * `CommitStampInput` in `../types` for why, and for what it means downstream.
  */
 
@@ -368,7 +368,7 @@ export const createManualCheckSlice: StateCreator<
       // Without this the app dead-ends. The id lives only in memory, so every retry re-sends the
       // same dead id and the only way out is a full restart.
       //
-      // ⚠ Plain `/404/`, with no word-boundary escapes, deliberately.
+      // Plain `/404/`, with no word-boundary escapes, deliberately.
       //
       // This test was written with word-boundary escapes until 2026-08-20 and they had been
       // mangled into two literal BACKSPACE bytes (0x08) by whatever wrote the file. The regex

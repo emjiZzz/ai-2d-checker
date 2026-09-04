@@ -4,7 +4,7 @@
 against ezdxf, which is a different question with a different oracle, and it is the acceptance
 metric for `vector_pdf_exporter.render_vector_sheet`.
 
-⚠ **The oracle is the whole difficulty, and getting it wrong is the reason this file exists.**
+**The oracle is the whole difficulty, and getting it wrong is the reason this file exists.**
 `render_audit.record_ground_truth` records ezdxf's ink in the CANVAS configuration — MS Gothic,
 full DXF height. The report renders Yu Mincho Light at `CAD_TEXT_FIT_SCALE`, so measured against
 that oracle it is wrong in two directions at once (0.8464 on width), and the two errors partly
@@ -27,7 +27,7 @@ Measured in `TextSource.LAYER`, which is what the report requests. It used to me
 a mode the product no longer ships. The figures are unchanged by the switch, which is the point:
 placement is the same either way, and only the deferred strings differ.
 
-⚠ **Read the width ratio expecting ~1.026, not 1.000.** A PDF text rect is an ADVANCE box and
+**Read the width ratio expecting ~1.026, not 1.000.** A PDF text rect is an ADVANCE box and
 ezdxf's is an INK box, so the rect is wider by the side bearings. The model's widths themselves
 are exact — PyMuPDF's advances match ezdxf's at 1.0000 on Latin, CJK and U+3000-padded strings.
 A ratio near **1.9** means `cap_height_ratio` has regressed; near **0.5**, the two-font split in

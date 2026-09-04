@@ -55,7 +55,7 @@ describe('splitReportDocuments — vector path', () => {
   });
 
   it('writes no checklist when the report has no rows', async () => {
-    // ⚠ jsPDF still hands over a ONE-PAGE document here — `new jsPDF()` always creates a page
+    // jsPDF still hands over a ONE-PAGE document here — `new jsPDF()` always creates a page
     // whether or not anything was drawn on it. Trusting the PDF's own page count instead of the
     // rendered-sheet count saves a blank file that reads as a broken checklist.
     const { checklist } = await splitReportDocuments(

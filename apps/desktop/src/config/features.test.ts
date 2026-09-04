@@ -40,7 +40,7 @@ describe("isPrototypeMode", () => {
 
 describe("the source shape that makes dead-code elimination work", () => {
   /**
-   * ⚠ This asserts on the FILE, not on behaviour, and that is deliberate — the property it
+   * This asserts on the FILE, not on behaviour, and that is deliberate — the property it
    * protects is invisible to every behavioural test.
    *
    * Vite substitutes the literal for each `import.meta.env.VITE_PROTOTYPE_MODE` it sees, so

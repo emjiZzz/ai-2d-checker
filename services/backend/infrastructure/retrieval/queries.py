@@ -156,7 +156,7 @@ class QuerySet:
         construction changes must not leave the store holding queries production can no longer
         issue alongside the new ones.
 
-        ⚠ **Never call this with a human origin.** `checker` and `finding` queries are the input
+        **Never call this with a human origin.** `checker` and `finding` queries are the input
         nothing can regenerate; that asymmetry is the entire reason `QueryOrigin` is required.
         Guarded by `test_dropping_a_human_origin_is_refused`.
         """
@@ -251,7 +251,7 @@ def build_drawing_keywords(drawing: Any, layer_names: Iterable[str] = ()) -> lis
     Deriving the second by splitting the first on spaces would corrupt it for any drawing whose
     file name contains a space.
 
-    ⚠ **`layer_names` is a parameter, not something read off the drawing, and that is the fix
+    **`layer_names` is a parameter, not something read off the drawing, and that is the fix
     for a defect rather than a style choice.** Until 2026-08-17 this read
     `drawing.metadata["layers"]` — **a key nothing has ever written** — so the branch its own
     comment called *"the strongest signal"* contributed nothing on all 44 drawings in the

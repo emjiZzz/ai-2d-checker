@@ -16,7 +16,7 @@
  * be a second opinion about what the sheet shows, and the report exists to be evidence of the
  * review that happened.
  *
- * ⚠ Coordinates are CAD paper-space, **Y-up** — `rev_coordinates` / `coordinates` straight off the
+ * Coordinates are CAD paper-space, **Y-up** — `rev_coordinates` / `coordinates` straight off the
  * store, the same values `renderManualMarkings` feeds to `worldToCanvas`. Not canvas pixels, and
  * not `render_bounds` fractions: those are Y-down, and a mirrored overlay looks plausible.
  * See `utils/zoneFractions.ts` for the only place that conversion belongs.

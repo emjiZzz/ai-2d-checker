@@ -104,7 +104,7 @@ class Viewport:
         lands at the window centre -- so this returns `paper_center` and nothing more. It is
         kept named because a tautology written inline reads like a computation.
 
-        ⚠ **This was `origin_paper_point`, documented as "iCAD SX draws an ORIGIN marker per
+        **This was `origin_paper_point`, documented as "iCAD SX draws an ORIGIN marker per
         view, and this is it". That was measured false on 2026-08-12 and is why it was renamed.**
         The desktop overlay built on that claim put markers 22.2 and ~11.8 units from the datum
         two of `M745221N01_FSRS2`'s three views actually dimension from, and was reported as

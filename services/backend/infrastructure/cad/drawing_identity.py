@@ -30,7 +30,7 @@ Measured over the eval corpus (`storage/eval/pairs/`), which is the only ground 
 available: **7 of 7 real reference/revision pairs share a token, and 42 of 42 cross-pairings
 share none.** Zero false accepts, zero false rejects.
 
-⚠ **One client, one numbering scheme.** `_DRAWING_NUMBER_SHAPE` is tuned to KMTI's
+**One client, one numbering scheme.** `_DRAWING_NUMBER_SHAPE` is tuned to KMTI's
 `M745203N01` / `M7452A0N01` form. On a drawing whose numbering does not match, this returns
 an empty set, and the *caller must treat empty as "cannot judge" and allow the pair* -- see
 `is_pair_mismatch`. Failing open is the whole safety design: a false reject deletes a good

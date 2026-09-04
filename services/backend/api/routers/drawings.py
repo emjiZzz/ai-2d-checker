@@ -162,7 +162,7 @@ async def list_drawings(
     before `uploaded_by` existed has no owner, and those are the pre-loaded corpus pairs every
     tester works on. Filtering them out would empty every workspace at once.
 
-    🔴 Separation, not access control: the identity is an unverified client header and
+    Separation, not access control: the identity is an unverified client header and
     `GET /drawings/{id}` still serves any drawing to any caller. See `resolve_username`.
     """
     docs = await DrawingDocument.find_all(sort=[("created_at", -1)]).to_list()

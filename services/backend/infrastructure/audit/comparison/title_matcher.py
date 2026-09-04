@@ -232,7 +232,7 @@ def partition_ul_pairs(
        value's own coordinates, so that zone's pass will compare it. Otherwise it stays
        comparable and the one-sided report stands.
 
-    ⚠ **Rung 3's condition is the whole safety of this.** `title_upper_left` is in
+    **Rung 3's condition is the whole safety of this.** `title_upper_left` is in
     `VIEWS_EXCLUDED_ZONES`, so content inside that box is subtracted from the `views` pool and
     no other pass is scoped to it. Releasing with no catcher would be a **silent false
     negative** — the one failure mode this system cannot detect. Zones overlap, which is what
@@ -305,7 +305,7 @@ def extract_title_ul_kv(entities: list, bbox) -> list:
     Headers sit ABOVE values, so headers have larger Y values.
     Returns list of {key, value, coords} dicts sorted left-to-right.
 
-    ⛔ **Do not re-add a "subtract the sibling zones' shapes before banding" filter here
+    **Do not re-add a "subtract the sibling zones' shapes before banding" filter here
     without measuring the DETECTION path.** One was written and reverted on 2026-08-12. It
     was aimed at a real defect — with no template the UL box swallows the notes block, whose
     lines sit at the table's own pitch and align to a column, so
@@ -408,7 +408,7 @@ def extract_title_ul_kv(entities: list, bbox) -> list:
     # the value row are the ones `ul_value_band_index` cut as content that drifted into the
     # box, and they are claimed by nothing here.
     #
-    # ⚠ This set is what the `views` pool subtracts, instead of the whole UL bounding box —
+    # This set is what the `views` pool subtracts, instead of the whole UL bounding box —
     # and the difference is a silent false negative. Reported by the owner on M745227N01:
     # `４ロール：１２（２×６台）` came out ADDED with no REMOVED counterpart on a sheet that
     # plainly carries it on both sides. The reference's copy sits at y=767.5 and the UL box

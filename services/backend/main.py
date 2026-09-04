@@ -79,7 +79,7 @@ app.add_middleware(
 #
 #     ALLOWED_HOSTS=192.168.200.105,kmti-server
 #
-# ⚠ Names are ADDED to the loopback set, never replace it: the server must keep answering its own
+# Names are ADDED to the loopback set, never replace it: the server must keep answering its own
 # health checks and anything running on the box. And each entry is matched exactly by the same
 # rule above — a wildcard here would hand back the DNS-rebinding hole the exact match closed.
 _EXTRA_ALLOWED_HOSTS = {

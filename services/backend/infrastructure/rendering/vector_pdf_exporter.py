@@ -6,7 +6,7 @@ One PDF page per call: the sheet's CAD geometry as mathematical vector paths, a 
 text layer** over it, and the review markers as vector badges. No raster anywhere — measured on
 `M745221N01`: 714 vector operations, 0 images, 1612 extractable characters, ~0.5 MB.
 
-⚠ **There are two copies of every string on the page and `TextSource` decides which one you can
+**There are two copies of every string on the page and `TextSource` decides which one you can
 see.** Read that enum before changing anything here: it is also the export's single largest
 cost, at 90-98% of the time a sheet takes.
 
@@ -28,7 +28,7 @@ deliberate beyond necessity: the strings a reader can select are then the same `
 data the canvas draws and the checklist quotes, so the report cannot disagree with itself about
 what the sheet says.
 
-⚠ **An invisible layer cannot be observed to be wrong**, and it was wrong in two ways for its
+**An invisible layer cannot be observed to be wrong**, and it was wrong in two ways for its
 whole life -- white, and rotating every string backwards -- neither of which any assertion about
 the text can see. See `Gotcha - Making the Text Layer Visible Showed What Being Invisible Had
 Hidden`. If you touch this layer, rasterise a page and look at it under `TextSource.LAYER`.
@@ -41,7 +41,7 @@ displacements this file exists to avoid, each of which is silent.
 
 ## Threading
 
-⚠ **This does not touch `pyplot`.** `dxf_background_renderer` does, and is safe only because the
+**This does not touch `pyplot`.** `dxf_background_renderer` does, and is safe only because the
 ingestion queue has a single serial consumer — see
 `Gotcha - The Background Queue Was Not a Background Thread`. This module is built to be called
 from a request path, so it drives the OO `Figure` API and holds a lock only around the two global
@@ -119,7 +119,7 @@ class TextSource(StrEnum):
     What the report has always done, and the safe answer. The visible glyphs are ezdxf's own, so
     they are correct by construction; the invisible layer only has to land close enough to select.
 
-    ⚠ **It costs 90-98% of the export.** Measured 2026-08-25: on the largest sheet in the corpus
+    **It costs 90-98% of the export.** Measured 2026-08-25: on the largest sheet in the corpus
     `draw_layout` takes **21.4 s**, of which all 2263 entities of geometry are **2.2 s** and the
     373 strings are the other **19.2 s** — about **52 ms per string**, near enough linear. A
     small sheet is 9.9 s and a dense one 28.1 s, so an assembly with a thousand strings is a
@@ -131,12 +131,12 @@ class TextSource(StrEnum):
     SCALING rather than the constant: text stops being the cost, so a big assembly becomes a
     geometry problem, and geometry is cheap. The text also becomes real text rather than paths.
 
-    ⚠ **It shows the placement model's errors instead of hiding them.** Measured by
+    **It shows the placement model's errors instead of hiding them.** Measured by
     `tools/text_layer_audit.py`: `|dx|` median 0.094 drawing units and 97% of widths within ±20%
     — so ~3% of strings would be visibly off, and the wrapped-MTEXT line split (a guess) and
     rotated text (untested, no rotated strings in the corpus) stop being invisible gaps.
 
-    🔴 **And it is only safe on a drawing extracted at the current
+    **And it is only safe on a drawing extracted at the current
     `EXTRACTION_SCHEMA_VERSION`.** `render_text_point` — the dimension text anchor — arrived in
     v3. Below that, `_text_items` falls back to `text_point`, the midpoint of the dimension LINE,
     which today is harmless because ezdxf draws the real text over it. Make this layer visible on
@@ -152,7 +152,7 @@ class TextSource(StrEnum):
 
 #: Status -> the badge's NEON FILL, as 0-1 RGB. `markerStyles.ts`'s **`color`** column.
 #:
-#: ⚠ **These are deliberately the high-chroma canvas values, and they are used as a FILL, never
+#: **These are deliberately the high-chroma canvas values, and they are used as a FILL, never
 #: as a stroke.** That distinction is the entire reason this works, and reversing it re-creates
 #: the defect the previous palette existed to avoid.
 #:
@@ -228,7 +228,7 @@ _DIMENSION_WEIGHT_RATIO = _DIMENSION_HAIRLINE_MM / _HAIRLINE_MM
 
 #: DXF types whose ink is *annotation* rather than *part*, and which therefore take the thin pen.
 #:
-#: ⚠ Only the top-level type is listed. A DIMENSION carries its lines, arrowheads and text in an
+#: Only the top-level type is listed. A DIMENSION carries its lines, arrowheads and text in an
 #: anonymous geometry block, and ezdxf resolves the properties **once, from the DIMENSION** before
 #: drawing that block -- so overriding here reaches the whole assembly. Verified by measuring the
 #: stroke widths in the output PDF, not by reading the ezdxf source: `tests/test_vector_pdf_export
@@ -237,7 +237,7 @@ _ANNOTATION_TYPES = frozenset({
     "DIMENSION", "ARC_DIMENSION", "LARGE_RADIAL_DIMENSION", "LEADER", "MULTILEADER", "MLEADER",
 })
 
-#: ⚠ `Configuration.min_lineweight` documents itself as "in 1/300 inch". Through
+#: `Configuration.min_lineweight` documents itself as "in 1/300 inch". Through
 #: `MatplotlibBackend` it is **not** — measured, the value passes through 1:1 as PDF POINTS
 #: (min_lineweight 0.25 -> 0.25 pt strokes, 1.0 -> 1.0, 2.0 -> 2.0). Trusting the docstring
 #: makes a 0.13 mm hairline come out at 1.535 pt, i.e. twice as thick as the weights it was
@@ -258,7 +258,7 @@ _LINEWEIGHT_PT_PER_MM = 72.0 / 25.4
 #: nor the extracted entity — `strip_mtext` drops the whole group and `render_text` is bare `40`.
 #: Measured across `storage/uploads`: **46 of 724 dimensions on 14 of 57 sheets.**
 #:
-#: ⛔ **Two ways of reproducing it ourselves were measured and rejected.** `MTextExplode` returns
+#: **Two ways of reproducing it ourselves were measured and rejected.** `MTextExplode` returns
 #: each piece as a placed TEXT and looks like the answer, but it is a DIFFERENT layout engine from
 #: the drawing frontend and disagrees with it by up to **5.1 drawing units** over these seven
 #: strings, consistently laying the stack narrower. Re-deriving the stack from `dimtp`/`dimtm` is
@@ -270,7 +270,7 @@ _LINEWEIGHT_PT_PER_MM = 72.0 / 25.4
 #: Two defects at once, and deferring fixes both. The layer draws no rule under a string at all;
 #: and `strip_mtext` removes the BACKSLASH but not the letter, so `\LA-A\l` is stored as
 #: `LA-Al` and the stray `L` prints. Measured: **11 strings on 7 of 57 sheets**, all of them the
-#: section-view designation. 🔴 The `strip_mtext` half is NOT fixed by this — `properties.text`
+#: section-view designation. The `strip_mtext` half is NOT fixed by this — `properties.text`
 #: is what the comparison engine pools and the checklist quotes, and it still carries the stray
 #: letter there. Fixing that changes comparison input and needs a `COMPARISON_CACHE_VERSION`
 #: bump and a re-extraction; this only stops it reaching the page.
@@ -280,7 +280,7 @@ _LINEWEIGHT_PT_PER_MM = 72.0 / 25.4
 #: `strip_mtext` turns it into a SPACE, so a two-line label arrives as one line and the layer has
 #: nothing to split on. **8 strings on 4 sheets**, the same section-view labels.
 #:
-#: ⚠ Deferring a string trades searchability for fidelity: ezdxf draws paths, so a deferred
+#: Deferring a string trades searchability for fidelity: ezdxf draws paths, so a deferred
 #: string is on the page and correct but not selectable. That is the right way round, and the
 #: cost is bounded by how rare these are — 7 of 484 strings on the densest sheet.
 _UNREPRODUCIBLE_MTEXT: dict[str, str] = {
@@ -408,7 +408,7 @@ def _unplaceable_strings(entities: Sequence[dict[str, Any]]) -> tuple[int, int]:
     page but cannot be selected. Under `LAYER` the same shortfall is the string **not being on
     the page at all**, or being on it in the wrong place.
 
-    ⚠ **A DIMENSION needs `render_text_point` specifically, not merely some point.** `text_point`
+    **A DIMENSION needs `render_text_point` specifically, not merely some point.** `text_point`
     is the midpoint of the dimension LINE and `_text_items` falls back to it, which is right when
     it is a fallback under drawn glyphs and wrong when it is the anchor of the visible value —
     see `Gotcha - The Dimension Text Was Anchored to the Line It Had to Avoid`. That field
@@ -512,13 +512,13 @@ def _lineweight_settings(doc: Any) -> dict[str, Any]:
     bitmap is only a stand-in for it."* The report is not a stand-in for anything, and it is the
     copy that gets printed and signed.
 
-    ⚠ When `$LWDISPLAY` IS set, the weights are honoured — this returns ezdxf's own defaults and
+    When `$LWDISPLAY` IS set, the weights are honoured — this returns ezdxf's own defaults and
     the drawing gets the pen widths it asked for.
     """
     if doc.header.get("$LWDISPLAY", 0):
         return {}
 
-    # ⚠ **NOT `lineweight_scaling: 0.0`**, which is what this returned until 2026-08-25.
+    # **NOT `lineweight_scaling: 0.0`**, which is what this returned until 2026-08-25.
     #
     # That is `LineweightPolicy`'s own recipe for a constant width, and it works by collapsing
     # every stroke onto `min_lineweight`: the backend computes
@@ -542,7 +542,7 @@ def _annotation_aware_frontend(frontend_class: Any,
                                deferred_text: set[str] | None = None) -> Any:
     """`Frontend` that knows whether the entity it is drawing came out of a DIMENSION.
 
-    ⚠ **Testing `entity.dxftype()` alone does not work, and fails in the direction that looks
+    **Testing `entity.dxftype()` alone does not work, and fails in the direction that looks
     like the feature is simply off.** A DIMENSION keeps its lines, arrowheads and text in an
     anonymous block, and `draw_composite_entity` renders them through
     `draw_entities(entity.virtual_entities(...))` — which **re-resolves properties per child**,
@@ -581,7 +581,7 @@ def _annotation_aware_frontend(frontend_class: Any,
         def _layer_covers(self, entity: Any, raw: str) -> bool:
             """True when the text layer will draw this string, so ezdxf must not.
 
-            ⚠ **The two halves of that sentence have to stay one decision.** Both drawn is every
+            **The two halves of that sentence have to stay one decision.** Both drawn is every
             character double-struck in two typefaces; neither is a string missing from the sheet.
             This method is the decision, and the handle it records is how `_text_items` learns
             the other half of it.
@@ -640,7 +640,7 @@ def _shrink_text_to_fit(doc: Any) -> int:
     anonymous geometry block — the layout iteration would miss exactly the strings that sit
     tightest against their dimension lines.
 
-    ⚠ MTEXT scales through `char_height` and keeps its column `width`, so a string that ezdxf
+    MTEXT scales through `char_height` and keeps its column `width`, so a string that ezdxf
     was wrapping gets *closer* to the canvas's single line, not further from it.
     """
     scaled = 0
@@ -667,7 +667,7 @@ def _render_geometry(
 
     Returns (pdf_bytes, transData, dpi, page_height_pt, handles_ezdxf_drew_the_text_for).
 
-    ⚠ Drawing the text is **90-98% of this function's cost**, not a detail. See `TextSource`.
+    Drawing the text is **90-98% of this function's cost**, not a detail. See `TextSource`.
 
     Under `LAYER` this still draws a handful of strings — the ones `_UNREPRODUCIBLE_MTEXT`
     names — and the last element of the tuple says which, so `_text_items` can skip exactly
@@ -718,7 +718,7 @@ def _render_geometry(
     # is something a reviewer flagged. `_draw_markers` paints after this pass, in PyMuPDF, so it
     # is untouched by the policy.
     #
-    # ⚠ NOT `MONOCHROME_LIGHT_BG`, which maps to grey in [0%, 70%] and would print the thin
+    # NOT `MONOCHROME_LIGHT_BG`, which maps to grey in [0%, 70%] and would print the thin
     # construction linework at a grey no laser holds cleanly.
     pen = _lineweight_settings(doc)
     deferred: set[str] | None = None if text_source is TextSource.OUTLINES else set()
@@ -744,7 +744,7 @@ def _render_geometry(
     # to `adjustable='datalim'`. All three have to be re-asserted or the "A4 page with a margin"
     # is none of those things.
     #
-    # ⚠ The aspect one is the quiet one. Left at 'datalim', matplotlib satisfies equal aspect by
+    # The aspect one is the quiet one. Left at 'datalim', matplotlib satisfies equal aspect by
     # WIDENING the view limits instead of shrinking the axes box, so the crop below is discarded
     # with only a warning on stderr ("Ignoring fixed x limits ...") and the sheet prints with the
     # dead space still around it.
@@ -811,7 +811,7 @@ def _write_text_layer(page_obj: Any, items: Sequence[_TextItem], to_pdf, pt_per_
         # per-glyph points (measured: a uniform 2.54 pt step where 6.01 was asked for).
         matrix = fitz.Matrix(item.width_factor, 0, 0, 1, 0, 0)
         if abs(item.rotation) > 1e-6:
-            # ⚠ `Matrix(ux, -uy, uy, ux)` -- the form this reads as -- rotates the string the
+            # `Matrix(ux, -uy, uy, ux)` -- the form this reads as -- rotates the string the
             # WRONG WAY, by -rotation. Measured with `TextWriter.append` at a known point: asked
             # for +90 deg it lays the glyphs DOWN the page, where CAD's counter-clockwise +90
             # must read bottom-to-top. `morph` applies its matrix in the opposite sense to the
@@ -831,7 +831,7 @@ def _write_text_layer(page_obj: Any, items: Sequence[_TextItem], to_pdf, pt_per_
             writer = fitz.TextWriter(page_obj.rect)
             writer.append(origin, run, font=font_wide if wide else font_narrow,
                           fontsize=font_size)
-            # ⚠ `color` is NOT optional, and its default is WHITE.
+            # `color` is NOT optional, and its default is WHITE.
             #
             # This layer was invisible for its whole life (render mode 3), so the colour was
             # never painted and never checked. Turning it visible without this line produces a
@@ -854,7 +854,7 @@ def _write_text_layer(page_obj: Any, items: Sequence[_TextItem], to_pdf, pt_per_
 #: wanted is neither — one flat colour at partial opacity, so the mark sits over the value without
 #: hiding it and without drawing an edge."* The report now paints the same mark.
 #:
-#: ⚠ This report briefly had a rimmed, glyphed badge at 0.45 — legible, and not what the app
+#: This report briefly had a rimmed, glyphed badge at 0.45 — legible, and not what the app
 #: draws. Owner's call on 2026-08-25 was to match the canvas, so the rim and the glyph came off
 #: and the opacity moved to the canvas's number. Do not reintroduce the rim without moving
 #: `renderEntities.ts` with it; that divergence is the thing this constant exists to prevent.
@@ -862,7 +862,7 @@ _BADGE_FILL_OPACITY = 0.55
 
 #: MATCHED is a stroked tick on the canvas, not a dot, and the report follows.
 #:
-#: ⚠ **The proportions are `renderEntities.ts`'s, the SIZES are `MARK_PAINT.print`'s**, and mixing
+#: **The proportions are `renderEntities.ts`'s, the SIZES are `MARK_PAINT.print`'s**, and mixing
 #: them that way is deliberate rather than sloppy. The vertex ratios below are copied from the
 #: canvas so the tick has the same shape; the stroke/rise/shift ratios come from the app's own
 #: *print* row, which was derived by measuring against this sheet — "at the report's A4 capture
@@ -883,7 +883,7 @@ _TICK_STATUS = "MATCHED"
 def composited_badge_fill(fill: tuple[float, float, float]) -> tuple[float, float, float]:
     """The colour the eye actually meets: the neon at `_BADGE_FILL_OPACITY` over white paper.
 
-    ⚠ **This is what any contrast decision has to be made against, not `MARKER_INK`.** A
+    **This is what any contrast decision has to be made against, not `MARKER_INK`.** A
     translucent wash over white is always LIGHTER than the ink that made it — `#ff2850` composites
     to luminance 0.71 against its own 0.35 — so reading contrast off the raw value answers a
     question about a badge that is not on the page. Getting this backwards puts a white glyph on a

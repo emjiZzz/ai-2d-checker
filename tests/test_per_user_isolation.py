@@ -4,13 +4,13 @@ The prototype is deployed to one LAN backend serving ~21 engineers, and each tes
 should not clutter (or be confused with) everybody else's. `Room.created_by` and
 `DrawingDocument.uploaded_by` carry the owner; `?mine=true` narrows each list.
 
-🔴 **This is separation, not access control, and the tests say so on purpose.**
+**This is separation, not access control, and the tests say so on purpose.**
 The identity is `X-Engineer-Name`: a name picked from a dropdown with no password, sent by the
 client, on a backend where every installed app holds the same shared API bearer token. Anyone can
 send any name, and every by-id route still serves any record to any caller. If someone later reads
 these tests as proof of confidentiality, `test_identity_is_not_authenticated` is the correction.
 
-⚠ **`None` means SHARED, not orphaned.** Rows predating these fields are the pre-loaded corpus
+**`None` means SHARED, not orphaned.** Rows predating these fields are the pre-loaded corpus
 pairs every tester works on, so the filter deliberately keeps them. Dropping them would empty
 every workspace at once, which is worse than the leak it would close.
 """
@@ -73,7 +73,7 @@ class TestIdentityResolution:
         assert resolve_username(sentinel, sentinel) is None
 
     def test_identity_is_not_authenticated(self) -> None:
-        """🔴 The property this whole mechanism does NOT have.
+        """The property this whole mechanism does NOT have.
 
         Two different callers asserting two different names both succeed, because nothing verifies
         the claim. This test exists to be read, not to catch a regression: if per-user privacy ever

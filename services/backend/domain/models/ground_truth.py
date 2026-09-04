@@ -119,7 +119,7 @@ class ManualCheckSession(Document):
     # every session that was submitted once and left alone -- which is the common case, so their
     # presence on a row is itself the signal.
     #
-    # ⚠ Additive and unindexed on purpose: existing rows read back as "never reopened", which is
+    # Additive and unindexed on purpose: existing rows read back as "never reopened", which is
     # true of every session written before this. Anything deriving corpus labels should carry
     # `reopen_count` through, so a downstream reader can tell an amended pass from a clean one.
     reopened_at: datetime | None = Field(
@@ -151,7 +151,7 @@ class ManualCheckSession(Document):
             # in-progress. A non-partial unique index would reject the second honest check of a
             # drawing.
             #
-            # ⚠ Beanie builds indexes at `init_beanie`, so this fails LOUDLY at startup against
+            # Beanie builds indexes at `init_beanie`, so this fails LOUDLY at startup against
             # a collection that already holds duplicates. Run
             # `tools/merge_duplicate_check_sessions.py` against every environment first —
             # including Atlas, since these collections are not in

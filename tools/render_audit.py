@@ -958,7 +958,7 @@ _RADIAL_COLLINEAR_TOLERANCE = 0.05
 #: is an ordinary style with the value outside the circle. There is no invariant to check there,
 #: so those are reported as context and never as a defect.
 #:
-#: ⛔ An earlier version of this file flagged anything under 0.95 and reported 36 of 92 SHORT.
+#: An earlier version of this file flagged anything under 0.95 and reported 36 of 92 SHORT.
 #: That was a threshold picked from one sheet before the corpus was swept, and it is wrong: it
 #: condemned every one-arrow callout in the corpus. A checker that cries wolf is how a real
 #: regression gets waved through.
@@ -1110,7 +1110,7 @@ def sweep_cull(directory: Path) -> dict[str, Any]:
     CLAUDE.md mandates this sweep before landing any change to the section-callout rule:
     *"a jump in those numbers is the failure mode, and it does not show up as a test failure."*
 
-    ⚠ The figure it quotes is a CENSUS and moves whenever a drawing is added. Only
+    The figure it quotes is a CENSUS and moves whenever a drawing is added. Only
     `MAX_CULL_PER_SHEET` is compared; the counts are printed as context.
 
     Until now nothing produced those numbers. `main()` took a single DXF, so the documented

@@ -32,7 +32,7 @@ export const OTHER_FEATURE_LABEL = "Other / Unclassified";
 // no backend code can assign any of them (their intended producer was Generator B, which
 // ADR-006 deleted), so each was reporting a clean result for a check that never ran.
 //
-// ⚠ Membership here HIDES rows — ChecklistPanel checks `isDeferred` before `hasRows`, so a
+// Membership here HIDES rows — ChecklistPanel checks `isDeferred` before `hasRows`, so a
 // deferred key that ever carries findings drops them silently. Remove a key here in the same
 // change that gives it a producer, exactly as `line_attributes` did.
 //
@@ -159,7 +159,7 @@ export function featureLabel(category: string, featureKey: string | undefined | 
  * Callouts that spell a diameter, built from the shared glyph set rather than from a
  * hand-written character class.
  *
- * ⚠ The classes these replace were `[ØøφΦ]`, and `cleanCadText` transcodes the DXF escape `%%c`
+ * The classes these replace were `[ØøφΦ]`, and `cleanCadText` transcodes the DXF escape `%%c`
  * to **U+2300 ⌀** — which is in none of them. So `⌀145` was invisible to the hole-property rule
  * and `6×⌀145` was invisible to the material-specification rule, on text that reaches here from
  * every drawing in the corpus. Both then fell through to their branch's catch-all and came out
@@ -174,7 +174,7 @@ const DIAMETER_VALUE_RE = new RegExp(`[${DIAMETER_CHARS}]\\s*\\d+`);
 /**
  * This client's known title-block signatories.
  *
- * ⚠ **A lookup, not a rule, and incomplete by construction.** It was written inline as
+ * **A lookup, not a rule, and incomplete by construction.** It was written inline as
  * `/design|設計|橋本|増田/` and `/draw|製図|ZHR/`, which reads like a pattern and is not one: of
  * the four signatures in the corpus — `橋本` and `津田` on 設計, `中川` and `ZHR` on 製図 — this
  * list holds two. It cannot be completed either, because the next revision is signed by whoever
@@ -199,7 +199,7 @@ const PERSONAL_NAME_RE = /^[一-鿿]{2}$/;
 /**
  * A drawing number: `M745221N01`, `M7452A2N01`, `M745230A01`.
  *
- * ⚠ **`\d{5,}` was wrong and had been wherever it was written.** Half this corpus's drawing
+ * **`\d{5,}` was wrong and had been wherever it was written.** Half this corpus's drawing
  * numbers are `M` + a FOUR-digit job block + an alphanumeric tail (`M7452` + `A2N01`), so
  * `^[A-Z]\d{5,}` matched `M745221N01` and missed `M7452A1N01`, `M7452A2N01` and `M745230A01`
  * — on the two pairs currently queued for labelling. It is one constant now because
@@ -233,7 +233,7 @@ export function inferFeatureKey(
   }
 
   const cat = category || 'drawing_views';
-  // ⚠ **Classify what the user sees.** Callers pass raw `ref_text`/`rev_text` off the marking,
+  // **Classify what the user sees.** Callers pass raw `ref_text`/`rev_text` off the marking,
   // and every card renders `cleanCadText` of that same field — so without this line the rules
   // below judge a string nobody is looking at. It is not a near-miss: a real size cell is stored
   // `6×%%c145` and shown `6×⌀145`, and the material-size rule needs digits either side of the
@@ -313,7 +313,7 @@ export function inferFeatureKey(
     if (/^\d*\.\d+$/.test(clean)) return 'material_weight';
 
     // 5. Quantity
-    // ⚠ A bare INTEGER is equally the `No.` column and the `Q'ty` column — both are small
+    // A bare INTEGER is equally the `No.` column and the `Q'ty` column — both are small
     // counting numbers — and text alone cannot separate them; only the cell's COLUMN can, and a
     // manual marking carries no column. Left on quantity, which is where it went before, rather
     // than moved on a guess. The backend does not have this problem: it tags from the column.
@@ -325,7 +325,7 @@ export function inferFeatureKey(
     // be checked before Material Type below, because on this client's sheets the material and
     // its size share one text run (`SS400 ⌀55×15`, `S45C ⌀265×25`, real cached values).
     //
-    // ⚠ Without this, one cell classified two ways across a single finding: the corpus holds
+    // Without this, one cell classified two ways across a single finding: the corpus holds
     // `Code checked: SS400 ⌀55-15 vs SS400 ⌀55×15` — the same value, the reference writing the
     // separator as a hyphen and the revision as `×`. The `×` side matched the size rule and the
     // `-` side fell through to Material Type, so a finding's ORIGINAL and REVISION would have
@@ -350,7 +350,7 @@ export function inferFeatureKey(
     // `taxonomy.OTHER_FEATURE_KEY` on no confident match — never guesses past what the pattern
     // actually supports" (feature_classifier.py); `normalize_feature` says the same.
     //
-    // ⚠ A caller that renders only `COMPARISON_TAXONOMY[category]` will DROP what lands here.
+    // A caller that renders only `COMPARISON_TAXONOMY[category]` will DROP what lands here.
     // Render `getTaxonomyWithOther(category)`, or append the Other bucket once it is populated
     // (`ManualMarkingList`, `computeEngineeringMatrix` both do). A marking an engineer stamped
     // that vanishes from the panel is worse than one filed under the wrong heading.
@@ -360,7 +360,7 @@ export function inferFeatureKey(
   if (cat === 'title_block') {
     if (/Roll|Cassette|Mill|ロールカセット|カセット|ミル|machine|機名/i.test(clean)) return 'machine_name';
 
-    // ⚠ **Both of these are anchored, and that is the whole fix.** The scale rule used to read
+    // **Both of these are anchored, and that is the whole fix.** The scale rule used to read
     // `/(SCALE|尺度)?\s*(\d+(\.\d+)?\s*[:/]\s*\d+(\.\d+)?)/` — keyword OPTIONAL, no anchors — so
     // it was really "a number, a colon or slash, another number", which every date on every sheet
     // satisfies. `2026/07/03` matched on its leading `2026/07`, and because scale was tested
@@ -408,7 +408,7 @@ export function inferFeatureKey(
     //
     // The shape is measured, not chosen: all three signatories in the corpus (`津田`, `橋本`,
     // `中川`) are exactly two CJK ideographs, and none of the seven TITLE-2nd-line part names
-    // are (`押ェ板` is three and mixed, `廻リ止メ` four, the rest katakana). ⚠ A two-kanji part
+    // are (`押ェ板` is three and mixed, `廻リ止メ` four, the rest katakana). A two-kanji part
     // name would be misread by this — it has not appeared, and the trade is worth it because
     // the alternative misfiles a person as the machine.
     if (PERSONAL_NAME_RE.test(clean)) return OTHER_FEATURE_KEY;
@@ -459,7 +459,7 @@ export function inferFeatureKey(
  * first and still wins whenever it identifies anything. Only a fallback answer defers, and only
  * to a non-fallback one.
  *
- * ⚠ This is why it is not the same as calling `inferFeatureKey` twice and picking either — a
+ * This is why it is not the same as calling `inferFeatureKey` twice and picking either — a
  * fallback is a real answer for a value nothing identifies (`押ェ板` genuinely is the title), so
  * it must lose only to a *specific* answer, never to another fallback.
  */
@@ -474,7 +474,7 @@ export function inferFeatureKeyForPair(
 
   const cat = category || 'drawing_views';
 
-  // ⚠ **`other` is the ONLY answer that defers, and the reason is worth reading before widening
+  // **`other` is the ONLY answer that defers, and the reason is worth reading before widening
   // it.** The first version also deferred on each category's *fallback* — the branch's last
   // `return` — on the theory that a fallback means "could not tell". For two categories it does
   // not: `drawing_views` falls back to `dimensions` and `notes_section` to `standard_notes`, and
@@ -488,7 +488,7 @@ export function inferFeatureKeyForPair(
   // `other` alone is enough for what this function was built for: `橋本 → 津田` defers because
   // `津田` resolves to `other` through the personal-name rule — a specific key, but explicitly
   // "no identification" — not because `machine_name` happens to be the title block's fallback.
-  // ⚠ A side with no text is not evidence, and must not get a vote. An ADDED finding has an
+  // A side with no text is not evidence, and must not get a vote. An ADDED finding has an
   // empty reference, and `inferFeatureKey('')` returns the branch's fallback — so without this
   // an empty half would answer `machine_name` and override a revision that had correctly
   // resolved to `other`, putting every drawing number back under Machine Name.

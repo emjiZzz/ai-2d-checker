@@ -137,7 +137,7 @@ def features_from_marking(m: dict) -> dict:
 def exact_key(category: Optional[str], text: Optional[str]) -> str:
     """Stable key for exact-match correction memory: category + normalized text.
 
-    ⚠ **Single-sided, and therefore too broad to gate an override on.** Kept because the
+    **Single-sided, and therefore too broad to gate an override on.** Kept because the
     category-override memory (`exact_category`) is genuinely about one value, and because tests
     and tooling read it. For deciding whether a stored verdict applies to a finding, use
     `exact_pair_key` — see the warning there.
@@ -158,7 +158,7 @@ def exact_pair_key(
 ) -> str:
     """Stable key for a correction, identified by **both sides of the finding**.
 
-    ⚠ **A verdict override is a statement about a pair, not about a value**, and keying it on one
+    **A verdict override is a statement about a pair, not about a value**, and keying it on one
     side was a measured defect. A checker who dismissed a finding involving `20` created the key
     `drawing_views|20`, which then matched every finding where *either* side was `20` — so on
     `M745230A01` a real `20 -> 3` and a real `60 -> 20` were both reported as MATCHED on the

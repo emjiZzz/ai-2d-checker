@@ -7,7 +7,7 @@ it was built for. That is the failure mode of this whole pipeline — see
 displacements each did exactly that.
 
 The fixture is built with `ezdxf` rather than read from `storage/uploads`, which is gitignored.
-⚠ That limits what these can claim: a document written by the same library that renders it cannot
+That limits what these can claim: a document written by the same library that renders it cannot
 expose a disagreement between two of its own fields (the lesson from
 `Gotcha - The Dimension Text Was Anchored to the Line It Had to Avoid`). These test **our**
 pipeline — page size, vector-ness, that the text layer exists and is searchable and invisible —
@@ -458,7 +458,7 @@ def test_cap_height_is_not_measured_by_forcing_m_to_half_width():
     Nothing looked wrong on the page, because an invisible layer cannot look wrong. The only
     symptom was a selection rectangle twice the width of its text.
 
-    ⚠ The two MS faces are asserted UNCHANGED to the sixth decimal: they are half-width, so the
+    The two MS faces are asserted UNCHANGED to the sixth decimal: they are half-width, so the
     old estimate was right for them, and `tools/render_audit.py` calls this with `msgothic.ttc`
     and has committed baselines that must not move.
     """
@@ -605,7 +605,7 @@ def test_dimensions_are_drawn_thinner_than_the_part(storage_root):
     collapses every stroke onto `min_lineweight`, so the sheet had exactly one width and no
     depth. ISO 128 puts dimension and witness lines on the thin pen.
 
-    ⚠ **This is also the guard for a failure that looks like the feature is merely off.** A
+    **This is also the guard for a failure that looks like the feature is merely off.** A
     DIMENSION renders through `draw_composite_entity`, which re-resolves properties for each
     virtual child, so an override keyed on `entity.dxftype()` alone thins the DIMENSION and then
     resets every line it is made of. The first implementation did exactly that and produced one

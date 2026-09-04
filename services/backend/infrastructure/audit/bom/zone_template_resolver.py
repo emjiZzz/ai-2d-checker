@@ -29,7 +29,7 @@ from .zone_geometry import ZONE_POLYGONS_KEY
 #: exists, so the one baseline describing the shipping configuration could not be regenerated
 #: from the repo.
 #:
-#: ⚠ **The gate is NOT here** — it is in `table_extractor.extract_dynamic_regions_async`, which
+#: **The gate is NOT here** — it is in `table_extractor.extract_dynamic_regions_async`, which
 #: is the single funnel both template paths pass through. Gating this function alone was tried
 #: first and silently did nothing: the offline eval runner never calls it. It passes the
 #: corpus's captured fractions straight into `generate_deterministic_candidates` as

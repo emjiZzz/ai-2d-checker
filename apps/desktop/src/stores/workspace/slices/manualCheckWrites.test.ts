@@ -144,7 +144,7 @@ describe('recordStamp', () => {
       as it goes null, so the next stamp lands in a live session. The id lives only in memory, so
       without this every retry re-sends the same dead id and the only way out is a restart.
 
-      ⚠ This branch had NEVER run. Its test read a word-boundary form whose escapes had been
+      This branch had NEVER run. Its test read a word-boundary form whose escapes had been
       mangled into two literal backspace bytes (0x08), so the regex matched only a message
       containing a backspace character. Found 2026-08-20 by reading the file's bytes.
     */

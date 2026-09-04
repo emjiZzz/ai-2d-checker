@@ -10,20 +10,20 @@
 | `vault`        | `docs/vault/**/*.md`, by heading        | engineering knowledge    |
 | `entities`     | `ExtractedEntity` text                  | raw drawing content      |
 
-⚠ **`vault` is knowledge about the *system*, not about a drawing.** It answers *"why is this built
+**`vault` is knowledge about the *system*, not about a drawing.** It answers *"why is this built
 this way"*, which serves an agent or the copilot; it does not answer *"what does this tolerance
 mean"*. Do not read a healthy record count here as coverage of the checker's domain.
 
-⚠ **`entities` is customer drawing content**, so it is client-local and carries the same privacy
+**`entities` is customer drawing content**, so it is client-local and carries the same privacy
 edge as `checker_remarks` — see `service.violation_record`. Local-only at R1.
 
-⚠ **`lessons` is a subset of `findings`, deliberately, and they are separate collections because
+**`lessons` is a subset of `findings`, deliberately, and they are separate collections because
 the chance floor is per-collection.** `metrics.chance_recall_at_k` is `k/N` over one collection's
 own `n_records`, so a 17-record `lessons` cannot be measured no matter how much is indexed
 elsewhere. They share `service.violation_record` so the two can never disagree about how a
 violation becomes text.
 
-⚠ **A `findings` hit is not knowledge.** Most of that collection has never been reviewed, so its
+**A `findings` hit is not knowledge.** Most of that collection has never been reviewed, so its
 records carry their review state in `Record.source` ("Confirmed finding" / "Rejected finding" /
 "Unreviewed finding") rather than only in metadata — a citation that does not say whether a human
 ever agreed is the "near-miss rules surfaced as authoritative" hazard [[ADR-008]] named.
@@ -289,7 +289,7 @@ def records_from_entities(
     `drawing_names` maps `drawing_id` to a human-readable file name so a citation reads
     `M745230A01.dxf > NOTES` rather than a 32-character hex id. Absent, the id is used.
 
-    ⚠ **This is customer drawing content.** Local-only at R1; strip at the edge before anything
+    **This is customer drawing content.** Local-only at R1; strip at the edge before anything
     is transmitted. See `service.violation_record` for the same constraint on `checker_remarks`.
     """
     names = drawing_names or {}
@@ -353,7 +353,7 @@ def _collapse_duplicate_texts(
     `chance_recall_at_k` — so the floor climbs on the inflated count too. Both routes end at "not
     informative", by different arithmetic.
 
-    ⚠ **This would not have caught the incident that prompted it, and saying so is the point.** On
+    **This would not have caught the incident that prompted it, and saying so is the point.** On
     2026-08-14 `standards` reported 32 records that were 16 texts each present twice. The source
     was not a double ingest — `build_index` never saw 32 records. Mongo held one standard and 16
     chunks; the other 16 were the chunks of a *deleted* standard, still in a stale index that

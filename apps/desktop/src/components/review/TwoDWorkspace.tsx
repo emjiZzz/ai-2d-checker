@@ -267,7 +267,7 @@ export const TwoDWorkspace: React.FC<TwoDWorkspaceProps> = ({ currentNav }) => {
   // an app reload lands here with no session and re-opens it. Resuming rather than restarting is
   // what makes the markings survive a refresh — see `createManualCheckSlice.startManualSession`.
   //
-  // ⚠ The condition is "is a session open FOR THIS PAIR", not "is a session open". It was the
+  // The condition is "is a session open FOR THIS PAIR", not "is a session open". It was the
   // latter, and that is one of the two ways this panel came up empty after a reload: the
   // workspace restores its drawings from IndexedDB before `openRoom` overwrites them with the
   // server's, so a session opened in that window belongs to the previous pair — and the same

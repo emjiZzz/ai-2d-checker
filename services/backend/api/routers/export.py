@@ -44,7 +44,7 @@ _MAX_MARKERS = 2000
 class MarkerPayload(BaseModel):
     """One review mark, in the drawing's paper-space CAD frame (Y-up).
 
-    ⚠ NOT canvas pixels and NOT `render_bounds` fractions — those are Y-down, and a mirrored
+    NOT canvas pixels and NOT `render_bounds` fractions — those are Y-down, and a mirrored
     overlay looks plausible. `renderManualMarkings.ts` holds the canvas side of this contract.
     """
 
@@ -157,7 +157,7 @@ async def export_vector_sheet(drawing_id: str, payload: VectorSheetRequest) -> R
     # costs ~44 ms per string against the layer's 2.18 ms, so it changes how the export SCALES,
     # and an assembly is a lot of strings.
     #
-    # ⚠ It is a REQUEST, not a setting. `_resolve_text_source` downgrades it to `OUTLINES` for
+    # It is a REQUEST, not a setting. `_resolve_text_source` downgrades it to `OUTLINES` for
     # any drawing whose extraction cannot place every string -- which is 20 of the 65 stored
     # drawings, at schema v2, predating `render_text_point`. Those stay correct and stay slow;
     # `tools/extraction_status.py` lists them and `/reextract` fixes one.

@@ -152,7 +152,7 @@ export function markerTypeOf(v: {
 /**
  * Which sheet a marker type belongs on, or `null` when it belongs on both.
  *
- * ⚠ **This is the same rule as `TOOL_SIDE` in `createManualCheckSlice`, one layer down.** That
+ * **This is the same rule as `TOOL_SIDE` in `createManualCheckSlice`, one layer down.** That
  * one decides what the engineer may RECORD; this one decides what is DRAWN. They must agree:
  * a status recordable on the reference but undrawable there is a marking that vanishes the
  * moment it is made, which reads as a failed write.

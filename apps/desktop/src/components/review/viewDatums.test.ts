@@ -255,7 +255,7 @@ describe('when the file and the drawing disagree', () => {
   });
 
   it('OPEN: and the part\'s own datum is exactly (20, 10) away from it', () => {
-    // ⚠ Measured, unresolved, and the reason this test is named OPEN. On M745221N01 and
+    // Measured, unresolved, and the reason this test is named OPEN. On M745221N01 and
     // M7452A0N01 these two readings are bit-identical; here the model origin simply is not on
     // the part. Both are meaningful points and the DXF cannot say which one iCAD marks — only
     // looking at this sheet in iCAD can. If it marks the part, the fix is one reordering in

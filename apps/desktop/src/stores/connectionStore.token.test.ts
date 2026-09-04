@@ -8,7 +8,7 @@ const TOKEN_KEY = "ai_2d_api_token";
 /**
  * The token cache must never be empty while the app is running.
  *
- * 🔴 On 2026-08-28 an installed build showed two different errors for one cause. First
+ * On 2026-08-28 an installed build showed two different errors for one cause. First
  * *"Access Denied: Invalid security API Token"* (a stale token file), and then, once the 401
  * self-heal had nulled the cache, *"Access Denied: Missing Authorization Header"* — because the
  * synchronous `buildHeaders()` omits the header rather than waiting for a token. The second error

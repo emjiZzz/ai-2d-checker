@@ -144,7 +144,7 @@ async def rebuild_entities_index(root: Path | None = None) -> BuildResult:
     a 32-character id. Fetched whole rather than projected: this collection is tens of drawings
     against thousands of entities, so the drawings are not where the cost is.
 
-    ⚠ **Customer drawing content.** Client-local, local-only at R1.
+    **Customer drawing content.** Client-local, local-only at R1.
     """
     drawings = await DrawingDocument.find_all().to_list()
     names = {str(d.id): d.file_name for d in drawings}
@@ -173,7 +173,7 @@ async def rebuild_corrections_index(root: Path | None = None) -> BuildResult:
 async def rebuild_findings_index(root: Path | None = None) -> BuildResult:
     """Rebuild `findings` from **every** violation, reviewed or not.
 
-    ⚠ **This collection is mostly unreviewed engine output, and that is the point of indexing it
+    **This collection is mostly unreviewed engine output, and that is the point of indexing it
     separately from `lessons` rather than widening `lessons`.** `lessons` answers *"what has a
     human confirmed"*; this answers *"has this system ever reported anything like this"*. Each
     record's `Record.source` states its review state, so a citation cannot present an unreviewed
@@ -251,13 +251,13 @@ def feedback_record(feedback: AuditFeedbackDocument) -> Record | None:
     only as an audit trail of who taught the model what. Indexing it would let a withdrawn
     judgement be cited back at the next checker as though it still stood.
 
-    ⚠ **`client_name` is metadata, not a filter.** Nothing here scopes retrieval to one client,
+    **`client_name` is metadata, not a filter.** Nothing here scopes retrieval to one client,
     so a query can surface another client's correction. That is the same cross-client
     contamination `AutoDocEngine` was fixed for on 2026-08-10 — it is *not* reintroduced here
     (this path writes no rules and suppresses no findings), but a consumer that turns a hit into
     a rule must scope on this field. Recorded so the next caller does not have to rediscover it.
 
-    ⚠ **`human_comment` carries the same privacy edge as `checker_remarks`** — see
+    **`human_comment` carries the same privacy edge as `checker_remarks`** — see
     `violation_record`. Local-only at R1; strip at the edge before anything is transmitted.
     """
     if getattr(feedback, "retracted_at", None):

@@ -498,11 +498,11 @@ def test_uncaptured_sides_are_reported(tmp_path):
 #: owner's decision rather than something a test run can fix. Owner's call 2026-08-25: leave it,
 #: capture it by hand later.
 #:
-#: 🔴 **This is a real exposure, not a formality.** `generate_deterministic_candidates` calls
+#: **This is a real exposure, not a formality.** `generate_deterministic_candidates` calls
 #: Gemini on a title-block OCR cache miss, so an eval run over this pair breaks the "zero network
 #: calls" exit criterion and scores its title-block findings differently offline than in the app.
 #:
-#: ⚠ Empty this set the moment the reading is captured. The `xfail` below is **strict**, so the
+#: Empty this set the moment the reading is captured. The `xfail` below is **strict**, so the
 #: suite fails on the day it starts passing — which is the reminder, and is deliberate: a standing
 #: allowlist is a place for new breakage to hide.
 KNOWN_UNCAPTURED_OCR = {"M745204N01"}
@@ -538,7 +538,7 @@ def test_committed_corpus_has_every_ocr_reading_captured():
 def test_no_pair_beyond_the_known_one_is_missing_its_ocr_reading():
     """The guard the `xfail` above would otherwise switch off for the whole corpus.
 
-    ⚠ **An `xfail` on a test that checks EVERY pair excuses every pair.** That is the trap: with
+    **An `xfail` on a test that checks EVERY pair excuses every pair.** That is the trap: with
     only the marker above, a sixth pair exported tomorrow without its reading would be absorbed
     into the same expected failure and never reported. This asserts the exposure has not grown,
     so the known gap stays named and a new one still fails.

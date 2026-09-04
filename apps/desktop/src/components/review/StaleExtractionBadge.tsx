@@ -22,7 +22,7 @@ import type { DrawingItem } from "../../stores/workspace/types";
  * always on is one people stop seeing within a day, so the healthy state must be *invisible*
  * rather than a reassuring green tick. `StaleExtractionBadge.test.tsx` pins that.
  *
- * ⚠ **The staleness rule is not evaluated here.** `extraction_is_stale` is computed by the
+ * **The staleness rule is not evaluated here.** `extraction_is_stale` is computed by the
  * server beside `EXTRACTION_SCHEMA_VERSION`. Comparing the two numbers in TypeScript would put
  * a second copy of the rule on the far side of a language boundary with no shared types — the
  * same drift the taxonomy needs `tests/test_taxonomy_consistency.py` to police. This component

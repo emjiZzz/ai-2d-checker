@@ -84,7 +84,7 @@ def setup_logger() -> logging.Logger:
     
     # 1. Stdout Console Handler
     #
-    # ⚠ stdout is reconfigured to replace unencodable characters first. This console is **cp932**
+    # stdout is reconfigured to replace unencodable characters first. This console is **cp932**
     # on the development machine, and cp932 cannot encode an em-dash — which this codebase's log
     # messages are full of. Every such line raised `UnicodeEncodeError` inside `Handler.emit`,
     # which logging swallows by printing "--- Logging error ---" plus a full traceback to stderr:

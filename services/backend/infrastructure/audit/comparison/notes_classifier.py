@@ -52,16 +52,16 @@ The item markers are the reason content alone is not enough: nothing about `１`
 is a note because it sits **on the same row as** an instruction, 12 units to its left. So the
 pass is two-stage — seed on content, then admit neighbours by cohesion.
 
-⚠ **The nearest negative is the one that decides the design.** The tolerance block contains
+**The nearest negative is the one that decides the design.** The tolerance block contains
 `必要な場合は、粗さ区分を記入のこと` — an instruction ending in `のこと`, identical in form to a
 real note. No content rule separates it. It is excluded because `tolerance` **outranks** `notes`
 in `zone_ownership` (a real ruled box, IoU 0.85, against no box at all), which is why the veto
 is not optional and why this module refuses to run without `regions`.
 
-⛔ `ロール：` is deliberately **not** a seed token, though `4 ロール：12 (2x6台)` does sit inside
+`ロール：` is deliberately **not** a seed token, though `4 ロール：12 (2x6台)` does sit inside
 the pinned box on some sides. Those lines land in `views` on others, so claiming them moves
 content between categories on a corpus whose labels come from the engine's own pool. Measure it
-as a separate change if it is wanted. Note this is a different mechanism from the vault's ⛔ on
+as a separate change if it is wanted. Note this is a different mechanism from the vault's on
 adding `ロール` to `ZONE_ANCHORS` — that one *grew a box*; this one would only label an entity —
 but the caution transfers.
 """

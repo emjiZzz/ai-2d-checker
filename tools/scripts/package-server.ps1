@@ -66,7 +66,7 @@ Write-Host "  added service scripts + .env.template" -ForegroundColor DarkGray
 # contains a password, and committing it would put the cluster credential in git history forever.
 # It is injected here, at package time, from the build machine's own .env.
 #
-# 🔴 The result is a real credential inside the installer, on every workstation. Said out loud
+# The result is a real credential inside the installer, on every workstation. Said out loud
 # below rather than left for someone to discover.
 $repoEnv = Join-Path $repoRoot ".env"
 $stagedTemplate = Join-Path $outDir ".env.template"
@@ -95,7 +95,7 @@ if (-not (Test-Path $exe)) { throw "Build reported success but $exe is missing."
 # globs relative to tauri.conf.json, and a path climbing out of the project is fragile across CLI
 # versions -- so the package is copied IN rather than referenced where it was built.
 #
-# ⚠ Mirrored, not merged: the staging folder is emptied first. Otherwise a file removed from the
+# Mirrored, not merged: the staging folder is emptied first. Otherwise a file removed from the
 # build (a dependency dropped, a renamed DLL) would linger in the installer forever, and the thing
 # shipped would stop matching the thing built.
 $stageDir = Join-Path $repoRoot "apps\desktop\src-tauri\server"

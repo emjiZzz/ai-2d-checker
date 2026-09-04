@@ -221,7 +221,7 @@ describe('inferFeatureKeyForPair — every title-block pair in the committed cor
     // Name default with the evidence sitting in its other half.
     ['橋本', '津田', 'designed'],
     ['中川', 'ZHR', 'drawn'],
-    // ⚠ Neither side is a known signatory, and 設計 and 製図 both hold a bare surname with
+    // Neither side is a known signatory, and 設計 and 製図 both hold a bare surname with
     // nothing in the string to separate them. `other` is the honest answer; Machine Name was not.
     ['津田', '津田', OTHER_FEATURE_KEY],
 

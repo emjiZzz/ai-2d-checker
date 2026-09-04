@@ -47,7 +47,7 @@ import { submitAuditFeedbackPayload } from '../../services/auditsApi';
  * does here — **selecting is not recording**, so there remains exactly one way to write a
  * marking.
  *
- * ⚠ **A drag is not a click.** A press that travels more than `CLICK_SLOP_PX` is a pan, and
+ * **A drag is not a click.** A press that travels more than `CLICK_SLOP_PX` is a pan, and
  * selects nothing on its own. Clicking empty space clears the selection.
  */
 
@@ -113,7 +113,7 @@ export function useEntityPicking(params: {
       const sx = clientX - rect.left;
       const sy = clientY - rect.top;
 
-      // ⚠ The Y-FLIPPED transform. Entity geometry is CAD Y-up; `screenToWorldUnflipped` is the
+      // The Y-FLIPPED transform. Entity geometry is CAD Y-up; `screenToWorldUnflipped` is the
       // zone-fraction variant and using it here would mirror every hit box about the sheet's
       // centreline — plausible near the middle, far out at the top.
       const world = screenToWorld(sx, sy, norm, viewport);
@@ -255,7 +255,7 @@ export function useEntityPicking(params: {
    * `findMatches` call the cross-sheet outline uses, so what gets recorded is exactly the entity
    * the engineer can see outlined and labelled while they choose a status.
    *
-   * ⚠ **Only when there is exactly ONE.** Where several candidates carry the value and nothing
+   * **Only when there is exactly ONE.** Where several candidates carry the value and nothing
    * separates them the overlay outlines them all with an `xN` chip, and this publishes nothing:
    * a MATCHED that silently picked one of three would be a fabricated pair wearing the same
    * badge as a real one.

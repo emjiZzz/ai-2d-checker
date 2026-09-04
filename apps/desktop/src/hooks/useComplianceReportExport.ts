@@ -107,7 +107,7 @@ const STATUS_VISIBLE_MS = 10_000;
  * unresponsive during it. A progress message that never changes for seventeen seconds is read as
  * a hang, and the user's next move is to click again.
  *
- * ⚠ `folder` matters most. The picker opens partway through, and a user who has been watching a
+ * `folder` matters most. The picker opens partway through, and a user who has been watching a
  * blocking overlay does not expect to be asked for something.
  */
 const PHASE = {
@@ -480,7 +480,7 @@ export function useComplianceReportExport() {
         checklistPages.length,
       );
 
-      // ⚠ A FOLDER picker, not a save dialog, and the reason is Tauri's scope model rather than
+      // A FOLDER picker, not a save dialog, and the reason is Tauri's scope model rather than
       // taste. `tauri-plugin-dialog` grants access to exactly what it returned — `save()` calls
       // `allow_file(&path)` for that one path, `open({directory:true})` calls
       // `allow_directory(&path, recursive)`. Asking for a filename and writing a SECOND file

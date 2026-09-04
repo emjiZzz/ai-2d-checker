@@ -5,7 +5,7 @@ to a per-user application-data directory and the Tauri shell reads it back from 
 type-checks across that boundary: Python computes the path, Rust computes it again, and
 `tauri.conf.json` declares the identifier a third time.
 
-⚠ **The failure mode is the expensive kind.** If the two sides disagree, everything works in
+**The failure mode is the expensive kind.** If the two sides disagree, everything works in
 development -- where `<repo>/storage` is found first and this path is never used -- and an
 installed build silently 401s on every authenticated request while `/health` still returns 200,
 so the app reports itself CONNECTED. That is exactly the bug this mechanism was added to fix, and
@@ -45,7 +45,7 @@ def test_the_rust_side_declares_the_same_token_directory() -> None:
 
 
 def test_the_token_directory_is_NOT_the_tauri_identifier() -> None:
-    """🔴 The regression that cost a shipped build.
+    """The regression that cost a shipped build.
 
     The token directory used to BE the bundle identifier. That is the desktop app's own data
     directory -- WebView2 keeps its profile there and the uninstaller deletes it -- so an

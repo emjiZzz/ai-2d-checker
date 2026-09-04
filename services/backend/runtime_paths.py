@@ -12,7 +12,7 @@ unpacks a onefile build into a temporary directory and sets `__file__` inside it
 
 * `.env` is looked for in the temp dir, is not there, and every setting silently falls back to its
   default -- including `MONGO_URI`, which would point at localhost instead of Atlas;
-* 🔴 `storage/` resolves into the temp dir too, which the OS **deletes when the process exits**.
+* `storage/` resolves into the temp dir too, which the OS **deletes when the process exits**.
   Uploaded drawings, renderings and the eval corpus would be written to a directory that is
   removed on shutdown, and nothing would report an error.
 
@@ -28,7 +28,7 @@ who wants to find the logs.
 
 **From source: the repository root**, exactly as before, so development behaviour is unchanged.
 
-⚠ `sys.executable` and NOT `sys._MEIPASS`. `_MEIPASS` is the temp unpack directory -- correct for
+`sys.executable` and NOT `sys._MEIPASS`. `_MEIPASS` is the temp unpack directory -- correct for
 reading bundled read-only resources, and the wrong answer for anything the app writes.
 """
 

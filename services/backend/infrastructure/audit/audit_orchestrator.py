@@ -203,14 +203,14 @@ class AuditOrchestrator:
         # actually search with — the same defect shape as a mutator that only approximates the
         # engine's zone rules. One construction, two callers. See [[ADR-012]].
         #
-        # ✅ Layer names come from `ExtractedEntity.layer`, fixed 2026-08-17. They were read from
+        # Layer names come from `ExtractedEntity.layer`, fixed 2026-08-17. They were read from
         # `drawing.metadata["layers"]` — **a key nothing has ever written** — so the branch this
         # builder's own comment calls "the strongest signal" contributed nothing on all 44
         # drawings, and a production query was the file name plus a constant. It could not fail:
         # a missing key yields a shorter query, not an error.
         # See [[Gotcha - The Strongest Signal in the Audit Query Was Never Written]].
         #
-        # ⚠ The layer fetch is a **database call**, and it sits inside the try below rather than
+        # The layer fetch is a **database call**, and it sits inside the try below rather than
         # above it on purpose. Everything about lessons retrieval is non-fatal by design — "if
         # retrieval fails, the audit continues without lessons" — and hoisting a Mongo round
         # trip out of that guard would let a transient DB error crash a whole audit for the sake

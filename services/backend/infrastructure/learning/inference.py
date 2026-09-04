@@ -48,7 +48,7 @@ def _override_applies(
     A human dismissed (or confirmed) a finding whose normalised text was `override_value`. This
     answers *"is this marking that same finding"*, and nothing else.
 
-    ⚠ **The reverse test — "is this marking's value a fragment of the override" — is deliberately
+    **The reverse test — "is this marking's value a fragment of the override" — is deliberately
     absent, and removing it is the fix for a measured defect.** It let the dimension `25` inherit
     a dismissal recorded for the line attribute `CENTER 0.25MM`, because `"25"` is a substring of
     `"center0.25mm"`. On `M745230A01` that force-matched three real dimension changes —

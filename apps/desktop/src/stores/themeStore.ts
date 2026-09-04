@@ -10,7 +10,7 @@ interface ThemeState {
 /**
  * What the app uses when nobody has chosen.
  *
- * ⚠ **In a prototype build this is not a default, it is the theme.** The only control that writes
+ * **In a prototype build this is not a default, it is the theme.** The only control that writes
  * `localStorage["theme"]` is the picker in `SettingsView`, and prototype mode hides the entire
  * header nav strip — so Settings is unreachable, `currentNav` stays pinned to `workspace`, and
  * neither `setTheme` nor `toggleTheme` can ever be called. Nothing else writes the key, so the

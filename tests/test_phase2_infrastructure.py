@@ -80,7 +80,7 @@ def test_storage_bootstrap():
 async def test_database_retry_handling():
     """Retry limits and exponential backoff, with no reachable database of either kind.
 
-    ⚠ **Both URIs have to be dead, not just the primary.** `connect()` tries `MONGO_URI` and then
+    **Both URIs have to be dead, not just the primary.** `connect()` tries `MONGO_URI` and then
     falls back to `MONGO_FALLBACK_URI`, which defaults to `mongodb://127.0.0.1:27017` — the local
     MongoDB most developers here have running. Pointing only the primary at a dead port therefore
     asserted "the connection failed" on a machine where it had just succeeded through the

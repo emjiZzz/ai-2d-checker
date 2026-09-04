@@ -28,7 +28,7 @@ export interface ReportDocuments {
 /**
  * A new PDF holding just `indices` of `source`, in that order.
  *
- * ⚠ **Copied, not deleted.** The obvious alternative — load the document twice and `removePage`
+ * **Copied, not deleted.** The obvious alternative — load the document twice and `removePage`
  * the unwanted half from each — leaves every object those pages referenced still in the file: the
  * fonts, the 304 dpi page images, all of it. Both halves come out roughly the size of the whole
  * and neither looks wrong. Copying pulls across only what the kept pages actually reference.
@@ -54,7 +54,7 @@ export async function splitReportDocuments(
   checklistPages: number,
 ): Promise<ReportDocuments> {
   if (sheetBytes) {
-    // ⚠ `checklistPages`, not the PDF's own page count. A `new jsPDF()` always starts with one
+    // `checklistPages`, not the PDF's own page count. A `new jsPDF()` always starts with one
     // page whether or not anything was drawn on it, so a report with no rows would otherwise save
     // a blank second file that reads as a bug in the checklist rather than as an empty result.
     return {
@@ -75,7 +75,7 @@ export async function splitReportDocuments(
 /**
  * The two BARE filenames for one export. Join them onto the chosen directory yourself.
  *
- * ⚠ **Bare names, and the export asks for a FOLDER rather than a filename, because of Tauri's
+ * **Bare names, and the export asks for a FOLDER rather than a filename, because of Tauri's
  * scope model — not as a UI preference.** `tauri-plugin-dialog` grants filesystem access to
  * exactly what the dialog returned: `save()` calls `allow_file(&path)` for that one path, while
  * `open({ directory: true })` calls `allow_directory(&path, recursive)`. So a save dialog

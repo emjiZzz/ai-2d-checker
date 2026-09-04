@@ -121,7 +121,7 @@ export const generateComparisonMarkings = ({
     // so for these structured categories we trust the backend coordinate and skip text
     // grounding entirely. (drawing_views/notes still ground by text, where it is correct.)
     //
-    // ⚠ This guard used to also require `hasBackendCoord`, and so **failed open in exactly the
+    // This guard used to also require `hasBackendCoord`, and so **failed open in exactly the
     // case it was written for**: when the backend resolves nothing the marking arrives with
     // `coordinates: null` and `resolution_method: "unresolved"`, `hasBackendCoord` is false,
     // and the whole thing fell through into fuzzy matching — with no coordinate to sanity-check

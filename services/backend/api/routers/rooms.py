@@ -93,11 +93,11 @@ async def list_rooms(
     # remote cluster (measured 2026-08-19), for a view that renders a room's name and status.
     # Dropping it takes the same call to ~90 ms.
     #
-    # ⚠ It is projected at the DATABASE, not stripped afterwards, because the cost is the
+    # It is projected at the DATABASE, not stripped afterwards, because the cost is the
     # bytes crossing the network and not the serialization — see
     # `infrastructure/storage/entity_cache.py` for the measurements behind that claim.
     #
-    # ⚠ Every list row therefore reports `physical_comparison_results: null`, which is
+    # Every list row therefore reports `physical_comparison_results: null`, which is
     # indistinguishable from a room that has never been compared. No caller reads it off the
     # list today — `activeRoom` is populated from `GET /rooms/{id}` and from the PATCH
     # response, both of which carry the full field — and

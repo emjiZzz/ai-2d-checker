@@ -33,7 +33,7 @@ export const CHECKLIST_PAGE_ASPECT = CHECKLIST_PAGE_MM.width / CHECKLIST_PAGE_MM
  * no header strip — a caption band and a 3 mm top margin cannot both exist, and the drawing is
  * what the page is for.
  *
- * ⚠ **3 mm is inside most printers' unprintable border** (typically 4–5 mm), so a hard copy may
+ * **3 mm is inside most printers' unprintable border** (typically 4–5 mm), so a hard copy may
  * lose the outermost sliver of the sheet frame. That is a deliberate trade for a full-bleed
  * drawing on screen; raise this to 5 if printed copies start coming back clipped.
  */

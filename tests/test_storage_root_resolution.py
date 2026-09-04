@@ -6,14 +6,14 @@ installed build there is nothing to find -- so it keeps ascending, and an app in
 `%LOCALAPPDATA%\DraftCheck\` is five parents below `C:\`, which puts a stray `C:\storage`
 inside the budget.
 
-🔴 That is what shipped. On 2026-08-28 the installed 0.1.8 build read
+That is what shipped. On 2026-08-28 the installed 0.1.8 build read
 `C:\storage\secure\.api-token` -- a token published the previous day by a frozen backend that
 had been launched from `C:\` (the incident 27fb0ab fixed on the backend side). It decrypts
 perfectly, because the key is derived from machine and user rather than from provenance, so
 nothing rejected it until the backend answered 401 on every authenticated request. `/health` needs
 no token and stayed 200, so the app displayed itself as CONNECTED.
 
-⚠ **Why a test rather than a comment.** The per-user branch already carried a comment calling
+**Why a test rather than a comment.** The per-user branch already carried a comment calling
 itself *"the only branch an INSTALLED build can reach"*. It was wrong for as long as any directory
 named `storage` sat above the install location, and a comment cannot notice that.
 

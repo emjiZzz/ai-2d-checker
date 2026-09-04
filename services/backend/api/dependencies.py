@@ -41,7 +41,7 @@ def resolve_username(
     `X-Engineer-Name` carries the name chosen in `EngineerPromptModal` so those records can be
     attributed and separated per tester.
 
-    🔴 **It is NOT authentication and must never be treated as such.** The name is picked from a
+    **It is NOT authentication and must never be treated as such.** The name is picked from a
     21-entry dropdown with no password, every installed client holds the same API bearer token,
     and this header is set by the client. Anyone can send any name. It buys **separation**
     — "your workspace lists your work" — not confidentiality, and any endpoint that fetches by id
@@ -63,7 +63,7 @@ def resolve_username(
     # Unverified, prototype-only. Bounded and stripped so a malformed header cannot become a
     # 10 KB `created_by` or an empty-string owner that matches nothing.
     #
-    # ⚠ `isinstance` rather than a truthiness check, because this is not always reached through
+    # `isinstance` rather than a truthiness check, because this is not always reached through
     # FastAPI. Router functions in this codebase are also called DIRECTLY from tests, and then the
     # parameter still holds the unresolved `Header(...)` default object -- which is truthy and has
     # no `.strip`. `test_drawings_router_error_handling` caught exactly that: an AttributeError
@@ -105,7 +105,7 @@ async def get_or_404(model, id: str, detail: str, projection: dict | None = None
     nothing fails when the library stops raising it — the code keeps compiling,
     the tests keep passing, and the guard silently stops guarding.
 
-    ⚠ `InvalidId` is live again, so the branch above is not merely historical:
+    `InvalidId` is live again, so the branch above is not merely historical:
     the `projection` path below goes through bson's `ObjectId` directly rather
     than through Beanie's `TypeAdapter`, so a malformed id raises `InvalidId`
     and never reaches the pydantic one. The two branches now each have exactly

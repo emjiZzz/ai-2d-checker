@@ -1,7 +1,7 @@
 /**
  * The app comes up light unless someone has chosen otherwise.
  *
- * ⚠ **In a prototype build the fallback is not a default, it is the theme.** `SettingsView` holds
+ * **In a prototype build the fallback is not a default, it is the theme.** `SettingsView` holds
  * the only control that writes `localStorage["theme"]`, and prototype mode hides the whole header
  * nav strip, so Settings cannot be reached and `setTheme` / `toggleTheme` can never be called.
  * Nothing else writes the key. So a change to the fallback is the entire user-visible behaviour

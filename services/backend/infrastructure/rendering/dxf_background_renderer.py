@@ -79,7 +79,7 @@ def render_dxf_background(dxf_path: Path, drawing_id: str, metadata: dict[str, A
         # Render the selected layout (with automatic viewport projection!)
         Frontend(ctx, backend, config=config).draw_layout(layout_to_render, finalize=True)
         
-        # ⚠ These are NOT tight bounds, whatever this comment used to claim. `get_xlim()` returns
+        # These are NOT tight bounds, whatever this comment used to claim. `get_xlim()` returns
         # the AUTOSCALED limits, which carry Matplotlib's default `axes.xmargin`/`axes.ymargin`
         # of 5% per side — and `set_aspect('equal', 'box')` above then expands whichever axis is
         # short of the figure's ratio. So `render_bounds` is systematically ~10% larger than the

@@ -144,7 +144,7 @@ export const InteractiveTourOverlay: React.FC = () => {
         nextStep();
       } catch (err) {
         /*
-          🔴 This used to be `console.error(...); nextStep();` -- it advanced the tour ANYWAY.
+          This used to be `console.error(...); nextStep();` -- it advanced the tour ANYWAY.
 
           So "Enter Tutorial Room" moved to step 2 ("Upload Reference Drawing") while no room had
           been created and the page behind still read "NO WORKSPACES YET". The tour then walked
