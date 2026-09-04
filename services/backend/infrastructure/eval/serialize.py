@@ -11,11 +11,9 @@ subclasses, which would drag in Mongo.
 carried anyway: they are cheap, they are part of the extraction schema, and omitting them
 would make a payload a lossy record of what was extracted.
 
-## Byte stability is a feature, not an accident
-
-Every payload is hashed into the committed manifest, and the loader refuses to run when a
-hash does not match (see `corpus.py`). That guarantee is only worth something if writing
-the same data twice produces the same bytes, so:
+Byte stability is deliberate. Every payload is hashed into the committed manifest and the loader
+refuses to run on a mismatch (see `corpus.py`), which is only worth something if writing the same
+data twice produces the same bytes. So:
 
   * keys are sorted, separators are fixed, `ensure_ascii=False`
   * files are opened with `newline="\\n"` — Windows is the primary dev platform here and

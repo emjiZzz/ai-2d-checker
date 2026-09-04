@@ -1,38 +1,17 @@
 /**
- * QueryErrorBoundary.tsx — Application-level error boundary for TanStack Query
+ * Application-level error boundary for TanStack Query.
  *
- * ── Why two layers? ───────────────────────────────────────────────────────────
- * React Error Boundaries must be class components (they use `componentDidCatch`
- * and `getDerivedStateFromError`, which have no hook equivalents). But TanStack
- * Query's `useQueryErrorResetBoundary` is a hook — it can only run inside a
- * function component. The solution is a two-layer pattern:
+ * Two layers because the two requirements are incompatible: an error boundary must be a class
+ * component, and `useQueryErrorResetBoundary` is a hook. So a function wrapper calls the hook and
+ * a class core catches the render error.
  *
- *   QueryErrorBoundary (function)     ← calls useQueryErrorResetBoundary()
- *       └── ErrorBoundaryCore (class) ← catches render-phase errors
- *               └── {children}
+ * "Try Again" needs both halves -- reset the query error state, then clear the boundary's own
+ * state to remount the children. Without the first, TanStack Query still holds the error and the
+ * remounted child crashes again immediately.
  *
- * When the user clicks "Try Again":
- *   1. `queryClient.resetQueries()` is called (via reset from the hook)
- *      which clears TanStack Query's error state for all affected queries.
- *   2. `this.setState({ error: null })` is called, which unmounts the
- *      fallback and remounts the children — triggering a fresh query fetch.
- *
- * Both steps are required. Without (1), TanStack Query holds the error
- * and the component would immediately crash again on remount.
- *
- * ── Placement in the tree ────────────────────────────────────────────────────
- * Wrapping `renderContent()` in App.tsx at the workspace/dashboard level.
- * The AppHeader and global drag overlay sit outside the boundary so they
- * remain intact even when a query crashes the inner content.
- *
- * ── What errors does this catch? ─────────────────────────────────────────────
- * Any error thrown during a React render cycle, including:
- *   - TanStack Query `throwOnError: true` (when enabled per-query)
- *   - Errors thrown inside child components during rendering
- *
- * Network errors that TanStack Query retries internally (default: 3 retries)
- * only reach the boundary after all retries are exhausted. This means the
- * boundary is the last line of defence, not the first.
+ * It wraps `renderContent()` in `App.tsx`, leaving `AppHeader` and the drag overlay outside so
+ * they survive a crash in the inner content. Retries are exhausted before an error arrives here,
+ * so this is the last line of defence rather than the first.
  */
 
 import React, { useEffect, useState } from "react";
@@ -219,25 +198,9 @@ interface QueryErrorBoundaryProps {
   fallback?: (error: Error, reset: () => void) => React.ReactNode;
 }
 
-/**
- * Drop-in error boundary that integrates with TanStack Query's error reset.
- *
- * Usage (app-level):
- *   <QueryErrorBoundary>
- *     {renderContent()}
- *   </QueryErrorBoundary>
- *
- * Usage (page-level with custom fallback):
- *   <QueryErrorBoundary
- *     fallback={(error, reset) => <MyCustomFallback error={error} onReset={reset} />}
- *   >
- *     <MyPage />
- *   </QueryErrorBoundary>
- */
+/** Drop-in error boundary that integrates with TanStack Query's error reset. */
 export function QueryErrorBoundary({ children, fallback }: QueryErrorBoundaryProps) {
-  // useQueryErrorResetBoundary returns a reset() function that clears
-  // TanStack Query's internal error state for all queries in scope.
-  // Without this, retrying after a query error would immediately re-throw.
+  // Clears the query error state for every query in scope. Without it, a retry re-throws.
   const { reset } = useQueryErrorResetBoundary();
   const status = useConnectionStore((s) => s.status);
   const [resetSignal, setResetSignal] = useState(0);

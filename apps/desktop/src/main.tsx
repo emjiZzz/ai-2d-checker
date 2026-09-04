@@ -8,14 +8,8 @@ import { GlobalErrorFallback } from "./components/GlobalErrorFallback";
 import "./index.css";
 
 /**
- * React.lazy() is the correct client-side API for code-splitting a component.
- * Unlike the async-component pattern (RSC-only), React.lazy() works in any
- * client React app — it expects a dynamic import that resolves to a module
- * with a `default` export. The Suspense boundary above it renders `null`
- * while the chunk loads, so there is no visible flash.
- *
- * Vite evaluates import.meta.env.DEV at build time, so this entire lazy()
- * call — and the devtools chunk — is tree-shaken out of production bundles.
+ * Vite evaluates `import.meta.env.DEV` at build time, so this whole branch and the devtools
+ * chunk with it are tree-shaken out of a production bundle.
  */
 const ReactQueryDevtools = import.meta.env.DEV
   ? React.lazy(() =>
@@ -28,18 +22,11 @@ const ReactQueryDevtools = import.meta.env.DEV
 
 const app = (
   <React.StrictMode>
-    {/*
-     * QueryClientProvider must sit above every component that uses
-     * useQuery / useMutation. Placing it here (root) rather than inside App
-     * keeps infrastructure concerns out of the App component tree.
-     */}
+    {/* At the root rather than inside App, so infrastructure stays out of the App tree. */}
     <ErrorBoundary FallbackComponent={GlobalErrorFallback} onReset={() => window.location.reload()}>
       <QueryClientProvider client={queryClient}>
         <App />
-        {/*
-         * Suspense is required by React.lazy(). The fallback is null because
-         * the devtools panel is non-critical — a brief invisible load is fine.
-         */}
+        {/* Null fallback: the devtools panel is non-critical, so an invisible load is fine. */}
         {ReactQueryDevtools && (
           <React.Suspense fallback={null}>
             <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
@@ -51,18 +38,11 @@ const app = (
 );
 
 /**
- * HMR-safe root mounting.
- *
- * The problem: Vite's Hot Module Replacement re-executes this entire module
- * file on every save. A bare `ReactDOM.createRoot(container).render(...)` call
- * therefore runs `createRoot()` again on the same DOM node that already has a
- * React root attached — triggering React's "container already passed to
- * createRoot()" warning and potentially tearing down / rebuilding the tree.
- *
- * The fix: cache the root on `window.__reactRoot`. Unlike module-level
- * variables (which are reset on HMR re-evaluation), `window` properties
- * survive across hot-reloads. On the first load we create the root and
- * cache it; on subsequent HMR re-evaluations we reuse it via `root.render()`.
+ * HMR-safe root mounting. Vite re-executes this module on every save, so a bare
+ * `createRoot(container).render(...)` calls `createRoot` again on a node that already has a root
+ * -- React's "container already passed to createRoot" warning, and a tree that may be torn down
+ * and rebuilt. The root is cached on `window` because a module-level variable is reset by the
+ * re-evaluation and a `window` property is not.
  */
 declare global {
   interface Window {
