@@ -16,7 +16,6 @@ import { create } from "zustand";
  * would make the offline overlay's address field unable to fix the very mismatch it exists for.
  */
 export const PROD_CLOUD_URL = "https://ai-2d-checker-backend.onrender.com";
-export const PROD_CLOUD_TOKEN = "kmti-cloud-token-2026-secret";
 export const LOCAL_DEV_URL = "http://127.0.0.1:8080";
 
 export const DEFAULT_BACKEND_URL =
@@ -24,10 +23,29 @@ export const DEFAULT_BACKEND_URL =
     ? (import.meta.env.VITE_BACKEND_URL as string)
     : (typeof import.meta !== "undefined" && import.meta.env?.DEV ? LOCAL_DEV_URL : PROD_CLOUD_URL);
 
+/**
+ * The bearer token for a remote backend, injected at build time and never written down here.
+ *
+ * This was a string literal, which meant the credential for the live cloud backend was in the
+ * repository and in every installer built from it. Anyone with either had full read and write on
+ * every drawing and every marking, and rotating it required a code change. It is now supplied
+ * only by `VITE_REMOTE_API_TOKEN`, which `build_prototype.ps1` exports from its `-ApiToken`
+ * argument and refuses to build a cloud client without.
+ *
+ * Empty is a legitimate state and must stay loud rather than silent: `checkHealth` reports a
+ * remote backend with no token as `invalid`, because `/health` needs no token, so without that
+ * check the app shows CONNECTED while every authenticated request 401s -- the same shape as
+ * `06 - .../Gotcha - The Installed App Bound to a Storage Directory at the Drive Root.md`. The
+ * offline overlay carries an API Token field in a prototype build, which is how an engineer
+ * supplies one after a rotation.
+ *
+ * Guarded by `connectionStore.token.test.ts`, which parses this file and fails on a literal that
+ * looks like a credential.
+ */
 export const DEFAULT_REMOTE_API_TOKEN =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_REMOTE_API_TOKEN)
     ? (import.meta.env.VITE_REMOTE_API_TOKEN as string)
-    : (typeof import.meta !== "undefined" && import.meta.env?.DEV ? "" : PROD_CLOUD_TOKEN);
+    : "";
 
 /** Where a user-chosen backend address is remembered. */
 export const BACKEND_URL_STORAGE_KEY = "ai_2d_backend_url";
@@ -233,6 +251,21 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
     let activeToken = apiToken;
     if (!activeToken) {
       activeToken = await get().fetchApiToken();
+    }
+
+    // A remote backend with no token is a configuration error, not a connection state, and it
+    // has to be reported as one. `/health` needs no token, so it answers 200 and the app would
+    // sit on CONNECTED while every authenticated request 401s. Loopback is exempt: there the
+    // token is issued by the local backend and `fetchApiToken` may legitimately still be racing
+    // the sidecar's first write.
+    if (!activeToken && !isLoopback) {
+      set({
+        status: "invalid",
+        error:
+          "No API token for this backend. Enter one below, or rebuild with VITE_REMOTE_API_TOKEN set.",
+        lastChecked: Date.now(),
+      });
+      return false;
     }
 
     // Set status to reconnecting only if we were confirmed offline (>= 3 consecutive failures)

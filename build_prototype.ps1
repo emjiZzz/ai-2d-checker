@@ -44,6 +44,23 @@ if (![string]::IsNullOrWhiteSpace($ApiToken)) {
     Write-Host "Remote API Token     : [Configured / Baked]" -ForegroundColor Cyan
 }
 
+# The token used to be a string literal in connectionStore.ts, so this script worked with no
+# -ApiToken and every installer carried the repository's own credential. It is injected now, which
+# means an omitted -ApiToken produces a client that cannot authenticate against anything.
+#
+# Fail here rather than let that reach an engineer. The app reports it as `invalid` and offers a
+# token field, but a build nobody can use is a build that should not have finished. Loopback needs
+# no token: there the backend issues one to local disk.
+$targetsRemote = $BackendUrl -and ($BackendUrl -notmatch '^https?://(127\.0\.0\.1|localhost|\[::1\])(:|/|$)')
+if ($targetsRemote -and [string]::IsNullOrWhiteSpace($ApiToken)) {
+    Write-Host ""
+    Write-Host "BUILD ABORTED - no -ApiToken for a remote backend." -ForegroundColor Red
+    Write-Host "  Target: $BackendUrl" -ForegroundColor White
+    Write-Host "  The client would ship with no credential and authenticate against nothing." -ForegroundColor White
+    Write-Host "  Re-run with:  .\build_prototype.ps1 -ApiToken '<the backend API_TOKEN>'" -ForegroundColor Yellow
+    exit 1
+}
+
 $pnpmExe = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } elseif (Test-Path "$env:APPDATA\npm\pnpm.cmd") { "$env:APPDATA\npm\pnpm.cmd" } else { "npx pnpm" }
 
 Write-Host "Installing dependencies..." -ForegroundColor Yellow

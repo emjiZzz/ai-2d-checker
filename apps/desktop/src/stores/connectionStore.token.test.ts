@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-import { useConnectionStore } from "./connectionStore";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import { DEFAULT_REMOTE_API_TOKEN, useConnectionStore } from "./connectionStore";
 import { buildHeaders, parseOrThrow } from "../services/fetchUtils";
 
 const TOKEN_KEY = "ai_2d_api_token";
@@ -74,5 +78,57 @@ describe("the API token cache", () => {
 
     localStorage.setItem(TOKEN_KEY, "second");
     expect(await useConnectionStore.getState().refreshApiToken()).toBe("second");
+  });
+});
+
+/**
+ * No credential may be a string literal in this file.
+ *
+ * `PROD_CLOUD_TOKEN = "kmti-cloud-token-2026-secret"` lived here and was the real bearer token for
+ * the live cloud backend, so it was in the repository and in every installer built from it.
+ * Anyone holding either had full read and write on every drawing and marking, and rotating it
+ * meant a code change and a reissued installer.
+ *
+ * This asserts on the source text rather than on behaviour, like `features.test.ts`, because a
+ * baked credential and an injected one behave identically -- that is exactly why the literal
+ * survived as long as it did.
+ */
+describe("the remote API token", () => {
+  const SOURCE = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "connectionStore.ts"),
+    "utf8",
+  );
+
+  it("is never a string literal assigned to a credential-shaped constant", () => {
+    const assignments = [
+      ...SOURCE.matchAll(/(?:export\s+)?const\s+(\w*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL)\w*)\s*=\s*(["'`])([^"'`]*)\2/gi),
+    ]
+      .filter(([, , , value]) => value.trim() !== "")
+      // A `*_STORAGE_KEY` is the NAME of a localStorage slot, not a secret. Its value is meant to
+      // be a stable literal -- changing it orphans what every installed build already stored.
+      .filter(([, name]) => !/STORAGE_KEY$/.test(name));
+
+    expect(
+      assignments.map(([, name, , value]) => `${name} = ${JSON.stringify(value)}`),
+    ).toEqual([]);
+  });
+
+  it("carries no literal that looks like a shared secret", () => {
+    const suspicious = [...SOURCE.matchAll(/["'`]([^"'`\s]*(?:secret|passwd|password)[^"'`\s]*)["'`]/gi)]
+      .map((m) => m[1])
+      // A storage key or an env var name may legitimately contain the word.
+      .filter((v) => !/^[A-Z_]+$/.test(v));
+
+    expect(suspicious).toEqual([]);
+  });
+
+  it("is empty when the build environment did not set one", () => {
+    // vitest runs with VITE_REMOTE_API_TOKEN unset, which is exactly an unconfigured build. Under
+    // those same conditions this used to resolve to the baked literal, so the assertion is the
+    // difference. Read from the module binding rather than re-importing under a stubbed env: the
+    // constant is evaluated once at module load, so a later stub could not change it and a test
+    // that appeared to prove otherwise would be proving nothing.
+    expect(import.meta.env.VITE_REMOTE_API_TOKEN ?? "").toBe("");
+    expect(DEFAULT_REMOTE_API_TOKEN).toBe("");
   });
 });
