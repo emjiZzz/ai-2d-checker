@@ -5,16 +5,9 @@ import { useThemeStore } from '../../stores/themeStore';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Trash2,
-  ClipboardCheck,
   Download,
   ChevronDown,
   ChevronRight,
-  Layers,
-  FileText,
-  Table,
-  CreditCard,
-  Box,
-  MoreHorizontal,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useRoomStore } from '../../stores/roomStore';
@@ -41,25 +34,6 @@ import { getAnnotationBadgeMap } from '../../stores/workspace/types';
  * read `theme` off `reviewStore`, which does not have it — the selector returned `undefined` and
  * the dark styling was applied unconditionally.
  */
-
-// Shared with the canvas badges rather than restated: a list dot and its badge disagreeing
-// about what ADDED looks like is small, silent and exactly the drift this codebase keeps paying
-function getCategoryIcon(key: string) {
-  switch (key) {
-    case 'drawing_views':
-      return <Layers size={13} style={{ color: '#00e5ff' }} />;
-    case 'notes':
-      return <FileText size={13} style={{ color: '#f59e0b' }} />;
-    case 'bill_of_materials':
-      return <Table size={13} style={{ color: '#10b981' }} />;
-    case 'title_block':
-      return <CreditCard size={13} style={{ color: '#3b82f6' }} />;
-    case 'isometric_view':
-      return <Box size={13} style={{ color: '#a855f7' }} />;
-    default:
-      return <MoreHorizontal size={13} style={{ color: 'var(--text-muted)' }} />;
-  }
-}
 
 export const ManualMarkingList: React.FC = () => {
   const isManualCheckRoom = useIsManualCheckRoom();
@@ -144,39 +118,22 @@ export const ManualMarkingList: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
-                width: 24,
-                height: 24,
-                borderRadius: 5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: totalCount > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(0,229,255,0.12)',
-                border: `1px solid ${totalCount > 0 ? 'rgba(16,185,129,0.28)' : 'rgba(0,229,255,0.28)'}`,
-                flexShrink: 0,
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-primary)',
               }}
             >
-              <ClipboardCheck size={13} color={totalCount > 0 ? '#10b981' : '#00e5ff'} />
+              Ground Truth Markings
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                Ground Truth Markings
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-                {manualSessionId
-                  ? `${totalCount} item${totalCount === 1 ? '' : 's'} recorded`
-                  : 'Opening session…'}
-              </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+              {manualSessionId
+                ? `${totalCount} item${totalCount === 1 ? '' : 's'} recorded`
+                : 'Opening session…'}
             </div>
           </div>
 
@@ -503,7 +460,6 @@ export const ManualMarkingList: React.FC = () => {
           return (
             <ChecklistSection
               key={key}
-              icon={getCategoryIcon(key)}
               label={categoryLabel(key)}
               statusLabel={statusLabel}
               statusColor={sectionColor}

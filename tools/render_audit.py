@@ -805,6 +805,7 @@ def build_report(dxf_path: Path) -> dict[str, Any]:
         "render_layout": layout_name,
         "extraction_counts": dict(counts),
         "census": census_block,
+        "radial_leaders": radial_leader_audit(dxf_path),
         "font": {"name": CANVAS_FONT, "cap_height_over_em": round(cap_ratio, 4)},
         "text_oracle": {
             "measured": len(rows),
@@ -847,6 +848,8 @@ def print_report(report: dict[str, Any], top: int) -> None:
     for etype, buckets in census["by_type"].items():
         detail = "  ".join(f"{k}={v}" for k, v in sorted(buckets.items()))
         print(f"    {etype:<14} {detail}")
+
+    print_radial_leaders(report["radial_leaders"])
 
     oracle = report["text_oracle"]
     unmatched_total = sum(oracle["unmatched"].values())
@@ -909,6 +912,193 @@ def print_report(report: dict[str, Any], top: int) -> None:
 #: the corpus grows: a sheet culling more than this means the section-callout rule started eating
 #: geometry. Re-measure and update this ONLY with a stated reason.
 #: Measured 2026-08-25 over 57 drawings: max 8, 38 culling nothing.
+# ---------------------------------------------------------------------------
+# Radius / diameter leader completeness.
+#
+# A DIMENSION carries no drawable geometry of its own -- the CAD writes an anonymous block and
+# the extractor flattens it (`EntityMapper._dimension_render_geometry`). For a radius or
+# diameter callout that block is a RENDERING HINT, not the drawing: it records a clipped piece
+# of the leader, and iCAD SX regenerates the full run from the defpoints.
+#
+# Measured on M745221N01, both sheets of the pair:
+#   revision  dimtype 164 (radius)    reaches 42.68 of an implied 62.50
+#   reference dimtype 163 (diameter)  reaches 34.36 of an implied 62.50
+# Both are exactly collinear with centre->arc, so each is a clipped piece of that line rather
+# than a different line. On screen the callout's pointer stops in mid-air.
+#
+# The census cannot see this and never could. It counts ENTITIES: a dimension that draws one of
+# its four paths still counts as `drawn`, so 490/518 stays green while the leader is missing.
+# Same blind spot as the text-placement defects -- a count is not a shape, which is why this
+# gets its own section below rather than a smaller `drawn`.
+# ---------------------------------------------------------------------------
+
+#: DXF `dimtype` low three bits. 3 = diameter, 4 = radius; the upper bits are flags
+#: (32 = block owned, 128 = user-positioned text) and must be masked off before comparing.
+_DIM_KIND_MASK = 0b111
+_DIM_KIND_DIAMETER = 3
+_DIM_KIND_RADIUS = 4
+
+#: How far off the centre->arc line an endpoint may sit and still count as lying on it, in
+#: drawing units. The clipped leaders measure 0.00 against this on the known pair; the slack is
+#: for files whose block was written at lower precision.
+_RADIAL_COLLINEAR_TOLERANCE = 0.05
+
+#: What "complete" means, and it depends on the ARROWHEAD COUNT -- not on a single threshold.
+#:
+#: Measured over the 92 radial dimensions in `storage/uploads` (63 sheets, 18 distinct drawings):
+#:
+#:   arrows  kind      dims  files  reach (fraction of the radius)
+#:        2  diameter     8      6  1.893 on every one of them -- arc to arc, less two arrowheads
+#:        1  diameter    14      3  0.550 .. 0.752
+#:        1  radius      70      9  0.000 .. 1.742
+#:
+#: A TWO-arrow callout spans the whole diameter by construction, so a short one is a real defect
+#: and 1.893 is invariant across six unrelated drawings. A ONE-arrow callout's leader length is
+#: set by where the CAD put the text -- 0.0 means it points outward, away from the centre, which
+#: is an ordinary style with the value outside the circle. There is no invariant to check there,
+#: so those are reported as context and never as a defect.
+#:
+#: ⛔ An earlier version of this file flagged anything under 0.95 and reported 36 of 92 SHORT.
+#: That was a threshold picked from one sheet before the corpus was swept, and it is wrong: it
+#: condemned every one-arrow callout in the corpus. A checker that cries wolf is how a real
+#: regression gets waved through.
+_RADIAL_TWO_ARROW_SPAN = 1.80
+
+#: Arrowheads at both ends -- the form that spans the whole diameter and so has an invariant.
+_ARROWS_AT_BOTH_ENDS = 2
+
+
+def _radial_geometry(dim: Any) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """`(centre, point_on_arc)` for a radius/diameter dimension, or None if it is neither.
+
+    `defpoint4` (DXF group 15) is the point on the circle for both kinds. `defpoint` is the
+    centre for a RADIUS dimension and the diametrically opposite point for a DIAMETER one, so
+    the centre of a diameter callout is their midpoint. Verified on M745221N01: the resulting
+    centre->arc distance is 62.50 on both sheets, which is that circle's actual radius, from
+    dimensions whose `actual_measurement` reads 62.5 on one sheet and 125.0 on the other.
+    """
+    kind = int(getattr(dim.dxf, "dimtype", 0) or 0) & _DIM_KIND_MASK
+    if kind not in (_DIM_KIND_DIAMETER, _DIM_KIND_RADIUS):
+        return None
+    try:
+        far = (float(dim.dxf.defpoint.x), float(dim.dxf.defpoint.y))
+        arc = (float(dim.dxf.defpoint4.x), float(dim.dxf.defpoint4.y))
+    except AttributeError:
+        return None
+    if kind == _DIM_KIND_RADIUS:
+        return far, arc
+    return ((far[0] + arc[0]) / 2.0, (far[1] + arc[1]) / 2.0), arc
+
+
+def radial_leader_rows(doc: Any) -> list[dict[str, Any]]:
+    """One row per radius/diameter DIMENSION: how far its leader reaches toward the centre.
+
+    `reach` is measured by projecting the block's LINE endpoints onto the arc->centre unit
+    vector, NOT by taking a line's length -- the leader starts one arrowhead short of the arc,
+    so its length understates where it arrives by exactly that gap.
+    """
+    rows: list[dict[str, Any]] = []
+    for layout in doc.layouts:
+        for dim in layout:
+            if dim.dxftype() != "DIMENSION":
+                continue
+            geom = _radial_geometry(dim)
+            if geom is None:
+                continue
+            centre, arc = geom
+            implied = math.hypot(centre[0] - arc[0], centre[1] - arc[1])
+            if implied <= 0:
+                continue
+            ux = (centre[0] - arc[0]) / implied
+            uy = (centre[1] - arc[1]) / implied
+
+            reach = 0.0
+            collinear = False
+            arrowheads = 0
+            try:
+                children = list(dim.virtual_entities())
+            except Exception:  # noqa: BLE001 - an unflattenable block is a reportable row
+                children = []
+            for sub in children:
+                if sub.dxftype() == "INSERT":
+                    arrowheads += 1
+                if sub.dxftype() != "LINE":
+                    continue
+                for pt in ((sub.dxf.start.x, sub.dxf.start.y), (sub.dxf.end.x, sub.dxf.end.y)):
+                    dx, dy = pt[0] - arc[0], pt[1] - arc[1]
+                    along = dx * ux + dy * uy
+                    across = abs(dx * -uy + dy * ux)
+                    # Clamped at the far side of the circle, not at the centre: capping at
+                    # `implied` would measure a diameter leader that crosses the centre with a
+                    # ruler too short to show it, and whether it crosses is the open question.
+                    if across <= _RADIAL_COLLINEAR_TOLERANCE and 0.0 <= along <= 2.0 * implied:
+                        collinear = True
+                        reach = max(reach, along)
+
+            kind = int(getattr(dim.dxf, "dimtype", 0) or 0) & _DIM_KIND_MASK
+            rows.append(
+                {
+                    "handle": str(getattr(dim.dxf, "handle", "") or ""),
+                    "kind": "radius" if kind == _DIM_KIND_RADIUS else "diameter",
+                    "measurement": float(getattr(dim.dxf, "actual_measurement", 0.0) or 0.0),
+                    "implied": implied,
+                    "reach": reach,
+                    "gap": implied - reach,
+                    "fraction": reach / implied,
+                    "collinear": collinear,
+                    "arrowheads": arrowheads,
+                    # Only the two-arrow form carries an invariant. See the note above.
+                    "short": (
+                        arrowheads >= _ARROWS_AT_BOTH_ENDS
+                        and collinear
+                        and (reach / implied) < _RADIAL_TWO_ARROW_SPAN
+                    ),
+                }
+            )
+    return rows
+
+
+def radial_leader_audit(dxf_path: Path) -> dict[str, Any]:
+    """`radial_leader_rows` for one sheet, loaded the way the renderer loads it."""
+    doc = load_and_transcode(dxf_path, configure_cad_fonts(configure_matplotlib=False))
+    rows = radial_leader_rows(doc)
+    return {
+        "total": len(rows),
+        "short": sum(1 for r in rows if r["short"]),
+        "not_collinear": sum(1 for r in rows if not r["collinear"]),
+        "rows": rows,
+    }
+
+
+def print_radial_leaders(block: dict[str, Any]) -> None:
+    """Its own section, never folded into the census -- see the note above this module block."""
+    print(
+        f"\n=== RADIAL LEADERS ============================= "
+        f"{block['short']}/{block['total']} short"
+    )
+    if not block["rows"]:
+        print("  no radius or diameter dimensions on this sheet")
+        return
+    print(
+        f"  {'handle':<8} {'kind':<9} {'arrows':>6} {'meas':>8} {'implied':>8} {'reach':>8} "
+        f"{'%':>6}  verdict"
+    )
+    for row in sorted(block["rows"], key=lambda r: r["fraction"]):
+        if row["short"]:
+            verdict = "SHORT -- a two-arrow callout must span the diameter"
+        elif row["arrowheads"] >= _ARROWS_AT_BOTH_ENDS:
+            verdict = "spans the diameter"
+        elif not row["collinear"]:
+            verdict = "one arrow, leader points away from the centre (text outside)"
+        else:
+            verdict = "one arrow, leader length set by the text placement"
+        print(
+            f"  {row['handle']:<8} {row['kind']:<9} {row['arrowheads']:>6} "
+            f"{row['measurement']:>8.2f} {row['implied']:>8.2f} {row['reach']:>8.2f} "
+            f"{row['fraction'] * 100:>5.0f}%  {verdict}"
+        )
+
+
 MAX_CULL_PER_SHEET = 8
 
 
@@ -937,6 +1127,7 @@ def sweep_cull(directory: Path) -> dict[str, Any]:
         try:
             entities, layers, _counts, _metadata = DXFParser().parse_file(dxf_path)
             block = census_of(entities + layers)
+            radial = radial_leader_audit(dxf_path)
         except Exception as err:  # noqa: BLE001 - an unparseable sheet is a reportable row
             failures.append((dxf_path.name, f"{type(err).__name__}: {err}"))
             continue
@@ -946,6 +1137,9 @@ def sweep_cull(directory: Path) -> dict[str, Any]:
                 "culled": block["buckets"].get("section-callout", 0),
                 "drawn": block["drawn"],
                 "total": block["total"],
+                "radial_total": radial["total"],
+                "radial_short": radial["short"],
+                "radial_rows": radial["rows"],
             }
         )
 
@@ -957,6 +1151,12 @@ def sweep_cull(directory: Path) -> dict[str, Any]:
         "max_per_sheet": max(culls) if culls else 0,
         "histogram": {str(c): culls.count(c) for c in sorted(set(culls))},
         "rows": sorted(rows, key=lambda r: (-r["culled"], r["file"])),
+        "radial_total": sum(r["radial_total"] for r in rows),
+        "radial_short": sum(r["radial_short"] for r in rows),
+        "radial_fractions": [
+            (rr["kind"], round(rr["fraction"], 4))
+            for r in rows for rr in r["radial_rows"] if rr["collinear"]
+        ],
         "failures": failures,
     }
 
