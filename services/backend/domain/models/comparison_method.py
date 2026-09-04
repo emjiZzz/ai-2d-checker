@@ -1,35 +1,19 @@
 """The name of the comparison method, and the one legacy alias for it.
 
-## Why this is its own module
+Its own module because the name is written into the room document, the comparison request, the
+room response and the cache filename. While it was a repeated string literal there was nothing
+to rename, only occurrences to find, which is how the old name outlived its accuracy.
 
-`comparison_method` is written into the room document, the comparison request, the room
-response and the cache filename. Before this module the string `"rag"` was simply repeated at
-each of those sites, which is what let the name outlive its own accuracy for so long: there was
-nothing to rename, only occurrences to find.
+The method is called `deterministic` because it contains no retrieval and no LLM. It was `rag`,
+tolerable while that was the default of four methods; ADR-006 removed the other three and left
+the name as the system's whole vocabulary for what it does. Agents kept inferring a retrieval
+pipeline from it.
 
-## Why the method is called `deterministic`
-
-It used to be `rag`. It contains **no retrieval and no LLM** — it is a deterministic
-spatial/text differ. The misnomer was tolerable while `rag` was merely the *default* of four
-methods; [[ADR-006]] removed the other three, making it the only method there is, so the name
-became the system's entire vocabulary for what it does. See
-`docs/vault/00 - AI Maturity Status.md`, which exists partly because agents kept inferring a
-retrieval pipeline from this name.
-
-## The alias is permanent, not a migration window
-
-`"rag"` is accepted on input, everywhere, and normalised to `"deterministic"`. It is not a
-deprecation with an end date:
-
-- Room documents written before the rename still say `"rag"`, and no migration was run — the
-  documents are the user's data, not a schema to be rewritten on a whim.
-- A cached `physical_comparison_results` payload embeds the old name in its own JSON.
-- The two names denote the same engine, so there is no version of this system in which `"rag"`
-  should be *rejected* rather than understood.
-
-Normalising on the way IN (a `mode="before"` validator) rather than on the way out means every
-consumer downstream sees exactly one spelling, which is the property that makes the rename
-worth doing at all.
+`"rag"` is accepted on input everywhere and normalised, permanently rather than as a migration
+window: room documents written before the rename still say it, cached
+`physical_comparison_results` payloads embed it in their own JSON, and the two names denote the
+same engine, so there is no version of this system that should reject it. Normalising on the way
+IN (a `mode="before"` validator) is what leaves every downstream consumer one spelling.
 """
 
 from typing import Any, Final, Literal

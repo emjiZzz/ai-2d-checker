@@ -1,35 +1,21 @@
 r"""Where the application's own files live, whether running from source or frozen.
 
-## Why this exists
+`config.py` and `path_resolver.py` each counted `..` from `__file__`, which is correct from a
+checkout and wrong once frozen: PyInstaller unpacks into a temp directory and sets `__file__`
+inside it. So `.env` was looked for there, was absent, and every setting silently fell back to
+its default -- `MONGO_URI` included, pointing at localhost instead of Atlas. And `storage/`
+resolved into the same temp directory, which the OS deletes on exit: uploads, renderings and the
+eval corpus written to a directory that disappears at shutdown, with no error anywhere.
 
-Two modules resolved the project root by counting `..` from `__file__`:
+One module rather than an inline `if` in each file, because both must agree. Two copies of a path
+rule that disagree is how the metadata says a drawing exists and the file does not, which this
+project has already paid for once.
 
-    services/backend/config.py                    -> parents[2] / ".env"
-    .../infrastructure/storage/path_resolver.py   -> parents[4] / "storage"
-
-That is correct from a source checkout and **wrong the moment the backend is frozen**. PyInstaller
-unpacks a onefile build into a temporary directory and sets `__file__` inside it, so:
-
-* `.env` is looked for in the temp dir, is not there, and every setting silently falls back to its
-  default -- including `MONGO_URI`, which would point at localhost instead of Atlas;
-* `storage/` resolves into the temp dir too, which the OS **deletes when the process exits**.
-  Uploaded drawings, renderings and the eval corpus would be written to a directory that is
-  removed on shutdown, and nothing would report an error.
-
-The second one is why this is a module rather than an inline `if` in each file. Both must agree on
-one answer; two copies of a path rule that disagree is how the metadata says a drawing exists and
-the file does not, which this project has already paid for once.
-
-## The rule
-
-**Frozen: the directory containing the executable.** That is stable, writable in the deployment
-layout the other KMTI servers use (`...\Desktop\<System>\dist\`), and predictable to an operator
-who wants to find the logs.
-
-**From source: the repository root**, exactly as before, so development behaviour is unchanged.
-
-`sys.executable` and NOT `sys._MEIPASS`. `_MEIPASS` is the temp unpack directory -- correct for
-reading bundled read-only resources, and the wrong answer for anything the app writes.
+The rule: frozen resolves to the directory containing the executable, which is stable, writable
+in the deployment layout the other KMTI servers use (`...\Desktop\<System>\dist\`) and findable
+by an operator looking for logs. From source it is the repository root, so development is
+unchanged. It uses `sys.executable`, never `sys._MEIPASS` -- that is the temp unpack directory,
+right for reading bundled read-only resources and wrong for anything the app writes.
 """
 
 from __future__ import annotations

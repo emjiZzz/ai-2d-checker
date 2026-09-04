@@ -1,40 +1,25 @@
 """Drawing-number extraction, used to reject a reference/revision pair that isn't a pair.
 
-## Why this is not `revision_detector.detect_revision`
+Not `revision_detector.detect_revision`, the obvious place, because that returns `None` on 14 of
+14 real corpus sides -- measured. Two structural gates fail on this client's sheets: it reads
+only layers matching `am_bor|border|title|title_block` while the number is on `RAHM2`, `WAKU` and
+`NoLayerName_001`; and it needs the label and value in one text entity, while this title block
+rules them into separate cells (which is why `bom/title_block_extractor.py` pairs them by spatial
+proximity). So `part_number` is dead here, and the Phase 7.2 revision chain with it, recorded as
+its own defect. This module does not repair it: populating `part_number` would activate
+`audits.py`'s dormant `previous_revision_id` auto-link, a live behaviour change arriving as a side
+effect of adding a validation guard.
 
-`detect_revision` populates `part_number` and is the obvious place for this. It cannot be
-used, because **it returns `None` on 14 of 14 real corpus sides** -- measured, not assumed.
-Two independent gates fail on this client's sheets, and both are structural rather than a
-tuning problem:
+Instead it collects every token shaped like a drawing number, without deciding which is THE
+number, because the guard only asks whether both sheets share one. That tolerates noise --
+`M745227N01`'s reference carries a stray `C2801P` -- provided the real number is on both sides.
+Measured over `storage/eval/pairs/`: 7 of 7 real pairs share a token and 42 of 42 cross-pairings
+share none, so zero false accepts and zero false rejects.
 
-1. It only reads text on layers matching `am_bor|border|title|title_block`. The measured
-   layers carrying the number are `RAHM2`, `WAKU` and `NoLayerName_001`.
-2. It requires the label and the value in **one** text entity (`DWG NO: M745203N01`). This
-   title block rules the label and the value into separate cells, so they are separate
-   entities -- which is precisely why `bom/title_block_extractor.py` has to do a spatial
-   proximity search to pair them.
-
-So `part_number` is dead on these drawings, and with it the Phase 7.2 revision chain. That
-is recorded as its own defect; this module deliberately does **not** repair it, because
-populating `part_number` would activate `audits.py`'s dormant `previous_revision_id`
-auto-link (a live behaviour change) as a side effect of adding a validation guard.
-
-## What this does instead
-
-Collects every text token *shaped* like a drawing number. It does **not** try to identify
-which one is THE number, and does not need to: the guard asks only whether the two sheets
-**share** one. That tolerates noise -- `M745227N01`'s reference carries a stray `C2801P` --
-as long as the real number is present on both sides.
-
-Measured over the eval corpus (`storage/eval/pairs/`), which is the only ground truth
-available: **7 of 7 real reference/revision pairs share a token, and 42 of 42 cross-pairings
-share none.** Zero false accepts, zero false rejects.
-
-**One client, one numbering scheme.** `_DRAWING_NUMBER_SHAPE` is tuned to KMTI's
-`M745203N01` / `M7452A0N01` form. On a drawing whose numbering does not match, this returns
-an empty set, and the *caller must treat empty as "cannot judge" and allow the pair* -- see
-`is_pair_mismatch`. Failing open is the whole safety design: a false reject deletes a good
-upload, a false accept only lets through the comparison the user already asked for.
+`_DRAWING_NUMBER_SHAPE` is tuned to KMTI's `M745203N01` / `M7452A0N01` form; one client, one
+scheme. Other numbering returns an empty set, and the caller must read empty as "cannot judge"
+and allow the pair -- see `is_pair_mismatch`. Failing open is the safety design: a false reject
+deletes a good upload, a false accept only runs the comparison the user asked for.
 """
 import re
 from typing import Any
@@ -72,7 +57,7 @@ def extract_drawing_numbers(entities: list[dict[str, Any]]) -> list[str]:
 def is_pair_mismatch(reference_numbers: list[str], revision_numbers: list[str]) -> bool:
     """True only when both sides carry drawing numbers and share none of them.
 
-    **Absent evidence is never a mismatch.** If either side yielded no tokens the answer is
+    Absent evidence is never a mismatch. If either side yielded no tokens the answer is
     "cannot judge", and the caller must let the pair through. The cost asymmetry is the
     reason: rejecting deletes a drawing the user just uploaded, while accepting merely runs
     the comparison they asked for.
