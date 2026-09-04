@@ -80,6 +80,13 @@ self-propagating. Keep it plain.
 - No rhetorical framing. Write "this was measured", not "this is a measurement, not a preference".
 - If an explanation needs more than about five lines, it belongs in a vault note or in a test name.
   Link the note; do not inline it.
+- When compacting a comment, keep the decision and the consequence and drop the argument that led
+  there. Prose explaining a dependency is the compactable kind and usually should not exist at all
+  -- `queryClient.ts` lost 77% because it was restating TanStack Query's own documentation. Prose
+  recording a measurement or a decision is not compactable and must survive; `encoder.py` lost 6%
+  because it was already saying only what the code could not. Ranking files by comment density
+  finds the wrong ones. See
+  `06 - .../Gotcha - A Comment Pass Is Not a Find-and-Replace.md`.
 - Prefer a test to a comment whenever the claim is checkable. A test fails when it stops being
   true; a comment rots silently. `tests/test_layer_boundaries.py` and
   `tests/test_taxonomy_consistency.py` are the pattern to copy.
