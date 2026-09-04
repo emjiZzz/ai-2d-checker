@@ -398,6 +398,53 @@ def scan_bold(root: Path = REPO_ROOT) -> list[Finding]:
     return findings
 
 
+# --- oversized blocks ----------------------------------------------------------------------------
+#
+# CLAUDE.md's Writing style section says an explanation needing more than about five lines belongs
+# in a vault note or a test name, linked rather than inlined. That rule had never been applied to
+# existing code: 63% of all prose in this tree sits in blocks longer than five lines.
+#
+# Retrofitting it is not something a tool can do, because deciding what a block's replacement
+# sentence should say is the work. What a tool can do is stop the number growing, which is the
+# half that compounds. `tests/test_comment_style.py` ratchets on the count below.
+#
+# The threshold is 20 rather than 5. Five is the target for new prose; twenty is the size at which
+# a comment is unarguably a document that happens to live in a source file, and it leaves the 1,300
+# blocks between the two alone rather than declaring most of the codebase in violation.
+
+OVERSIZED_BLOCK_LINES = 20
+
+# Blocks that cannot be moved, so counting them only invites someone to break a hard constraint.
+# The `# vN:` logs are required by CLAUDE.md constraint 2, and `extracted_entity.py`'s is parsed by
+# `tools/extraction_status.py`. `cache_manager.py`'s is 438 lines and was reported as the largest
+# offender until this list existed.
+EXEMPT_FROM_BLOCK_LIMIT = frozenset({
+    "services/backend/domain/models/extracted_entity.py",
+    "services/backend/infrastructure/audit/comparison/cache_manager.py",
+    "services/backend/infrastructure/eval/mutator.py",
+    "services/backend/infrastructure/learning/config.py",
+})
+
+
+def oversized_blocks(root: Path = REPO_ROOT, threshold: int = OVERSIZED_BLOCK_LINES):
+    """Every movable comment block longer than `threshold` lines, as (path, first_line, count)."""
+    found: list[tuple[Path, int, int]] = []
+    for path in iter_tracked_files(root):
+        if path.suffix.lower() not in (".py", ".ts", ".tsx"):
+            continue
+        if path.relative_to(root).as_posix() in EXEMPT_FROM_BLOCK_LIMIT:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for start, end in _prose_blocks(path, text):
+            size = text.count("\n", start, end) + 1
+            if size > threshold:
+                found.append((path, text.count("\n", 0, start) + 1, size))
+    return found
+
+
 def iter_tracked_files(root: Path = REPO_ROOT):
     for rel in TRACKED_ROOTS:
         base = root / rel

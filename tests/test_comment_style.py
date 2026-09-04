@@ -18,6 +18,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from tools.comment_style import (
+    OVERSIZED_BLOCK_LINES,
+    oversized_blocks,
     MARKERS,
     bold_pairs,
     scan,
@@ -224,3 +226,57 @@ def test_finding_repr_renders_for_both_kinds():
     from tools.comment_style import Finding
     o, _ = bold_pairs(Path("a.py"), bold_src)[0]
     assert "**" in repr(Finding(Path("a.py"), 1, o, "**", bold_src))
+
+
+# --- oversized blocks ----------------------------------------------------------------------------
+
+
+def test_no_new_comment_block_over_twenty_lines():
+    """A ratchet, not a rule. It may fall; it may not rise.
+
+    CLAUDE.md says an explanation over about five lines belongs in a vault note or a test name,
+    linked rather than inlined. That was written for new prose and had never been applied to what
+    was already here -- 63% of this tree's comment prose sits in blocks longer than five lines, and
+    failing the suite on all of it would just get the rule deleted.
+
+    So this pins the count of blocks over TWENTY lines, the size at which a comment is a document
+    that happens to live in a source file. Adding one fails. Relocating one to the vault and
+    leaving a linked summary lowers the number, and the baseline should be lowered with it.
+
+    The four `# vN:` files are exempt: their blocks are mandated by constraint 2 or parsed by
+    `tools/extraction_status.py`, so counting them would only invite someone to break one.
+
+    A `#` run can be split by inserting a blank line, which would pass this without improving
+    anything. Docstrings, which are the bulk of the problem, cannot -- a blank line inside one is
+    still inside it. The gap is known and left, because a metric nobody can game is not worth the
+    complexity here when the reviewer can see the diff.
+    """
+    baseline_blocks = 154
+    baseline_lines = 4515
+
+    blocks = oversized_blocks()
+    lines = sum(n for _, _, n in blocks)
+    worst = sorted(blocks, key=lambda b: -b[2])[:5]
+    largest = ", ".join(f"{p.name}:{ln} ({n} lines)" for p, ln, n in worst)
+
+    assert len(blocks) <= baseline_blocks, (
+        f"{len(blocks)} comment blocks over {OVERSIZED_BLOCK_LINES} lines, baseline "
+        f"{baseline_blocks}. Move the explanation to a vault note and leave a linked summary; "
+        f"see CLAUDE.md's Writing style section. Largest: {largest}"
+    )
+
+    # Lines as well as count, because the count alone does not reward the work actually available.
+    # Relocating `audit_orchestrator._retrieve_lessons_learned` took its block from 47 lines to 22
+    # and moved the count by zero, 22 still being over the threshold. Most blocks here sit in that
+    # range, so a count-only ratchet would score a 53% reduction as no progress.
+    assert lines <= baseline_lines, (
+        f"{lines} lines sit in oversized comment blocks, baseline {baseline_lines}. A block that "
+        f"grew but stayed over {OVERSIZED_BLOCK_LINES} lines does not move the count. "
+        f"Largest: {largest}"
+    )
+
+    assert len(blocks) >= baseline_blocks - 20 and lines >= baseline_lines - 400, (
+        f"Down to {len(blocks)} blocks / {lines} lines against a baseline of {baseline_blocks} / "
+        f"{baseline_lines}. That is good news: lower both baselines here so the ratchet holds the "
+        "ground you gained."
+    )

@@ -168,53 +168,28 @@ class AuditOrchestrator:
         standard_ids: list[str],
         top_k: int = 5
     ) -> list[StandardChunk]:
+        """The StandardChunk clauses most relevant to this drawing, capped at `top_k`.
+
+        Ranked by the local lexical index (R1, ADR-008) on keywords from layer names, the entity
+        types in `entity_counts`, and the file name stem. Lexical, not semantic: char n-gram
+        TF-IDF cosine, so it matches `ユニット No` against `ユニットNo.` and tolerates a typo but
+        cannot match a synonym or an English term against its Japanese equivalent. Say lexical.
+        This docstring said "semantically relevant" while the vector stage was seeded noise --
+        ADR-008, which is also why a dense encoder must beat this on R2 before it ships.
+
+        Falls back to substring matching if the index is unbuilt; `_retrieve_via_lexical_index`
+        says why an absent index must not look like an empty result.
         """
-        Retrieves the StandardChunk clauses most relevant to this drawing, ranked by the local
-        lexical index (R1, ADR-008), from keywords taken from the drawing's layer names, the
-        entity types in ``entity_counts``, and the file name stem.
-
-        Feeds the Gemini context window as "Lessons Learned", so this is *retrieval-augmented*
-        in the real sense — there is a generation step downstream. The retrieval itself is
-        lexical, not semantic: char n-gram TF-IDF cosine. It matches shared character
-        sequences, so it handles `ユニット No` against `ユニットNo.` and tolerates a typo, but
-        it cannot match a synonym or an English term against its Japanese equivalent.
-
-        Stating that precisely matters here more than usual. This docstring claimed
-        "semantically relevant" for months, and the vector stage that would have justified the
-        word turned out to be SHA-256-seeded noise searching an index file that never existed.
-        Dense embeddings stay behind `retrieval.Encoder` and must beat this on the R2 metric
-        before they ship.
-
-        Falls back to substring matching if the index is unbuilt — see
-        ``_retrieve_via_lexical_index`` for why an absent index must not look like an empty
-        result.
-
-        Args:
-            drawing:      The DrawingDocument being audited.
-            standard_ids: List of active standard document IDs to scope the search.
-            top_k:        Maximum number of lessons to inject (keeps prompt size bounded).
-
-        Returns:
-            List of relevant StandardChunk objects, capped at ``top_k``.
-        """
-        # How the query is built lives in `retrieval.queries.build_drawing_query`, not here.
-        # Stage B harvests real production queries into the query store, and a harvester that
-        # rebuilt this logic *nearly* identically would measure a query production does not
-        # actually search with — the same defect shape as a mutator that only approximates the
-        # engine's zone rules. One construction, two callers. See [[ADR-012]].
+        # The query is built in `retrieval.queries.build_drawing_query`, not here, so the Stage B
+        # harvester cannot measure a query production does not search with. See [[ADR-012]].
         #
-        # Layer names come from `ExtractedEntity.layer`, fixed 2026-08-17. They were read from
-        # `drawing.metadata["layers"]` — a key nothing has ever written — so the branch this
-        # builder's own comment calls "the strongest signal" contributed nothing on all 44
-        # drawings, and a production query was the file name plus a constant. It could not fail:
-        # a missing key yields a shorter query, not an error.
+        # Layer names come from `ExtractedEntity.layer`, not `drawing.metadata["layers"]` -- a key
+        # nothing writes, which silently emptied the strongest signal on all 44 drawings.
         # See [[Gotcha - The Strongest Signal in the Audit Query Was Never Written]].
         #
-        # The layer fetch is a database call, and it sits inside the try below rather than
-        # above it on purpose. Everything about lessons retrieval is non-fatal by design — "if
-        # retrieval fails, the audit continues without lessons" — and hoisting a Mongo round
-        # trip out of that guard would let a transient DB error crash a whole audit for the sake
-        # of a context-window nicety. It did, for one commit, and a test caught it.
+        # The layer fetch stays INSIDE the try below. Lessons retrieval is non-fatal by design, and
+        # hoisting a Mongo round trip out of that guard lets a transient DB error crash a whole
+        # audit for a context-window nicety. It did, for one commit, and a test caught it.
         try:
             layer_names = await layer_names_for(str(drawing.id))
             unique_keywords = build_drawing_keywords(drawing, layer_names)

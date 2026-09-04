@@ -79,7 +79,13 @@ self-propagating. Keep it plain.
   to land, it is usually the wrong sentence.
 - No rhetorical framing. Write "this was measured", not "this is a measurement, not a preference".
 - If an explanation needs more than about five lines, it belongs in a vault note or in a test name.
-  Link the note; do not inline it.
+  Link the note; do not inline it. Ratcheted by
+  `tests/test_comment_style.py::test_no_new_comment_block_over_twenty_lines`, on both the number
+  of comment blocks over 20 lines and the total lines in them: neither may rise, and lowering
+  either means lowering the baseline with it. Twenty rather than five because five is the target
+  for new prose while twenty is the size at which a comment is a document that happens to live in
+  a source file — 63% of this tree's comment prose is already in blocks over five lines, and
+  failing the suite on all of it would only get the rule deleted.
 - When compacting a comment, keep the decision and the consequence and drop the argument that led
   there. Prose explaining a dependency is the compactable kind and usually should not exist at all
   -- `queryClient.ts` lost 77% because it was restating TanStack Query's own documentation. Prose
