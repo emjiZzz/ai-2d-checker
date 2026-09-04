@@ -1,0 +1,42 @@
+# Build context for the cloud backend image (see Dockerfile).
+#
+# ⚠ The excludes below are not tidiness. Without them the context is several GB —
+# `services/backend/.venv` alone is 1.1 GB, `storage/` 886 MB, `node_modules/` 505 MB — and the
+# free-tier build either crawls or dies. Measured 2026-08-28.
+#
+# The image needs `services/backend/**` and nothing else: `runtime_paths.app_root()` resolves to
+# the WORKDIR, and no backend module imports from `tools/`, `tests/` or `apps/`.
+
+# Virtualenvs and Python build residue
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+*.egg-info
+
+# Runtime state. Never bake someone's machine into an image — the same reasoning
+# package-server.ps1 applies to the PyInstaller output.
+storage/
+services/storage/
+services/backend/storage/
+.env
+
+# Frontend — not in the image at all
+node_modules/
+apps/
+packages/
+dist/
+build/
+
+# Repo furniture
+.git/
+.github/
+docs/
+tests/
+tools/
+scratch/
+downloads/
+_deprecated/
+*.log

@@ -1,0 +1,620 @@
+@import "tailwindcss";
+
+:root {
+  /* Common Palette / Brand Accent Gradients */
+  --primary-glow: linear-gradient(135deg, #00e5ff, #0088ff);
+  --accent-cyan: #00e5ff;
+  --accent-purple: #2563eb;
+  --accent-pink: #1d4ed8;
+
+  --color-online: #10b981;
+  --color-offline: #ef4444;
+  --color-connecting: #f59e0b;
+  --color-failed: #dc2626;
+  --color-invalid: #64748b;
+}
+
+/* High Contrast Dark Mode Theme Variables (Default) */
+:root,
+[data-theme="hc-dark"] {
+  --bg-dark: #262b36;
+  --bg-canvas: #3f3f3f;
+  --bg-card: #262b36;
+  --bg-sidebar: #2e3440;
+  --bg-topbar: #2e3440;
+  --border-color: #3a4150;
+
+  --text-primary: #e4e4e7;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --bg-bubble-user: #2e3440;
+
+  --app-gradient: none;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.15);
+
+  --primary-glow: linear-gradient(135deg, #00e5ff, #0088ff);
+  --accent-cyan: #00e5ff;
+  /* Text color to use ON TOP of a solid --accent-cyan fill. Cyan is bright in
+     dark mode (needs dark text) but --accent-cyan is remapped to a darker blue
+     in light mode (needs light text) — see hc-light block below. */
+  --on-accent: #09090b;
+
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --modal-backdrop: rgba(0, 0, 0, 0.65);
+}
+
+/* High Contrast Light Mode Theme Variables */
+[data-theme="hc-light"] {
+  --bg-dark: #ececec;
+  --bg-canvas: #595959;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-topbar: #ffffffe5;
+  --border-color: #cbd5e1;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --bg-bubble-user: #f1f5f9;
+
+  --app-gradient: none;
+  --sidebar-item-hover: rgba(0, 0, 0, 0.04);
+
+  --primary-glow: linear-gradient(135deg, #0284c7, #0369a1);
+  --accent-cyan: #0284c7;
+  --on-accent: #ffffff;
+
+  --danger: #dc2626;
+  --success: #047857;
+  --warning: #d97706;
+  --modal-backdrop: rgba(15, 23, 42, 0.35);
+}
+
+@theme {
+  --color-bg-dark: var(--bg-dark);
+  --color-bg-canvas: var(--bg-canvas);
+  --color-bg-card: var(--bg-card);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-topbar: var(--bg-topbar);
+  --color-border-color: var(--border-color);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-pink: var(--accent-pink);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-bg-bubble-user: var(--bg-bubble-user);
+  --color-sidebar-item-hover: var(--sidebar-item-hover);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-modal-backdrop: var(--modal-backdrop);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Outfit', 'Noto Sans JP', 'Yu Gothic', 'MS Gothic', 'Meiryo', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--bg-sidebar) inset !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  input::-webkit-contacts-auto-fill-button,
+  input::-webkit-credentials-auto-fill-button {
+    visibility: hidden !important;
+    display: none !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+  }
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Animations */
+@utility spin-animation {
+  animation: spin-key 1.2s linear infinite;
+}
+
+@utility pulse-border {
+  animation: pulse-border-key 2s infinite;
+}
+
+@utility modal-backdrop {
+  background-color: var(--modal-backdrop);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+@keyframes spin-key {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-border-key {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@utility loading-dots {
+  &::after {
+    content: '...';
+    animation: dots-key 1.5s steps(5, end) infinite;
+  }
+}
+
+@keyframes dots-key {
+
+  0%,
+  20% {
+    content: '';
+  }
+
+  40% {
+    content: '.';
+  }
+
+  60% {
+    content: '..';
+  }
+
+  80%,
+  100% {
+    content: '...';
+  }
+}
+
+@utility checklist-dock {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+
+  &::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  & *::-webkit-scrollbar {
+    display: none !important;
+  }
+}
+
+/* Global Dark Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+[data-theme="hc-light"] ::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="hc-light"] html,
+[data-theme="hc-light"] body,
+[data-theme="hc-light"] [class*="overflow-"] {
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+/* Accessibility: Focus Visible */
+*:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@utility glass-panel {
+  background: var(--bg-sidebar);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+}
+
+@utility glass-header {
+  background-color: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-color);
+}
+
+@utility card-panel {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  padding: 0.5rem 0.75rem;
+}
+
+@utility input-field {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 2px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+@theme {
+  --animate-slide-in-right: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-in: fadeIn 0.2s ease-out;
+  --animate-scale-up: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(30px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scaleUp {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+/* FlexLayout Custom Theme Overrides */
+.flexlayout__layout {
+  --color-text: var(--text-primary) !important;
+  --color-background: var(--bg-dark) !important;
+  --color-base: var(--bg-sidebar) !important;
+  --color-1: var(--bg-dark) !important;
+  --color-2: var(--bg-card) !important;
+  --color-3: var(--border-color) !important;
+  --color-4: var(--sidebar-item-hover) !important;
+  --color-5: var(--border-color) !important;
+  --color-6: var(--bg-sidebar) !important;
+  --color-tab-selected: var(--text-primary) !important;
+  --color-tab-unselected: var(--text-muted) !important;
+  --color-tab-selected-background: var(--bg-dark) !important;
+  --color-tab-unselected-background: var(--bg-sidebar) !important;
+  --color-tabset-header-background: var(--bg-sidebar) !important;
+  --color-tabset-header-text: var(--text-primary) !important;
+  --color-icon: var(--text-muted) !important;
+  --color-overflow: var(--text-muted) !important;
+  --color-splitter: var(--border-color) !important;
+  --color-splitter-drag: var(--border-color) !important;
+  --color-splitter-hover: var(--accent-cyan) !important;
+  --color-drag1: var(--accent-cyan) !important;
+  --color-drag2: var(--accent-cyan) !important;
+  --color-drag1-background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  --color-drag2-background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  --color-drag-rect: var(--text-primary) !important;
+  --color-drag-rect-border: var(--accent-cyan) !important;
+  --color-drag-rect-background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+
+  /* flexlayout-react >= 0.9 sizes the splitter from CSS, not from the model.
+     Layout renders a hidden probe div (.flexlayout__splitter_horz) and feeds its
+     measured width back via model.setSplitterSize() — so `global.splitterSize` in
+     the layout JSON is parsed by nothing and `splitterExtra` no longer exists.
+     These two variables are the only knobs:
+       --splitter-size        visible bar thickness
+       --splitter-active-size invisible drag hit area (the ::before pseudo-element) */
+  --splitter-size: 1px !important;
+  --splitter-active-size: 9px !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab,
+.flexlayout__tab {
+  background-color: var(--bg-dark) !important;
+  border: none !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset,
+.flexlayout__tabset,
+.workspace-flexlayout-container .flexlayout__tabset_header,
+.flexlayout__tabset_header,
+.workspace-flexlayout-container .flexlayout__tabset_header_content,
+.flexlayout__tabset_header_content,
+.workspace-flexlayout-container .flexlayout__tabset_tabbar_outer,
+.flexlayout__tabset_tabbar_outer,
+.workspace-flexlayout-container .flexlayout__tabset_tabbar_inner,
+.flexlayout__tabset_tabbar_inner,
+.workspace-flexlayout-container .flexlayout__tabset_tabbar_inner_tab_container,
+.flexlayout__tabset_tabbar_inner_tab_container {
+  background-color: var(--bg-sidebar) !important;
+  border-color: var(--border-color) !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset--selected,
+.flexlayout__tabset--selected,
+.workspace-flexlayout-container .flexlayout__tabset_header--selected,
+.flexlayout__tabset_header--selected,
+.workspace-flexlayout-container [class*="flexlayout__tabset--selected"],
+[class*="flexlayout__tabset--selected"] {
+  box-shadow: none !important;
+  border-color: var(--border-color) !important;
+  outline: none !important;
+}
+
+.workspace-flexlayout-container [class*="flexlayout__tabset"],
+[class*="flexlayout__tabset"] {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset_header,
+.flexlayout__tabset_header {
+  border-bottom: 1px solid var(--border-color) !important;
+  background-color: var(--bg-sidebar) !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button,
+.flexlayout__tab_button {
+  background-color: var(--bg-sidebar) !important;
+  color: var(--text-muted) !important;
+  border: none !important;
+  border-right: 1px solid var(--border-color) !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  cursor: grab !important;
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button:active,
+.flexlayout__tab_button:active {
+  cursor: grabbing !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button_trailing,
+.flexlayout__tab_button_trailing {
+  display: none !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button:hover,
+.flexlayout__tab_button:hover {
+  background-color: var(--sidebar-item-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button--selected,
+.flexlayout__tab_button--selected {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-top: none !important;
+  border-bottom: 1px solid var(--bg-card) !important;
+  box-shadow: none !important;
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Thickness comes from --splitter-size above. Do not re-add width/height rules for
+   `_row`/`_column`/`_v`/`_h`/`_vertical`/`_horizontal` — 0.9.x only ever emits
+   `flexlayout__splitter_horz` and `flexlayout__splitter_vert`, so those selectors
+   match nothing and the theme's 8px default silently wins. */
+.workspace-flexlayout-container .flexlayout__splitter,
+.flexlayout__splitter {
+  background-color: var(--border-color) !important;
+  transition: background-color 0.15s ease;
+  border-radius: 0 !important;
+}
+
+.workspace-flexlayout-container .flexlayout__splitter:hover,
+.flexlayout__splitter:hover {
+  background-color: var(--accent-cyan) !important;
+}
+
+/* Permanently lock the splitter between Checklist and Reference Drawing */
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter,
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter::before,
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter::after,
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"],
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"]::before,
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"]::after {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) + .flexlayout__splitter:hover,
+.workspace-flexlayout-container .flexlayout__splitter[data-layout-path$="/s0"]:hover {
+  background-color: var(--border-color) !important;
+}
+
+/* Disable drag cursor on Checklist tab */
+.workspace-flexlayout-container .flexlayout__tabset:has([data-workspace-panel="Checklist"]) .flexlayout__tab_button {
+  cursor: default !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button_content,
+.flexlayout__tab_button_content {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: inherit !important;
+}
+
+/* Drop Target / Dock Preview Overrides (high visibility and vibrant contrast) */
+.workspace-flexlayout-container .flexlayout__outline_rect,
+.flexlayout__outline_rect,
+.workspace-flexlayout-container .flexlayout__outline_rect_edge,
+.flexlayout__outline_rect_edge,
+.workspace-flexlayout-container .flexlayout__drag_rect,
+.flexlayout__drag_rect {
+  border: 2px solid var(--accent-cyan) !important;
+  background: color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  border-radius: 0 !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 45%, transparent), 0 0 20px color-mix(in srgb, var(--accent-cyan) 25%, transparent) !important;
+  backdrop-filter: blur(2px) !important;
+  z-index: 100 !important;
+}
+
+/* Context-aware drop badge indicator */
+.workspace-flexlayout-container .flexlayout__outline_rect[data-drop-label]::after,
+.workspace-flexlayout-container .flexlayout__outline_rect_edge[data-drop-label]::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 12px color-mix(in srgb, var(--accent-cyan) 35%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+  border-radius: 4px;
+  z-index: 101;
+}
+
+.workspace-flexlayout-container .flexlayout__edge_rect,
+.flexlayout__edge_rect {
+  background-color: var(--accent-cyan) !important;
+  opacity: 0.85 !important;
+  border-radius: 0 !important;
+}
+
+/* FlexLayout Toolbar & Popup Menu Overrides */
+.workspace-flexlayout-container .flexlayout__tab_toolbar,
+.flexlayout__tab_toolbar,
+.workspace-flexlayout-container .flexlayout__tabset_header_toolbar,
+.flexlayout__tabset_header_toolbar,
+.workspace-flexlayout-container .flexlayout__tabset_toolbar,
+.flexlayout__tabset_toolbar {
+  background-color: var(--bg-sidebar) !important;
+  color: var(--text-muted) !important;
+  border: none !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_toolbar_button,
+.flexlayout__tab_toolbar_button,
+.workspace-flexlayout-container .flexlayout__tab_button_overflow,
+.flexlayout__tab_button_overflow {
+  background-color: transparent !important;
+  border: none !important;
+  color: var(--text-muted) !important;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+/* Remove popout/float window buttons and windows from system */
+.workspace-flexlayout-container button[data-layout-path*="/button/popout"],
+.workspace-flexlayout-container button[data-layout-path*="/button/popout-float"],
+.workspace-flexlayout-container .flexlayout__tab_toolbar_button-popout,
+.workspace-flexlayout-container .flexlayout__tab_toolbar_button-popout-float,
+.workspace-flexlayout-container .flexlayout__tabset_header_button_popout,
+.workspace-flexlayout-container .flexlayout__tabset_header_button_popout_float,
+.workspace-flexlayout-container .flexlayout__floating_window,
+.flexlayout__floating_window {
+  display: none !important;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_toolbar_button:hover,
+.flexlayout__tab_toolbar_button:hover,
+.workspace-flexlayout-container .flexlayout__tab_button_overflow:hover,
+.flexlayout__tab_button_overflow:hover {
+  background-color: var(--sidebar-item-hover) !important;
+  color: var(--accent-cyan) !important;
+  opacity: 1;
+}
+
+.workspace-flexlayout-container .flexlayout__tab_button_overflow_count,
+.flexlayout__tab_button_overflow_count {
+  background-color: var(--bg-dark) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.workspace-flexlayout-container .flexlayout__popup_menu,
+.flexlayout__popup_menu {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+}
+
+.workspace-flexlayout-container .flexlayout__popup_menu_item,
+.flexlayout__popup_menu_item {
+  color: var(--text-primary) !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+}
+
+.workspace-flexlayout-container .flexlayout__popup_menu_item:hover,
+.flexlayout__popup_menu_item:hover {
+  background-color: var(--sidebar-item-hover) !important;
+  color: var(--accent-cyan) !important;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}

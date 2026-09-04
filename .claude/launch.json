@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "desktop-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "apps/desktop"
+      ],
+      "port": 1420
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "services/backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "services.backend.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "desktop-dev-prototype",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:prototype",
+        "--prefix",
+        "apps/desktop"
+      ],
+      "port": 1420
+    }
+  ]
+}

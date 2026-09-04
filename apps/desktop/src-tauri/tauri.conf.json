@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "desktop",
-  "version": "0.1.0",
-  "identifier": "com.ai2dchecker.app",
+  "productName": "DraftCheck",
+  "version": "0.1.9",
+  "identifier": "com.kmti.draftcheck",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,26 +12,36 @@
   "app": {
     "windows": [
       {
-        "title": "desktop",
-        "width": 1200,
-        "height": 800,
+        "title": "DraftCheck",
+        "width": 1680,
+        "height": 1050,
         "decorations": false,
         "dragDropEnabled": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://127.0.0.1:8080 http://localhost:8080 ws://127.0.0.1:8080 ws://localhost:8080 http://localhost:1420; script-src 'self' 'unsafe-eval' 'unsafe-inline';"
+      "csp": "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* http://192.168.200.105:* ws://192.168.200.105:* https://*.onrender.com; script-src 'self' 'unsafe-eval' 'unsafe-inline';"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": [
+      "server/**/*"
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./installer-hooks.nsh"
+      }
+    }
   }
 }

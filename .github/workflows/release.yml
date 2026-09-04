@@ -31,13 +31,16 @@ jobs:
       - name: Install Node Dependencies
         run: pnpm install --frozen-lockfile
 
+      # Same dead services/ai-auditor/ path as the dependency audit had, but the consequence here
+      # is heavier: with the guard false, PyInstaller bundled the sidecar with *none* of the
+      # backend's runtime dependencies — no fastapi, no ezdxf, no beanie. The guard is removed
+      # deliberately so a missing requirements file fails the release instead of shipping a
+      # binary that cannot import its own application.
       - name: Install Python Package Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          if [ -f services/ai-auditor/requirements.txt ]; then
-            pip install -r services/ai-auditor/requirements.txt
-          fi
+          pip install -r services/backend/requirements.txt
 
       - name: Compile Python Sidecar Executable
         shell: pwsh

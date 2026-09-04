@@ -1,0 +1,17 @@
+{
+  "schema": 2,
+  "trained_at": "2026-08-19T09:13:23.465678+00:00",
+  "n_total": 261,
+  "n_verdict": 140,
+  "n_category": 7,
+  "min_train": 40,
+  "metrics": {
+    "verdict_cv_accuracy": 0.7923,
+    "verdict_class_balance": {
+      "0": 73,
+      "1": 67
+    },
+    "verdict_minority_share": 0.4786,
+    "verdict_majority_baseline": 0.5214
+  }
+}

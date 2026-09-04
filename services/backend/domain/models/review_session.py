@@ -1,8 +1,10 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from beanie import Document
 from pydantic import Field
-from pymongo import IndexModel, ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, IndexModel
+
 
 class ReviewSession(Document):
     """
@@ -11,14 +13,14 @@ class ReviewSession(Document):
     """
     title: str = Field(..., description="Human-readable title for this review session")
     primary_drawing_id: str = Field(..., description="The main DrawingDocument being reviewed")
-    comparison_drawing_id: Optional[str] = Field(None, description="Optional baseline DrawingDocument for diffing")
-    audit_session_id: Optional[str] = Field(None, description="Optional linked AuditSession for violation overlays")
+    comparison_drawing_id: str | None = Field(None, description="Optional baseline DrawingDocument for diffing")
+    audit_session_id: str | None = Field(None, description="Optional linked AuditSession for violation overlays")
     
     reviewer_id: str = Field(..., description="Local user token/identifier")
     status: str = Field(default="in_progress", description="in_progress, completed, archived")
     
     # Store viewport state so the user can return exactly where they left off
-    last_viewport_state: Dict[str, Any] = Field(
+    last_viewport_state: dict[str, Any] = Field(
         default_factory=dict, 
         description="Persisted camera state {x, y, zoom, active_layers}"
     )

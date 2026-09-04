@@ -1,16 +1,17 @@
-import os
+import asyncio
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-from ...logger import logger
+
 from ...core.security import validate_sandboxed_path
-from ...infrastructure.storage.path_resolver import get_storage_root
-from ...domain.models.drawing_document import DrawingDocument
-from ...domain.models.standard_document import StandardDocument
 from ...domain.models.audit_session import AuditSession
 from ...domain.models.audit_violation import AuditViolation
+from ...domain.models.drawing_document import DrawingDocument
+from ...domain.models.standard_document import StandardDocument
+from ...infrastructure.storage.path_resolver import get_storage_root
+from ...logger import logger
 from .pdf_exporter import PDFComplianceExporter
 from .xlsx_exporter import XLSXComplianceExporter
+
 
 class ReportGenerator:
     """
@@ -28,7 +29,7 @@ class ReportGenerator:
             clean = clean.replace("..", ".")
         return clean.strip("_")
 
-    async def generate_reports(self, session_id: str) -> Dict[str, Path]:
+    async def generate_reports(self, session_id: str) -> dict[str, Path]:
         """
         Generates and saves sandboxed XLSX and PDF compliance logs.
         Returns:
@@ -68,9 +69,9 @@ class ReportGenerator:
         validate_sandboxed_path(pdf_path)
         validate_sandboxed_path(xlsx_path)
         
-        # 3. Trigger individual layout compilers
-        PDFComplianceExporter.generate_pdf(pdf_path, session, drawing, standard, violations)
-        XLSXComplianceExporter.generate_xlsx(xlsx_path, session, drawing, standard, violations)
+        # 3. Trigger individual layout compilers off-thread to prevent event loop blocking
+        await asyncio.to_thread(PDFComplianceExporter.generate_pdf, pdf_path, session, drawing, standard, violations)
+        await asyncio.to_thread(XLSXComplianceExporter.generate_xlsx, xlsx_path, session, drawing, standard, violations)
         
         return {
             "pdf": pdf_path,

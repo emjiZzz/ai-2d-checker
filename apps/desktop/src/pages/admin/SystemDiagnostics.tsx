@@ -1,13 +1,22 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { useAdminStore } from "../../stores/adminStore";
+import { useDatabaseMetrics, useStorageMetrics } from "../../hooks/useSystemMetrics";
 import { Database, HardDrive, Cpu, RefreshCw, Layers } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { adminMetricsKeys } from "../../services/queryKeys";
 
 export const SystemDiagnostics: React.FC = () => {
-  const { mongoDiagnostics, storageQuotas, vectorDbStatus, fetchDiagnostics, isLoading } = useAdminStore();
+  const { vectorDbStatus } = useAdminStore();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchDiagnostics();
-  }, [fetchDiagnostics]);
+  const { data: mongoDiagnostics, isLoading: isMongoLoading } = useDatabaseMetrics();
+  const { data: storageQuotas, isLoading: isStorageLoading } = useStorageMetrics();
+
+  const isLoading = isMongoLoading || isStorageLoading;
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: adminMetricsKeys.all });
+  };
 
   return (
     <div className="admin-subpage">
@@ -16,7 +25,7 @@ export const SystemDiagnostics: React.FC = () => {
           <h2 className="section-title">System Diagnostics</h2>
           <p className="section-desc">View direct loopback connection latencies, database statistics, and storage boundaries.</p>
         </div>
-        <button className="btn btn-secondary" onClick={() => fetchDiagnostics()} disabled={isLoading} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button className="btn btn-secondary" onClick={handleRefresh} disabled={isLoading} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <RefreshCw size={14} className={isLoading ? "spin-animation" : ""} />
           Re-Analyze Hardware Core
         </button>

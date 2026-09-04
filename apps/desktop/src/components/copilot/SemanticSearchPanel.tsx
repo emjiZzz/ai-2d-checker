@@ -31,8 +31,8 @@ export const SemanticSearchPanel: React.FC = () => {
   };
 
   return (
-    <div className="semantic-search bg-gray-900 text-gray-100 p-4 rounded-lg border border-gray-800">
-      <h3 className="text-md font-bold text-blue-400 mb-3 flex items-center">
+    <div className="semantic-search bg-bg-card text-text-primary p-4 rounded-lg border border-border-color">
+      <h3 className="text-md font-bold text-accent-cyan mb-3 flex items-center">
         <span className="mr-2">🔍</span> Deep Semantic CAD Search
       </h3>
 
@@ -42,11 +42,11 @@ export const SemanticSearchPanel: React.FC = () => {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search engineering rules, annotations, or drawing text..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded p-2 text-sm outline-none focus:border-blue-500 text-white"
+          className="flex-1 bg-bg-sidebar border border-border-color rounded p-2 text-sm outline-none focus:border-accent-cyan text-text-primary placeholder:text-text-muted"
         />
         <button 
           onClick={handleSearch}
-          className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded transition-colors"
+          className="bg-accent-cyan text-on-accent text-sm font-semibold px-4 py-2 rounded transition-colors cursor-pointer"
         >
           Search
         </button>
@@ -54,14 +54,14 @@ export const SemanticSearchPanel: React.FC = () => {
 
       <div className="space-y-3">
         {results.map(res => (
-          <div key={res.id} className="bg-gray-800/60 border border-gray-700 p-3 rounded hover:border-gray-600 transition-colors">
+          <div key={res.id} className="bg-bg-sidebar border border-border-color p-3 rounded hover:border-accent-cyan/50 transition-colors">
             <div className="flex justify-between items-start mb-1">
-              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">{res.source}</span>
-              <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">
+              <span className="text-xs font-semibold text-accent-cyan uppercase tracking-wider">{res.source}</span>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/30">
                 {res.matchPercentage}% Match
               </span>
             </div>
-            <p className="text-xs text-gray-300 italic">"{res.snippet}"</p>
+            <p className="text-xs text-text-secondary italic">"{res.snippet}"</p>
           </div>
         ))}
       </div>

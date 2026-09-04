@@ -1,10 +1,11 @@
-import sys
+import contextvars
 import json
 import logging
-import contextvars
-from datetime import datetime, timezone
+import sys
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
 from .config import settings
 
 # Thread-safe context variable for request correlation IDs
@@ -25,6 +26,8 @@ class SafeRedactor:
                 message = message.replace(settings.API_TOKEN, "********")
             if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY in message:
                 message = message.replace(settings.GEMINI_API_KEY, "********")
+            if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY in message:
+                message = message.replace(settings.OPENAI_API_KEY, "********")
         except Exception:
             pass  # Avoid circular load crashes during bootstrap
         return message
@@ -37,7 +40,7 @@ class JSONFormatter(logging.Formatter):
         clean_msg = SafeRedactor.redact(record.getMessage())
         
         log_object = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": clean_msg,
@@ -80,6 +83,21 @@ def setup_logger() -> logging.Logger:
     log_dir.mkdir(parents=True, exist_ok=True)
     
     # 1. Stdout Console Handler
+    #
+    # stdout is reconfigured to replace unencodable characters first. This console is cp932
+    # on the development machine, and cp932 cannot encode an em-dash — which this codebase's log
+    # messages are full of. Every such line raised `UnicodeEncodeError` inside `Handler.emit`,
+    # which logging swallows by printing "--- Logging error ---" plus a full traceback to stderr:
+    # the log line is lost and replaced by noise, in the handler whose job is to report problems.
+    # `tools/retrieval_eval.py` has carried this guard for months, citing
+    # [[Gotcha - Our Own Punctuation Broke on the cp932 Console]]; the server's own logger never
+    # got it. The file handler is already `encoding="utf-8"` and was never affected, so the
+    # failure was console-only and therefore invisible in the logs someone would go read.
+    try:
+        sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):  # pragma: no cover - not a tty, or already wrapped
+        pass
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(ConsoleFormatter())
     logger.addHandler(console_handler)

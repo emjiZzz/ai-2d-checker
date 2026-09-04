@@ -1,15 +1,16 @@
 from datetime import datetime
-from typing import List, Optional
+
 from beanie import Document
 from pydantic import Field
-from pymongo import IndexModel, ASCENDING
+from pymongo import ASCENDING, IndexModel
+
 
 class CopilotMessage(Document):
     """Stores individual contextual chat messages for the Copilot session."""
     session_id: str = Field(..., description="Link to CopilotSession")
     role: str = Field(..., description="'user', 'assistant', or 'system'")
     content: str = Field(..., description="Text content of the message")
-    citations: List[str] = Field(default_factory=list, description="IDs of cited standards or geometry")
+    citations: list[str] = Field(default_factory=list, description="IDs of cited standards or geometry")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:

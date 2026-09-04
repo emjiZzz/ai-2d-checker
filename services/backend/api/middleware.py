@@ -1,9 +1,12 @@
 import time
 import uuid
+
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from ..logger import logger, correlation_id_var
+
+from ..logger import correlation_id_var, logger
+
 
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """
@@ -34,11 +37,20 @@ class RequestDurationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         duration = time.time() - start_time
-        logger.info(
-            f"Access: {request.method} {request.url.path} - "
-            f"Status: {response.status_code} - "
-            f"Duration: {duration:.4f}s"
-        )
+        
+        # Demote routine successful /health checks to DEBUG level to avoid flooding production logs
+        if request.url.path == "/health" and response.status_code == 200:
+            logger.debug(
+                f"Access: {request.method} {request.url.path} - "
+                f"Status: {response.status_code} - "
+                f"Duration: {duration:.4f}s"
+            )
+        else:
+            logger.info(
+                f"Access: {request.method} {request.url.path} - "
+                f"Status: {response.status_code} - "
+                f"Duration: {duration:.4f}s"
+            )
         response.headers["X-Process-Time"] = f"{duration:.4f}s"
         return response
 
@@ -51,17 +63,18 @@ class ExceptionLoggingMiddleware(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except Exception as e:
-            logger.exception(f"Unhandled API error while processing '{request.url.path}': {str(e)}")
+            corr_id = correlation_id_var.get()
+            # Full exception detail stays server-side only — never returned to the client.
+            logger.exception(f"[{corr_id}] Unhandled API error while processing '{request.url.path}': {str(e)}")
             
-            # Unified error response format
+            # Unified error response format — generic message, no internals, traceable via correlation ID.
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={
                     "success": False,
                     "error": {
                         "code": "INTERNAL_SERVER_ERROR",
-                        "message": "An unexpected error occurred on the local server.",
-                        "detail": str(e)
+                        "message": f"An unexpected error occurred on the local server. Reference: {corr_id}"
                     }
                 }
             )

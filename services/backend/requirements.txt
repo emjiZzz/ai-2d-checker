@@ -6,9 +6,41 @@ motor>=3.3.2
 beanie>=1.25.0
 cryptography>=42.0.5
 aiofiles>=23.2.1
-google-generativeai>=0.4.0
-ezdxf>=1.1.0
-pypdf>=4.0.0
 python-multipart>=0.0.9
+
+# CAD parsing
+ezdxf>=1.3.0
+
+# PDF parsing (standards ingestion)
+pypdf>=4.0.0
+
+# PDF report generation
+reportlab>=4.0.0
+
+# Excel report generation + standards parsing
+openpyxl>=3.1.0
+# Legacy .xls (BIFF/OLE2) standards. openpyxl reads OOXML only — its own SUPPORTED_FORMATS is
+# ('.xlsx', '.xlsm', '.xltx', '.xltm') — and xlrd >=2.0 reads .xls only, so the two are exactly
+# complementary rather than overlapping. Pure Python, no compiled extensions, ~100 KB, which
+# matters because this sidecar ships inside a Tauri bundle.
+xlrd>=2.0.1
+
+# High-fidelity PDF rendering (optional, degrades gracefully if missing)
+pymupdf>=1.24.0
+
+# DXF background rendering (optional, degrades gracefully if missing)
 matplotlib>=3.8.0
-PyMuPDF>=1.24.0
+
+# Gemini AI Vision API (google-genai is the current maintained SDK;
+# google-generativeai is fully deprecated as of 2025 and no longer receives updates)
+google-genai>=1.0.0
+
+# Human-in-the-loop learned-correction model (deterministic, no LLM). scikit-learn
+# trains a lightweight classifier on human corrections; joblib persists it. numpy is
+# already a transitive dep. See infrastructure/learning/.
+scikit-learn>=1.5.0
+joblib>=1.4.0
+
+# Windows-only: used for SolidWorks COM automation (sw_converter.py already
+# guards this import with try/except ImportError for non-Windows environments).
+pywin32>=306; sys_platform == "win32"

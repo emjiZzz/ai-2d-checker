@@ -1,0 +1,220 @@
+{
+  "pair_id": "M745230A01",
+  "guideline_version": "2026-08-06",
+  "annotator": "imrysn",
+  "annotated_at": "2026-08-17",
+  "notes": "Human-labelled ground truth for M745230A01 (M745230A01_reference.dxf vs M745230A01_FSRS2_kmti.dxf). Revision includes title block updates (scale, drafter, approver, date, title, dwg code), BOM item 1 weight revision (0.67 -> 0.71), 3 newly added manufacturing notes, and several dimension edits and callouts.",
+  "findings": [
+    {
+      "entity_handle": "REV#441",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "04/12/22",
+      "rev_text": "2026/07/03",
+      "notes": "Date field updated.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#438",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2589",
+      "rev_text": "9324",
+      "notes": "Drawing number / code field at the bottom of the title block.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#442",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "1:1.5",
+      "rev_text": "1/1.4",
+      "notes": "Scale value changed from 1:1.5 to 1/1.4.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#440",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "Roll Cassette 12\" Mill",
+      "rev_text": "ロールカセット 12\"ミル",
+      "notes": "Drawing title re-authored from English to Japanese.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#443",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "中川",
+      "rev_text": "ZHR",
+      "notes": "Drafter author field.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#444",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "橋本",
+      "rev_text": "津田",
+      "notes": "Approver field.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#419",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "0.67",
+      "rev_text": "0.71",
+      "notes": "Item 1 weight modified from 0.67 to 0.71.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-2E8",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "指示なき角部は糸面取りのこと",
+      "notes": "Added manufacturing note for deburring/chamfering.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-2E9",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "タップ、キリ穴は面取り仕上げのこと",
+      "notes": "Added manufacturing note for tap/drilled hole chamfering.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-2EA",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "完成時、バリ、キリ粉はなきこと",
+      "notes": "Added manufacturing note for cleaning burrs and drilling swarf.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-230",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "14ザグリ深サ10",
+      "rev_text": "３－９キリ１４ザグリ深サ１０",
+      "notes": "Hole callouts merged and updated on revision.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#454",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "C15",
+      "rev_text": "２－Ｃ１５",
+      "notes": "Chamfer callout updated from C15 to 2-C15.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#398",
+      "category": "drawing_views",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "L油溝詳細l",
+      "notes": "Oil groove detail view title added.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-47B",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "A - A (S=2:1)",
+      "rev_text": "L　Ａ－Ａ　l Ｓ＝２／１",
+      "notes": "Section cut A-A label re-formatted and updated.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-46F",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "60",
+      "rev_text": "6",
+      "notes": "Dimension edited 60 -> 6.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-21B",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "55",
+      "rev_text": "25",
+      "notes": "Dimension edited 55 -> 25.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-1CD",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "170",
+      "rev_text": "20",
+      "notes": "Dimension edited 170 -> 20.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#403",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "15",
+      "rev_text": "1.5",
+      "notes": "Dimension edited 15 -> 1.5.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-47C",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "40",
+      "rev_text": "3",
+      "notes": "Dimension edited 40 -> 3.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#402",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "R3",
+      "rev_text": "Ｒ4",
+      "notes": "Corner fillet radius modified R3 -> R4.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#401",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "R3",
+      "rev_text": "Ｒ2",
+      "notes": "Corner fillet radius modified R3 -> R2.",
+      "is_bulk": false
+    }
+  ],
+  "not_findings": [
+    {
+      "entity_handle": "REV-26A",
+      "reason": "Leader callout 注１ pointing to note 1."
+    },
+    {
+      "entity_handle": "REV-26C",
+      "reason": "Leader callout 注１ pointing to note 1."
+    },
+    {
+      "entity_handle": "REV-2AE",
+      "reason": "Leader callout 注１ pointing to note 1."
+    },
+    {
+      "entity_handle": "REV-22C",
+      "reason": "Section cut arrow/margin identifier letter A."
+    },
+    {
+      "entity_handle": "REV-22E",
+      "reason": "Section cut arrow/margin identifier letter A."
+    }
+  ]
+}

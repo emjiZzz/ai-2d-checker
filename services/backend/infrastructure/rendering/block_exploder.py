@@ -1,6 +1,8 @@
 import math
-from typing import Any, Dict, List
+from typing import Any
+
 from ...logger import logger
+
 
 class BlockExploder:
     """
@@ -11,7 +13,7 @@ class BlockExploder:
     MAX_RECURSION_DEPTH = 10
 
     @staticmethod
-    def _apply_transform(point: List[float], insert_geo: Dict[str, Any]) -> List[float]:
+    def _apply_transform(point: list[float], insert_geo: dict[str, Any]) -> list[float]:
         """
         Applies Translation, Scaling, and Rotation to a [x, y] coordinate.
         """
@@ -42,7 +44,7 @@ class BlockExploder:
         return [fx, fy]
 
     @staticmethod
-    def explode_insert(insert_entity: Any, block_definitions: Dict[str, List[Any]], current_depth: int = 0) -> List[Any]:
+    def explode_insert(insert_entity: Any, block_definitions: dict[str, list[Any]], current_depth: int = 0) -> list[Any]:
         """
         Explodes an INSERT entity and returns a list of transformed primitive dictionaries.
         """

@@ -1,7 +1,8 @@
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
+
 from ...logger import logger
+
 
 class PDFDiffEngine:
     """
@@ -9,7 +10,7 @@ class PDFDiffEngine:
     Compares reference baseline PDF vs revision PDF, isolating added, removed, and modified vector/text segments.
     """
     @staticmethod
-    def compare_documents(old_entities: List[Dict[str, Any]], new_entities: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def compare_documents(old_entities: list[dict[str, Any]], new_entities: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         """
         Runs structural comparisons on geometry and text coordinates.
         Categorizes elements into deleted (crimson), added (teal), and unchanged (charcoal).

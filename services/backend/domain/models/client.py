@@ -1,7 +1,9 @@
 from datetime import datetime
+
 from beanie import Document
 from pydantic import Field
-from pymongo import IndexModel, ASCENDING
+from pymongo import ASCENDING, IndexModel
+
 
 class ClientDocument(Document):
     name: str = Field(..., description="Unique client name: e.g. KEMCO, AGCC, JFE, NIKKO, TEX")

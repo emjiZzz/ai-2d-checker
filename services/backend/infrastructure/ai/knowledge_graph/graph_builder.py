@@ -1,5 +1,7 @@
-from typing import Dict, List, Any
+from typing import Any
+
 from ....logger import logger
+
 
 class GraphBuilder:
     """
@@ -11,7 +13,7 @@ class GraphBuilder:
         self.nodes = {}
         self.edges = []
         
-    def add_node(self, node_id: str, label: str, properties: Dict[str, Any]):
+    def add_node(self, node_id: str, label: str, properties: dict[str, Any]):
         """Registers a node representing a standard clause, geometry pattern, or violation."""
         logger.debug(f"Adding knowledge graph node: {node_id} ({label})")
         self.nodes[node_id] = {
@@ -29,7 +31,7 @@ class GraphBuilder:
             "relationship": relationship_type
         })
         
-    def query_related_context(self, source_node_id: str) -> List[Dict[str, Any]]:
+    def query_related_context(self, source_node_id: str) -> list[dict[str, Any]]:
         """Returns adjacent nodes, allowing quick navigation between standard clauses and similar historic violations."""
         results = []
         for edge in self.edges:

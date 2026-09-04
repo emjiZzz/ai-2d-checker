@@ -58,8 +58,13 @@ jobs:
       - name: Run Formatting Checks
         run: pnpm run format:check
 
+      # This step used to build the shared types package only, so apps/desktop — where nearly all
+      # the TypeScript lives — was never type-checked in CI. "0 tsc errors" was true locally and
+      # unenforced on merge. Both halves run here now.
       - name: Run TypeScript Compiler Checks
-        run: pnpm --filter @ai-2d-checker/types build
+        run: |
+          pnpm --filter @ai-2d-checker/types build
+          pnpm --filter desktop typecheck
 
       - name: Run Frontend Tests
         run: pnpm turbo run test --filter=desktop

@@ -1,7 +1,5 @@
-import math
-from typing import Dict, List, Tuple, Any
-from ...logger import logger
 from ...domain.models.extracted_entity import ExtractedEntity
+
 
 class ViewportGenerator:
     """
@@ -10,7 +8,7 @@ class ViewportGenerator:
     """
 
     @staticmethod
-    def calculate_bounds(entities: List[ExtractedEntity]) -> Dict[str, float]:
+    def calculate_bounds(entities: list[ExtractedEntity]) -> dict[str, float]:
         """
         Iterates over geometry to find the absolute min/max X and Y coordinates.
         Returns a bounding box dict: { min_x, max_x, min_y, max_y, width, height, center_x, center_y }
@@ -25,10 +23,10 @@ class ViewportGenerator:
 
         def expand_bounds(x: float, y: float):
             nonlocal min_x, max_x, min_y, max_y
-            if x < min_x: min_x = x
-            if x > max_x: max_x = x
-            if y < min_y: min_y = y
-            if y > max_y: max_y = y
+            min_x = min(min_x, x)
+            max_x = max(max_x, x)
+            min_y = min(min_y, y)
+            max_y = max(max_y, y)
 
         for ent in entities:
             geo = ent.geometry
