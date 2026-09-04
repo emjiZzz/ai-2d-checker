@@ -348,6 +348,12 @@ running. Reuses `extraction_status.collect` rather than restating the staleness 
 without `--apply`, and needs the backend up. Re-run it after every `EXTRACTION_SCHEMA_VERSION`
 bump, since a bump is the act that makes rows stale.
 
+`--referenced-only` drops stale rows nothing live points at -- no live room, audit session,
+manual check, marking, annotation or feedback. A soft-deleted room's drawing ids are
+deliberately not counted: deleting a room purges both slots and keeps the record, so those ids
+dangle by design. The rule is `extraction_status.referenced_ids`, pinned by
+`tests/test_extraction_referrers.py`.
+
 Two rows can never be brought current. `MD511367B01_WABC-new.pdf` and `MD51167B01_WABC-old.pdf` are
 `DrawingDocument` rows whose stored source file no longer exists, so `/reextract` answers 422; they
 are also PDFs, from before the vector path. A run reporting `skipped 2 (source file gone)` is

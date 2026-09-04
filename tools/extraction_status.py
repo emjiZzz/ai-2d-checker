@@ -136,6 +136,54 @@ def collect(db: Any) -> dict[str, Any]:
     }
 
 
+#: Collections whose rows make a drawing worth keeping current, and the fields naming it.
+#: The bool is whether the collection carries `is_deleted` and must be filtered by it.
+#:
+#: A marking names its drawing under the address, not at the top level. Querying
+#: `drawing_id` there returns nothing and reads like "no marking references any drawing",
+#: which is the wrong answer rather than an error.
+REFERRER_SOURCES: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+    ("rooms", ("active_old_drawing_id", "active_new_drawing_id"), True),
+    ("audit_sessions", ("drawing_id", "reference_drawing_id"), True),
+    ("manual_check_sessions", ("ref_drawing_id", "rev_drawing_id"), False),
+    ("ground_truth_markings", ("ref_address.drawing_id", "rev_address.drawing_id"), False),
+    ("annotations", ("drawing_id",), False),
+    ("audit_feedback", ("drawing_id",), False),
+)
+
+
+def _dig(doc: Any, path: str) -> Any:
+    """`doc["ref_address"]["drawing_id"]` from `"ref_address.drawing_id"`, None-safe."""
+    cur = doc
+    for part in path.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def referenced_ids(db: Any) -> dict[str, set[str]]:
+    """`{drawing_id: {collection, ...}}` for drawings something live still points at.
+
+    Soft-deleted rooms are excluded deliberately. Deleting a room hard-purges both of its
+    drawing slots (`api/routers/rooms.py`) while the Room record itself stays soft-deleted, so
+    a deleted room's ids are expected to dangle; counting them keeps rows current that nobody
+    can open. Measured 2026-09-04: 92 of 145 deleted rooms dangle and no live room does.
+
+    Ids are returned as written, including any naming a row that no longer exists -- callers
+    intersect against `collect`'s rows rather than trusting this to be a subset of them.
+    """
+    found: dict[str, set[str]] = {}
+    for name, fields, has_delete_flag in REFERRER_SOURCES:
+        query = {"is_deleted": {"$ne": True}} if has_delete_flag else {}
+        for doc in db[name].find(query, {f: 1 for f in fields}):
+            for field in fields:
+                value = _dig(doc, field)
+                if value:
+                    found.setdefault(str(value), set()).add(name)
+    return found
+
+
 def print_report(result: dict[str, Any], notes: dict[int, str], limit: int) -> None:
     current = result["current"]
     print(f"\nEXTRACTION_SCHEMA_VERSION = {current}")

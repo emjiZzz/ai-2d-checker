@@ -3,7 +3,7 @@
 
     services/backend/.venv/Scripts/python.exe tools/reextract_stale_drawings.py
     ... tools/reextract_stale_drawings.py --apply
-    ... tools/reextract_stale_drawings.py --apply --limit 5
+    ... tools/reextract_stale_drawings.py --apply --referenced-only
 
 ## Why this exists as a tool rather than a one-off loop
 
@@ -53,7 +53,11 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.backend.core.security import initialize_local_api_token  # noqa: E402
-from tools.extraction_status import MONGO_DB_DEFAULT, collect  # noqa: E402
+from tools.extraction_status import (  # noqa: E402
+    MONGO_DB_DEFAULT,
+    collect,
+    referenced_ids,
+)
 
 #: Matches `connectionStore.ts`, which defaults to 8080 rather than FastAPI's usual 8000.
 DEFAULT_BASE = "http://127.0.0.1:8080"
@@ -84,6 +88,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true", help="actually re-extract; default reports only")
     ap.add_argument("--limit", type=int, default=0, help="stop after N drawings (0 = all)")
+    ap.add_argument("--referenced-only", action="store_true",
+                    help="skip stale rows nothing live points at -- no live room, audit "
+                         "session, manual check, marking, annotation or feedback. Keeps "
+                         "every row a person can still open, including through history.")
     ap.add_argument("--base", default=DEFAULT_BASE, help=f"backend base URL (default {DEFAULT_BASE})")
     ap.add_argument("--mongo-uri", default=None,
                     help="Defaults to the app's configured MONGO_URI, matching "
@@ -107,13 +115,24 @@ def main() -> int:
         print(f"Could not read {args.mongo_db}: {type(err).__name__}: {err}", file=sys.stderr)
         return 2
     stale = result["stale"]
+    unreferenced = 0
+    if args.referenced_only:
+        # Filtered before --limit, so `--limit 5` means five drawings worth re-extracting
+        # rather than five candidates of which some are dropped.
+        referenced = referenced_ids(db)
+        before = len(stale)
+        stale = [row for row in stale if row["id"] in referenced]
+        unreferenced = before - len(stale)
     if args.limit:
         stale = stale[: args.limit]
 
     print(f"\nEXTRACTION_SCHEMA_VERSION = {result['current']}")
     print(f"  drawings stored     {result['drawings']}")
-    print(f"  STALE               {len(result['stale'])}"
-          + (f"  (limited to {len(stale)} this run)" if args.limit else ""))
+    print(f"  STALE               {len(result['stale'])}")
+    if args.referenced_only:
+        print(f"  unreferenced        {unreferenced}  (skipped -- nothing live points at them)")
+    if args.limit:
+        print(f"  this run            {len(stale)}  (--limit {args.limit})")
 
     if not stale:
         print("\n  Nothing to do -- every stored drawing is current.\n")
