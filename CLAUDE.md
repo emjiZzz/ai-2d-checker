@@ -326,7 +326,7 @@ the queued job; poll `GET /jobs/{id}`. Refuses with 409 while an extraction is a
 422 if the source file is gone. Cached comparisons for that drawing are cleared first, because a
 hit returns in ~0.14s and would otherwise bypass the whole re-extraction.
 
-`EXTRACTION_SCHEMA_VERSION` (`extracted_entity.py`, currently 7) is stamped onto each
+`EXTRACTION_SCHEMA_VERSION` (`extracted_entity.py`) is stamped onto each
 `DrawingDocument` as `extraction_schema_version`, so a drawing predating a fix is identifiable
 without re-reading its entities. Bump it when you add an extraction-time field, with a `# vN:` note
 saying what a stale row is missing and how it degrades.
