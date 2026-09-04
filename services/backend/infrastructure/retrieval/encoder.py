@@ -1,18 +1,16 @@
-"""The encoder seam — what turns text into something searchable.
+"""The encoder seam -- what turns text into something searchable.
 
-There is exactly one implementation today (`lexical.TfidfEncoder`) and this interface exists
-anyway, for a reason recorded in [[ADR-008]]: dense embeddings must win on a measurement before
-they ship. Without a seam, "try a real embedding model" is a rewrite and therefore never gets
-tested; with one, it is a subclass and an A/B on the R2 metric.
+One implementation today (`lexical.TfidfEncoder`), and the interface exists anyway for the reason
+in ADR-008: dense embeddings must win a measurement before they ship. Without a seam, "try a real
+embedding model" is a rewrite and never gets tested; with one it is a subclass and an A/B on R2.
 
-The seam is also what R0 was cleaning up after. The deleted stack had no interface — the fake
-embedding model was imported directly by four modules, so there was no single place to swap it out
-and no single place to check what it actually was. An encoder here must be able to say what it is
-(`name`), and the manifest written beside every index records that name, so an index built by one
-encoder can never be silently searched by another.
+It is also what R0 cleaned up after. The deleted stack had no interface, so the fake embedding
+model was imported directly by four modules with no single place to swap it or inspect it. An
+encoder must be able to say what it is (`name`), and the manifest beside every index records that
+name, so an index built by one encoder cannot be silently searched by another.
 
-No encoder in this package may fabricate a vector. If it cannot encode, it raises. The
-predecessor returned `np.random.default_rng(sha256(text))` and nothing downstream could tell.
+No encoder here may fabricate a vector; if it cannot encode, it raises. The predecessor returned
+`np.random.default_rng(sha256(text))` and nothing downstream could tell.
 """
 
 from __future__ import annotations

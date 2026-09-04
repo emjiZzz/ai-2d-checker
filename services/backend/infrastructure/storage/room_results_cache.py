@@ -1,50 +1,28 @@
 """A disk cache for a Room's `physical_comparison_results`, and the one place that reads it.
 
-## Why this exists
+Measured 2026-08-19 against live Atlas, on the largest of 11 rooms (166 KB in that one field):
+`GET /rooms/{id}` took 4.53 s, of which the fetch was 1.97 s and stamping `last_opened_at` a
+further 2.01 s, while all CPU on the document totalled 4 ms. Latency is linear in the field --
+0 KB / 0.16 s, 32 KB / 1.00 s, 166 KB / 4.54 s -- so the cost is bytes crossing the link to a
+remote cluster, as for `entity_cache`, and nothing on the query side reaches it.
 
-Measured 2026-08-19 against the live Atlas cluster, for room `6a7ec3f80f7b1df1dd247b2f`
-("228") — 166 KB in that one field, the largest of the 11 live rooms:
+The second 2 s was not the write. Beanie's `Document.update` issues
+`response_type=UpdateResponse.NEW_DOCUMENT`, a `find_one_and_update` returning the document after
+the update, then merges it back -- so stamping a timestamp dragged the whole 166 KB back.
+`get_room` now issues a raw `update_one`, 0.041 s against 2.2 s, needing no reply. That half
+needed no cache, which is why it is not implemented here.
 
-    GET /api/v1/rooms/{id}                          4.53 s
-      - Room.get()              (full document)     1.97 s
-      - room.set(last_opened_at)                    2.01 s   <- see below
-      - validate + _to_response + model_dump_json   0.004 s
+The key is `(room_id, updated_at)`, with the stamp in the filename, so a changed document orphans
+its own entry rather than relying on anyone remembering to clear it. That holds because
+`physical_comparison_results` has exactly one writer, `PATCH /rooms/{room_id}`, which sets
+`updated_at` on the line before `save()`; `GET` stamps `last_opened_at` only, deliberately, so
+opening a room does not invalidate it. A second writer must bump `updated_at` too or it will serve
+a stale checklist, which would render as a plausible comparison rather than an error.
+`tests/test_room_results_cache.py::test_physical_comparison_results_has_exactly_one_writer` pins
+that by parsing `rooms.py`.
 
-    find_one WITHOUT physical_comparison_results    0.043 s
-    find_one WITH it                                2.03 s
-
-Latency is linear in that one field across every room — 0 KB / 0.16 s, 32 KB / 1.00 s,
-60 KB / 1.80 s, 166 KB / 4.54 s — while all CPU on the fetched document totals 4 ms. So the
-cost is bytes crossing the link to a remote cluster, exactly as for `entity_cache`, and
-nothing on the query side can reach it.
-
-The second 2 s was not the write. The `$set` note in `rooms.py::get_room` was half a
-fix: it stopped *sending* the field, but Beanie's `Document.update` issues
-`response_type=UpdateResponse.NEW_DOCUMENT` (`beanie/odm/documents.py`) — a
-`find_one_and_update` returning the document AFTER the update — and then `merge_models` it
-back into the in-memory object. So stamping a timestamp dragged the whole 166 KB *back*.
-`get_room` now issues a raw `update_one`: 0.041 s against 2.2 s, and it needs no reply.
-That half needed no cache at all, which is why it is not implemented here.
-
-## Invalidation
-
-The key is `(room_id, updated_at)` with `updated_at` in the filename, so a changed
-document orphans its own entry instead of relying on anyone remembering to clear it.
-
-That is sound because `physical_comparison_results` has exactly one writer — `PATCH
-/rooms/{room_id}` — and it sets `room.updated_at = now()` on the line before `room.save()`.
-`GET /rooms/{room_id}` stamps `last_opened_at` only, deliberately, so opening a room does not
-invalidate the room's own entry.
-
-A second writer of that field must bump `updated_at` too, or it will serve a stale
-checklist — the failure mode this repo pays for most often, and here it would render as a
-plausible comparison rather than as an error.
-`tests/test_room_results_cache.py::test_physical_comparison_results_has_exactly_one_writer`
-pins that assumption by parsing `rooms.py`, so adding a second writer fails loudly there.
-
-Unlike `entity_cache`, there is no live-count safety net: a room's results are one opaque
-string with no cheap server-side property to probe. The key is the whole guarantee, so it is
-derived from the same `updated_at` the response reports.
+Unlike `entity_cache` there is no live-count safety net: the results are one opaque string with no
+cheap server-side property to probe. The key is the whole guarantee.
 """
 
 from __future__ import annotations

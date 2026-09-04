@@ -1,21 +1,15 @@
 /**
  * The compliance report's paper, in millimetres, shared by everything that draws on it.
  *
- * ## Why this is stated in millimetres
+ * In millimetres because the report used `unit: "px"` with a `[1200, 800]` format, and jsPDF's
+ * `px` is not 96 dpi without its `px_scaling` hotfix -- the default scale factor is `96 / 72`, so
+ * every coordinate was 1.333 pt and the page came out 564.4 × 376.3 mm, wider than A2 and a size
+ * no office printer holds. A margin expressed in mm on that page means nothing.
  *
- * The report used `unit: "px"` with a `[1200, 800]` format, and jsPDF's `px` unit is not 96
- * dpi unless you opt into its `px_scaling` hotfix — its default scale factor is `96 / 72`, so
- * every coordinate was 1.333 pt. That made the page 564.4 × 376.3 mm: wider than A2, and not
- * a size any office printer holds. A margin expressed in millimetres on that page means nothing,
- * which is why the geometry moved here and the document now measures in mm directly.
- *
- * ## A4 landscape
- *
- * Chosen because it is the size that prints anywhere. The drawings themselves are A-series CAD
- * sheets (aspect ~1.414), so they sit inside the 283 × 196 mm content box with only a hairline of
- * letterboxing. Switch `REPORT_PAGE_MM` to `{ width: 420, height: 297 }` for A3 if these are
- * printed on a plotter — everything downstream is derived from it, including the checklist
- * sheet's own canvas aspect, so nothing else has to change.
+ * A4 landscape, because it prints anywhere. The drawings are A-series CAD sheets (aspect ~1.414)
+ * and sit inside the 283 × 196 mm content box with a hairline of letterboxing. For A3 on a
+ * plotter, switch `REPORT_PAGE_MM` to `{ width: 420, height: 297 }`: everything downstream
+ * derives from it, including the checklist sheet's canvas aspect.
  */
 export const REPORT_PAGE_MM = Object.freeze({ width: 297, height: 210 });
 
@@ -28,14 +22,12 @@ export const CHECKLIST_PAGE_ASPECT = CHECKLIST_PAGE_MM.width / CHECKLIST_PAGE_MM
 /**
  * The margin on all four sides of a report page.
  *
- * Owner's call, 2026-08-24: 7 mm first, then "much smaller" once the drawing stopped floating
- * inside its own `render_bounds` (see `exportFit.ts`). It is uniform, which is why page 1 carries
- * no header strip — a caption band and a 3 mm top margin cannot both exist, and the drawing is
- * what the page is for.
- *
- * 3 mm is inside most printers' unprintable border (typically 4–5 mm), so a hard copy may
- * lose the outermost sliver of the sheet frame. That is a deliberate trade for a full-bleed
- * drawing on screen; raise this to 5 if printed copies start coming back clipped.
+ * Owner's call, 2026-08-24: 7 mm first, then much smaller once the drawing stopped floating
+ * inside its own `render_bounds` (see `exportFit.ts`). Uniform, which is why page 1 carries no
+ * header strip -- a caption band and a 3 mm top margin cannot both exist, and the drawing is what
+ * the page is for. 3 mm is inside most printers' unprintable border of 4-5 mm, so a hard copy may
+ * lose the outermost sliver of the sheet frame; that is a deliberate trade for a full-bleed
+ * drawing on screen. Raise it to 5 if printed copies start coming back clipped.
  */
 export const REPORT_MARGIN_MM = 3;
 

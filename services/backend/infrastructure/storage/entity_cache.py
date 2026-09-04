@@ -1,44 +1,25 @@
 """A disk cache for a drawing's extracted entities, and the one place that reads them.
 
-## Why this exists
+Measured 2026-08-19 against live Atlas on a 1046-entity drawing (0.85 MB): the server-side query
+is 4 ms (IXSCAN, 1046 keys for 1046 docs) and `GeometrySerializer.serialize` is 14 ms, but
+`find().to_list()` takes 8761 ms. The 8.5 s is network throughput, not round trips -- it scales
+with document count (100 docs 710 ms, 500 docs 3862 ms, 1046 docs 8453 ms, about 8 ms each) and
+`batch_size` does not move it. Nothing on the query side reaches it.
 
-Measured 2026-08-19 against the live Atlas cluster, for drawing `6a741fc6e01d720e27be28e1`
-(1046 entities, 0.85 MB):
+`GET /drawings/{id}/layers` runs twice on every room open, so that was ~10 s of open time. The
+cache serves the same entities in ~131 ms (44 ms read and parse, 53 ms rehydrate, 34 ms count
+probe), output verified byte-identical to the live fetch.
 
-    server-side query (explain)          4 ms    IXSCAN on drawing_id_1, 1046 keys / 1046 docs
-    Beanie find().to_list()           8761 ms
-    raw motor find (no ODM)           9610 ms
-    GeometrySerializer.serialize      14 ms
+Invalidation is three layers on purpose. `EXTRACTION_SCHEMA_VERSION` is in the filename, so every
+bump CLAUDE.md already requires orphans every entry for free. `clear_for_drawing` is called at all
+three sites that write entities -- the pipeline's replace and the two deletes -- and is the
+precise mechanism. And the stored entity count is re-checked against the database on every read,
+the net for a write site added later that forgets the first two; it costs one indexed
+`count_documents`, 34 ms against 8500, and turns "stale forever, silently" into "stale until the
+count changes".
 
-The query is optimal and the serializer is free. The 8.5 seconds is the network: cost scales
-with document count (100 docs 710 ms, 500 docs 3862 ms, 1046 docs 8453 ms — ~8 ms each) and
-`batch_size` does not move it, so it is throughput against a remote cluster and not round
-trips. Nothing on the query side can reach it.
-
-`GET /drawings/{id}/layers` is called twice on every room open, so that was ~10 s of a room's
-open time. This cache reads the same entities in ~150 ms:
-
-    read + parse cache                  44 ms
-    rehydrate to ExtractedEntity        53 ms
-    count_documents validation probe    34 ms
-    ------------------------------------------
-                                      ~131 ms   (then the same 17 ms serialize)
-
-Output verified byte-identical to the live fetch.
-
-## Invalidation — three layers, deliberately
-
-1. `EXTRACTION_SCHEMA_VERSION` is in the filename. CLAUDE.md already requires bumping it when
-   an extraction-time field is added, so every such bump orphans every entry for free.
-2. `clear_for_drawing` is called at all three sites that write entities (the extraction
-   pipeline's replace, and the two deletes). This is the precise mechanism.
-3. The stored entity count is re-checked against the database on every read. This is the
-   safety net for a write site added later that forgets (1) and (2). It costs one indexed
-   `count_documents` — 34 ms against 8500 — and turns "stale forever, silently" into "stale
-   until the count changes", which is the failure mode this repo pays for most often.
-
-Layer 3 cannot catch a replacement that keeps the count identical. That case is what layers 1
-and 2 are for; the net is a net, not a substitute.
+That third layer cannot catch a replacement keeping the count identical. The first two are for
+that case; the net is a net, not a substitute.
 """
 
 from __future__ import annotations

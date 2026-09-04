@@ -1,26 +1,14 @@
 /**
  * The glyph sets a Japanese CAD sheet spells one symbol with, as character-class SOURCES.
  *
- * ## Why these are constants and not four copies of a character class
- *
- * `cleanCadText`/`normalizeEntityValue` transcode the DXF escape `%%c` to U+2300 ⌀, so that
- * is the character that actually reaches every downstream classifier. Three of them were written
- * against `[ØøφΦ]` — U+00D8, U+00F8, U+03C6, U+03A6 — and matched none of it:
- *
- *   * `comparisonTaxonomy.inferFeatureKey` could not see `6×⌀145` as a material specification,
- *     and it only appeared under the right heading because the BOM branch's catch-all happened
- *     to name that heading. Fixing the catch-all to answer `other` is what exposed this.
- *   * the same function's `drawing_views` branch could not see `⌀145` as a hole property, so it
- *     fell through to `dimensions`.
- *   * `manualCheckCategories.inferCategoryForEntity` had both gaps again.
- *
- * Every one of those failed by producing a *plausible* answer, which is why none of them
- * surfaced as a bug report until someone read a checklist closely.
- *
- * `entityPicking.ts` had the complete set all along (`DIAMETER_MARKS`) because comparing two
- * spellings of one dimension is its whole job. It now derives from here rather than declaring
- * its own, so there is one answer to "what does a diameter look like" instead of two that agree
- * today.
+ * Constants rather than four copies of a character class, because the copies disagreed.
+ * `cleanCadText` transcodes the DXF escape `%%c` to U+2300 ⌀, so that is what reaches every
+ * downstream classifier -- and three of them were written against `[ØøφΦ]`, which matches none of
+ * it. `inferFeatureKey` could not see `6×⌀145` as a material specification or `⌀145` as a hole
+ * property, and `inferCategoryForEntity` had both gaps again. Each failed by returning a
+ * plausible answer from its own catch-all, which is why none surfaced until someone read a
+ * checklist closely. `entityPicking.ts` had the complete set all along and now derives from here,
+ * so there is one answer to what a diameter looks like rather than two that agree today.
  *
  * Interpolated into a `[...]` class, so nothing here may contain `]`, `^`, `-` or a backslash.
  */
@@ -32,33 +20,21 @@ export const DIAMETER_CHARS = '⌀øØφϕф';
 export const MULTIPLY_CHARS = '*xX×✕✖⨯⨉ｘ';
 
 /**
- * Strip residual AutoCAD MTEXT markup and convert the legacy control escapes to the symbols
- * they render as. This is the form the UI displays, so it is the form that must be classified.
+ * Strip residual AutoCAD MTEXT markup and convert the legacy control escapes to the symbols they
+ * render as. This is the form the UI displays, so it is the form that must be classified.
  *
- * ## Why it lives here and not in `renderEntities.ts`
+ * It lives here rather than in `renderEntities.ts` because it was a rendering helper for its
+ * whole life, so the `utils/` classifiers could not reach it without importing the canvas
+ * renderer. They classified raw stored text while every card showed `cleanCadText` of it -- two
+ * readings of one value, and only one of them visible to the engineer. Real cached BOM values are
+ * `'SS400 %%c55×15'` and `'S45C %%c265×25'`, so a size cell reaches the classifier as `6×%%c145`
+ * and the eye as `6×⌀145`; the material-size rule needs digits on both sides of the `×` and fell
+ * through to Other. It was also positional -- `%%c55×15` matched on its `55×15` while `6×%%c145`
+ * did not -- so one column classified two ways depending on where the escape sat.
+ * `renderEntities.ts` re-exports it, so no importer changed.
  *
- * It was a rendering helper for its whole life, and the taxonomy classifiers in `utils/`
- * consequently could not reach it without importing the canvas renderer. So they classified the
- * raw stored text while every card on screen showed `cleanCadText(...)` of it — two readings
- * of one value, and only one of them was what the engineer could see.
- *
- * That is not a theoretical gap. Real BOM values out of `storage/cache/`:
- *
- * ```
- * 'SS400 %%c55×15'   'S45C %%c265×25'   '0.28'   '10.81'   '表ニヨル'
- * ```
- *
- * A size cell reaches the classifier as `6×%%c145` and reaches the eye as `6×⌀145`. The
- * material-size rule needs digits on both sides of the `×`, and raw text puts `%%c` there, so
- * the cell fell to "Other / Unclassified" while displaying a value that plainly is a size.
- * Worse, it was positional: `%%c55×15` (diameter × thickness) matched on its `55×15` and
- * `6×%%c145` (count × diameter) did not, so the same column classified two ways depending on
- * where the escape happened to sit.
- *
- * `renderEntities.ts` re-exports it, so no existing importer changed.
- *
- * Classify what the user sees. Any rule reading marking or finding text must run on this
- * output, never on `ref_text`/`rev_text` directly.
+ * Classify what the user sees. Any rule reading marking or finding text must run on this output,
+ * never on `ref_text` or `rev_text` directly.
  */
 export const cleanCadText = (text?: string | null): string => {
   if (!text) return "";
