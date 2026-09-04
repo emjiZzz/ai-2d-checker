@@ -1,14 +1,15 @@
 """Who owns an entity when two zone boxes overlap.
 
 Zones overlap by design, and one arbitration answers this rather than the four ad-hoc exclusion
-lists that used to. The order: a zone with a drawn border outranks one without, so `title` and
-`tolerance` win, `bom` and `title_upper_left` follow, and `notes` and `iso` rank last because
-these sheets draw no box around either. `views` has the best border of all and still yields to
-everyone, because it is not a block -- it is the drawing area, defined by exclusion. `notes` and
-`iso` tie deliberately, and the tie is broken by content in `notes_classifier.py` rather than by
-an arbitrary rung here.
+lists that used to. `ZONE_PRECEDENCE` below is the order, with the evidence for each tier beside
+it: a drawn border is the first cut and not the whole rule, since `bom` sits in the top tier on
+eval evidence despite a border ceiling of 0.37, and `title_upper_left` is a peer of `notes`
+rather than its superior because ranking it higher was measured wrong. `views` has the best
+border of all and still yields to everyone, because it is not a block -- it is the drawing area,
+defined by exclusion. `notes` and `iso` tie deliberately, and the tie is broken by content in
+`notes_classifier.py` rather than by an arbitrary rung here.
 
-The overlap census, the ruled-border IoU numbers behind that ranking, and the four call sites this
+The overlap census, the ruled-border IoU numbers behind those tiers, and the four call sites this
 replaced are in
 `docs/vault/02 - Audit Comparison Engines/Zone Detector & Bounding Boxes.md`, under "Zone
 ownership when boxes overlap". Read it before reordering anything: two of the pairs overlap

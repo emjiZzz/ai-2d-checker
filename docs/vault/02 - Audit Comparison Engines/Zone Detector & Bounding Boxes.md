@@ -133,17 +133,29 @@ because it costs nothing to close and the priors permit it, not because it was h
 
 ### Why the precedence is in that order
 
-A zone with a drawn border outranks a zone without one. The ruled-border spike measured, for each
-zone, the best-IoU rectangle actually drawn on the sheet -- chosen knowing the answer, so it bounds
-any rule rather than describing one:
+A zone with a drawn border outranks one without. That is the first cut, not the whole rule --
+`ZONE_PRECEDENCE` in `zone_ownership.py` is the order itself, and two zones do not sit where the
+border ranking alone would put them.
+
+The ruled-border spike measured, for each zone, the best-IoU rectangle actually drawn on the sheet
+-- chosen knowing the answer, so it bounds any rule rather than describing one:
 
     views 0.97 | title 0.95 | tolerance 0.85 | title_upper_left 0.62
     bom   0.37 | notes 0.08 | iso       0.06
 
-`title` and `tolerance` are real ruled boxes and win. `bom` and `title_upper_left` are partially
-ruled and come next. `notes` and `iso` score 0.06-0.08 because these sheets carry no drawn box
-around either -- their best candidate is the whole sheet frame -- so they rank last among content
-zones.
+`title` and `tolerance` are real ruled boxes and win. `notes` and `iso` score 0.06-0.08 because
+these sheets carry no drawn box around either -- their best candidate is the whole sheet frame --
+so they rank last among content zones. Both departures from that ranking were measured rather than
+chosen:
+
+- **`bom` joins the top tier** on a 0.37 ceiling, on the eval rather than the geometry:
+  `bill_of_materials` and `title_block` score byte-identical detected vs templated, so detection
+  needs no human for either. `shim` is there as a compact ruled parts table and a SAFE zone whose
+  whole job is keeping its reference rows out of everyone else's pool.
+- **`title_upper_left` does not outrank `notes`** on its 0.62 ceiling. Ranking it there dropped
+  `notes_section` recall to **0.54**, because its *detected* box swallows the notes block whole --
+  see [[Gotcha - Adding a Note Destroys the Notes Zone]]. It is a peer of `notes` and `iso`, with
+  content breaking the tie.
 
 `views` has the best border of all and still yields to everyone, because it is not a block: it is
 the drawing AREA, defined by exclusion. That is a statement about what the zone means, not about

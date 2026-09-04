@@ -27,7 +27,8 @@ its `points` run, because its `center` is not on its own outline and anchoring t
 wrong rows that are artifacts of the probe.
 
 Calibration: reverting `_entity_distance` in `address_resolver.py` must make this report ~59%
-correct and 33 wrong. A census that cannot show the bug it exists for is not a census.
+correct and 33 wrong. A census that cannot show the bug it exists for is not a census -- see
+`06 - .../Gotcha - A Guard Test's Failure Path Had Never Run.md`.
 
 Usage:
 

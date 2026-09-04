@@ -12,10 +12,11 @@ Two stages, because content alone is not enough: seed on content, then admit nei
 cohesion. Nothing about the item marker `１` says "note" -- it is one because it sits on the same
 row as an instruction, 12 units to its left.
 
-The veto is not optional, which is why this module refuses to run without `regions`. The tolerance
-block contains `必要な場合は、粗さ区分を記入のこと`, an instruction in exactly the form of a real
-note, and no content rule separates it; it is excluded only because `tolerance` outranks `notes`
-in `zone_ownership`.
+Zone ownership vetoes both stages. The tolerance block contains
+`必要な場合は、粗さ区分を記入のこと`, an instruction in exactly the form of a real note, and no
+content rule separates it: it is excluded only because `tolerance` outranks `notes` in
+`zone_ownership`. Calling without `regions` therefore classifies that instruction as a note --
+`test_the_tolerance_block_instruction_is_vetoed_not_argued_with` pins both directions.
 
 `ロール：` is deliberately not a seed token. Those lines sit inside the pinned box on some sides
 and land in `views` on others, so claiming them moves content between categories on a corpus whose
