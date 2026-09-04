@@ -57,7 +57,7 @@ async def test_database_sync_manager_status_is_reportable():
 async def test_database_sync_manager_execution():
     """A REAL sync between the configured databases. Opt-in, because it MUTATES them.
 
-    **This used to run on every `pytest`**, upserting every synced collection into the cloud
+    This used to run on every `pytest`, upserting every synced collection into the cloud
     database as a side effect of running the suite. That is not a test cost anyone opted into,
     and it is not recoverable from if the sync is wrong.
 
@@ -65,7 +65,7 @@ async def test_database_sync_manager_execution():
     more than one `in_progress` session for the same (room, ref, rev, annotator), which the
     partial unique index `one_in_progress_session_per_pair_per_annotator` refuses on insert
     (`E11000`). `tools/merge_duplicate_check_sessions.py` exists for exactly that and has to be
-    run against **every** environment, including Atlas — these collections are not in
+    run against every environment, including Atlas — these collections are not in
     `sync_manager.SYNC_COLLECTIONS`, so they exist only there. Until that is done, this test
     reports the data condition rather than a defect, which is why failing the whole suite on it
     was misleading.

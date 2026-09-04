@@ -197,7 +197,7 @@ def common_properties(entity: Any) -> dict[str, Any]:
 def _degree_sign_in_doc_bytes(entity: Any) -> str:
     """A degree sign in the BYTE domain this mapper actually works in.
 
-    `entity_mapper` runs **before** `dxf_parser.transcode_value`. The DXF is read with
+    `entity_mapper` runs before `dxf_parser.transcode_value`. The DXF is read with
     `encoding="latin-1"` so bytes survive intact, which means every string here is raw
     document-codepage bytes with one character per byte -- see the header note in
     `infrastructure/utils/text.py`. Emitting a real U+00B0 therefore inserts the single byte
@@ -1061,7 +1061,7 @@ class EntityMapper:
         # from. Without it a callout's pointer stops in mid-air short of its own label.
         #
         # Measured on M745221N01's `6-9キリ` callout: our chain ended at paper x 125.0 while
-        # ezdxf's own rendering of the same leader reaches 107.9 -- **17.1 units short**, which
+        # ezdxf's own rendering of the same leader reaches 107.9 -- 17.1 units short, which
         # is the entire landing. `text_width` is 22.62 model units (16.16 projected), so
         # extending by it lands at 108.8, within ~1 unit of ezdxf. The residual is the dimstyle
         # gap ezdxf also adds; it is left out because reading DIMGAP here to chase one unit

@@ -1,19 +1,19 @@
 """The verdict path must not block the event loop, and must not race itself.
 
-**The symptom this file exists for**, reported 2026-08-17: every supervisor verdict produced a
+The symptom this file exists for, reported 2026-08-17: every supervisor verdict produced a
 "Connection Lost" and a reconnect in the desktop app — reliably, on a single click, not only
 under rapid clicking.
 
 The chain, measured rather than reasoned about:
 
-1. `connectionStore.checkHealth` polls `/health` every 5 s and aborts at **3 s**. Any event-loop
+1. `connectionStore.checkHealth` polls `/health` every 5 s and aborts at 3 s. Any event-loop
    block longer than that *is* a disconnect, whatever caused it.
 2. `review_violation` queues `train_from_feedback` via `BackgroundTasks`, which runs an async
-   task **on the event loop**.
+   task on the event loop.
 3. `train_from_feedback` called `build_bundle` synchronously. Measured on the live corpus at 112
-   verdict labels: **7.2 s, every call.**
+   verdict labels: 7.2 s, every call.
 
-**It began when the learned verdict head activated, not when any code changed.** `_cv_accuracy`
+It began when the learned verdict head activated, not when any code changed. `_cv_accuracy`
 — a 3-fold `StratifiedKFold` fitting a model per fold and calling `predict_one` per test row —
 sits inside the branch that only runs once `minority_share >= MIN_MINORITY_SHARE`. Below that
 threshold `build_bundle` abstains and returns in milliseconds. The corpus crossed 0.30 (it is
@@ -60,7 +60,7 @@ async def _worst_stall(stop: asyncio.Event) -> float:
 async def test_a_retrain_does_not_block_the_event_loop(monkeypatch):
     """The regression guard for the reported disconnect.
 
-    Asserted on **observed loop responsiveness** rather than on the presence of
+    Asserted on observed loop responsiveness rather than on the presence of
     `asyncio.to_thread` in the source, because the property that matters to a user is whether
     `/health` gets answered — and a future refactor could keep the call and still block, or drop
     it and still be fine.

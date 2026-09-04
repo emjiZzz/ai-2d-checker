@@ -299,7 +299,7 @@ def _open_request(room="room1", ref="ref1", rev="rev1"):
 def _find_stub(*results):
     """Stand in for `Model.find(query).sort(...).to_list()`. One `results` entry per call.
 
-    **Patch `find`, not `find_one`.** These tests patched `find_one` until 2026-08-25, long
+    Patch `find`, not `find_one`. These tests patched `find_one` until 2026-08-25, long
     after `_resume` had moved to `find(...).sort(...).to_list()` in `3b90d1e`. A patch on a method
     nobody calls does not fail loudly — the real `find` was reached instead, beanie was never
     initialised, and ten tests died at `CollectionWasNotInitialized`. In the window before that
@@ -367,7 +367,7 @@ async def test_the_resume_is_scoped_to_the_pair_and_the_annotator(monkeypatch):
     would stop meaning "who checked this pair". Without the two drawing ids, swapping a room's
     drawings would resume a check of the previous pair.
 
-    **`status` is deliberately NOT here, and this test asserted that it was until 2026-08-25.**
+    `status` is deliberately NOT here, and this test asserted that it was until 2026-08-25.
     It was dropped when `_require_open` stopped refusing a submitted session and started reopening
     it: submit became soft, so a submitted pass IS the thing to resume, and filtering it out would
     mint a fresh session and orphan the markings — the exact defect this endpoint exists to

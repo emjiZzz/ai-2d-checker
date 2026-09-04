@@ -22,24 +22,24 @@ import { ChevronRight, ArrowLeft } from 'lucide-react';
  * Splitting them lets each gesture answer one question. Left-click: *what do I want to record
  * about this entity?* Right-click: *what do I want the canvas to do?*
  *
- * **Selecting is still not recording.** This menu opens on selection but writes nothing; every
+ * Selecting is still not recording. This menu opens on selection but writes nothing; every
  * row here either opens the stamp modal or starts a pairing. That separation is the whole reason
  * left-click stopped stamping directly, and collapsing it back — a click that records — would
  * make an accidental click a ground-truth claim.
  *
- * **MATCHED records both sheets when it can.** `selectionCounterpart` is published by the
+ * MATCHED records both sheets when it can. `selectionCounterpart` is published by the
  * OTHER canvas, which is where the pick index that resolved it lives; this component cannot see
  * that index. It is `null` when several candidates tied, so a pair is never guessed — and the
  * badge is then drawn on one sheet only, which is the honest rendering of a one-sided record.
  *
- * **`NOT_A_FINDING` is deliberately absent** (owner's call, 2026-08-18). The status still
+ * `NOT_A_FINDING` is deliberately absent (owner's call, 2026-08-18). The status still
  * exists end to end — `MarkingStatus` accepts it, `STATUS_STYLE` renders it, and markings
  * recorded before this change still draw — it is simply not offered as something to record.
  * The cost is recorded in `ground_truth.py`: it was how a false positive got *attributed*
  * rather than merely counted, and on the reference sheet it was the only way to say "the engine
  * flagged this and it is fine". If that signal is wanted later, restoring it is one line here.
  *
- * **Cancelling a pairing is deliberately NOT here.** It lives in the right-click menu because
+ * Cancelling a pairing is deliberately NOT here. It lives in the right-click menu because
  * that is the only surface that opens with nothing selected, which is exactly the state an
  * engineer is in when they change their mind about a pair half-made.
  */

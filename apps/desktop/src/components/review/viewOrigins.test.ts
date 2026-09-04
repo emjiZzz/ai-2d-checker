@@ -5,14 +5,14 @@
  * file covers what the renderer does with them, and exists because both of this overlay's
  * defects were invisible to the suite it had:
  *
- *  1. Every marker was drawn **mirrored** about the sheet's centreline, because world space on
+ *  1. Every marker was drawn mirrored about the sheet's centreline, because world space on
  *     this canvas is Y-DOWN and this is the only overlay that stays in it.
  *     See `Gotcha - A Missing Y Flip Is Invisible Near the Centreline`.
  *  2. The datums themselves were the viewport's window centre — a tautology.
  *     See `Gotcha - The View Origin Marker Marked the Middle of the Window`.
  *
- * Neither was catchable, because the old tests drove a context that **counted paint calls and
- * discarded every coordinate**. Three markers were painted; all three were in the wrong place
+ * Neither was catchable, because the old tests drove a context that counted paint calls and
+ * discarded every coordinate. Three markers were painted; all three were in the wrong place
  * with their arms pointing the wrong way, and the suite was green.
  */
 import { describe, expect, it } from 'vitest';

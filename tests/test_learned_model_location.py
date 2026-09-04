@@ -5,7 +5,7 @@ committed, diffed, or shipped inside the Tauri sidecar: it existed on exactly on
 The staged plan is blunt about the consequence — *a model that cannot be committed, diffed,
 or shipped is not trainable infrastructure* — and it blocked rung 3 outright.
 
-The migration has to be gentle in one specific way: an install that trained **before** this
+The migration has to be gentle in one specific way: an install that trained before this
 change still has its bundle in the vault, and must keep working until its next retrain. So
 reads fall back to the old location and writes never do, which makes the move happen by
 itself with no migration script and no moment where the model is missing.

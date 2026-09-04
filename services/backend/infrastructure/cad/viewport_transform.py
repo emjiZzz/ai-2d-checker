@@ -50,7 +50,7 @@ class Viewport:
     #: The MODEL point that lands at `paper_center` -- i.e. what this view is looking at.
     #:
     #: Named `anchor` and not `center` deliberately. `from_entity` fills it from the DXF
-    #: **`view_target_point`** whenever that is present and non-degenerate, and only falls
+    #: `view_target_point` whenever that is present and non-degenerate, and only falls
     #: back to `view_center_point`. The two are different attributes with different values:
     #: on M745221N01_FSRS2 the targets are (-31.1, 0), (-80.7, -351.5) and (69.4, -329.9)
     #: while every `view_center_point` is (0,0,0). Computing a projection from the raw
@@ -104,8 +104,8 @@ class Viewport:
         lands at the window centre -- so this returns `paper_center` and nothing more. It is
         kept named because a tautology written inline reads like a computation.
 
-        **This was `origin_paper_point`, documented as "iCAD SX draws an ORIGIN marker per
-        view, and this is it". That was measured false on 2026-08-12 and is why it was renamed.**
+        This was `origin_paper_point`, documented as "iCAD SX draws an ORIGIN marker per
+        view, and this is it". That was measured false on 2026-08-12 and is why it was renamed.
         The desktop overlay built on that claim put markers 22.2 and ~11.8 units from the datum
         two of `M745221N01_FSRS2`'s three views actually dimension from, and was reported as
         wrong by the owner. The window centre is right only where the drafter happened to centre
@@ -113,7 +113,7 @@ class Viewport:
 
         What the DXF does state is one origin per sheet: `ucs_origin` is `(0,0,0)` on all 34
         viewports of all 12 viewport-bearing sheets in the corpus, and `to_paper(0, 0)` lands
-        inside **exactly one viewport per sheet** -- 12 sheets, 12 hits, never two. So a
+        inside exactly one viewport per sheet -- 12 sheets, 12 hits, never two. So a
         per-view origin is not recoverable from these files; iCAD reads it off the 3D model.
         See `docs/vault/06 - .../Gotcha - The View Origin Marker Marked the Middle of the
         Window.md`.

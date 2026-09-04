@@ -1,14 +1,14 @@
 """The verification gate — ADR-010 decision 3, and the reason that ADR exists in this shape.
 
-A generated summary is shown **only** if it passes every check here. On any failure the summary is
+A generated summary is shown only if it passes every check here. On any failure the summary is
 withheld entirely and the deterministic template renders in its place, visibly. It is never
 partially shown, never truncated to the part that verified, and never silently retried until
 something passes -- a retry loop would turn this gate into a filter for *plausible-looking* output
 and hide the failure rate, which is the failure this whole track exists to correct.
 
-**Why the strongest check is coverage, not fluency.** In an inspection tool a dropped finding is
+Why the strongest check is coverage, not fluency. In an inspection tool a dropped finding is
 the worst possible failure, and a fluent summary is the last place a human will look for one. So
-the coverage check requires that the union of all cited ids covers **every** finding supplied. A
+the coverage check requires that the union of all cited ids covers every finding supplied. A
 model that quietly omits the one finding that mattered fails here rather than reading as a clean
 report.
 """

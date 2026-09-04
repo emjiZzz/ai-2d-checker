@@ -13,13 +13,13 @@ and maps neither to a verdict label. The restraint is correct -- label 0 would s
 that may be genuine, label 1 would affirm a pairing the human just rejected -- but the effect is
 that the single loudest signal in the corpus is read by nothing.
 
-Those rows are negative-only (measured 2026-08-19: **3 of 106 carry the correct counterpart**),
+Those rows are negative-only (measured 2026-08-19: 3 of 106 carry the correct counterpart),
 so they cannot train a matcher even once Stage 3 exists. They CAN measure one. This reports what
 they say, which needs no model, no schema change and no new labelling.
 
 ## What it deliberately does NOT report
 
-**A rate.** `audit_feedback` records rejections, never the total pairings attempted, so there is
+A rate. `audit_feedback` records rejections, never the total pairings attempted, so there is
 no denominator anywhere in this collection. "46 rejections in drawing_views/dimensions" is a
 fact; "X% of pairings are wrong" would require a number this data does not contain, and
 inventing it would be the kind of plausible-looking figure this project exists to avoid.

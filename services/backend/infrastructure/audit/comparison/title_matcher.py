@@ -93,9 +93,9 @@ UL_COLUMN_SPLIT_RATIO = 0.25
 #: it is treated as content that drifted into the zone box rather than another table row.
 #:
 #: The usable window is narrow and was measured, not chosen: on M745227N01's reference the
-#: stray note is 54.5 below a table whose largest row gap is 19.9 (ratio **2.74**), while the
+#: stray note is 54.5 below a table whose largest row gap is 19.9 (ratio 2.74), while the
 #: gap from the stacked bilingual header to the values row is 19.9 against the 9.9 between the
-#: two header labels (ratio **2.01**). Anything in (2.01, 2.74) separates them; 2.5 sits there
+#: two header labels (ratio 2.01). Anything in (2.01, 2.74) separates them; 2.5 sits there
 #: with +9.5% / -19.6% of margin. The 9.9 is what makes it tight -- it is two labels inside one
 #: cell rather than two rows, so it understates the real row pitch.
 UL_BAND_GAP_OUTLIER_FACTOR = 2.5
@@ -131,7 +131,7 @@ def _ul_columns(xs: list[float]) -> list[float]:
 def ul_value_band_index(bands: list[list[tuple[float, float]]]) -> int:
     """Which band holds the table's VALUES — the row the checklist compares.
 
-    This used to be `bands[-1]`, the lowest row, which is a **positional** assumption: it holds
+    This used to be `bands[-1]`, the lowest row, which is a positional assumption: it holds
     only while the zone box stops at the bottom of the table. It is the assumption that produced
     `[CHANGED] Title Block (Upper-Left) T. Q'ty / 総製作個数: 4 ロール：12 (2x6台) vs 16組`.
 
@@ -139,18 +139,18 @@ def ul_value_band_index(bands: list[list[tuple[float, float]]]) -> int:
     flagged `is_default`, and this sheet is 1.414, so the fallback template's fractions scale
     onto a differently-shaped sheet -- the caveat [[Gotcha - Global Default Zone Template & the
     Aspect Caveat]] records. The reference's `title_upper_left` box came out with its bottom
-    edge at **y=762.99** while the table's value row sits at **y=822**, so a NOTE line at
+    edge at y=762.99 while the table's value row sits at y=822, so a NOTE line at
     y=767.5 became the lowest band. It was read as the values row; the real values
     (`45 / 227 / 16組 / 0`) were demoted to a header band; and the note inherited the key
-    `T. Q'ty / 総製作個数` because its x lands **2.4 units** nearer that column than the next
+    `T. Q'ty / 総製作個数` because its x lands 2.4 units nearer that column than the next
     one along. Nothing in the path ever asked whether what it found looked like a value.
 
     Two independent structural signals say a band is not the values row, and a band has to fail
-    **both** before it is dropped:
+    both before it is dropped:
 
-    1. **Column coverage.** A values row fills the table's columns. The real one covers 4 of 4;
+    1. Column coverage. A values row fills the table's columns. The real one covers 4 of 4;
        the stray note covers 1 of 4.
-    2. **Row pitch.** Rows of one table sit a consistent distance apart -- 9.9 and 19.9 here --
+    2. Row pitch. Rows of one table sit a consistent distance apart -- 9.9 and 19.9 here --
        and content that drifted in does not: the note is 54.5 below the row above it.
 
     Requiring both is what keeps a legitimately sparse values row (one cell filled, three empty)
@@ -214,7 +214,7 @@ def partition_ul_pairs(
 ) -> tuple[list, list]:
     """Split matched upper-left pairs into (comparable, released).
 
-    **Claim only what can be compared.** A value pulled out of the upper-left box with nothing
+    Claim only what can be compared. A value pulled out of the upper-left box with nothing
     on the other side to compare it against is not a comparison result — it is a value this
     extractor should not have taken. Reporting it as REMOVED/ADDED asserts a change nobody
     measured, and `_collect_structured_text_values` then suppresses that text sheet-wide, so the
@@ -224,18 +224,18 @@ def partition_ul_pairs(
 
     Three outcomes, in order:
 
-    1. **Both sides have a value** → comparable, always.
-    2. **One side only, but the other side's UL box contains that text** → comparable. The field
+    1. Both sides have a value → comparable, always.
+    2. One side only, but the other side's UL box contains that text → comparable. The field
        was mis-extracted, not changed; the emit loop's bilateral corroboration guard turns it
        into MATCHED. That is still a comparison.
-    3. **One side only, nothing anywhere** → released *if* another zone's shape covers the
+    3. One side only, nothing anywhere → released *if* another zone's shape covers the
        value's own coordinates, so that zone's pass will compare it. Otherwise it stays
        comparable and the one-sided report stands.
 
-    **Rung 3's condition is the whole safety of this.** `title_upper_left` is in
+    Rung 3's condition is the whole safety of this. `title_upper_left` is in
     `VIEWS_EXCLUDED_ZONES`, so content inside that box is subtracted from the `views` pool and
-    no other pass is scoped to it. Releasing with no catcher would be a **silent false
-    negative** — the one failure mode this system cannot detect. Zones overlap, which is what
+    no other pass is scoped to it. Releasing with no catcher would be a silent false
+    negative — the one failure mode this system cannot detect. Zones overlap, which is what
     makes release possible at all: on M745227N01 the roll-count line released here lands inside
     `notes` on the reference, and comes back as a real CHANGED against its revision counterpart.
     With no catcher, reporting a value nobody could pair beats deleting it — a wrong finding is
@@ -305,27 +305,27 @@ def extract_title_ul_kv(entities: list, bbox) -> list:
     Headers sit ABOVE values, so headers have larger Y values.
     Returns list of {key, value, coords} dicts sorted left-to-right.
 
-    **Do not re-add a "subtract the sibling zones' shapes before banding" filter here
-    without measuring the DETECTION path.** One was written and reverted on 2026-08-12. It
+    Do not re-add a "subtract the sibling zones' shapes before banding" filter here
+    without measuring the DETECTION path. One was written and reverted on 2026-08-12. It
     was aimed at a real defect — with no template the UL box swallows the notes block, whose
     lines sit at the table's own pitch and align to a column, so
     `[CHANGED] Part No. / コードNo.: 227 vs 完成時、バリ、キリ粉はなきこと` compared a
     deburring sentence against a part number — and on the three unlabelled sheets it was
     eyeballed on it did exactly what it promised.
 
-    On the scored corpus it was a **regression**: detection-only F1 **0.7736 → 0.7339**,
-    fp 10 → 14, tp 41 → 40, and **3 new `title_block` false positives** including the very
+    On the scored corpus it was a regression: detection-only F1 0.7736 → 0.7339,
+    fp 10 → 14, tp 41 → 40, and 3 new `title_block` false positives including the very
     `在庫棚入庫: 0 vs Ｃ１` it was supposed to remove. The mechanism is an interaction: the
     subtraction changes which entities remain, which changes the band structure, and
     `ul_value_band_index` then cuts in the wrong place. Alone, the band chooser costs
     nothing; alone, the subtraction costs 0.7736 → 0.7547; together, 0.7339.
 
     Two lessons worth more than the code was:
-    1. **The templated baseline cannot see any of this.** All three v46 mechanisms measure
+    1. The templated baseline cannot see any of this. All three v46 mechanisms measure
        byte-identical at F1 0.9231 with templates pinned, because pinned boxes do not
        over-reach so none of them ever fires. The only baseline being run was blind to the
        entire change.
-    2. **Eyeballing unlabelled sheets is not measurement.** The improvement was real on the
+    2. Eyeballing unlabelled sheets is not measurement. The improvement was real on the
        sheets it was checked on and negative on the corpus that scores.
 
     Zone ownership is the right idea and it is being rebuilt as one explicit, tested
@@ -412,7 +412,7 @@ def extract_title_ul_kv(entities: list, bbox) -> list:
     # and the difference is a silent false negative. Reported by the owner on M745227N01:
     # `４ロール：１２（２×６台）` came out ADDED with no REMOVED counterpart on a sheet that
     # plainly carries it on both sides. The reference's copy sits at y=767.5 and the UL box
-    # bottom edge is at y=763.0, so it is **4.5 units inside** — while its sibling 24 units
+    # bottom edge is at y=763.0, so it is 4.5 units inside — while its sibling 24 units
     # lower falls outside and pairs correctly, which is why one of the two lines was right.
     # `title_upper_left` is in VIEWS_EXCLUDED_ZONES, so the box removed the reference's copy
     # from the only pool that could have matched it, and the extractor had already rejected

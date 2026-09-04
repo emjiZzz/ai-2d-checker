@@ -7,9 +7,9 @@ can trace back.
 
 Two classes of test here, and the second is the one that caught real bugs:
 
-  * **Determinism and addressing** — same seed, same bytes; addresses survive a deletion
+  * Determinism and addressing — same seed, same bytes; addresses survive a deletion
     shifting every later index.
-  * **The zero-finding operators** — `null_mutation`, `restyle_dimension_text` and
+  * The zero-finding operators — `null_mutation`, `restyle_dimension_text` and
     `translate_entities` must change the drawing (or not) in ways the annotation guideline
     says are *not* findings. If one of them ever starts emitting a finding, the corpus
     quietly stops measuring precision.

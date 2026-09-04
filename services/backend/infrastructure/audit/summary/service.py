@@ -1,6 +1,6 @@
 """Orchestration: cache -> generate -> verify -> outcome. ADR-010 decisions 3, 4 and 6.
 
-The order matters and is asserted by test. Verification runs **before** anything is cached, so a
+The order matters and is asserted by test. Verification runs before anything is cached, so a
 summary that failed the gate can never be served from cache later.
 """
 from __future__ import annotations

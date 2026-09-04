@@ -3,7 +3,7 @@
 Two defects of the same shape, found together on 2026-08-14 while checking a claim that the
 `standards` corpus held 32 documents.
 
-**It held 16.** The other 16 were the chunks of a standard that had been *deleted* from Mongo,
+It held 16. The other 16 were the chunks of a standard that had been *deleted* from Mongo,
 still being served by an index nothing ever rebuilt. `tests/test_standards_delete_reindex.py`
 already pins that `delete_standard` calls `rebuild_standards_index` — that is the first line of
 defence and it exists. What was missing is the second: when that rebuild does not take effect
@@ -12,7 +12,7 @@ defence and it exists. What was missing is the second: when that rebuild does no
 present*, which is true of a stale index by definition. So `INDEX_SCHEMA_VERSION` was inert —
 `search()` reported STALE and no code path anywhere acted on it.
 
-**And the duplication was invisible to the metric.** `corpus_size` in `metrics.py` is
+And the duplication was invisible to the metric. `corpus_size` in `metrics.py` is
 `manifest.n_records`, and the chance floor a verdict is gated on is `k/N` over that count. Sixteen
 texts counted twice read as chance 0.16 at k=5, which passes `MAX_CHANCE_FLOOR`; the honest floor
 over 16 distinct answers is 0.31, which fails it. A corpus reported itself as able to support a

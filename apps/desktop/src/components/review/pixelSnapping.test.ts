@@ -11,7 +11,7 @@
  * rule on the sheet lands at a random phase.
  *
  * Verified end-to-end in a real browser after this landed: a horizontal hairline drawn through
- * `renderEntities` lit exactly **1 row at alpha 1.000 at all 8 phases tested** (0 → 0.9), while a
+ * `renderEntities` lit exactly 1 row at alpha 1.000 at all 8 phases tested (0 → 0.9), while a
  * diagonal control stayed at 2 rows / 0.373 / 0.627 — untouched, as intended.
  */
 import { describe, expect, it } from 'vitest';

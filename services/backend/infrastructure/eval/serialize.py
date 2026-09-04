@@ -176,7 +176,7 @@ class EvalDrawing:
     entity_counts: dict[str, int] = field(default_factory=dict)
     #: `EXTRACTION_SCHEMA_VERSION` in force when these entities were extracted.
     #:
-    #: **0 means unknown, not zero.** Every pair exported before 2026-08-20 lacks the field, so
+    #: 0 means unknown, not zero. Every pair exported before 2026-08-20 lacks the field, so
     #: a corpus payload can be "captured under an extraction nobody recorded" -- which is the
     #: state this exists to stop being possible again.
     #:

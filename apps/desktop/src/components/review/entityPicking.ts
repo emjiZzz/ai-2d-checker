@@ -8,8 +8,8 @@ import { DIAMETER_CHARS } from "../../utils/cadGlyphs";
  *
  * `renderEntities` batches geometry into style-keyed `Path2D` objects
  * (`${strokeColor}_${strokeWidth}_${dash}_${dashUnits}`) and flushes each with a single
- * `ctx.stroke(batch.path)`. Hundreds of entities share one path, so **entity identity is
- * destroyed at draw time** — after the loop there is nothing that maps a pixel back to an
+ * `ctx.stroke(batch.path)`. Hundreds of entities share one path, so entity identity is
+ * destroyed at draw time — after the loop there is nothing that maps a pixel back to an
  * `ent.id`. `ctx.isPointInStroke` would answer "is this pixel in the cyan-0.25mm-solid batch",
  * which is not a question anyone asked.
  *
@@ -24,7 +24,7 @@ import { DIAMETER_CHARS } from "../../utils/cadGlyphs";
  * or a zoom without being rebuilt, and the hit test converts the cursor once instead of
  * converting every box.
  *
- * **Y is flipped here and that is not optional.** Entity geometry is CAD Y-up; the canvas is
+ * Y is flipped here and that is not optional. Entity geometry is CAD Y-up; the canvas is
  * Y-down. `flipWorldY` is the one conversion (`coordinateTransform.ts`), and it is the *same*
  * function the renderer uses, passed in rather than reimplemented. Getting it backwards
  * produces a hit box mirrored about the sheet's centreline — which, as `renderViewOrigins`
@@ -65,7 +65,7 @@ const MIN_HALF_EXTENT = 0.5;
  * row carries only `insert`, so it used to get a small synthetic box from the fallback below —
  * and since `hitTest` returns the SMALLEST match, that box beat the real text sitting inside it.
  * The stamp modal then showed `block · handle 384` instead of the value. It bites hardest on
- * the **reference** sheet, which is the DWG-exported side that keeps almost everything inside
+ * the reference sheet, which is the DWG-exported side that keeps almost everything inside
  * blocks (24 of them on `M745230A01`), so the containers sit directly on top of the content.
  */
 const CONTAINER_TYPES = new Set(['block', 'layer']);
@@ -116,12 +116,12 @@ const DIAMETER_MARKS = new RegExp(`[${DIAMETER_CHARS}]`, 'g');
 /**
  * Multiplication signs, folded onto the letter `x`.
  *
- * **NFKC does not do this.** It folds the revision's full-width digits, parens and colon onto
+ * NFKC does not do this. It folds the revision's full-width digits, parens and colon onto
  * the reference's half-width ones, so `４ロール：１２（２×６台）` and `4 ロール：12 (2x6台)` come
  * within one character of each other and then differ forever on U+00D7 versus the letter — the
  * only surviving difference in a string a person reads as identical.
  *
- * **The backend already folded these; this layer did not.** `spatial_differ._normalize_text`
+ * The backend already folded these; this layer did not. `spatial_differ._normalize_text`
  * has done `× ✕ ✖ ⨯ → x` for as long as it has existed, and `infrastructure/utils/text.py`
  * folds `[xX×ラｘＸ]` (the `ラ` is a CP932 mis-decode of the same glyph). So the engine paired
  * this row and the manual-check overlay did not — two implementations of one rule, one of which
@@ -151,11 +151,11 @@ export function normalizeEntityValue(raw: unknown): string {
 /**
  * The raw string the sheet ACTUALLY draws, before any normalization.
  *
- * **`render_text` first, and it is not the same as `text`.** `render_text` is harvested from
+ * `render_text` first, and it is not the same as `text`. `render_text` is harvested from
  * the dimension's anonymous block at extraction — what the CAD application composited — while
  * `properties.text` is the DXF override field, which `map_dimension` rebuilds from
- * `actual_measurement` and which therefore **loses every prefix, suffix and tolerance stack the
- * dimstyle bakes in**. `renderEntities` has preferred `render_text` since the canvas was found
+ * `actual_measurement` and which therefore loses every prefix, suffix and tolerance stack the
+ * dimstyle bakes in. `renderEntities` has preferred `render_text` since the canvas was found
  * showing `145` where iCAD shows `φ145`; the picking layer read the impoverished field and so
  * disagreed with the pixels next to it.
  *
@@ -226,7 +226,7 @@ export function dimensionKindOf(ent: any): number | null {
 /**
  * Which semantic zone a box sits in, or `null`.
  *
- * **Detected zone boxes are CAD Y-up; this index is flipped-world.** Comparing them without
+ * Detected zone boxes are CAD Y-up; this index is flipped-world. Comparing them without
  * flipping produces a zone assignment that is mirrored about the sheet centreline — correct
  * near the middle and wrong at the top and bottom, which is CLAUDE.md's constraint 3 and the
  * `renderViewOrigins` failure in another costume. The flip is applied to the zone, once, here.
@@ -302,7 +302,7 @@ export function zoneRelativePos(
  * Measured on `M745204N01`: the reference resolves `tolerance`, `notes` and `iso` by percentage
  * fallback while the revision detects all three, putting them in different halves of the sheet
  * (`tolerance` at 0.68–0.94 of sheet height against 0.06–0.23). Gating on zone equality across
- * that blanked **120 of 184** hovers, against 18 with no zone test at all.
+ * that blanked 120 of 184 hovers, against 18 with no zone test at all.
  */
 export function isZoneMeasured(
   zones: DrawingZonesResponse | null | undefined,
@@ -313,7 +313,7 @@ export function isZoneMeasured(
 }
 
 /**
- * Position as a fraction of the whole sheet. **The weak tie-break, and only ever a tie-break.**
+ * Position as a fraction of the whole sheet. The weak tie-break, and only ever a tie-break.
  *
  * Sheet-relative position does not identify a counterpart — that is the finding this module was
  * rebuilt around. It is used only to order candidates that already agree on value, type and
@@ -533,7 +533,7 @@ function fromPoints(
  * function cannot measure is one the engineer can see but not click, and there is nothing on
  * screen to explain why.
  *
- * **A DIMENSION anchors on `def_point`, not `insert`.** That mismatch is exactly the open
+ * A DIMENSION anchors on `def_point`, not `insert`. That mismatch is exactly the open
  * defect that stops `tools/eval_corpus.py worksheet` placing a dimension at all, and a labelling
  * tool that inherited it would be unable to record the one false-negative class the corpus has
  * already caught. `render_text_point` is preferred where present because it is where the
@@ -584,7 +584,7 @@ export function entityWorldBounds(
   // `render_paths` describes the whole dimension — extension lines, the dimension line, the
   // arrowheads — so on a re-extracted drawing it produced a box spanning the entire measured
   // span. On a concentric view a diameter dimension then covers the whole circle, and since
-  // `hitTest` prefers the smallest match, the dimension became **unpickable**: every smaller
+  // `hitTest` prefers the smallest match, the dimension became unpickable: every smaller
   // thing inside its own span won instead. What the engineer is aiming at is the value.
   if (ent.type === 'dimension') {
     const point = geo.render_text_point || geo.text_point || geo.def_point;
@@ -772,13 +772,13 @@ export class EntityHitIndex {
    * Matching on value alone outlined everything sharing a value - three boxes labelled `x3` for
    * one hovered angle. Every candidate must now agree on:
    *
-   *  - **value**, normalized so the two exporters' spellings agree;
-   *  - **entity type**, so a dimension never matches a note reading the same;
-   *  - **dimension kind**, so an 80 degree angular never matches a linear `80`;
-   *  - **zone** - but only where BOTH sides measured that zone.
+   *  - value, normalized so the two exporters' spellings agree;
+   *  - entity type, so a dimension never matches a note reading the same;
+   *  - dimension kind, so an 80 degree angular never matches a linear `80`;
+   *  - zone - but only where BOTH sides measured that zone.
    *
-   * (!) **That last qualification is load-bearing.** Requiring zone equality unconditionally was
-   * measured on `M745204N01` and it blanked **120 of 184** hovers, against 18 with no zone test
+   * (!) That last qualification is load-bearing. Requiring zone equality unconditionally was
+   * measured on `M745204N01` and it blanked 120 of 184 hovers, against 18 with no zone test
    * at all: the reference resolves `tolerance`, `notes` and `iso` by `percentage_fallback`, so
    * the same physical dimension is `views` on one sheet and `tolerance` on the other. A guessed
    * box is not evidence, and filtering on one is worse than not filtering. Where either side
@@ -788,7 +788,7 @@ export class EntityHitIndex {
    * sides measured the same one; then position within the GROUP of same-value entities; then
    * position within the sheet.
    *
-   * (!) **The group stage exists because the sheet stage picked wrong.** On `M745204N01` the
+   * (!) The group stage exists because the sheet stage picked wrong. On `M745204N01` the
    * reference's upper-left `60°` paired with the revision's TOP `60°` — the two sheets place
    * that view differently, so the nearest sheet fraction is not the corresponding dimension.
    * Normalising against the group's own bounding box cancels exactly that difference: both
@@ -891,7 +891,7 @@ export class EntityHitIndex {
   /**
    * The entity under a flipped-world point, or null.
    *
-   * **Smallest match wins.** A dimension's text sits inside the polyline of the view that
+   * Smallest match wins. A dimension's text sits inside the polyline of the view that
    * contains it, and inside the border rectangle of the whole sheet; picking by z-order or by
    * first-hit would hand back the border every time. Area is the ordering a person expects —
    * the thing you aimed at is the smallest thing under the cursor.
@@ -926,7 +926,7 @@ export class EntityHitIndex {
 
     if (!hits.length) return null;
 
-    // **Annotations outrank geometry.** Someone aiming inside a view is aiming at a value, not
+    // Annotations outrank geometry. Someone aiming inside a view is aiming at a value, not
     // at the circle it is printed over. Without this, a dimension label sitting on a concentric
     // arc is unreachable whenever the arc's box happens to be the smaller of the two.
     const annotations = hits.filter((h) => h.annotation);
@@ -934,12 +934,12 @@ export class EntityHitIndex {
 
     // The two classes want opposite tie-breaks, and using one rule for both is wrong twice.
     //
-    // **Annotations: nearest centre.** Dense radial views stack labels whose axis-aligned boxes
+    // Annotations: nearest centre. Dense radial views stack labels whose axis-aligned boxes
     // overlap heavily (`⌀145`, `⌀183`, `⌀110` on one hub). Smallest-area returns the same label
     // wherever you click inside the cluster, so the others cannot be selected at all;
     // nearest-centre follows the cursor and makes each reachable by clicking toward it.
     //
-    // **Geometry: smallest area.** Here nearest-centre is actively wrong — a large circle
+    // Geometry: smallest area. Here nearest-centre is actively wrong — a large circle
     // centred near the cursor would beat the short line segment actually under it. Size is what
     // separates "the thing I pointed at" from "the thing it sits inside".
     if (annotations.length) {

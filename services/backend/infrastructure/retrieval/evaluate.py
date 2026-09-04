@@ -2,11 +2,11 @@
 
 Two things this does that a naive harness would not:
 
-**It reports the corpus census before the metric.** A retrieval number is uninterpretable without
+It reports the corpus census before the metric. A retrieval number is uninterpretable without
 knowing how many documents were searched, and on this system that turns out to be the entire
 finding rather than a footnote. An empty collection is a *census* result, not a recall of 0.00.
 
-**It refuses to score labels authored against a different corpus.** See `labels.py` — a stale
+It refuses to score labels authored against a different corpus. See `labels.py` — a stale
 label scores as a miss, so corpus drift presents as "the encoder regressed", which is the shape
 most likely to send someone off tuning the wrong thing.
 """

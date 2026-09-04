@@ -2,7 +2,7 @@
 
 Three defects motivated it, and each has a test here:
 
-1. ``get_storage_root() / drawing.file_path`` **silently discards the storage root** when the DB
+1. ``get_storage_root() / drawing.file_path`` silently discards the storage root when the DB
    value is absolute. The sandbox does not fail in that case; it stops existing.
 2. Callers ran ``validate_sandboxed_path(p)`` for its exception and then used ``p`` — computing
    the canonical path and throwing it away.

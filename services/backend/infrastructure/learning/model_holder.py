@@ -3,7 +3,7 @@
 Mirrors VaultSyncManager's get_instance()/reload pattern: the bundle is loaded once and
 reused; a retrain calls reload() to force the in-process copy to pick up the new artifact.
 
-**Stage 0h moved the artifact out of the vault.** It used to live only under
+Stage 0h moved the artifact out of the vault. It used to live only under
 `docs/vault/09 - Learned Models/`, which is gitignored — so the model could not be
 committed, diffed, or shipped inside the Tauri bundle, and existed on exactly one machine.
 That blocked rung 3 outright: a model that cannot be versioned is not trainable
@@ -15,7 +15,7 @@ Resolution order:
 | :--- | :--- | :--- |
 | `LEARNED_MODEL_DIR` env | yes | yes |
 | `services/backend/storage/models/` | yes | yes |
-| `docs/vault/09 - Learned Models/` | yes, **deprecated** | no |
+| `docs/vault/09 - Learned Models/` | yes, deprecated | no |
 
 The vault stays *readable* so an install that trained before this change keeps working until
 its next retrain, at which point the artifact lands in the new location on its own. The
@@ -51,7 +51,7 @@ def _backend_root() -> Path:
 
 
 def learned_model_dir() -> Path:
-    """Where a retrain **writes**: the env override, else `services/backend/storage/models/`.
+    """Where a retrain writes: the env override, else `services/backend/storage/models/`.
 
     Never the vault. A write there would recreate the situation Stage 0h exists to end.
     """
@@ -62,7 +62,7 @@ def learned_model_dir() -> Path:
 
 
 def legacy_model_dir() -> Path:
-    """`<vault>/09 - Learned Models/` — deprecated, read-only, and **not** created on demand.
+    """`<vault>/09 - Learned Models/` — deprecated, read-only, and not created on demand.
 
     Creating it would resurrect an empty directory in a tree the model no longer belongs in.
     """
@@ -78,7 +78,7 @@ def model_card_dir() -> Path:
 
 
 def model_path() -> Path:
-    """Where the bundle is **read** from: the new location if it holds one, else the vault.
+    """Where the bundle is read from: the new location if it holds one, else the vault.
 
     Falling back rather than migrating silently. A copy would double the artifact on disk
     with no record of which is authoritative; the next retrain resolves it by writing to the

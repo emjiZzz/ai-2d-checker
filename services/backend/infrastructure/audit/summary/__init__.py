@@ -1,6 +1,6 @@
 """Grounded summarization of comparison findings — ADR-010.
 
-An LLM composes prose about findings that **already exist**. It never decides what changed; that
+An LLM composes prose about findings that already exist. It never decides what changed; that
 is ADR-006's argument and it is not reopened here. Every generated summary passes a deterministic
 verification gate before it can be displayed, and is withheld whole if it does not.
 

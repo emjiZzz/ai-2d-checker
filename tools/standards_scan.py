@@ -1,19 +1,19 @@
 #!/usr/bin/env python
-"""Triage a folder of candidate standards **before** ingesting any of them.
+"""Triage a folder of candidate standards before ingesting any of them.
 
     services/backend/.venv/Scripts/python.exe tools/standards_scan.py "D:/path/to/standards"
     ... tools/standards_scan.py "D:/standards" --recursive
     ... tools/standards_scan.py file1.xls file2.pdf --per-sheet
     ... tools/standards_scan.py "D:/standards" --json
 
-Runs the **real** `StandardsParser` — the same code the upload endpoint runs — and reports how
+Runs the real `StandardsParser` — the same code the upload endpoint runs — and reports how
 much retrievable text each file would actually contribute. Nothing is written: no database, no
 copy into the standards sandbox, no index rebuild. Safe to run against a network share.
 
 ## Why this exists
 
-A 32.3 MB, 18-sheet `KEMCO and JIS Standards.xls` ingests "successfully" and yields **5,757
-characters**, because fourteen of its eighteen sheets hold no text at all — the standards are
+A 32.3 MB, 18-sheet `KEMCO and JIS Standards.xls` ingests "successfully" and yields 5,757
+characters, because fourteen of its eighteen sheets hold no text at all — the standards are
 screenshots of tables pasted into Excel. Every sheet a checker would consult (`Bolting (KEMCO
 Standard)`, `Available Plate Thickness (JIS)`, `Shaft Keyway`) is empty of text.
 
@@ -21,7 +21,7 @@ Nothing in the upload path surfaces that. It reports success, the document appea
 and the corpus is a piping parts list. The cost of finding out per-file, after converting and
 uploading an archive, is exactly the cost this script removes.
 
-**The number that matters is bytes-per-character**, not file size. A text-bearing workbook lands
+The number that matters is bytes-per-character, not file size. A text-bearing workbook lands
 around 10²–10³ bytes per character; one whose content is images lands in the thousands.
 """
 

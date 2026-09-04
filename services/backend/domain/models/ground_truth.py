@@ -5,14 +5,14 @@
 `audit_feedback` records a human *correcting the engine* -- every row presupposes a finding the
 engine already produced, so that collection can only ever describe precision. These documents
 record a human *reading the drawings*, with no engine involved. That is the only kind of record
-that can describe what the engine **missed**, which is the point of collecting them.
+that can describe what the engine missed, which is the point of collecting them.
 
 Keeping the two apart is deliberate. Merging them would make "did a human see this" and "did a
 human disagree with us about this" the same question, and they are not.
 
 ## Why an address is a composite and not an entity id
 
-`ExtractionPipeline.run` **deletes and re-inserts** a drawing's entities, so every
+`ExtractionPipeline.run` deletes and re-inserts a drawing's entities, so every
 `ExtractedEntity` gets a fresh ObjectId on re-extraction. `EXTRACTION_SCHEMA_VERSION` is at 6,
 which is six occasions on which a fix required exactly that. A marking keyed on an entity id
 would dangle the first time anyone ran `POST /drawings/{id}/reextract` -- and it would dangle
@@ -21,7 +21,7 @@ would dangle the first time anyone ran `POST /drawings/{id}/reextract` -- and it
 A DXF `handle` survives re-extraction because it comes from the source file, but it does not
 cover the corpus. Measured over 3615 entities in the first six exported drawings, `handle` and
 `parent_handle` are mutually exclusive, and text-entity handle coverage is 92% on a re-traced
-revision sheet against **0.8-13% on a reference sheet** -- the side a REMOVED must anchor to.
+revision sheet against 0.8-13% on a reference sheet -- the side a REMOVED must anchor to.
 
 So an address carries every key that might survive, and
 `infrastructure/ground_truth/address_resolver.py` re-binds it in tiers. See
@@ -145,7 +145,7 @@ class ManualCheckSession(Document):
             # able to exist. The client's `openInFlight` guard covers React StrictMode's double
             # invoke; it cannot cover two windows, two machines, or a retry.
             #
-            # **Partial, on `status: "in_progress"`, and that is required rather than tidy.** A
+            # Partial, on `status: "in_progress"`, and that is required rather than tidy. A
             # pair legitimately accumulates many SUBMITTED sessions over time — each is a
             # separate pass, which is the whole reason `create_session` scopes its resume to
             # in-progress. A non-partial unique index would reject the second honest check of a

@@ -18,7 +18,7 @@ measures against it, and no amount of engine work substitutes for it. See
     ... tools/eval_corpus.py worksheet --pair-id M745200N01   # annotation aid
     ... tools/eval_corpus.py label --pair-id M745200N01 --from <draft.json>
 
-`worksheet` deliberately does **not** run the comparison engine. A worksheet pre-filled
+`worksheet` deliberately does not run the comparison engine. A worksheet pre-filled
 from engine output would make the engine's own misses invisible to the annotator, and
 false negatives are the exact gap this corpus exists to close. It runs a naive,
 high-recall text inventory instead — a superset generator, not a differ.
@@ -104,8 +104,8 @@ def _upsert_pair(manifest: dict[str, Any], entry: dict[str, Any]) -> None:
 def _find_ocr_reading(drawing_id: str, file_hash: str) -> str | None:
     """The cached title-block reading for a drawing, by id or by identical file.
 
-    The by-file-hash fallback matters: **the OCR reading is a function of the drawing file,
-    not of the ingestion.** Re-uploading the same DXF mints a new `drawing_id` and therefore
+    The by-file-hash fallback matters: the OCR reading is a function of the drawing file,
+    not of the ingestion. Re-uploading the same DXF mints a new `drawing_id` and therefore
     a new cache key, so an exact-key lookup would miss a reading that is provably for the
     same bytes. That fallback is what makes a reading recoverable at all after the original
     ingestion is deleted.
@@ -735,7 +735,7 @@ def require_named_annotator(raw: str, session_id: str) -> str:
     """The annotator, or refuse. Ground truth is attributable work.
 
     Two rejections, not one. Emptiness is the obvious case and `label` would catch it downstream
-    anyway; **`"unknown"` is the one that mattered**, and it used to pass straight through.
+    anyway; `"unknown"` is the one that mattered, and it used to pass straight through.
 
     It is not a name an annotator can enter. It is the literal fallback `create_session` writes
     when a manual check is opened with no `X-Session-Token` -- an app that is running but not
@@ -802,7 +802,7 @@ def cmd_from_manual_check(args: argparse.Namespace) -> int:
     see -- measured 2026-08-20 at three sessions and 7 live markings against a corpus reading
     4 / 8.
 
-    **This writes a draft and stops.** Installing is still `label`, which still demands a named
+    This writes a draft and stops. Installing is still `label`, which still demands a named
     annotator and a current guideline version. The conversion is lossy in ways only a person can
     adjudicate -- see `infrastructure/eval/manual_check_bridge.py` for exactly where -- so the
     draft is a proposal to review, not a result to trust.
@@ -1107,12 +1107,12 @@ def _zone_contains(bbox: Any, polygon: Any, anchor: Sequence[float]) -> bool:
 def zones_containing(zone_boxes: dict, anchor: Sequence[float]) -> list[str]:
     """Every template zone whose shape contains `anchor`.
 
-    Returns a list, not a first match, because **hand-drawn zones overlap**: on the live corpus
+    Returns a list, not a first match, because hand-drawn zones overlap: on the live corpus
     `tolerance` ends at x=151.9 and `title` begins at x=151.8. A single-match version would
     resolve that 0.1-unit sliver by dict order, which decides whether a row is excluded or
     reviewed on nothing at all.
 
-    A **reshaped** zone is tested against its outline, not its bounding box. That distinction is
+    A reshaped zone is tested against its outline, not its bounding box. That distinction is
     load-bearing: the engine gates content on the outline (`scope_entities_to_views`,
     `views_exclusions`), so a worksheet reading only the bbox would tell the annotator a row sits
     in a zone the runner actually excludes — the tool and the runner disagreeing about the same
@@ -1140,7 +1140,7 @@ def zone_containing(zone_boxes: dict, anchor: Sequence[float]) -> str | None:
 def triage_row(zone_boxes: dict, anchor: Sequence[float]) -> tuple[str, str | None]:
     """`(bucket, zone)` for one worksheet row.
 
-    The only rule that matters here: **this never excludes on uncertainty.** With no template,
+    The only rule that matters here: this never excludes on uncertainty. With no template,
     or an entity carrying no usable coordinate, the row goes to `review`. Grouping a row as
     "not a finding" is a claim that the guideline covers it, and a guess is not that claim —
     a wrongly excluded row is a miss the annotator never sees, which is precisely the quantity
@@ -1229,7 +1229,7 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
 
     # --- zone attribution -------------------------------------------------------------
     #
-    # Which zone each row falls in, from the pair's **hand-aligned template** in the committed
+    # Which zone each row falls in, from the pair's hand-aligned template in the committed
     # manifest — the same boxes the user drew and the runner scores against, resolved through the
     # production `overrides_from_template_zones` so the Y-flip is exercised rather than
     # reimplemented. That flip is the one conversion whose failure mode is a plausible-looking

@@ -14,21 +14,21 @@ This module was extracted from `render_audit.py` on 2026-08-25 rather than resta
 alternative was production code importing a harness out of `tools/`. It was proven inert first:
 `tools/render_audit.py --json` is byte-identical across the move.
 
-**What deliberately did NOT move**: `anchor_reference` and the `RENDERER_APPLIES_*` flags. Those
+What deliberately did NOT move: `anchor_reference` and the `RENDERER_APPLIES_*` flags. Those
 encode *what the canvas is modelled as doing* — a drift surface the harness exists to interrogate,
 not a fact about DXF. They stay with the harness and consume `ANCHOR_FRACTIONS` and `quadrant`
 from here.
 
 The three facts, and why each is load-bearing:
 
-1. **Cap height is not em.** ezdxf scales glyphs so the DXF `height` lands on the CAP height;
+1. Cap height is not em. ezdxf scales glyphs so the DXF `height` lands on the CAP height;
    every text API in the world sizes by the EM square. The ratio is ~0.7617 for MS Gothic and it
-   **cannot be hand-picked**: Latin caps sit at ~0.72 em in that font and CJK ideographs fill
+   cannot be hand-picked: Latin caps sit at ~0.72 em in that font and CJK ideographs fill
    ~1.0 em, while one DXF `height` governs both. Guessing 0.72 inflates Japanese by 1.39x.
-2. **The insert point is not the corner.** MTEXT's `attachment_point` says which corner or edge
+2. The insert point is not the corner. MTEXT's `attachment_point` says which corner or edge
    midpoint of the text box the insert point coincides with. Assuming bottom-left puts a
    right-aligned string out by its full width and a centred one by half.
-3. **`%%c` is one glyph, not four characters.** Measure the substituted string or a diameter
+3. `%%c` is one glyph, not four characters. Measure the substituted string or a diameter
    callout reads 1.56x too wide.
 """
 
@@ -43,31 +43,31 @@ CANVAS_FONT = "msgothic.ttc"
 
 #: The face the REPORT draws CAD text in, in the canvas's own preference order.
 #:
-#: Mirrors `CAD_FONT_STACK` in `renderEntities.ts`, which is a **Mincho** stack — so the printed
+#: Mirrors `CAD_FONT_STACK` in `renderEntities.ts`, which is a Mincho stack — so the printed
 #: sheet and the screen show the same typeface. The ingestion raster deliberately keeps MS Gothic
 #: (`JAPANESE_FONT_CANDIDATES` in `dxf_render_setup.py`): its output feeds `render_bounds`, which
 #: every zone template stores fractions of, so changing the face there is a template-invalidation
 #: event rather than a rendering change. This constant exists so the export can differ from it
 #: without touching it.
 #:
-#: **The order is load-bearing.** Widths at equal cap height, relative to MS Gothic — and note
+#: The order is load-bearing. Widths at equal cap height, relative to MS Gothic — and note
 #: they are string-dependent, because MS Gothic's Latin is half-width while Mincho's is
 #: proportional, so a lowercase label and an all-caps drawing number do not scale alike:
 #:
 #: | face | `Material Weight(kg)` | `M745206N01` |
 #: | :--- | :--- | :--- |
-#: | `yuminl.ttf` (Light) | — | **1.196x** |
+#: | `yuminl.ttf` (Light) | — | 1.196x |
 #: | `yumin.ttf` (Regular) | 1.001x | 1.283x |
 #: | `MSMINCHO.TTF` | 1.140x | — |
 #:
 #: MS Mincho last of the Minchos: it is the widest and re-creates the title-block collisions
 #: `CAD_TEXT_FIT_SCALE` exists to prevent, which presents as a scale bug rather than a font bug.
 #:
-#: **Light before Regular, and this is a deliberate divergence from the canvas.** `CAD_FONT_STACK`
+#: Light before Regular, and this is a deliberate divergence from the canvas. `CAD_FONT_STACK`
 #: asks for `"Yu Mincho"`, which resolves to Regular. Regular's vertical stems are heavy — invisible
 #: on 3 mm labels and obvious on the 9.5 mm title-block values, which an engineer reading a printed
 #: sheet flagged as too bold. The underlying cause is unfixable by font choice: `txt.shx` is a
-#: **monoline stroke** font and every TTF substitute is a **filled outline** font, so weight grows
+#: monoline stroke font and every TTF substitute is a filled outline font, so weight grows
 #: with size in a way the original never did. Light is the same family, one step back toward the
 #: stick font, and narrower — so it cannot introduce a collision Regular did not already have.
 REPORT_FONT_CANDIDATES = (
@@ -94,13 +94,13 @@ def resolve_report_font() -> tuple[str, str] | tuple[None, None]:
 
 #: Every CAD string is drawn at this fraction of the height the DXF asks for.
 #:
-#: **This is not a fudge, it is a substitution artefact.** The corpus is drawn in `txt.shx` plus
+#: This is not a fudge, it is a substitution artefact. The corpus is drawn in `txt.shx` plus
 #: the `extfont2` BigFont, and ezdxf cannot rasterise SHX glyphs at all -- `configure_cad_fonts`
 #: redirects both to MS Gothic, whose glyphs are wider than the stick font the title block was
 #: laid out for. At full height the labels overflow their own cells: on `M745206N01`,
 #: `材料個数` measures 291.92 -> 306.48 while `Material Weight(kg)` starts at 304.87, so the two
-#: collide by ~1.6 units. **That overlap is in the source data as rendered, not in either
-#: renderer** -- ezdxf's own ink and the canvas model agree on it to within 0.2 units.
+#: collide by ~1.6 units. That overlap is in the source data as rendered, not in either
+#: renderer -- ezdxf's own ink and the canvas model agree on it to within 0.2 units.
 #:
 #: `renderEntities.ts` has compensated with this same 0.80 since the vector canvas landed
 #: ("Scaled (0.80x) so text fits comfortably within table cells without unwanted line breaks or
@@ -146,19 +146,19 @@ def cap_height_ratio(font_name: str = CANVAS_FONT) -> float:
     `fontsize` for a run whose ADVANCES come from this same font object, so any other source of
     "cap height" makes the size and the spacing disagree.
 
-    **This replaced a `text_width("MMMM") / 2` estimate on 2026-08-25, which was exact for
-    MS Gothic and 1.88x wrong for Yu Mincho.** That estimate hard-coded its own assumption in a
+    This replaced a `text_width("MMMM") / 2` estimate on 2026-08-25, which was exact for
+    MS Gothic and 1.88x wrong for Yu Mincho. That estimate hard-coded its own assumption in a
     comment -- *"Latin glyphs in MS Gothic are exactly half-width, so `MMMM` is 2 em"* -- and it
-    holds only for a half-width-Latin face. `M` is 0.5000 em in `msgothic.ttc` and **0.9390 em**
+    holds only for a half-width-Latin face. `M` is 0.5000 em in `msgothic.ttc` and 0.9390 em
     in `yuminl.ttf`, whose Latin is proportional; this module's own `REPORT_FONT_CANDIDATES`
-    docstring says so two screens up. Forcing `M` back to half-width returned **0.3890** against
-    a true 0.7305, so every string in the report's invisible layer was written at **1.92x** its
-    correct size -- measured end-to-end as a width ratio of **1.920** before this fix and
-    **1.026** after, by `tools/text_layer_audit.py`. Nothing looked wrong, because the layer is
+    docstring says so two screens up. Forcing `M` back to half-width returned 0.3890 against
+    a true 0.7305, so every string in the report's invisible layer was written at 1.92x its
+    correct size -- measured end-to-end as a width ratio of 1.920 before this fix and
+    1.026 after, by `tools/text_layer_audit.py`. Nothing looked wrong, because the layer is
     `render_mode=3`: the defect is only visible as a selection rectangle twice the width of the
     glyphs it selects, and as six strings pushed past the page rect and dropped outright.
 
-    **Inert for every face where the old assumption was true**, which is why the harness
+    Inert for every face where the old assumption was true, which is why the harness
     baselines do not move: `msgothic.ttc` returns 0.761719 and `MSMINCHO.TTF` 0.667969, both
     bit-identical to the estimate, because MS CJK faces really do set `M` at exactly 0.5 em.
     `tools/render_audit.py` calls this with the default and is untouched.

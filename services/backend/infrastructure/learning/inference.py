@@ -43,23 +43,23 @@ def _override_applies(
     norm_text: str,
     norm_orig: str,
 ) -> bool:
-    """Does a stored human override apply to this marking? **One direction only.**
+    """Does a stored human override apply to this marking? One direction only.
 
     A human dismissed (or confirmed) a finding whose normalised text was `override_value`. This
     answers *"is this marking that same finding"*, and nothing else.
 
-    **The reverse test — "is this marking's value a fragment of the override" — is deliberately
-    absent, and removing it is the fix for a measured defect.** It let the dimension `25` inherit
+    The reverse test — "is this marking's value a fragment of the override" — is deliberately
+    absent, and removing it is the fix for a measured defect. It let the dimension `25` inherit
     a dismissal recorded for the line attribute `CENTER 0.25MM`, because `"25"` is a substring of
     `"center0.25mm"`. On `M745230A01` that force-matched three real dimension changes —
     `25 -> 60`, `55 -> 25`, `170 -> 20` — and reported them to the checker as MATCHED.
 
     The shape of that bug is the worst available for a human-in-the-loop system: `line_attribute_differ`
     emits false positives on a re-traced revision, the checker correctly dismisses them, and each
-    dismissal silently converts real dimension findings into **false negatives**. The correction
+    dismissal silently converts real dimension findings into false negatives. The correction
     makes the tool quieter and less correct at the same time, and nothing in the UI shows why.
 
-    **A numericish override must match exactly.** `25` and `125` are different values however many
+    A numericish override must match exactly. `25` and `125` are different values however many
     characters they share — the same rule `spatial_differ._is_edited_in_place` applies when it
     lets two numericish strings bypass the similarity floor.
 
@@ -98,7 +98,7 @@ def _decide(marking: dict, bundle: dict, verdict_ready: bool) -> tuple[Optional[
     exact_category = bundle.get("exact_category", {})
     verdict_clf = bundle.get("verdict_clf")
 
-    # A verdict override is keyed on **both sides of the finding**, via the same
+    # A verdict override is keyed on both sides of the finding, via the same
     # `exact_pair_key` the trainer stores with — one construction, so a lookup and a write can
     # never drift into disagreeing. Building the transition string here by hand happened to
     # normalise to the identical key, which is exactly the kind of coincidence that keeps working

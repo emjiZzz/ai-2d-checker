@@ -27,7 +27,7 @@ class AuditFeedbackDocument(Document):
     #: WHICH entity the engine should have paired with, for a `mispaired_*` correction.
     #:
     #: The field that makes matcher feedback trainable at all. Measured 2026-08-19: of 106
-    #: `mispaired_*` rows, **3** carried the counterpart -- it was an optional free-text box and
+    #: `mispaired_*` rows, 3 carried the counterpart -- it was an optional free-text box and
     #: was rationally skipped. The other 103 record a rejection with no correction, and a matcher
     #: cannot be trained on negatives: there is no target to learn toward. Those rows are not
     #: recoverable, which is why the capture had to change rather than the analysis.

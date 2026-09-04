@@ -1,7 +1,7 @@
 """R2 — the retrieval metric, and the gates that stop it being quoted out of context.
 
 The arithmetic here is standard and would be dull to over-test. What is worth pinning is the
-**refusal logic**, because that is the part R2 exists for. The stage's whole argument is that
+refusal logic, because that is the part R2 exists for. The stage's whole argument is that
 SHA-256 embeddings survived in production for months because no number would have moved if they
 were replaced by a real model; a metric that reports a confident figure over six documents
 reproduces that failure with extra steps.

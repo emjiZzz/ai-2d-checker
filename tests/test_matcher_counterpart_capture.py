@@ -1,6 +1,6 @@
 """Capturing WHICH entity the engine should have paired with — step 2 of the matcher plan.
 
-Measured 2026-08-19: of 106 `mispaired_*` corrections, **3** carried the counterpart. It was an
+Measured 2026-08-19: of 106 `mispaired_*` corrections, 3 carried the counterpart. It was an
 optional free-text box and was rationally skipped, so 103 rows record a rejection with no
 correction — and a matcher cannot be trained on negatives, because there is no target to learn
 toward. Those rows are not recoverable. This is the capture changing so the next ones are.

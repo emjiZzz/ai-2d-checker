@@ -7,14 +7,14 @@ import type { DrawingItem } from "../../stores/workspace/types";
  * ## Why this is worth a badge at all
  *
  * `render_paths`, dimension text anchors, leader hooklines, leader arrowheads, MTEXT rotation
- * and the angular-dimension degree conversion are all computed at **extraction** time. A
+ * and the angular-dimension degree conversion are all computed at extraction time. A
  * drawing ingested before one of those fixes keeps rendering without it until
  * `POST /drawings/{id}/reextract` — and it looks like a perfectly ordinary drawing the whole
  * time. An engineer marking up a v2 sheet is reading missing arrowheads, short leader landings
  * and a dimension that says `1.05` where the paper says `60°`.
  *
- * Measured 2026-08-20 with `tools/extraction_status.py`: **36 of 55 stored drawings were
- * stale**, 20 of them five versions behind.
+ * Measured 2026-08-20 with `tools/extraction_status.py`: 36 of 55 stored drawings were
+ * stale, 20 of them five versions behind.
  *
  * ## Renders nothing when the drawing is current
  *
@@ -22,7 +22,7 @@ import type { DrawingItem } from "../../stores/workspace/types";
  * always on is one people stop seeing within a day, so the healthy state must be *invisible*
  * rather than a reassuring green tick. `StaleExtractionBadge.test.tsx` pins that.
  *
- * **The staleness rule is not evaluated here.** `extraction_is_stale` is computed by the
+ * The staleness rule is not evaluated here. `extraction_is_stale` is computed by the
  * server beside `EXTRACTION_SCHEMA_VERSION`. Comparing the two numbers in TypeScript would put
  * a second copy of the rule on the far side of a language boundary with no shared types — the
  * same drift the taxonomy needs `tests/test_taxonomy_consistency.py` to police. This component

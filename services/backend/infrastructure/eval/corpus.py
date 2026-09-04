@@ -12,14 +12,14 @@ class as the source DXFs, which are already gitignored:
 Three rules from `docs/vault/01 - Architecture/Eval Corpus Annotation Guideline.md` are
 enforced here in code rather than left to discipline, because each of them fails silently:
 
-1. **Payload drift.** Every payload's sha256 is recorded in the committed manifest and
+1. Payload drift. Every payload's sha256 is recorded in the committed manifest and
    checked on load. A quietly edited fixture is the one failure mode that would
    invalidate every historical number at once, retroactively and undetectably.
-2. **Held-out pairs.** Three human pairs are touched exactly once, at the end of
+2. Held-out pairs. Three human pairs are touched exactly once, at the end of
    Stage 0.5. `load_corpus()` therefore excludes them by default, and including them
    requires a written reason that is appended to an access log. A held-out pair used for
    tuning is *burned*, and the log is what makes that visible instead of forgotten.
-3. **Guideline version.** The guideline says: if a rule changes, re-label every affected
+3. Guideline version. The guideline says: if a rule changes, re-label every affected
    pair or discard them. Labels record the guideline version they were authored under,
    and loading a label file written under a different version raises rather than silently
    mixing two definitions of "one finding".
@@ -60,7 +60,7 @@ MANIFEST_SCHEMA_VERSION = 1
 # 2026-08-06: the guideline's four open questions resolved and it moved to `status: active`.
 #   Ruled rows, revision-table rows, amendment/balloon categories, and the bulk threshold all
 #   now have rules where they previously had judgement. Safe to bump without re-labelling
-#   anything because **zero labels existed** — which is exactly why they were settled first.
+#   anything because zero labels existed — which is exactly why they were settled first.
 GUIDELINE_VERSION = "2026-08-06"
 
 VALID_CATEGORIES: frozenset[str] = frozenset(get_args(Category))
@@ -400,14 +400,14 @@ class PairSide:
     zone_signature: str = ""
     # `EXTRACTION_SCHEMA_VERSION` this side's entities were extracted under, mirrored up from
     # `{side}.drawing.json` so the question "was this pair captured from a stale drawing?" can
-    # be answered from the manifest alone, without loading a payload. **0 means unknown** --
+    # be answered from the manifest alone, without loading a payload. 0 means unknown --
     # every pair exported before 2026-08-20 predates the field.
     extraction_schema_version: int = 0
     # Digest of `{side}.ocr.json`, the captured title-block OCR reading. Empty when the
     # drawing had no cached reading at capture time. See `CorpusPair.restore_ocr_cache`.
     ocr_sha256: str = ""
     # The hand-aligned zone template for this sheet, as Y-DOWN fractions. Resolved at load
-    # time from the manifest's `zone_templates` map, keyed by `zone_signature` — **not**
+    # time from the manifest's `zone_templates` map, keyed by `zone_signature` — not
     # serialized per side. A zone template is a property of the sheet layout, and every pair
     # in this corpus is the same layout, so storing it per side wrote the identical block 74
     # times and buried the manifest the staged plan requires stay "tiny, reviewable,
@@ -557,7 +557,7 @@ class CorpusPair:
     def restore_ocr_cache(self, cache_dir: Path | None = None) -> list[str]:
         """Put each side's captured OCR reading into the cache, replacing any other reading.
 
-        **This is what makes a score reproducible.** The title-block reading used to live
+        This is what makes a score reproducible. The title-block reading used to live
         only in `storage/cache/`, outside the sha256-pinned corpus — so deleting old
         comparisons silently removed it, and the engine fell back to spatial title
         extraction on one side while the other still had a cached reading. Nothing failed;
@@ -567,7 +567,7 @@ class CorpusPair:
         the cache internally and offers no seam to pass a reading through. Idempotent: it
         only ever writes back exactly what the corpus captured.
 
-        **It writes over a DIFFERING entry, and that is the point.** Until 2026-08-17 the
+        It writes over a DIFFERING entry, and that is the point. Until 2026-08-17 the
         write was guarded by `if not target.exists()`, so this filled a *gap* but could not
         repair a *stale* entry — while this docstring claimed it made a score reproducible
         and `run_corpus` claimed it made the score "a function of the corpus alone". Both
@@ -602,8 +602,8 @@ class CorpusPair:
                 write_text_stable(target, text)
                 restored.append(target.name)
             else:
-                # Compare the READING, not the bytes. **19 corpus pair-sides share this one
-                # cache key** — every mutation pair derives from a base drawing and reuses its
+                # Compare the READING, not the bytes. 19 corpus pair-sides share this one
+                # cache key — every mutation pair derives from a base drawing and reuses its
                 # id and file hash, so `M7452A0N01/ref` and 18 mutation sides all map here —
                 # and the same capture exported twice differs in JSON formatting alone.
                 # Measured 2026-08-17: every such collision in this corpus is formatting-only,
@@ -622,7 +622,7 @@ class CorpusPair:
     def missing_ocr_cache(self, cache_dir: Path | None = None) -> list[str]:
         """Cache files whose absence would change the title-block comparison.
 
-        A side counts as covered if the reading is in the cache **or** captured in the
+        A side counts as covered if the reading is in the cache or captured in the
         payload, since `restore_ocr_cache()` puts the latter back before a run.
         """
         base = cache_dir or ocr_cache_dir()
@@ -656,7 +656,7 @@ class CorpusPair:
         compared against *different zone boxes* offline than in the app, and a baseline
         measured that way is not a baseline of what users see.
 
-        A side that has **captured** its template carries the fractions in the manifest and
+        A side that has captured its template carries the fractions in the manifest and
         is no longer at risk, including when the capture found no template at all — `{}` is
         an answer, `None` is an unasked question. Run `tools/eval_corpus.py capture-zones`
         to clear a pair. See the vault gotcha "Zone Templates Vanish in Offline Eval".

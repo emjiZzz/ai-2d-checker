@@ -21,7 +21,7 @@ Each module now derives its constant from `DEFAULT_PARAMS` rather than declaring
 
 That is provably behaviour-neutral — the values are copied byte-for-byte, and
 `tests/test_comparison_params.py` asserts identical engine output across the whole corpus
-before and after. **This has to be provable**, because the sweep that follows compares runs
+before and after. This has to be provable, because the sweep that follows compares runs
 against each other: if the refactor moved anything, the sweep would measure the refactor rather
 than the thresholds.
 
@@ -36,7 +36,7 @@ measurable.
 So the sweep uses `sweep_override()` instead, which rebinds the module globals for the duration
 of a block and restores them afterwards.
 
-> [!WARNING] `sweep_override()` mutates module-level state and is **not** concurrency-safe.
+> [!WARNING] `sweep_override()` mutates module-level state and is not concurrency-safe.
 > It exists for the single-threaded offline sweep runner and nothing else. Two comparisons
 > running concurrently under different overrides would read each other's constants. Do not
 > call it from request-handling code; if per-client thresholds are ever wanted at runtime,
@@ -98,7 +98,7 @@ _BINDINGS: dict[str, tuple[str, str]] = {
     "char_width_ratio": ("..bom.anchors", "_CHAR_WIDTH_RATIO"),
 }
 
-# Zone constants are **not** safe to sweep alongside the matching ones. They feed `safe_filter`,
+# Zone constants are not safe to sweep alongside the matching ones. They feed `safe_filter`,
 # zone templates and `views_exclusions()`, and users have hand-pinned templates whose stored
 # fractions can be silently invalidated by moving `BBOX_PADDING` or `CLUSTER_RADIUS`. The plan
 # requires a separate pass with an explicit "pinned templates still resolve" assertion.
@@ -150,10 +150,10 @@ class ComparisonParams:
     # suppress every innocent twin of that string in every zone, on both sides, making the
     # twin's deletion unreportable. Measured: at 1 (net disabled for nothing) a `１` deleted
     # from the notes zone went unreported because a BOM row was numbered `1`.
-    # **Swept 2026-08-07, and the shape is a step, not a curve.** F1 over the declared range:
+    # Swept 2026-08-07, and the shape is a step, not a curve. F1 over the declared range:
     # 1 -> 0.913, then 2 / 3 / 4 / 6 -> 0.923, identical. The only transition is 1 -> 2, which
     # is the defect itself; above 2 this corpus cannot distinguish any value. So 3 is
-    # **conservative and arbitrary within [2, inf)** on current evidence, not a measured
+    # conservative and arbitrary within [2, inf) on current evidence, not a measured
     # optimum, and this corpus cannot make it one.
     #
     # The upper bound is UNTESTED rather than shown safe. At 6 the corpus's own structured
@@ -215,7 +215,7 @@ def current_params() -> ComparisonParams:
 def sweep_override(params: ComparisonParams) -> Iterator[ComparisonParams]:
     """Rebind the module constants for the duration of a block, then restore them.
 
-    **Single-threaded offline use only** — see the module docstring. Restoration is in a
+    Single-threaded offline use only — see the module docstring. Restoration is in a
     `finally`, so an exception inside the block cannot leave the engine permanently retuned;
     that failure mode would silently poison every subsequent measurement in the process.
     """

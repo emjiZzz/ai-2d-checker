@@ -25,12 +25,12 @@
  *
  * Two gates keep them apart, and neither is a tuned constant:
  *
- *  1. **Drawing context.** A lone letter counts only when the same sheet also carries the
+ *  1. Drawing context. A lone letter counts only when the same sheet also carries the
  *     matching `X-X` designation. Both letters must be the same, so a sheet with an `Ａ－Ａ`
  *     section does not sweep up an unrelated lone `Ｂ`. This mirrors `refine_view_labels`
  *     exactly — deliberately, because two implementations of one rule that disagree are worse
  *     than one rule in the wrong place.
- *  2. **Provenance.** Only text that arrived *through a viewport* is eligible. Model-space
+ *  2. Provenance. Only text that arrived *through a viewport* is eligible. Model-space
  *     geometry is projected onto the sheet and carries `properties.viewport_index >= 0`; native
  *     paper-space furniture — the frame, the title block, the tolerance table, the border grid
  *     labels — is left alone by the projector and keeps `NO_VIEWPORT` (`-1`). Measured on
@@ -74,9 +74,9 @@ const NO_VIEWPORT = -1;
  * Two points this close, in the projected paper units the canvas draws in, are the same point.
  *
  * A coincidence tolerance, not a tuned classifier threshold — and the measurement says so.
- * On M745221N01's revision the apparatus lands within **0.3** of a cut-path vertex (arrow-tick
+ * On M745221N01's revision the apparatus lands within 0.3 of a cut-path vertex (arrow-tick
  * midpoints at 0.05 and 0.07, leader tails at 0.28 and 0.3) while the nearest thing that must
- * survive — the `6-9キリ` leader — is **46.9** away. Two orders of magnitude of daylight, so the
+ * survive — the `6-9キリ` leader — is 46.9 away. Two orders of magnitude of daylight, so the
  * exact value is not load-bearing; anything from 0.5 to 40 gives the same answer.
  */
 const COINCIDENT = 1.0;
@@ -150,8 +150,8 @@ const vertexListOf = (e: CanvasEntity): Point[] => {
  * cut segment sits 5.1 units from its label and an axis centreline sits 7.3 from the same label,
  * a 2.2-unit margin that any threshold would be fitted to rather than derived from.
  *
- * The drafter already separates them, by colour. Measured across **every one of the 9 drawings in
- * `storage/uploads` that carries an `X-X` designation**: the cut segments are always a strict
+ * The drafter already separates them, by colour. Measured across every one of the 9 drawings in
+ * `storage/uploads` that carries an `X-X` designation: the cut segments are always a strict
  * minority of the sheet's `CENTER` lines (1–2 of them) in a colour distinct from the majority,
  * which is the axis-centreline colour. Reading the majority off the sheet itself keeps this
  * self-calibrating — no ACI index is hardcoded, so a client whose template inverts the convention

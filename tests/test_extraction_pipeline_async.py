@@ -4,8 +4,8 @@ Guards the event loop against `ExtractionPipeline.run`'s blocking work.
 Same property, same proof technique, and same reason as
 `tests/test_standards_loader_async.py` -- but for the *drawing* ingestion path, which had the
 bug that one was written to prevent. `ExtractionPipeline.run` is `async`, and the background
-queue that awaits it (`processing_queue._worker`) is a task on the **same event loop that
-serves HTTP**. "Background" here means *not in the request*, not *not on the loop*. Anything
+queue that awaits it (`processing_queue._worker`) is a task on the same event loop that
+serves HTTP. "Background" here means *not in the request*, not *not on the loop*. Anything
 left inline therefore stalls every concurrent request for its full duration.
 
 The user-visible symptom was a "Server Reconnection" banner on every upload: the desktop client

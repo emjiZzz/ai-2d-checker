@@ -195,7 +195,7 @@ const TextBlock: React.FC<{ text: string }> = ({ text }) => {
 };
 
 function renderInlineFormatting(text: string): React.ReactNode {
-  // Regex to split on bold (**text**), inline code (`code`), and italics (*text*)
+  // Regex to split on bold (text), inline code (`code`), and italics (*text*)
   const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
 
   return tokens.map((token, idx) => {

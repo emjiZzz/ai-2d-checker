@@ -5,7 +5,7 @@ of them assume the engine compared the right two entities and only got its concl
 A finding like "NONE → 260" is usually neither: it is one half of a pair the matcher failed to
 make. Nothing could express that until now.
 
-The tests below mostly pin a **restraint**: these verbs are captured and deliberately left
+The tests below mostly pin a restraint: these verbs are captured and deliberately left
 unlabelled. Both available mappings would teach the verdict head something false, and the
 temptation to map them anyway — "it's feedback, feed it to the model" — is exactly what needs a
 test standing in front of it.

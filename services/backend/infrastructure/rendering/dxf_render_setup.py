@@ -12,7 +12,7 @@ The steps, and why each is load-bearing:
 1. `configure_cad_fonts()` -- register Windows fonts with ezdxf's font manager and map the SHX
    names this corpus uses (`txt` + `extfont2` bigfont) onto MS Gothic. ezdxf cannot rasterise
    BigFont SHX glyphs at all, so without this every CJK string measures and draws as nothing or
-   as tofu. **Must run before `readfile`.**
+   as tofu. Must run before `readfile`.
 2. `load_and_transcode()` -- read as latin-1 to preserve the raw bytes, then re-decode as cp932
    to recover real Shift-JIS. See `dxf_parser.transcode_value` for the same trick on the
    extraction side; the two must agree or the raster and the vectors show different strings.

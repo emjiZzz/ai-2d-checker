@@ -9,7 +9,7 @@ That is the shape worth guarding. The failure is not cosmetic: it happens at the
 a tool whose job is to report a safety-critical number reports nothing at all, on the platform the
 product actually ships to, while passing every test on a UTF-8 CI runner.
 
-**Scope, deliberately narrow.** Only the literals that reach a terminal. Docstrings, comments and
+Scope, deliberately narrow. Only the literals that reach a terminal. Docstrings, comments and
 Japanese *data* are exempt — the drawing text this system exists to process is the payload, is
 written with explicit `encoding="utf-8"`, and was never the problem. This guards our own
 decorations, not user content.

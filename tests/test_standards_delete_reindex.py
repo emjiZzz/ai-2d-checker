@@ -9,8 +9,8 @@ It survived because of a stale comment. The line above the chunk deletion read
 *"(MongoDB; there is no vector index)"*, which was true when R0 deleted the fake index and
 stopped being true when R1 built a real one. Nobody maintaining delete had a reason to look.
 
-**Rule: a comment asserting the absence of a thing ages exactly as badly as one asserting its
-presence** — and this repo has now paid for both. See
+Rule: a comment asserting the absence of a thing ages exactly as badly as one asserting its
+presence — and this repo has now paid for both. See
 `Gotcha - A Guard Clause Named an Exception the Library Stopped Raising` for the same shape.
 
 The endpoint needs Mongo, which this suite does not have, so what is pinned here is the wiring:

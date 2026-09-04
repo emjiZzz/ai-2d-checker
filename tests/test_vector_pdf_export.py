@@ -1,6 +1,6 @@
 """Guards for the vector report page.
 
-Every test here pins a defect that produced a **plausible-looking PDF rather than an error**:
+Every test here pins a defect that produced a plausible-looking PDF rather than an error:
 a file that opens, looks perfect at 1000%, prints beautifully, and is missing the one property
 it was built for. That is the failure mode of this whole pipeline — see
 `docs/vault/06 - Gotchas .../Gotcha - The Vector PDF Had No Text at All.md`, where four separate
@@ -9,7 +9,7 @@ displacements each did exactly that.
 The fixture is built with `ezdxf` rather than read from `storage/uploads`, which is gitignored.
 That limits what these can claim: a document written by the same library that renders it cannot
 expose a disagreement between two of its own fields (the lesson from
-`Gotcha - The Dimension Text Was Anchored to the Line It Had to Avoid`). These test **our**
+`Gotcha - The Dimension Text Was Anchored to the Line It Had to Avoid`). These test our
 pipeline — page size, vector-ness, that the text layer exists and is searchable and invisible —
 not ezdxf's fidelity to a real CAD package. `tools/render_audit.py` is what measures that.
 """
@@ -86,7 +86,7 @@ def page(rendered):
 
 
 def test_cad_text_is_extractable(page):
-    """`ezdxf + MatplotlibBackend` alone yields **zero** characters — every glyph is a path.
+    """`ezdxf + MatplotlibBackend` alone yields zero characters — every glyph is a path.
 
     `MatplotlibBackend` implements `draw_filled_paths` and no `draw_text`, and the frontend
     converts text to outlines upstream of every backend, so this is not fixable by choosing a
@@ -277,7 +277,7 @@ def test_matched_is_a_stroked_tick_and_every_other_status_is_a_filled_dot(sheet_
     """The report draws what `renderEntities.ts` draws, and it does not draw the same thing twice.
 
     The canvas branches on MATCHED: a stroked tick for it, a flat translucent dot for everything
-    else. A report that drew a dot for MATCHED would be a sheet with **no checkmarks on it**,
+    else. A report that drew a dot for MATCHED would be a sheet with no checkmarks on it,
     which is the one thing the mark is called after — and it would look correct in every test
     that only counts drawings.
     """
@@ -410,8 +410,8 @@ def test_the_exporter_never_touches_pyplot():
 def test_the_mincho_order_runs_lightest_and_narrowest_first():
     """The ORDER is load-bearing, and these are not interchangeable members of one family.
 
-    Widths at equal cap height for `M745206N01`, relative to MS Gothic: Light **1.196x**,
-    Regular **1.283x**, MS Mincho widest. Two separate things ride on this order:
+    Widths at equal cap height for `M745206N01`, relative to MS Gothic: Light 1.196x,
+    Regular 1.283x, MS Mincho widest. Two separate things ride on this order:
 
     * MS Mincho last, because it re-creates the title-block collisions `CAD_TEXT_FIT_SCALE`
       exists to prevent — and that presents as a scale bug, not a font bug.
@@ -449,8 +449,8 @@ def test_cap_height_is_not_measured_by_forcing_m_to_half_width():
 
     Until 2026-08-25 `cap_height_ratio` computed `text_width("MMMM") / 2`, which is exact for a
     half-width-Latin face and defines the answer into existence for any other: it returns
-    whatever value makes `M` half-width. On `yuminl.ttf` that gave **0.3890** against a true
-    **0.7305**, so the report's invisible text layer was written at **1.92x** the size of the
+    whatever value makes `M` half-width. On `yuminl.ttf` that gave 0.3890 against a true
+    0.7305, so the report's invisible text layer was written at 1.92x the size of the
     glyphs it sits over — measured end-to-end as a width ratio of 1.920 against ezdxf's own ink,
     and 1.026 once fixed. It also pushed strings past the page rect, where `TextWriter` dropped
     six of them from the layer entirely.
@@ -605,7 +605,7 @@ def test_dimensions_are_drawn_thinner_than_the_part(storage_root):
     collapses every stroke onto `min_lineweight`, so the sheet had exactly one width and no
     depth. ISO 128 puts dimension and witness lines on the thin pen.
 
-    **This is also the guard for a failure that looks like the feature is merely off.** A
+    This is also the guard for a failure that looks like the feature is merely off. A
     DIMENSION renders through `draw_composite_entity`, which re-resolves properties for each
     virtual child, so an override keyed on `entity.dxftype()` alone thins the DIMENSION and then
     resets every line it is made of. The first implementation did exactly that and produced one

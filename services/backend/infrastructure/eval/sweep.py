@@ -1,7 +1,7 @@
 """Move one tuning constant at a time and measure what happens — Stage 0.5b.
 
-> [!WARNING] This is a **sensitivity analysis, not a calibration.**
-> Since the 2026-08-05 rebuild the corpus is 36 mutation pairs from **one drawing family**,
+> [!WARNING] This is a sensitivity analysis, not a calibration.
+> Since the 2026-08-05 rebuild the corpus is 36 mutation pairs from one drawing family,
 > and mutation pairs are drawn from the engine's own comparison pool. A best F1 found here is
 > the best value *for this sheet, against synthetic edits* — fitting `DEFAULT_PARAMS` to it
 > would be fitting the engine to the mutator. `sweep.py` therefore reports spreads and refuses
@@ -11,14 +11,14 @@
 
 Three questions that do not need a representative corpus, only a working one:
 
-1. **Which constants move nothing?** A parameter flat across its whole declared range — on
+1. Which constants move nothing? A parameter flat across its whole declared range — on
    detection F1 *and* on status/category exactness — is not a tuning knob on this corpus. It
    is either dead code, dominated by another constant, or guarding a case these pairs never
    hit. Every one of those is a finding worth recording, and per `CLAUDE.md` constraint 4 a
    measured-and-rejected idea is worth as much as one that worked.
-2. **Which sit on a cliff?** A constant where one step changes F1 sharply is fragile — worth
+2. Which sit on a cliff? A constant where one step changes F1 sharply is fragile — worth
    knowing before someone "tidies" it, and worth prioritising when a real corpus arrives.
-3. **Is the current value even near the middle of its useful range?** The plan notes several
+3. Is the current value even near the middle of its useful range? The plan notes several
    were *"calibrated against one observed case"*; a default sitting at the edge of a plateau is
    a different risk from one sitting in the middle.
 
@@ -93,7 +93,7 @@ FLAT_THRESHOLD = 0.01
 class Measurement:
     """What one parameter value scored.
 
-    **F1 alone is too coarse to sweep on**, and the first run of this sweep proved it:
+    F1 alone is too coarse to sweep on, and the first run of this sweep proved it:
     `changed_similarity_floor` reported a spread of 0.000 across its entire range, while
     `test_an_override_changes_what_the_engine_reports` had already shown the same override
     changing real engine output. Both were right. The scorer matches a finding to its label
@@ -150,7 +150,7 @@ class ParamSensitivity:
 
     @property
     def best(self) -> tuple[Any, Measurement] | None:
-        """The highest-F1 value. **Reported, never applied.** See the module docstring."""
+        """The highest-F1 value. Reported, never applied. See the module docstring."""
         pairs = [(v, s) for v, s in zip(self.values, self.scores, strict=True) if s is not None]
         return max(pairs, key=lambda item: item[1].f1) if pairs else None
 

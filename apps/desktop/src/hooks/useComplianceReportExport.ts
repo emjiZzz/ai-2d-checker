@@ -73,8 +73,8 @@ function sortRows(rows: ChecklistRow[]): ChecklistRow[] {
  * jsPDF's zlib level for embedded images — and the difference between a report that opens and one
  * that does not.
  *
- * `addImage` without it embeds the DECODED pixels, uncompressed: measured at **112 MB** for this
- * report's four pages, against **0.9 MB** with it, byte-for-byte identical output otherwise
+ * `addImage` without it embeds the DECODED pixels, uncompressed: measured at 112 MB for this
+ * report's four pages, against 0.9 MB with it, byte-for-byte identical output otherwise
  * (Flate is lossless). That is not a size preference. The previous report asked
  * `CanvasRenderer` for two 7016x4960 sheets and embedded both raw — roughly a quarter of a
  * gigabyte of PDF — which is why its drawing pages arrived blank in a viewer while its text

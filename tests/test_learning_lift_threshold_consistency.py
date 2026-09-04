@@ -4,7 +4,7 @@
 `apps/desktop/src/components/settings/LearningPanel.tsx` — because no runtime type sharing exists
 between Python and TypeScript here. That is the same situation as the comparison taxonomy, which
 `tests/test_taxonomy_consistency.py` handles the same way, and the rule this repo states for it is
-blunt: **unpinned deliberate duplication is just duplication.**
+blunt: unpinned deliberate duplication is just duplication.
 
 Both numbers answer one question — *"below what lift over the majority-class baseline should we
 tell a human the model is barely doing anything?"* — and a report and a UI that disagree about

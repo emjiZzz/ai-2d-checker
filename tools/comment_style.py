@@ -86,9 +86,15 @@ class Finding:
         self.char = char
         self.text = text
 
-    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+    def __repr__(self) -> str:
+        # `char` is one emoji for a marker finding and the two-character bold delimiter for a bold
+        # one, so this cannot call `ord`. It did, and the only caller is the assertion message in
+        # `tests/test_comment_style.py` -- which meant the guard raised TypeError instead of
+        # printing the instruction to run --fix. The failure path is the whole product here, so it
+        # is exercised by `test_finding_repr_renders_for_both_kinds`.
         rel = self.path.relative_to(REPO_ROOT) if self.path.is_absolute() else self.path
-        return f"{rel}:{self.line}: U+{ord(self.char):04X} in {self.text.strip()[:60]!r}"
+        label = f"U+{ord(self.char):04X}" if len(self.char) == 1 else repr(self.char)
+        return f"{rel}:{self.line}: {label} in {self.text.strip()[:60]!r}"
 
 
 # --- prose spans -------------------------------------------------------------------------------
@@ -279,6 +285,119 @@ def strip_text(path: Path, text: str) -> str:
     return newline.join(lines) if changed else text
 
 
+# --- markdown bold ------------------------------------------------------------------------------
+#
+# Comments in this tree emphasise with `...`, which is markdown formatting inside a code
+# comment. Removing it is not a line-by-line job for two reasons found by measuring first:
+#
+# 1. A span wraps. 168 prose lines carry an odd number of `` because the opener and the closer
+#    sit on different lines. Stripping per line would leave the orphan behind, which is worse than
+#    leaving the pair alone.
+# 2. `` is not always emphasis. `docs/vault/**/*.md` is a glob and `/**` opens a JSDoc block.
+#    Both are recognised by an adjacent slash and skipped.
+#
+# Delimiters are therefore collected across a whole comment block, paired in order, and dropped
+# only when the block's count is even. An odd block is left untouched and reported, so a construct
+# the pairing does not understand stays visible instead of being half-edited.
+
+_BOLD = "**"
+
+
+def _line_offsets(text: str) -> list[int]:
+    offsets, pos = [0], 0
+    for ch in text:
+        pos += 1
+        if ch == "\n":
+            offsets.append(pos)
+    return offsets
+
+
+def _prose_blocks(path: Path, text: str) -> list[tuple[int, int]]:
+    """Absolute (start, end) offsets of maximal runs of prose on consecutive lines."""
+    spans = prose_spans(path, text)
+    if not spans:
+        return []
+    starts = _line_offsets(text)
+    lines = text.split("\n")
+
+    absolute: list[tuple[int, int, int]] = []
+    for line, s, e in sorted(spans):
+        if line - 1 >= len(lines) or line - 1 >= len(starts):
+            continue
+        base = starts[line - 1]
+        end = min(e, len(lines[line - 1]))
+        absolute.append((line, base + s, base + end))
+
+    blocks: list[tuple[int, int]] = []
+    cur_line, cur_start, cur_end = absolute[0]
+    for line, s, e in absolute[1:]:
+        if line - cur_line <= 1:
+            cur_end = max(cur_end, e)
+        else:
+            blocks.append((cur_start, cur_end))
+            cur_start, cur_end = s, e
+        cur_line = line
+    blocks.append((cur_start, cur_end))
+    return blocks
+
+
+def bold_pairs(path: Path, text: str) -> list[tuple[int, int]]:
+    """Offsets of `**` delimiters that form a markdown bold pair inside one comment block."""
+    pairs: list[tuple[int, int]] = []
+    for block_start, block_end in _prose_blocks(path, text):
+        marks: list[int] = []
+        i = text.find(_BOLD, block_start, block_end)
+        while i != -1:
+            before = text[i - 1] if i else ""
+            after = text[i + 2] if i + 2 < len(text) else ""
+            # `/` on either side is a glob or a JSDoc opener. Alphanumeric on BOTH sides is
+            # exponentiation -- this tree writes `2**14` and `2**16` in prose, and an even number
+            # of those in one block would otherwise pair with each other and be stripped. A real
+            # bold opener is never preceded by an alphanumeric, and a closer is never followed by
+            # one.
+            exponent = before.isalnum() and after.isalnum()
+            if before != "/" and after != "/" and not exponent:
+                marks.append(i)
+            i = text.find(_BOLD, i + 2, block_end)
+
+        if len(marks) % 2:
+            continue
+        for opener, closer in zip(marks[0::2], marks[1::2]):
+            inner = text[opener + 2: closer]
+            if not inner.strip() or inner[0].isspace() or inner[-1].isspace():
+                continue
+            pairs.append((opener, closer))
+    return pairs
+
+
+def strip_bold(path: Path, text: str) -> str:
+    cuts: list[int] = []
+    for opener, closer in bold_pairs(path, text):
+        cuts.extend((opener, closer))
+    if not cuts:
+        return text
+    out = text
+    for pos in sorted(cuts, reverse=True):
+        out = out[:pos] + out[pos + 2:]
+    return out
+
+
+def scan_bold(root: Path = REPO_ROOT) -> list[Finding]:
+    findings: list[Finding] = []
+    for path in iter_tracked_files(root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if not bold_pairs(path, text):
+            continue
+        starts = _line_offsets(text)
+        for opener, _ in bold_pairs(path, text):
+            line = max(i for i, off in enumerate(starts, 1) if off <= opener)
+            findings.append(Finding(path, line, 0, _BOLD, text[opener: opener + 60]))
+    return findings
+
+
 def iter_tracked_files(root: Path = REPO_ROOT):
     for rel in TRACKED_ROOTS:
         base = root / rel
@@ -308,16 +427,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fix", action="store_true", help="rewrite the files in place")
     args = parser.parse_args(argv)
 
-    findings = scan()
+    emoji, bold = scan(), scan_bold()
     if not args.fix:
         by_file: dict[Path, int] = {}
-        for f in findings:
+        for f in emoji + bold:
             by_file[f.path] = by_file.get(f.path, 0) + 1
-        for path, count in sorted(by_file.items(), key=lambda kv: -kv[1]):
+        for path, count in sorted(by_file.items(), key=lambda kv: -kv[1])[:20]:
             print(f"{count:4d}  {path.relative_to(REPO_ROOT)}")
-        print(f"\n{len(findings)} marker(s) in comments across {len(by_file)} file(s).")
+        print(f"\n{len(emoji)} status emoji and {len(bold)} bold span(s) in comments, "
+              f"across {len(by_file)} file(s).")
         print("Re-run with --fix to remove them.")
-        return 1 if findings else 0
+        return 1 if by_file else 0
 
     rewritten = 0
     for path in iter_tracked_files():
@@ -325,14 +445,14 @@ def main(argv: list[str] | None = None) -> int:
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        new = strip_text(path, text)
+        new = strip_bold(path, strip_text(path, text))
         if new != text:
             path.write_text(new, encoding="utf-8", newline="")
             rewritten += 1
 
-    remaining = scan()
-    print(f"Rewrote {rewritten} file(s); {len(remaining)} marker(s) remain in comments.")
-    for f in remaining:
+    emoji, bold = scan(), scan_bold()
+    print(f"Rewrote {rewritten} file(s); {len(emoji)} emoji and {len(bold)} bold span(s) remain.")
+    for f in (emoji + bold)[:10]:
         print(f"  {f!r}")
     return 0
 

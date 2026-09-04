@@ -1,14 +1,14 @@
 """Worksheet triage — grouping annotation rows by the guideline rule that covers them.
 
 `tools/eval_corpus.py worksheet` used to hand the annotator two flat lists of every unmatched
-string. Measured over the six loadable human pairs that is **507 rows, of which 322 can never be
-findings** under the annotation guideline's own "What is *not* a finding" section — 82% of one
+string. Measured over the six loadable human pairs that is 507 rows, of which 322 can never be
+findings under the annotation guideline's own "What is *not* a finding" section — 82% of one
 pair's list was surface-roughness reference data sitting in the `tolerance` safe zone.
 
 The triage groups those under the rule that excludes them. The danger it introduces is the reason
 for this file: a row wrongly grouped as "not a finding" is a miss the annotator never looks at,
 and unmeasured misses are the exact quantity the corpus exists to produce. So the invariant is
-one-directional — **triage may never exclude on uncertainty.**
+one-directional — triage may never exclude on uncertainty.
 
 Pure-function tests by design: the eval payloads are gitignored (see the `/storage/eval/` note in
 `.gitignore`), so anything requiring a real pair cannot run in CI.

@@ -151,7 +151,7 @@ async def export_vector_sheet(drawing_id: str, payload: VectorSheetRequest) -> R
     # `vector_pdf_exporter` drives the OO `Figure` API, not the `pyplot` state machine.
     #
     # `TextSource.LAYER` makes the searchable layer the VISIBLE text instead of a second, hidden
-    # copy under ezdxf's glyphs. Measured on this corpus's six densest sheets: **3.4x to 8.0x**
+    # copy under ezdxf's glyphs. Measured on this corpus's six densest sheets: 3.4x to 8.0x
     # end-to-end (28.1 s -> 7.5 s on the largest), a fifth of the file size, and real selectable
     # text rather than paths. It matters most for the sheets nobody has exported yet -- ezdxf
     # costs ~44 ms per string against the layer's 2.18 ms, so it changes how the export SCALES,

@@ -2,24 +2,24 @@
 
 `corrections` (every non-retracted `AuditFeedbackDocument`) and `findings` (every
 `AuditViolation`, reviewed or not) were added on 2026-08-17 to widen the retrieval corpus. The
-motivation is arithmetic: `metrics.chance_recall_at_k` is `k/N` **over a single collection's own
-record count**, so at `lessons` = 17 and `standards` = 16 the chance floor sits at 0.29 and 0.31
+motivation is arithmetic: `metrics.chance_recall_at_k` is `k/N` over a single collection's own
+record count, so at `lessons` = 17 and `standards` = 16 the chance floor sits at 0.29 and 0.31
 against a 0.25 maximum — no retrieval score over those collections can be informative regardless
 of how good the encoder is. A collection has to be big enough to measure before it can be
 measured.
 
 Three properties are pinned here, and each one is a way this could go quietly wrong:
 
-1. **`lessons` text must not move.** `findings` is a strict superset of `lessons`, so the two
+1. `lessons` text must not move. `findings` is a strict superset of `lessons`, so the two
    share `violation_record`. If that generalisation changed the text of an approved violation by
    even one byte, `index_builder._digest` would change, and every label ever authored against
    `lessons` would fail with `LabelDriftError` — which presents as "the encoder regressed".
 
-2. **A citation must state its review state.** Most of `findings` has never been reviewed by
+2. A citation must state its review state. Most of `findings` has never been reviewed by
    anyone. A hit that does not say so is the hazard ADR-008 named for retrieval: *"surfacing
    near-miss rules as authoritative is a recall attack"*.
 
-3. **A disagreement must survive indexing.** `_collapse_duplicate_texts` drops byte-identical
+3. A disagreement must survive indexing. `_collapse_duplicate_texts` drops byte-identical
    texts to protect the chance floor's denominator. If a correction's verb lived only in
    metadata, two corrections that reached *opposite* verdicts on the same entity text would be
    byte-identical and one would be silently dropped — discarding the single most informative

@@ -220,7 +220,7 @@ async def test_the_route_is_authenticated():
 async def test_the_report_asks_for_the_visible_text_layer(wired):
     """The route requests `TextSource.LAYER`, which is where the export's speed comes from.
 
-    Measured on the six densest sheets in `storage/uploads`: **3.4x to 8.0x** end-to-end, and a
+    Measured on the six densest sheets in `storage/uploads`: 3.4x to 8.0x end-to-end, and a
     change in how the export SCALES rather than a constant — ezdxf spends ~44 ms per string
     against the layer's 2.18 ms, and an assembly is a lot of strings.
 

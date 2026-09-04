@@ -1,7 +1,7 @@
 """
 zone_geometry.py
 ================
-Containment for zone shapes, which are a rectangle **or** a polygon.
+Containment for zone shapes, which are a rectangle or a polygon.
 
 A zone is a rectangle until a user inserts a node on one of its edges in the alignment editor;
 from then on it carries an explicit outline. Both forms answer exactly one question here — *is
@@ -10,7 +10,7 @@ this point inside this zone* — so the rest of the pipeline never branches on s
 ## Why `regions` values are still 4-tuples
 
 The comparison reads zone geometry as `(xmin, ymin, xmax, ymax)` at ~29 sites: growth caps,
-overlap logging, crop bounds, proximity windows. Every one of those wants the **bounding box**
+overlap logging, crop bounds, proximity windows. Every one of those wants the bounding box
 and would be wrong or meaningless with an outline. So a polygon zone keeps its bounding box in
 `regions[zone_key]` exactly as before, and the outline rides alongside under the reserved
 `_zone_polygons` key — the same smuggle-an-extra-key pattern as `safe_zones`,
@@ -21,7 +21,7 @@ Only the places that gate *content* consult the outline:
 
 ## Coordinate space
 
-Absolute CAD units, **Y-up**, same as every other bbox in `regions`. The Y-DOWN template
+Absolute CAD units, Y-up, same as every other bbox in `regions`. The Y-DOWN template
 fractions are converted once, in `zone_template_resolver.fractions_to_absolute_polygon`, which
 mirrors `apps/desktop/src/utils/zoneFractions.ts::fractionPointToCad`. A point conversion is
 the flip ALONE (`by1 - y*h`) with no min/max swap — the swap in the *box* conversion is an

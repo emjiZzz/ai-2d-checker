@@ -51,7 +51,7 @@ if (-not (Test-Path $launcher)) { throw "Hidden launcher not found: $launcher" }
 # to a scoped user and pushing it to every workstation. Under the old rule, a new installer would
 # reach 21 machines and change nothing, silently.
 #
-# **The cost, stated rather than hidden: a per-machine edit is overwritten on upgrade.** The
+# The cost, stated rather than hidden: a per-machine edit is overwritten on upgrade. The
 # realistic case is `SIDECAR_PORT` on a machine where 8080 is taken. So the old file is kept as
 # `.env.previous`, and any key whose value CHANGED is printed -- an operator who tuned something
 # is told, instead of discovering it when the app stops connecting.

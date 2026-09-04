@@ -5,12 +5,12 @@ above it on the ladder is defined by optimising against a number that starts her
 
 ## Two rules that decide whether the numbers mean anything
 
-**A prediction is a candidate whose status is not `MATCHED`.**
+A prediction is a candidate whose status is not `MATCHED`.
 `generate_deterministic_candidates` returns every checklist row, including items it checked
 and found unchanged — a null pair comes back with 50 candidates and 0 discrepancies. A
 scorer that counted candidates would report precision near zero on a perfect run.
 
-**Matching must not require the categories to agree.** Category attribution is scored
+Matching must not require the categories to agree. Category attribution is scored
 *separately* from detection, so a finding the engine located but filed under the wrong
 category is a category error, not a miss. Requiring category equality to match would
 double-count it as both a false negative and a false positive and make the two metrics
@@ -21,7 +21,7 @@ impossible to read apart.
 The plan's design was handle-first with spatial and text as fallback. In practice, on these
 drawings, the fallback is the common path — for two independent reasons:
 
-  * Expected findings frequently carry a **payload address** (`REF#412`) rather than a DXF
+  * Expected findings frequently carry a payload address (`REF#412`) rather than a DXF
     handle, because entities exploded out of a block have no handle at all. See
     [[Gotcha - Exploded Block Children Have No Handle]]. Predictions never emit payload
     addresses, so such a label can never match on handle.
@@ -29,7 +29,7 @@ drawings, the fallback is the common path — for two independent reasons:
     table-derived, and most `title_block` findings come from OCR-corroborated fields.
 
 So the tiers run handle → text → spatial, greedily, each prediction consumed once, and the
-report states **how many matches came from each tier**. A result resting mostly on spatial
+report states how many matches came from each tier. A result resting mostly on spatial
 matching deserves less trust than one resting on handles, and hiding that behind a single F1
 would be the easiest way to ship a wrong number confidently.
 
@@ -56,8 +56,8 @@ from .corpus import CorpusPair, ExpectedFinding
 # This used to be imported from `comparison/reconciler.py` — the hybrid method's
 # cross-generator match radius — and was carried in `ComparisonParams` as a sweepable engine
 # constant. When the AI methods were removed the reconciler went with them, and that exposed
-# something the shared import had been hiding: **this number tunes the MEASUREMENT, not the
-# engine.** It decides which prediction the scorer pairs with which expected finding, so
+# something the shared import had been hiding: this number tunes the MEASUREMENT, not the
+# engine. It decides which prediction the scorer pairs with which expected finding, so
 # sweeping it moves F1 without any engine behaviour changing at all — the same class of
 # mistake the ledger already records under "Sweeping on detection F1 alone".
 #
@@ -347,9 +347,9 @@ def _best_prediction(
 
     Category is a *preference*, not a filter. Both extremes are wrong:
 
-      * **Requiring** category equality would turn every category error into a miss plus a
+      * Requiring category equality would turn every category error into a miss plus a
         false positive, double-counting it and making attribution impossible to read.
-      * **Ignoring** category lets short normalised strings collide across the sheet. That
+      * Ignoring category lets short normalised strings collide across the sheet. That
         is not hypothetical — the first audited pair matched an expected `bill_of_materials`
         cell `a` against a `drawing_views` prediction `Ａ` (fullwidth, NFKC-folds to `a`)
         while the genuine BOM predictions were binned as duplicates. Precision and recall
@@ -377,9 +377,9 @@ def _would_match_any(prediction: Prediction, matches: Iterable[Match]) -> bool:
     Deliberately narrow — same category, and the *same* handle or the *same* text. Two
     things it used to allow, and no longer does:
 
-      * **Cross-category.** An unrelated false positive sharing a short string got absolved
+      * Cross-category. An unrelated false positive sharing a short string got absolved
         as a duplicate, and precision read too high.
-      * **Mere proximity.** A different string nearby in the same category is a *different*
+      * Mere proximity. A different string nearby in the same category is a *different*
         finding; if ground truth does not have it, it is a false positive. Allowing it made
         the duplicate/spurious split depend on whether a candidate happened to carry
         coordinates at all — BOM findings mostly do not — which is noise, not a measurement.
@@ -418,7 +418,7 @@ class CorpusScore:
     def counts(self, category: str | None = None) -> dict[str, int]:
         """True positives, false negatives and false positives, optionally per category.
 
-        A match is attributed to its **expected** category, and a spurious prediction to
+        A match is attributed to its expected category, and a spurious prediction to
         its own — so a category error shows up as neither a miss nor a false positive
         overall, only in the attribution accuracy below.
         """
@@ -463,13 +463,13 @@ class CorpusScore:
         ## Why recall only, and not precision
 
         `per_category` reports precision, recall and F1 because a `Prediction` carries its own
-        category. **It does not carry an entity type** -- the engine reports a discrepancy, not
+        category. It does not carry an entity type -- the engine reports a discrepancy, not
         the kind of CAD entity underneath it -- so a false positive cannot be attributed to a
         type without re-resolving its handle, which is a different and lossier operation than
         the one `ExpectedContext` already did.
 
         So this reports `tp` / `fn` / `recall`, which come entirely from the expected side where
-        the entity is in hand, and **omits precision rather than inventing a denominator**. A
+        the entity is in hand, and omits precision rather than inventing a denominator. A
         per-type precision computed from an unattributable numerator would read perfectly and
         mean nothing, which is the exact failure this method exists to expose.
 
@@ -478,7 +478,7 @@ class CorpusScore:
         Categories are zone-based (`notes_section`, `title_block`), so a failure confined to an
         entity *type* is invisible in every number the eval prints. Measured 2026-08-20, the
         address resolver returned the wrong entity for clicks on untextured geometry while
-        **every one of 1541 TEXT entities resolved correctly** -- the aggregate read fine and
+        every one of 1541 TEXT entities resolved correctly -- the aggregate read fine and
         the per-type split made it obvious in one line.
 
         An expectation whose address did not resolve is bucketed as `"<unresolved>"` rather than

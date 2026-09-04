@@ -6,15 +6,15 @@
 #
 # Called by the installer's NSIS pre-uninstall hook.
 #
-# **Order matters: stop the process BEFORE removing the task.** Unregistering first leaves a
+# Order matters: stop the process BEFORE removing the task. Unregistering first leaves a
 # running backend with nothing to manage it -- it keeps port 8080 bound until the next reboot, so a
 # reinstall cannot start its own copy and the user gets an app that talks to an orphaned server
 # from the previous version.
 #
-# **Never fatal.** An uninstaller that fails leaves the product half-removed, which is worse than
+# Never fatal. An uninstaller that fails leaves the product half-removed, which is worse than
 # a stray process. Every step reports what it did and carries on.
 #
-# **Deliberately does NOT delete `storage\`.** That folder holds the engineer's uploaded
+# Deliberately does NOT delete `storage\`. That folder holds the engineer's uploaded
 # drawings and their ground-truth markings. An uninstall -- including the one that happens
 # silently as part of an UPGRADE -- must not destroy collected data. Removing it is a manual,
 # deliberate act.

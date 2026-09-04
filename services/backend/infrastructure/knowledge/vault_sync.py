@@ -9,12 +9,12 @@ inject into backend RAG filters.
 
 This used to walk the ENTIRE vault and concatenate every note, which had two consequences:
 
-* **It did not work.** The inline-code regex does not account for triple-backtick fences, so
+* It did not work. The inline-code regex does not account for triple-backtick fences, so
   across a concatenated blob it matched the span *between* one fence and the next. Measured
   2026-07-29: 36 of 54 "tolerance keywords" were multi-hundred-character markdown spans
   containing whole mermaid diagrams and frontmatter. None could ever substring-match a CAD
   string, so Pillar 1 contributed nothing at all.
-* **Documentation was a runtime input.** Writing a gotcha note that quoted a Japanese anchor
+* Documentation was a runtime input. Writing a gotcha note that quoted a Japanese anchor
   changed what `safe_filter` excluded from comparison. Editing the vault to improve its prose
   measurably increased the junk in this rule set.
 
@@ -234,10 +234,10 @@ class VaultSyncManager:
         The block shape is fixed by `auto_doc.py`:
 
             ## Learned Rule — Pattern: `<entity_text>`
-            - **Client**: <client>
-            - **Category**: `<category>`
-            - **Human Dismissals**: <n> confirmed overrides
-            - **Directive**: ...
+            - Client: <client>
+            - Category: `<category>`
+            - Human Dismissals: <n> confirmed overrides
+            - Directive: ...
 
         Returns `{category: [pattern, ...]}`.
         """
@@ -273,7 +273,7 @@ class VaultSyncManager:
         `category` filters to one checklist category; omitting it returns every learned
         pattern across all of them.
 
-        Consumers should match these **exactly** (after normalization), never as substrings.
+        Consumers should match these exactly (after normalization), never as substrings.
         These come from `AuditFeedbackDocument.entity_text` -- the precise string a human
         dismissed -- and several are short (`1`, `2A0`). Substring matching would silently
         suppress unrelated content, which is the one failure mode this system cannot detect,

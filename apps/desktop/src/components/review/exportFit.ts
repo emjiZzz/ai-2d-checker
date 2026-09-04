@@ -11,7 +11,7 @@
  * ```
  *
  * They are not tight, and the comment saying so is the reason it went unnoticed for so long.
- * `get_xlim()` returns the **autoscaled** limits, which carry Matplotlib's default `axes.xmargin`
+ * `get_xlim()` returns the autoscaled limits, which carry Matplotlib's default `axes.xmargin`
  * / `axes.ymargin` of 5% per side — and `set_aspect('equal', 'box')` then expands whichever axis
  * is short of the figure's ratio, adding more. So every sheet in the system has roughly 10% of
  * dead space baked into its bounds, in the axis that is expanded rather more.
@@ -20,7 +20,7 @@
  * enormous margin no page setting could reach: a 7 mm page margin around a drawing that was
  * already floating inside its own bounds by ~14 mm a side.
  *
- * **`render_bounds` itself must not be "fixed".** Every zone template stores its boxes as
+ * `render_bounds` itself must not be "fixed". Every zone template stores its boxes as
  * fractions of it, `zone_signature` derives a sheet's template identity from it, and every stored
  * `CadPoint` carries a snapshot of it for drift detection. Re-deriving it would silently
  * invalidate all three. The export crops to the ink instead, which is a question only the export
@@ -181,7 +181,7 @@ export function cropIsWorthwhile(
  *
  * 700 is the width this layout typically gives a canvas pane on a 1920-wide display, so an export
  * from an ordinary window is unchanged by pinning it; what changes is that an unusual one now
- * matches. At the report's A4 capture (3492 px across 291 mm) it puts a hairline at **~0.42 mm**
+ * matches. At the report's A4 capture (3492 px across 291 mm) it puts a hairline at ~0.42 mm
  * on paper — heavier than a plotter's 0.13–0.25 mm, and the number to change if these come out
  * looking too bold. It is deliberately the ONE knob: raising it thins every line on the page
  * together.

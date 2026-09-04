@@ -9,8 +9,8 @@ from .cad_point import CadPoint, coerce_cad_point_list
 
 
 #: The two values `resolution_type` actually holds. Defined here because R1 made the field
-#: readable for the first time — until then it had exactly one writer (`audits.py`) and **no
-#: readers at all**, which is how its own description came to advertise `confirmed` /
+#: readable for the first time — until then it had exactly one writer (`audits.py`) and no
+#: readers at all, which is how its own description came to advertise `confirmed` /
 #: `rejected_hallucination`, a pair nothing has ever written. The written spelling wins: it is
 #: what is in the database, and inventing a migration to satisfy a docstring would be backwards.
 RESOLUTION_APPROVED = "APPROVED"

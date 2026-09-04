@@ -1,6 +1,6 @@
 """Title-upper-left fields must pair across a bilingual header split.
 
-Reported live: one column of the UL metadata table produced **two** checklist cards for a value
+Reported live: one column of the UL metadata table produced two checklist cards for a value
 that had not changed —
 
     コードNO.   ORIGINAL 230   REVISION NONE   MATCHED
@@ -11,7 +11,7 @@ while the canvas correctly showed a single MATCHED marker on `230`.
 This is a recurrence of [[Gotcha - Title Upper-Left Double-Reported by Scale]], which
 `match_title_ul_pairs` was written to fix. That fix pairs fields sharing a normalized header
 token, which works when one drawing keeps both stacked labels (`Unit No. / ユニットNo.`) and the
-other keeps one of them. It cannot work when the two drawings keep **different halves** — the
+other keeps one of them. It cannot work when the two drawings keep different halves — the
 reference kept the Japanese label and the revision the English one, so the two keys shared no
 token at all.
 

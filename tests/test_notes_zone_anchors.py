@@ -2,14 +2,14 @@
 
 An anchor that also occurs outside the notes block does not merely add noise. The zone's box is
 fitted to the matched cluster, so a match in the title or tolerance area drags the box across the
-sheet and it ends up covering **neither** the furniture nor the real notes. That is the
+sheet and it ends up covering neither the furniture nor the real notes. That is the
 false-negative direction: content in no zone is out of scope by the annotation guideline, and the
 engine does not compare it either.
 
 Measured on the corpus 2026-08-12, and both halves are pinned here:
   - removing `仕上げ` took notes rows inside the detected box from 16/45 to 27/45, and the three
     `M7452A*` reference sides from 0/3 to 3/3;
-  - adding `ロール` appeared to reach 39/45 but landed the notes box **100% inside `tolerance`**
+  - adding `ロール` appeared to reach 39/45 but landed the notes box 100% inside `tolerance`
     on three sides, because the box inflated to span the roll counts and the drawing title.
 
 See `docs/vault/06 - .../Gotcha - One Zone Template Cannot Fit Two Sides.md`.

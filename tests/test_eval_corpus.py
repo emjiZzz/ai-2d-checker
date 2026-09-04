@@ -430,7 +430,7 @@ def test_a_stale_cache_entry_is_replaced_not_deferred_to(tmp_path):
 def test_a_reformatted_cache_entry_is_not_treated_as_stale(tmp_path):
     """The other half, and the reason this compares readings rather than bytes.
 
-    **19 corpus pair-sides share one OCR cache key**: every mutation pair derives from a base
+    19 corpus pair-sides share one OCR cache key: every mutation pair derives from a base
     drawing and reuses its id and file hash, so `M7452A0N01/ref` and 18 mutation sides all map
     to the same file. Their captured payloads were exported at different times and differ in
     JSON formatting alone -- measured 2026-08-17, every such collision in the corpus is
@@ -498,11 +498,11 @@ def test_uncaptured_sides_are_reported(tmp_path):
 #: owner's decision rather than something a test run can fix. Owner's call 2026-08-25: leave it,
 #: capture it by hand later.
 #:
-#: **This is a real exposure, not a formality.** `generate_deterministic_candidates` calls
+#: This is a real exposure, not a formality. `generate_deterministic_candidates` calls
 #: Gemini on a title-block OCR cache miss, so an eval run over this pair breaks the "zero network
 #: calls" exit criterion and scores its title-block findings differently offline than in the app.
 #:
-#: Empty this set the moment the reading is captured. The `xfail` below is **strict**, so the
+#: Empty this set the moment the reading is captured. The `xfail` below is strict, so the
 #: suite fails on the day it starts passing — which is the reminder, and is deliberate: a standing
 #: allowlist is a place for new breakage to hide.
 KNOWN_UNCAPTURED_OCR = {"M745204N01"}
@@ -538,7 +538,7 @@ def test_committed_corpus_has_every_ocr_reading_captured():
 def test_no_pair_beyond_the_known_one_is_missing_its_ocr_reading():
     """The guard the `xfail` above would otherwise switch off for the whole corpus.
 
-    **An `xfail` on a test that checks EVERY pair excuses every pair.** That is the trap: with
+    An `xfail` on a test that checks EVERY pair excuses every pair. That is the trap: with
     only the marker above, a sixth pair exported tomorrow without its reading would be absorbed
     into the same expected failure and never reported. This asserts the exposure has not grown,
     so the known gap stays named and a new one still fails.

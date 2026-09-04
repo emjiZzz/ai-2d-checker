@@ -2,11 +2,11 @@
 
 Two defects, both measured on the real vault on 2026-07-29:
 
-1. **It walked the ENTIRE vault** and concatenated every note, so architecture notes, gotchas
+1. It walked the ENTIRE vault and concatenated every note, so architecture notes, gotchas
    and ADRs — documentation *about* the system — steered `safe_filter`. Writing a gotcha that
    quoted a Japanese anchor changed what the comparison engine excluded.
 
-2. **The inline-code regex ignored triple-backtick fences.** Across a concatenated blob it
+2. The inline-code regex ignored triple-backtick fences. Across a concatenated blob it
    paired the closing backtick of one fence with the opening backtick of the next and captured
    everything between. Result: 36 of 54 "tolerance keywords" were multi-hundred-character
    markdown spans containing whole mermaid diagrams. None could substring-match a CAD string,

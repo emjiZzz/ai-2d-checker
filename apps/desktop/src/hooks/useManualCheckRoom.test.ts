@@ -4,7 +4,7 @@
  * This hook is the single largest behavioural difference in a prototype build: it decides whether
  * the left panel is the comparison engine or the engineer's own marking list, whether the canvas
  * suppresses engine markers, and what the context menu offers. In prototype mode it is
- * unconditionally true, so **no comparison engine runs in a prototype build** — the opposite of
+ * unconditionally true, so no comparison engine runs in a prototype build — the opposite of
  * what `features.ts` used to claim.
  *
  * The store-subscription test is the one with a history: the hook used to read the flag and return

@@ -6,7 +6,7 @@ docstring: `origin`, `alignment_of_views`, `line_attributes` and `text_attribute
 reliable text-level signal at all and are never assigned by these rules", with Generator B —
 the one that reasoned visually over the rendered image — named as the intended source.
 ADR-006 removed Generator B. The card was therefore reachable only through its empty state,
-and that empty state reads **"No changes detected."**
+and that empty state reads "No changes detected."
 
 A check that never ran, reporting clean, is the one failure mode this system says it cannot
 detect. `line_name` is handled honestly for exactly this reason — it sits in
@@ -21,7 +21,7 @@ reads them back: `entity_mapper.common_properties` writes `linetype`, `lineweigh
 and `ltscale` onto every graphic entity, and `dxf_parser` records the same attributes on each
 `layer` record so a BYLAYER entity can be resolved against its layer.
 
-Measured across the 42 drawings in `storage/uploads`, the whole corpus draws with **four**
+Measured across the 42 drawings in `storage/uploads`, the whole corpus draws with four
 line types: CONTINUOUS (16200 strokes), CENTER (818), DASHED (684) and HIDDEN (2).
 
 ## The key is (linetype, lineweight). Colour is not an axis — measured, not assumed.
@@ -46,7 +46,7 @@ never splits a row.
 
 `geometry_differ` was built and reverted for emitting findings like `Geometry: 10 line` —
 "a count and a primitive type and nothing else", which a checker cannot act on. Its lesson is
-recorded as: **a finding must say what changed, not how many primitives differ.**
+recorded as: a finding must say what changed, not how many primitives differ.
 
 So a row is MATCHED when both sides draw with that (linetype, lineweight), ADDED when only
 the revision does, and REMOVED when only the reference does. Stroke counts are reported in
@@ -173,7 +173,7 @@ def profile_line_attributes(
 def describe(key: tuple[str, float]) -> str:
     """The ORIGINAL/REVISION cell for one profile row: `CENTER 0.25mm`.
 
-    **No stroke count.** This card answers "what kind of line types does the drawing use",
+    No stroke count. This card answers "what kind of line types does the drawing use",
     which is a question about the SET of line types, not about how many strokes each one
     drew. The count used to be part of this string, and that was wrong in three ways at once
     (owner's report, 2026-08-17):

@@ -1,9 +1,9 @@
-"""Stage 0g — relocated from `services/backend/tests/test_vault_sync.py`, which had **never
-executed**: that directory sits outside `pyproject.toml`'s `testpaths` and its
+"""Stage 0g — relocated from `services/backend/tests/test_vault_sync.py`, which had never
+executed: that directory sits outside `pyproject.toml`'s `testpaths` and its
 `infrastructure.*` imports fail collection from the repo root.
 
 Deliberately smaller than the file it replaces. Two of the original three tests read the
-**real** vault and asserted that Japanese tolerance keywords came back — but
+real vault and asserted that Japanese tolerance keywords came back — but
 `08 - Client Domain & CAD Rules/` is gitignored, so those tests asserted a property of one
 developer's filesystem and would fail in CI for a reason having nothing to do with the code.
 Rewritten against an injected vault path, which `VaultSyncManager.__init__` already accepts

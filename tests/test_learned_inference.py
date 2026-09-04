@@ -78,7 +78,7 @@ def test_exact_override_forces_matched_even_when_model_not_ready(monkeypatch):
     holder = _install([_fake_doc("verdict_matched", "SPECIAL LEGEND", ref="SPECIAL LEGEND")])
     assert not holder.verdict_ready()
 
-    # `original_value` is set because overrides are keyed on **both sides** as of 2026-08-17
+    # `original_value` is set because overrides are keyed on both sides as of 2026-08-17
     # (`exact_pair_key`), and because a CHANGED finding with no reference value is not a shape the
     # engine produces — every CHANGED marking on M745230A01 carries both. The point of this test
     # is that branch 1 fires without a trained model, which it still does.

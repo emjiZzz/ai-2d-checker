@@ -431,7 +431,7 @@ export interface PendingStamp {
 /**
  * Everything `recordStamp` needs beyond the stamp itself.
  *
- * **`textWasEdited`, `isBulk` and `notes` are structurally always `false` / `false` / `''`.**
+ * `textWasEdited`, `isBulk` and `notes` are structurally always `false` / `false` / `''`.
  * They are on the wire model and on `GroundTruthMarking` because the capture schema is a
  * deliberate superset of what a corpus label needs, but the only surface that writes a marking
  * is `SelectionMenu`, and it has no field for any of the three.

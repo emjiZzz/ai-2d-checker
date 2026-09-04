@@ -1,6 +1,6 @@
 """Stage B — the query store, and the one property that makes it worth having.
 
-A **query** and a **relevance label** have different lifetimes. `labels.LabelSet` pins the
+A query and a relevance label have different lifetimes. `labels.LabelSet` pins the
 `source_digest` of the index it was authored against and refuses to score across a mismatch, so
 every label dies the moment the corpus grows. A query does not: "what did a checker ask" is a fact
 about the checker, not about the index.

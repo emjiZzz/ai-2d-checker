@@ -58,7 +58,7 @@ import { useEngineerStore } from "../../engineerStore";
  * No violations, no audit, no learned model. Markings land in their own collections and stop
  * there.
  *
- * **`textWasEdited`, `isBulk` and `notes` are never populated** — no UI writes them. See
+ * `textWasEdited`, `isBulk` and `notes` are never populated — no UI writes them. See
  * `CommitStampInput` in `../types` for why, and for what it means downstream.
  */
 
@@ -75,7 +75,7 @@ const TOOL_STATUS: Record<StampTool, MarkingStatus> = {
  * Which side a tool can be recorded from.
  *
  * Only two are directional, and each for a reason that is about the drawing rather than about
- * the UI: a REMOVED exists on the **reference** and nowhere else, an ADDED on the **revision**
+ * the UI: a REMOVED exists on the reference and nowhere else, an ADDED on the revision
  * and nowhere else. (Reference-side handle coverage of 0.8–13% is the hard case for addressing
  * precisely because REMOVED lives there.)
  *

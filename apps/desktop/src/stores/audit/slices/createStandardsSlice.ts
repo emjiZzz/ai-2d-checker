@@ -40,7 +40,7 @@ export const createStandardsSlice: StateCreator<AuditState, [], [], StandardsSli
 
     try {
       // `/api/v1/standards/upload`, not `/api/v1/standards`. The latter exists but is
-      // **GET-only** (`standards.py::list_standards`), so posting to it returned
+      // GET-only (`standards.py::list_standards`), so posting to it returned
       // `405 Method Not Allowed` — surfaced in the dialog as "Ingestion Fault: Method Not
       // Allowed" — and no standard could ever be ingested through the UI. That is why
       // `standard_documents` and `standard_chunks` were both 0, which

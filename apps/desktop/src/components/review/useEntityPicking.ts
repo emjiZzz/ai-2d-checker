@@ -44,10 +44,10 @@ import { submitAuditFeedbackPayload } from '../../services/auditsApi';
  * This replaced right-click stamping (2026-08-18), then click-to-stamp a few hours later. The
  * original right-click reasoning was that aiming was hard and a second gesture would mean two
  * ways to mark a drawing. The hit index answered the first; the second still holds, and still
- * does here — **selecting is not recording**, so there remains exactly one way to write a
+ * does here — selecting is not recording, so there remains exactly one way to write a
  * marking.
  *
- * **A drag is not a click.** A press that travels more than `CLICK_SLOP_PX` is a pan, and
+ * A drag is not a click. A press that travels more than `CLICK_SLOP_PX` is a pan, and
  * selects nothing on its own. Clicking empty space clears the selection.
  */
 
@@ -255,7 +255,7 @@ export function useEntityPicking(params: {
    * `findMatches` call the cross-sheet outline uses, so what gets recorded is exactly the entity
    * the engineer can see outlined and labelled while they choose a status.
    *
-   * **Only when there is exactly ONE.** Where several candidates carry the value and nothing
+   * Only when there is exactly ONE. Where several candidates carry the value and nothing
    * separates them the overlay outlines them all with an `xN` chip, and this publishes nothing:
    * a MATCHED that silently picked one of three would be a fabricated pair wearing the same
    * badge as a real one.

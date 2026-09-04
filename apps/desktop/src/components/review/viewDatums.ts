@@ -6,16 +6,16 @@
  *
  * ## Why this is not a one-liner off the transform
  *
- * The obvious reading is `to_paper(view_anchor)`, and it is a **tautology**: the anchor is
+ * The obvious reading is `to_paper(view_anchor)`, and it is a tautology: the anchor is
  * defined as the model point that lands at the viewport's window centre, so projecting it back
  * returns the window centre and nothing else. That shipped, and it put markers 22.2 and 11.8
  * units from the real datum on two of `M745221N01_FSRS2`'s three views — see
  * `docs/vault/06 - .../Gotcha - The View Origin Marker Marked the Middle of the Window.md`.
  *
  * The file states exactly one origin per sheet. Measured across the whole corpus: `ucs_origin`
- * is `(0,0,0)` on **all 34 viewports of all 12** viewport-bearing sheets, `view_direction_vector`
+ * is `(0,0,0)` on all 34 viewports of all 12 viewport-bearing sheets, `view_direction_vector`
  * is `(0,0,1)` and `view_twist_angle` is `0.0` everywhere — and the projected WCS origin lands
- * inside **exactly one viewport per sheet, 12 sheets, 12 hits, never two**. iCAD knows the other
+ * inside exactly one viewport per sheet, 12 sheets, 12 hits, never two. iCAD knows the other
  * views' origins from the 3D model; the DXF export dropped them along with the UCS.
  *
  * So one view's datum is EXTRACTED and the rest are INFERRED from the view's own geometry. That
@@ -36,12 +36,12 @@
  *     centrelines at all.
  *  4. A single centreline: the axis is certain, the position ALONG it is not. Takes the
  *     centreline's own midpoint, which is symmetric about the part because that is how
- *     centrelines are drawn. **This is the weakest rung and the one open question in the note**
+ *     centrelines are drawn. This is the weakest rung and the one open question in the note
  *     — on the section view it puts the marker on the plate's mid-plane (257.234) when the two
  *     faces (255.091 / 259.377) are equally defensible, a 4.29-unit spread. One constant to
  *     change once it is read off iCAD.
  *
- * A view matching none of these gets **no marker**. Falling back to the window centre is exactly
+ * A view matching none of these gets no marker. Falling back to the window centre is exactly
  * the defect this module replaces: a marker that is always present and sometimes lying is worse
  * than one that is absent.
  */

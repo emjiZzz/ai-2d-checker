@@ -9,13 +9,13 @@
 
     Nothing reads it yet -- that is a gap, not permission to leave it stale.
 
-Verified 2026-08-20 and still true: the field is **written** by `extraction_pipeline.py`,
-**copied** into an `EntityAddress`, and **named** in a router docstring -- but nothing ever
+Verified 2026-08-20 and still true: the field is written by `extraction_pipeline.py`,
+copied into an `EntityAddress`, and named in a router docstring -- but nothing ever
 queries it. So the one question it exists to answer, *"which drawings render and compare
 wrong right now?"*, had no way to be asked.
 
 A stale row does not error. `render_paths`, dimension text anchors, leader hooklines, MTEXT
-rotation and the elliptical-arc fix are all computed at **extraction** time, so a drawing
+rotation and the elliptical-arc fix are all computed at extraction time, so a drawing
 ingested before them renders wrong and keeps rendering wrong until it is re-extracted. It looks
 like a drawing the whole time.
 
@@ -27,7 +27,7 @@ re-extraction is exactly the kind of sweeping change that should not be one comm
 
 ## Where the version descriptions come from
 
-They are **parsed out of `extracted_entity.py`'s own `# vN:` block**, not restated here. That
+They are parsed out of `extracted_entity.py`'s own `# vN:` block, not restated here. That
 block is the source of truth and the next bump will edit it; a second copy in this file would
 be correct exactly until v8 and wrong silently thereafter. The parse failing loudly is better
 than a stale description reading plausibly -- so an unparseable block is reported, not

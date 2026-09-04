@@ -121,8 +121,8 @@ export const generateComparisonMarkings = ({
     // so for these structured categories we trust the backend coordinate and skip text
     // grounding entirely. (drawing_views/notes still ground by text, where it is correct.)
     //
-    // This guard used to also require `hasBackendCoord`, and so **failed open in exactly the
-    // case it was written for**: when the backend resolves nothing the marking arrives with
+    // This guard used to also require `hasBackendCoord`, and so failed open in exactly the
+    // case it was written for: when the backend resolves nothing the marking arrives with
     // `coordinates: null` and `resolution_method: "unresolved"`, `hasBackendCoord` is false,
     // and the whole thing fell through into fuzzy matching — with no coordinate to sanity-check
     // the result against. Reported from a live review on M745227N01: one unresolved BOM row
@@ -132,7 +132,7 @@ export const generateComparisonMarkings = ({
     // labelled `bill_of_materials`.
     //
     // A structured value has no meaning outside the cell the backend read it from, so when the
-    // backend could not place it, it gets **no marker**. The value is still reported in the
+    // backend could not place it, it gets no marker. The value is still reported in the
     // BOM / title-block table; what is dropped is a claim about *where* it is that nothing
     // could support.
     const isStructuredCategory =

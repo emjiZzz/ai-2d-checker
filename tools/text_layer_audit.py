@@ -1,10 +1,10 @@
 """Does the report's invisible text layer land on the glyphs it is meant to select?
 
-`tools/render_audit.py` measures the CANVAS against ezdxf. This measures the **exported PDF**
+`tools/render_audit.py` measures the CANVAS against ezdxf. This measures the exported PDF
 against ezdxf, which is a different question with a different oracle, and it is the acceptance
 metric for `vector_pdf_exporter.render_vector_sheet`.
 
-**The oracle is the whole difficulty, and getting it wrong is the reason this file exists.**
+The oracle is the whole difficulty, and getting it wrong is the reason this file exists.
 `render_audit.record_ground_truth` records ezdxf's ink in the CANVAS configuration — MS Gothic,
 full DXF height. The report renders Yu Mincho Light at `CAD_TEXT_FIT_SCALE`, so measured against
 that oracle it is wrong in two directions at once (0.8464 on width), and the two errors partly
@@ -19,18 +19,18 @@ report face through `load_and_transcode`, then `_shrink_text_to_fit` — and swa
 document the sheet was rendered from, and a change to the face or the fit scale moves the oracle
 with the page instead of leaving it behind.
 
-Healthy at 2026-08-25 on the two dense sheets: **width ratio median 1.026 / 1.027, 97% within
-+/-20%, |dx| median 0.094 / 0.095 drawing units, 0 strings missing, 0 raster images.**
+Healthy at 2026-08-25 on the two dense sheets: width ratio median 1.026 / 1.027, 97% within
++/-20%, |dx| median 0.094 / 0.095 drawing units, 0 strings missing, 0 raster images.
 
 Measured in `TextSource.LAYER`, which is what the report requests. It used to measure `OUTLINES`
 -- where the layer is invisible, so every number it reported was about a page nobody looks at and
 a mode the product no longer ships. The figures are unchanged by the switch, which is the point:
 placement is the same either way, and only the deferred strings differ.
 
-**Read the width ratio expecting ~1.026, not 1.000.** A PDF text rect is an ADVANCE box and
+Read the width ratio expecting ~1.026, not 1.000. A PDF text rect is an ADVANCE box and
 ezdxf's is an INK box, so the rect is wider by the side bearings. The model's widths themselves
 are exact — PyMuPDF's advances match ezdxf's at 1.0000 on Latin, CJK and U+3000-padded strings.
-A ratio near **1.9** means `cap_height_ratio` has regressed; near **0.5**, the two-font split in
+A ratio near 1.9 means `cap_height_ratio` has regressed; near 0.5, the two-font split in
 `_script_runs`.
 
 Usage, from the repo root:

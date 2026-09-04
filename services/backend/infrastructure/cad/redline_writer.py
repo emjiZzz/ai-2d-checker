@@ -1,6 +1,6 @@
 """Writes audit findings back into a DXF as a redline layer.
 
-The whole design rests on one property: **the original drawing is never rebuilt.**
+The whole design rests on one property: the original drawing is never rebuilt.
 The source file is opened, one new layer is added, and the result is saved to a new
 path. Everything the extraction pipeline does not capture -- lineweights it never read,
 hatch patterns, dimension styles, xrefs, proprietary objects, the entire header -- is

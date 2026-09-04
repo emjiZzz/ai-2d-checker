@@ -24,13 +24,13 @@ have been built first.
 
 ## What it reports
 
-1. **Census** -- reproduces the canvas HUD's `drawn/total`, classifying every extracted entity
+1. Census -- reproduces the canvas HUD's `drawn/total`, classifying every extracted entity
    through a port of the `renderEntities.ts` branch table. Answers "is anything missing".
    On M745221N01 the healthy number is 497/518: 518 minus 6 `layer` records and 12 `block`
    containers (never drawable) minus 3 clipped model-space entities. If this moves, geometry
    was lost.
 
-2. **Text placement oracle** -- the reason to build this at all. Renders the same layout
+2. Text placement oracle -- the reason to build this at all. Renders the same layout
    through `ezdxf.addons.drawing.Frontend` into a `Recorder` backend, which yields the exact
    placed ink box for every entity, keyed by handle. Then asks where the canvas renderer would
    put the same string under the rules it currently applies, and reports the delta.
@@ -44,8 +44,8 @@ have been built first.
                        is an exact test of the anchor. Was max 33.3 (a full string width) when
                        the renderer drew everything left/alphabetic.
    * `width_ratio`  -- predicted advance width / ezdxf's ink width. Tests that `\\W` is applied
-                       and that the DXF **cap** height is not being passed to CSS `font-size`
-                       as an **em** size. Settles just above 1.0; the excess is glyph side
+                       and that the DXF cap height is not being passed to CSS `font-size`
+                       as an em size. Settles just above 1.0; the excess is glyph side
                        bearing, which is the floor of an advance-vs-ink comparison.
 
    Both must converge on 0 and ~1.0. Rotated, wrapped and off-axis strings are excluded from
@@ -903,7 +903,7 @@ def print_report(report: dict[str, Any], top: int) -> None:
 #: `drawings` and `cull_nothing` both scale with the corpus, so pinning them guarantees a false
 #: alarm the next time anyone uploads a drawing — which is exactly what happened: this held
 #: `{"drawings": 32, "cull_nothing": 23, "max_per_sheet": 10}`, the figures CLAUDE.md itself
-#: **retired on 2026-08-20** as unreproducible ("the denominator alone shows why they were quoted
+#: retired on 2026-08-20 as unreproducible ("the denominator alone shows why they were quoted
 #: rather than measured: `storage/uploads` holds 55 drawings, not 32"). The doc was corrected and
 #: the tool was not, so every run printed three DIFFERS lines against numbers no document claimed
 #: any more — a checker crying wolf, which is how a real jump gets waved through.
@@ -1117,7 +1117,7 @@ def sweep_cull(directory: Path) -> dict[str, Any]:
     pre-landing check had no producer -- the same shape as
     `Gotcha - A Checklist Item With No Producer Reported Clean`, one layer over.
 
-    A sheet that fails to parse is **reported, not skipped silently**: a sweep that quietly
+    A sheet that fails to parse is reported, not skipped silently: a sweep that quietly
     drops the drawing which would have shown the regression is worse than no sweep.
     """
     rows: list[dict[str, Any]] = []

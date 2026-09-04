@@ -2,12 +2,12 @@
 
 Two things are easy to get wrong here and neither raises:
 
-1. **The Y flip.** Template fractions are Y-DOWN, CAD is Y-up. The *box* conversion swaps min
+1. The Y flip. Template fractions are Y-DOWN, CAD is Y-up. The *box* conversion swaps min
    and max as it flips; a *vertex* conversion is the flip alone. Applying the box rule to a
    point mirrors the outline vertically — still a closed shape, still the right size, still
    inside the right bounding box, just excluding the opposite half of the zone.
 
-2. **Excluding on the bounding box.** A reshaped sibling zone that still excludes by its bbox
+2. Excluding on the bounding box. A reshaped sibling zone that still excludes by its bbox
    drops content from the notch the user deliberately cut out of it, and that content lands in
    no category at all.
 

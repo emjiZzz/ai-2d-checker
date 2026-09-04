@@ -1,9 +1,9 @@
 """The room list does not carry comparison results, and the room detail does.
 
-Measured 2026-08-19 against the live cluster: `GET /rooms` returned **397.9 KB in 5.19 s** for a
+Measured 2026-08-19 against the live cluster: `GET /rooms` returned 397.9 KB in 5.19 s for a
 view that renders each room's name and status. The weight is `physical_comparison_results` — a
 whole comparison checklist, every finding and every canvas marking, stored as a JSON string on
-each Room. Projected out at the database the same call is **103 ms / 7.2 KB**.
+each Room. Projected out at the database the same call is 103 ms / 7.2 KB.
 
 The reason this needs a test rather than a comment: a projected-away field arrives as `null`,
 and `null` is exactly what a room that has never been compared reports. A future caller reading
@@ -26,7 +26,7 @@ def _function(name: str) -> ast.FunctionDef:
 
 
 def _source(name: str) -> str:
-    """The function's code with **comments stripped**.
+    """The function's code with comments stripped.
 
     Not `ast.get_source_segment`, which returns the comments too. Every assertion in this
     file is a substring match against a handler, and with comments included both directions

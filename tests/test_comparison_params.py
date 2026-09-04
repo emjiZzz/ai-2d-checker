@@ -3,11 +3,11 @@
 Two things have to hold, and the second is the whole reason this stage exists separately from
 the sweep it enables:
 
-1. **The extraction moved nothing.** `DEFAULT_PARAMS` reproduces today's twenty constants
+1. The extraction moved nothing. `DEFAULT_PARAMS` reproduces today's twenty constants
    byte-for-byte, and the engine's output over the corpus is identical before and after. If it
    were not, the Stage 0.5 sweep would be measuring the refactor rather than the thresholds,
    and every conclusion drawn from it would be wrong in a way nothing downstream could detect.
-2. **The override mechanism works and always restores.** It rebinds module globals; a leak
+2. The override mechanism works and always restores. It rebinds module globals; a leak
    would leave the engine permanently retuned inside the process and silently poison every
    later measurement in the same run.
 
@@ -67,7 +67,7 @@ def test_each_constant_still_holds_its_original_value(module, attribute, field_n
 def test_the_scorer_radius_is_not_a_sweepable_engine_constant():
     """`match_radius_mm` was swept as an engine constant while living in the hybrid method's
     `reconciler.py`. Removing the AI methods left the eval scorer as its only reader, which
-    exposed that it tunes the **measurement**: it decides which prediction the scorer pairs
+    exposed that it tunes the measurement: it decides which prediction the scorer pairs
     with which expected finding, so a sweep would move F1 with no engine behaviour changing.
     It keeps its old value, so scores are byte-identical, and it must stay out of the params."""
     assert SPATIAL_MATCH_RADIUS_MM == 35.0

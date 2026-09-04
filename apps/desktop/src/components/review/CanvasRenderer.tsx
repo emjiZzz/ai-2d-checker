@@ -409,7 +409,7 @@ export const CanvasRenderer = React.memo(forwardRef<DrawingCanvasRef, CanvasRend
   /**
    * Expose the canvas to the interaction layer, and the sheet itself to the PDF report.
    *
-   * **The dependency is `renderContent` and nothing else, and it must stay that way.** This
+   * The dependency is `renderContent` and nothing else, and it must stay that way. This
    * hand-listed fourteen of `renderContent`'s thirty-odd inputs — omitting `layers`,
    * `manualMarkings`, `annotations`, `width` and `height` among others — so the handle captured
    * whichever `renderContent` existed the last time one of those fourteen moved. Layers arrive

@@ -13,8 +13,8 @@ import { shouldSuppressNextMenu, CLICK_SLOP_PX } from './entityPicking';
  *
  * It was not written that way. `243582e` and `d98e3bb` both armed it —
  * `if (e.buttons === 2) setPreventNextContextMenu(true)` in the pan path — and `92e3d3c` dropped
- * that line while rewriting the pan fast path. **The check survived the refactor; the thing it
- * checked did not.** No behavioural test could have caught that, because the predicate was never
+ * that line while rewriting the pan fast path. The check survived the refactor; the thing it
+ * checked did not. No behavioural test could have caught that, because the predicate was never
  * the broken part.
  *
  * So this file tests both halves, deliberately:

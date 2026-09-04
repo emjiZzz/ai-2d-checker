@@ -10,7 +10,7 @@ import { useWorkspaceStore } from '../../workspaceStore';
  *
  *  - a failed stamp produced no UI whatsoever — the menu closed, the entity stayed unmarked, and
  *    it was indistinguishable from a mis-click;
- *  - **a failed retraction dropped the row from the panel while the server kept it LIVE.**
+ *  - a failed retraction dropped the row from the panel while the server kept it LIVE.
  *    `eval_corpus.py from-manual-check` filters on `retracted_at`, so a retraction the server
  *    never applied is converted into a corpus finding the engineer explicitly withdrew — with
  *    the UI agreeing that it is gone. 31 of the 38 markings behind `M745204N01` were

@@ -6,9 +6,9 @@ and the corpus needs six pairs annotated by hand, so the loop's cost is the sche
 
 Two properties matter and both are asserted here:
 
-* it reports **every** problem in one pass, not the first — a validator that stops at the first
+* it reports every problem in one pass, not the first — a validator that stops at the first
   error just makes the same slow loop shorter per iteration; and
-* it is **read-only**. `label` stays the only command that can change ground truth, because a
+* it is read-only. `label` stays the only command that can change ground truth, because a
   validator that quietly installed on success would make "check my work" a destructive verb.
 """
 

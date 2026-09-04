@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
  * ## Why this file exists
  *
  * `ReviewControls` and `SummaryPanel` were first wired into `AuditConsole.tsx` — a component with
- * **zero importers anywhere in the app**. Their unit tests passed, `tsc` passed, the suite was
+ * zero importers anywhere in the app. Their unit tests passed, `tsc` passed, the suite was
  * green, and none of it was reachable by a user. The mistake is the same one recorded in
  * `docs/vault/06 - .../Gotcha - A Tested Endpoint That Nothing Ever Called.md`, made one layer up:
  * a test proves a thing *works*; nothing there proved it was *reachable*.

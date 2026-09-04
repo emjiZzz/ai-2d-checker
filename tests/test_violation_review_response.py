@@ -1,6 +1,6 @@
 """The supervisor review endpoint must tell a client REJECTED apart from never-reviewed.
 
-**Why this file exists.** `AuditViolation` carries two fields that look redundant and are not:
+Why this file exists. `AuditViolation` carries two fields that look redundant and are not:
 
     is_resolved:     bool          False for "nobody looked" AND for "a human rejected it"
     resolution_type: str | None    None | APPROVED | REJECTED
@@ -11,7 +11,7 @@ a review queue filtered on what the client can see would show every rejected fin
 queue never empties, and the reviewer's work appears not to have happened.
 
 The failure mode that makes this worth a test rather than a code comment: `resolution_type` has a
-default of `None` on the response model, so a construction site that simply **forgets to pass it**
+default of `None` on the response model, so a construction site that simply forgets to pass it
 raises nothing, fails no type check, and returns a well-formed response asserting the violation is
 unreviewed. There are two such construction sites. Both are covered below, and both assertions
 were verified to fail before the field was threaded through.

@@ -1,6 +1,6 @@
 """Run the comparison engine over the corpus, offline — Stage 0e.
 
-Calls `generate_deterministic_candidates` **directly**: not `perform_drawing_comparison`,
+Calls `generate_deterministic_candidates` directly: not `perform_drawing_comparison`,
 which is the Mongo-and-cache wrapper, and never the comparison cache. A cached audit is
 served in ~0.14 s and would silently answer with whatever the engine did last time, which
 is precisely how a measurement becomes a measurement of nothing.

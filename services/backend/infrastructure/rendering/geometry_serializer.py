@@ -199,15 +199,15 @@ class GeometrySerializer:
         """Resolve one ACI index, honouring the BYLAYER and BYBLOCK sentinels.
 
         The two sentinels are NOT interchangeable and were treated as such until 2026-08-11.
-        BYLAYER looks at the layer table; **BYBLOCK looks at the INSERT that placed the
-        entity**, which is the whole point of the sentinel -- it exists so one block
+        BYLAYER looks at the layer table; BYBLOCK looks at the INSERT that placed the
+        entity, which is the whole point of the sentinel -- it exists so one block
         definition can be drawn in a different colour at each insertion point.
 
         Collapsing BYBLOCK onto the layer was documented as a deliberate shortcut, on the
         reasoning that a block's contents are usually BYLAYER anyway. On M745221N01_FSRS2_KMTI
         it produced a wrong colour on the one entity that actually used it: the surface-finish
         symbol is a single BYBLOCK polyline on layer `0` (layer colour 7, white) inside an
-        INSERT with ACI 1, so a symbol the drawing paints **red** rendered white.
+        INSERT with ACI 1, so a symbol the drawing paints red rendered white.
         """
         if index == ACI_BYBLOCK:
             index = cls._inherited_from_insert(ent, layer, layer_colors, by_handle)

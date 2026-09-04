@@ -39,7 +39,7 @@ export const RoomSchema = z.object({
     .transform(() => "deterministic" as const)
     .default("deterministic")
     .optional(),
-  // What the room is FOR, chosen at creation. **Must be declared here** — an undeclared key is
+  // What the room is FOR, chosen at creation. Must be declared here — an undeclared key is
   // silently stripped by Zod's object parse, which for this field would mean every manual-check
   // room opening as an AI comparison with no error anywhere. Same failure `zones_confirmed_for`
   // above already paid for once.

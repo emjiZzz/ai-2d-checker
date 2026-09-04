@@ -6,9 +6,9 @@ import { fetchWithAuth } from './fetchUtils';
  * Separate from `auditsApi` on purpose. That module carries *corrections to engine output*:
  * every call there presupposes a finding the engine already produced, so it can only ever
  * describe precision. These calls carry a human reading the drawings with no engine involved,
- * which is the only kind of record that can describe what the engine **missed**.
+ * which is the only kind of record that can describe what the engine missed.
  *
- * Markings are posted **one at a time, as they are stamped.** A submit-shaped API loses an hour
+ * Markings are posted one at a time, as they are stamped. A submit-shaped API loses an hour
  * of work to one crash — `M745230A01` carries 68 addressable rows — and an annotator who has
  * lost an hour does not come back. `submitSession` finalises; it is not when the data first
  * exists.

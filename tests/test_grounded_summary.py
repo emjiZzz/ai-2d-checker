@@ -1,6 +1,6 @@
 """ADR-010's verification gate, and the guarantee that a failing summary never reaches a reader.
 
-**What this file is really protecting.** An LLM summarising an inspection result can silently drop
+What this file is really protecting. An LLM summarising an inspection result can silently drop
 a finding, and a fluent summary is the last place a human will look for one. Every other property
 here is secondary to `test_a_summary_that_omits_a_finding_is_withheld`.
 

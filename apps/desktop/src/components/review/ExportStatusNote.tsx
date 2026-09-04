@@ -5,7 +5,7 @@ import type { ExportStatus } from "../../hooks/useComplianceReportExport";
 /**
  * What happened to the last PDF export, shown next to the button that started it.
  *
- * The export writes **two files, with names it chooses, into a folder the user picked** — so
+ * The export writes two files, with names it chooses, into a folder the user picked — so
  * neither the names nor the outcome are guessable from the button. Before this existed the only
  * signal was "Building…" ceasing to say "Building…", which is also exactly what cancelling the
  * folder picker looks like. A user reported that as a bug, correctly.

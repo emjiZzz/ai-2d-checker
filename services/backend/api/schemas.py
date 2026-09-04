@@ -324,7 +324,7 @@ class FindingSnapshot(BaseModel):
 # suppression. See docs plan "Human-in-the-Loop Learning for the rag Comparison".
 HumanCorrectedStatus = Literal[
     "dismissed",         # false alarm — treat as not a real discrepancy (label 0)
-    # Label **1**, not 0. The parenthetical here previously read "(label 0…)", contradicting
+    # Label 1, not 0. The parenthetical here previously read "(label 0…)", contradicting
     # trainer.py's VERDICT_ONE, which is where the label is actually decided. The prose was
     # right and the parenthetical was wrong: "this finding IS valid to report" means it is a
     # true discrepancy.
@@ -337,7 +337,7 @@ HumanCorrectedStatus = Literal[
     # --- pairing feedback -----------------------------------------------------------------
     # A different *kind* of statement from everything above. The seven verbs all judge a
     # finding's verdict, category or value — they assume the engine paired the right two
-    # entities and only got its conclusion wrong. These two say the **pairing itself** is
+    # entities and only got its conclusion wrong. These two say the pairing itself is
     # wrong, which nothing could express before.
     #
     # Deliberately NOT mapped to a verdict label; see trainer.MATCHER_FEEDBACK for why. They
@@ -530,7 +530,7 @@ class CategoryAgreement(BaseModel):
     Still a fixed-shape object rather than a dict keyed by category name, for the same
     reason ComparisonDiagnostics isn't a bare dict below: Gemini's structured-output API
     rejects open-ended additionalProperties schemas, and this nests inside
-    PhysicalComparisonResponse, which is `execute_gemini_cascade`'s **default**
+    PhysicalComparisonResponse, which is `execute_gemini_cascade`'s default
     `response_schema`. See CLAUDE.md constraint 1 — and note the removal changed that
     constraint from "fires on every request" to "fires on the first caller that omits a
     schema", which is dormant, not gone.

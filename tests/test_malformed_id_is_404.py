@@ -1,6 +1,6 @@
 """A malformed path-param id must be a 404, and the guard for that had gone inert.
 
-**The live failure.** A supervisor clicked Approve on a finding whose canvas marker was generated
+The live failure. A supervisor clicked Approve on a finding whose canvas marker was generated
 client-side, so the id on the wire was `phys_chk_restored_1_1786329084013` rather than a Mongo
 ObjectId. The endpoint answered `500 INTERNAL_SERVER_ERROR`:
 
@@ -11,14 +11,14 @@ ObjectId. The endpoint answered `500 INTERNAL_SERVER_ERROR`:
     pydantic_core._pydantic_core.ValidationError: 1 validation error ...
       Value error, Id must be of type PydanticObjectId
 
-**Why the existing guard did not catch it.** `get_or_404` was written for exactly this bug and
+Why the existing guard did not catch it. `get_or_404` was written for exactly this bug and
 caught `bson.errors.InvalidId`. Beanie 2.x validates the id through a Pydantic `TypeAdapter`
 *before* it reaches bson, so on this version (beanie 2.1.0 / pydantic 2.13.4) `InvalidId` can no
 longer be raised from that call at all. The guard kept compiling, the suite kept passing, and it
 had silently stopped guarding — across all ~24 `get_or_404` call sites in annotations, audits and
 drawings.
 
-That is the generalisable part, and it is why these tests assert on **both** exception types
+That is the generalisable part, and it is why these tests assert on both exception types
 rather than only the one this version happens to raise: a guard clause naming a concrete exception
 type is a dependency on a library's internals, and nothing fails when the library stops raising it.
 

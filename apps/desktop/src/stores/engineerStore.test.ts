@@ -6,7 +6,7 @@
  * entered anything. `RoomsView` mounts underneath `EngineerPromptModal` in a prototype build and
  * fired `startTour()` from a mount effect that knew nothing about the prompt.
  *
- * **Not fixable by stacking order, which is why the rule is a render gate.** The prompt's
+ * Not fixable by stacking order, which is why the rule is a render gate. The prompt's
  * backdrop is `z-[100000]` and deliberately opaque ("Hides workspace completely for clean
  * presentation"); the tour is `z-[999999]`. Whichever wins, one modal is drawn over another. Only
  * one of them may render.

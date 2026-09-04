@@ -3,11 +3,11 @@
 Two things need the same lookups over the same data, so they share one implementation
 rather than each growing their own:
 
-  * **Entity-grounded AI comparison** — the model is given a manifest of addressable
+  * Entity-grounded AI comparison — the model is given a manifest of addressable
     entities and asked to cite a handle, instead of returning a normalized 0-1000
     `visual_bbox` that then has to be back-projected and sanity-checked. Handle lookup
     is the addressing scheme.
-  * **A future standards rules engine** — "run predicates over the entities" is what a
+  * A future standards rules engine — "run predicates over the entities" is what a
     deterministic ISO 128 / JIS B 0001 checker is. Building the manifest as a general
     index rather than a one-off prompt helper costs nothing now and avoids a rewrite.
 

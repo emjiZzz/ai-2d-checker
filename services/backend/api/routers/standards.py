@@ -241,7 +241,7 @@ async def delete_standard(id: str):
 # It re-embedded every StandardChunk into "the local semantic vector index" and reported
 # `Successfully re-indexed N standard chunks into the semantic vector store.` What it
 # actually wrote was `np.random.default_rng(sha256(text))` — hash-seeded Gaussian noise —
-# into a JSON file. It had **zero callers**: no frontend route, no test, no other backend
+# into a JSON file. It had zero callers: no frontend route, no test, no other backend
 # module ever invoked it, so it was an admin endpoint whose only possible effect was to fill
 # a fake index with noise and return a success message saying otherwise.
 #

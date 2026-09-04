@@ -10,7 +10,7 @@
 `tools/extraction_status.py` reports which drawings are stale and deliberately never fixes any.
 That left the cure as "call `POST /drawings/{id}/reextract` 38 times by hand", which is the kind
 of thing that gets done once, half-finished, and never repeated -- and it has to be repeated
-**every time `EXTRACTION_SCHEMA_VERSION` is bumped**, because a bump is precisely the act that
+every time `EXTRACTION_SCHEMA_VERSION` is bumped, because a bump is precisely the act that
 makes rows stale.
 
 Staleness is not cosmetic. `render_paths`, dimension text anchors, leader hooklines, leader
@@ -21,23 +21,23 @@ and a dimension that says `1.05` where the paper says `60`.
 
 ## What it does and does not do
 
-* **Reuses `extraction_status.collect`** rather than restating the staleness rule. Two copies of
+* Reuses `extraction_status.collect` rather than restating the staleness rule. Two copies of
   "which rows are behind" is the drift this repo keeps paying for, and here the copies would
   disagree silently -- one tool reporting clean while the other re-extracts nothing.
-* **Writes nothing without `--apply`.** The default run prints the plan and exits, matching
+* Writes nothing without `--apply`. The default run prints the plan and exits, matching
   `merge_duplicate_check_sessions.py`.
-* **One at a time, waiting for each job to finish.** `ExtractionPipeline.run` REPLACES a
+* One at a time, waiting for each job to finish. `ExtractionPipeline.run` REPLACES a
   drawing's entities, and the route answers 409 while an extraction is already running; firing 38
   in parallel would collide with both.
-* **Never deletes.** A failed re-extraction leaves the drawing exactly as it was -- the previous
+* Never deletes. A failed re-extraction leaves the drawing exactly as it was -- the previous
   entities stay readable until the new parse succeeds -- so a failure here is safe to retry.
 
 ## The two expected failures
 
-* **422** -- the stored source file is gone. There are more `DrawingDocument` rows than files in
+* 422 -- the stored source file is gone. There are more `DrawingDocument` rows than files in
   `storage/uploads`, so some rows cannot be re-extracted at all. Reported, not fatal: nothing can
   be done for them from here and stopping the run would leave the fixable ones behind.
-* **409** -- an extraction is already running. Waited out rather than skipped.
+* 409 -- an extraction is already running. Waited out rather than skipped.
 """
 
 from __future__ import annotations

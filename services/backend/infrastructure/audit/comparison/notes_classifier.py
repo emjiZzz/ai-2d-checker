@@ -5,28 +5,28 @@ Is this text a note? Answered from the text itself and its neighbours, not from 
 
 ## Why the box cannot answer it
 
-`notes` is the one zone with **no drawn boundary on these sheets**. The ruled-border spike
-measured a best-IoU ceiling of **0.08** for it — chosen knowing the answer, so that bounds any
+`notes` is the one zone with no drawn boundary on these sheets. The ruled-border spike
+measured a best-IoU ceiling of 0.08 for it — chosen knowing the answer, so that bounds any
 rule rather than describing one — because its best candidate is the whole sheet frame. The
 "notes zone" is a rectangle *we* impose on text that floats inside the frame, which is why every
 approach so far produced a different arbitrary box.
 
-The cost is measured. Detection-only, `notes_section` scores **P 0.59 / R 1.00**: recall is
+The cost is measured. Detection-only, `notes_section` scores P 0.59 / R 1.00: recall is
 perfect, so the box already catches every real change and only *adds*. That signature has one
 cause, and it is not tuning.
 
-On `M7452A0N01-rev-mut005` both sides carry the same four notes rows at **identical
-coordinates**, and:
+On `M7452A0N01-rev-mut005` both sides carry the same four notes rows at identical
+coordinates, and:
 
     REF  notes box = (38.0, 202.6,  60.0, 251.0)   -> all four rows INSIDE
     REV  notes box = (65.0, 202.6, 254.0, 231.8)   -> all four rows OUTSIDE
 
-The mutation adds the text `追加注記` at x=264 — a legitimate `注記` anchor, **209 units** from
+The mutation adds the text `追加注記` at x=264 — a legitimate `注記` anchor, 209 units from
 the real notes cluster at x=55. The anchor-cluster detector cannot represent two clusters, so it
-grows a box spanning x 65-254 that covers **neither**, and every notes row reports `REMOVED` on
+grows a box spanning x 65-254 that covers neither, and every notes row reports `REMOVED` on
 a sheet that plainly has them. Seven false positives from one added note.
 
-**Adding a note destroys the notes zone.** This is the same failure mode as the `仕上げ` anchor
+Adding a note destroys the notes zone. This is the same failure mode as the `仕上げ` anchor
 removed on 2026-08-12 for matching `仕上げ記号` in the tolerance block — except that anchor was
 wrong and could be deleted, while `注記` is the canonical Japanese word for "notes" and cannot
 be. The approach is structurally fragile, not mis-tuned. See
@@ -37,7 +37,7 @@ box went. That is the whole mechanism.
 
 ## What a note looks like here, measured
 
-Taken from the text inside the **pinned** notes box across the corpus — the configuration that
+Taken from the text inside the pinned notes box across the corpus — the configuration that
 scores P 1.00 / R 1.00, so it is the closest thing to a label this corpus has:
 
 | kind | examples | len |
@@ -49,16 +49,16 @@ scores P 1.00 / R 1.00, so it is the closest thing to a label this corpus has:
 | item marker | `１`, `1`, `a`, `b`, `c`, `d`, `C1` | 1-2 |
 
 The item markers are the reason content alone is not enough: nothing about `１` says "note". It
-is a note because it sits **on the same row as** an instruction, 12 units to its left. So the
+is a note because it sits on the same row as an instruction, 12 units to its left. So the
 pass is two-stage — seed on content, then admit neighbours by cohesion.
 
-**The nearest negative is the one that decides the design.** The tolerance block contains
+The nearest negative is the one that decides the design. The tolerance block contains
 `必要な場合は、粗さ区分を記入のこと` — an instruction ending in `のこと`, identical in form to a
-real note. No content rule separates it. It is excluded because `tolerance` **outranks** `notes`
+real note. No content rule separates it. It is excluded because `tolerance` outranks `notes`
 in `zone_ownership` (a real ruled box, IoU 0.85, against no box at all), which is why the veto
 is not optional and why this module refuses to run without `regions`.
 
-`ロール：` is deliberately **not** a seed token, though `4 ロール：12 (2x6台)` does sit inside
+`ロール：` is deliberately not a seed token, though `4 ロール：12 (2x6台)` does sit inside
 the pinned box on some sides. Those lines land in `views` on others, so claiming them moves
 content between categories on a corpus whose labels come from the engine's own pool. Measure it
 as a separate change if it is wanted. Note this is a different mechanism from the vault's on
@@ -85,16 +85,16 @@ NOTE_SEED_MIN_LEN = 6
 #: `ノコト` is the katakana spelling used on the older sheets (`仕上ゲノコト。`).
 _INSTRUCTION_ENDINGS = ("こと", "ノコト", "事", "。")
 
-#: Unambiguous note markers. These seed at **any length**, bypassing `NOTE_SEED_MIN_LEN`,
+#: Unambiguous note markers. These seed at any length, bypassing `NOTE_SEED_MIN_LEN`,
 #: because they name the thing outright and nothing else on these sheets contains them.
 #:
-#: The length bypass is not a nicety. `追加注記` ("additional note") is **4 characters** and is
+#: The length bypass is not a nicety. `追加注記` ("additional note") is 4 characters and is
 #: the mutation under test on `M7452A0N01-rev-mut011` — the corpus's one ADDED-note label. With
 #: the length gate applied first, the classifier missed the single finding it exists to catch.
 _STRONG_NOTE_TOKENS = ("注記", "注意")
 
 #: The English equivalent, as a whole word. `ZONE_ANCHORS["notes"]` carries `"note:"` and
-#: `"notes:"` **with the colon**, which is right for growing a box from a heading but misses a
+#: `"notes:"` with the colon, which is right for growing a box from a heading but misses a
 #: note that simply says `NEW NOTE` — the corpus's own ADDED-note label on one templated pair.
 #:
 #: Word-bounded rather than a substring so it cannot fire on `No.`, which appears in `コードNo.`
@@ -117,7 +117,7 @@ _SPEC_TOKENS = ("施工", "硬度")
 #: the nearest foreign text is more than 8 pitches away.
 COHESION_X_PITCHES = 3.0
 
-#: Longest text admitted by cohesion alone. Cohesion exists to recover **item markers** — the
+#: Longest text admitted by cohesion alone. Cohesion exists to recover item markers — the
 #: `１` / `1` / `a` / `b` / `c` / `d` that number a note from just left of it — and every one of
 #: those measured on the corpus is 1-2 characters. Anything longer that still is not a note by
 #: its own content is something else sharing a row: `追加 3-M8`, a drawing callout, was claimed
@@ -210,10 +210,10 @@ def classify_notes(
 
     Two stages:
 
-    1. **Seed.** Every item that reads as a note on its own content AND is not owned by a zone
+    1. Seed. Every item that reads as a note on its own content AND is not owned by a zone
        that outranks `notes`. The veto is what separates a real note from the tolerance block's
        `必要な場合は、粗さ区分を記入のこと`, which no content rule can.
-    2. **Cohere.** Short items on the same row as a seed and within `COHESION_X_PITCHES` of the
+    2. Cohere. Short items on the same row as a seed and within `COHESION_X_PITCHES` of the
        seed block horizontally — the item numbers. They are subject to the same ownership veto,
        so a `1` inside the BOM stays the BOM's.
 

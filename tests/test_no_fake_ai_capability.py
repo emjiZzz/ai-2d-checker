@@ -1,13 +1,13 @@
 """
-Guards the R0 exit criterion: **no module claims an AI capability it does not have.**
+Guards the R0 exit criterion: no module claims an AI capability it does not have.
 
 Why this test exists. The standards-audit pipeline shipped for months with an embedding module
 that returned `np.random.default_rng(sha256(text))` — 384 dimensions of Gaussian noise seeded from
 a hash — behind docstrings advertising SentenceTransformers and ONNX Runtime, feeding a "LanceDB"
 store that was a numpy loop over a JSON file that never existed on disk.
 
-The reason it survived is the reason this test is worth having: **a fake that raises gets found,
-and a fake that answers does not.** Hash-seeded vectors are finite, normalized and deterministic,
+The reason it survived is the reason this test is worth having: a fake that raises gets found,
+and a fake that answers does not. Hash-seeded vectors are finite, normalized and deterministic,
 so cosine similarity over them returns ranked, scored, entirely plausible results. Nothing
 downstream — no caller, no test, no log line — could distinguish that from a real model. R0
 deleted the stack rather than repairing it, and this test is what stops it growing back.

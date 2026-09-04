@@ -1,23 +1,23 @@
 """Lexical retrieval: char n-gram TF-IDF, plus BM25 over the same tokenisation.
 
-**Why char n-grams and not words.** This is a Japanese CAD domain, and Japanese does not
+Why char n-grams and not words. This is a Japanese CAD domain, and Japanese does not
 word-segment on whitespace. A word-level tokeniser sees `素材調質施工` as one token and
 `ユニットNo.` as one or two, so it can match neither a substring nor a near-miss. Character
 n-grams degrade gracefully instead: `ユニットNo.` and `ユニット No` share most of their 2–4 grams.
 
 It also mirrors `learning/finding_classifier.py`'s
 `HashingVectorizer(analyzer="char_wb", ngram_range=(2, 4))` — the one learned component in this
-system that demonstrably works. Reusing its shape means **one definition of "similar text"** across
+system that demonstrably works. Reusing its shape means one definition of "similar text" across
 retrieval and classification rather than two that drift.
 
-**TF-IDF here, Hashing there, deliberately.** The classifier is stateless by design so its
+TF-IDF here, Hashing there, deliberately. The classifier is stateless by design so its
 vectoriser never enters the joblib bundle. Retrieval wants the opposite: a fitted vocabulary with
 real idf weights, because idf is what stops `図` and `mm` — which appear in nearly every chunk —
 from dominating a ranking. The cost is a fitted artifact to persist, which the store handles.
 
-**Two rankers, and no blend by default.** TF-IDF cosine ranks by vector similarity; BM25 ranks by
+Two rankers, and no blend by default. TF-IDF cosine ranks by vector similarity; BM25 ranks by
 saturating term frequency with length normalisation. They disagree usefully, and fusing them may
-well beat either. **That is an R2 question, not an R1 one** — this stage has no retrieval metric
+well beat either. That is an R2 question, not an R1 one — this stage has no retrieval metric
 yet, so a fusion weight chosen here would be exactly the untested tuning the plan sequences R2
 ahead of. `rrf` is implemented and tested; `tfidf` is the default until a number says otherwise.
 """

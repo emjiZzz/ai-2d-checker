@@ -26,7 +26,7 @@ import { getAnnotationBadgeMap } from '../../stores/workspace/types';
  * Renders inside the existing panel rather than as a new flexlayout tab, so the saved layout key
  * does not have to be bumped and nobody's arrangement resets.
  *
- * All **six** categories are shown, including the two the AI checklist omits: `isometric_view`
+ * All six categories are shown, including the two the AI checklist omits: `isometric_view`
  * is one of the corpus's four recorded false-negative classes, and a category with no heading is
  * one an engineer does not think to look for.
  *
@@ -192,7 +192,7 @@ export const ManualMarkingList: React.FC = () => {
       {/*
         Stale-extraction warning for the pair being marked.
 
-        **This is the only place it can appear in a prototype build.** `StaleExtractionBadge`
+        This is the only place it can appear in a prototype build. `StaleExtractionBadge`
         previously lived solely in `TwoDRightPanel`, which renders only when
         `isPhysicalComparisonEnabled || aiScanProgress === "completed" || isStandardsAuditCompleted`
         — and the first of those is set in exactly one place, after the comparison engine runs

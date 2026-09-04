@@ -1,5 +1,5 @@
 """Stage 0g — relocated from `services/backend/tests/test_audit_feedback.py`, which had
-**never executed** (outside `testpaths`, and its `infrastructure.*` imports fail collection
+never executed (outside `testpaths`, and its `infrastructure.*` imports fail collection
 from the repo root).
 
 `AuditFeedbackDocument` is the training substrate for the whole learned layer, and
@@ -146,7 +146,7 @@ async def test_autodoc_does_not_promote_below_the_threshold(vault_at, counted):
 
 @pytest.mark.asyncio
 async def test_a_database_error_never_promotes_a_dismissal(vault_at, counted):
-    """The count used to fall back to exactly the promotion threshold on **any** exception, via
+    """The count used to fall back to exactly the promotion threshold on any exception, via
     `getattr(feedback, "_mock_dismiss_count", 3)` — test scaffolding reachable from the
     production path. One dismissal plus one database hiccup wrote a permanent rule that
     suppresses findings.
@@ -179,7 +179,7 @@ async def test_the_mock_dismiss_count_hook_is_gone(vault_at, counted):
 def test_the_dismissal_count_is_scoped_to_one_client():
     """The defect that made this the highest-severity open item: the count had no
     `client_name` clause while the rule was filed under `feedback.client_name`, so a pattern
-    dismissed **once at each of three different clients** reached N>=3 and wrote customer A's
+    dismissed once at each of three different clients reached N>=3 and wrote customer A's
     verbatim drawing text into customer B's rule file. That is the cross-client contamination
     the retired two-tier overlay existed to prevent — nothing else prevents it now.
     """

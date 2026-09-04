@@ -12,8 +12,8 @@
  * | `.env` `SIDECAR_PORT` (+ `start_desktop.ps1`, `config.py`) | where the backend listens |
  *
  * They were three independent literals that happened to agree on `8080`. When they disagree the
- * failure is invisible in the worst way: **CSP is enforced by the webview, so the request never
- * leaves the app.** No network error, no backend log, no entry in the dev tools network tab worth
+ * failure is invisible in the worst way: CSP is enforced by the webview, so the request never
+ * leaves the app. No network error, no backend log, no entry in the dev tools network tab worth
  * reading — just a UI stuck on "Connection Lost" against an address that looks correct.
  *
  * That is not hypothetical. `.env` documents `SIDECAR_PORT=0` for dynamic allocation and
@@ -27,10 +27,10 @@
  *
  * ## What was widened, and what deliberately was not
  *
- * **Port axis, 2026-08-27:** any port on the two loopback hosts, because `SIDECAR_PORT=0` is a
+ * Port axis, 2026-08-27: any port on the two loopback hosts, because `SIDECAR_PORT=0` is a
  * documented mode and no build-time constant can know the result.
  *
- * **Host axis, same day:** exactly ONE host — `192.168.200.105`, the shared LAN backend the
+ * Host axis, same day: exactly ONE host — `192.168.200.105`, the shared LAN backend the
  * prototype is deployed against. Not a subnet, not a wildcard. That was a deliberate decision
  * taken together with `ALLOWED_HOSTS` and the CORS origins in `main.py` and a shared `API_TOKEN`,
  * because a per-machine backend cannot give 21 engineers one shared drawing corpus.

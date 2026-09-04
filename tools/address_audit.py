@@ -12,35 +12,35 @@ it is wrong. A mis-resolved marking does not error, does not look odd, and canno
 downstream: it simply attributes a person's judgement to the wrong entity, forever, in a file
 that is then used as ground truth.
 
-Measured 2026-08-20, before the fix that prompted this tool: **33 of 3673 converted REMOVED
-findings landed on the wrong entity**, one of them at distance 0.0 -- the strongest match the
-resolver can express. It survived design, implementation and review because **every one of the
-1541 TEXT entities resolved correctly**, and the unit tests, the committed labels and the
+Measured 2026-08-20, before the fix that prompted this tool: 33 of 3673 converted REMOVED
+findings landed on the wrong entity, one of them at distance 0.0 -- the strongest match the
+resolver can express. It survived design, implementation and review because every one of the
+1541 TEXT entities resolved correctly, and the unit tests, the committed labels and the
 feature demo were all text.
 
 The unit tests in `tests/test_ground_truth_addressing.py` pin the rules against hand-built
 fakes. Fakes cannot reproduce two border lines sharing a corner or three concentric arcs
-sharing a centre, which is the geometry that actually broke. **This runs against real frozen
-payloads.**
+sharing a centre, which is the geometry that actually broke. This runs against real frozen
+payloads.
 
 ## What it reports
 
-1. **Per-entity-type resolution** -- correct / wrong / unresolved, and the `MatchTier` mix.
+1. Per-entity-type resolution -- correct / wrong / unresolved, and the `MatchTier` mix.
    Read this column-wise: a type at 100% next to a type at 19% is the shape of the defect this
    tool was built for, and it is invisible in any aggregate.
 
-2. **Round trip through the bridge** -- takes the address `build_labels` actually emits and
+2. Round trip through the bridge -- takes the address `build_labels` actually emits and
    asks whether it resolves back to the entity that was picked. Resolution being right is not
    the same claim as the emitted label being right, and only the second one is what lands in
    the corpus.
 
-3. **Ambiguity refusals** -- coincident geometry the address cannot separate, which
+3. Ambiguity refusals -- coincident geometry the address cannot separate, which
    `_nearest` now declines to guess at. Reported so the cost of refusing stays visible rather
    than looking like a silent loss of recall.
 
 ## The one thing that must not be got wrong
 
-**Probe with a realistic click, not with the entity's own anchor.**
+Probe with a realistic click, not with the entity's own anchor.
 
 `EntityAddress.point` is where the engineer clicked -- `useEntityPicking` sends the pointer's
 world position verbatim. Probing each entity at its canonical anchor (`start`, `center`) is the

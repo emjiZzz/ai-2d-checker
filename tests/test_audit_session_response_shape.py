@@ -1,19 +1,19 @@
 """`AuditSessionResponse` requires `created_at`, and every construction site must supply it.
 
-**Found by running the app, not by reading it.** `GET /api/v1/audits/sessions` returned
+Found by running the app, not by reading it. `GET /api/v1/audits/sessions` returned
 `500 INTERNAL_SERVER_ERROR` on committed code:
 
     1 validation error for AuditSessionResponse
     created_at
       Field required [type=missing, ...]
 
-The field is declared required on the response model, `AuditSession` has always had it, and **not
-one of the four construction sites passed it** — so every endpoint returning a session 500'd. That
+The field is declared required on the response model, `AuditSession` has always had it, and not
+one of the four construction sites passed it — so every endpoint returning a session 500'd. That
 includes the session list the desktop app calls on load, which is why nothing downstream of it
 could be reached.
 
 The class of bug is worth naming, because a type checker does not catch it and neither did the
-suite: a Pydantic model with a **required field and no default** fails at *construction* time, in a
+suite: a Pydantic model with a required field and no default fails at *construction* time, in a
 router, at runtime. Adding a required field to a response model is a change to every place that
 builds one, and nothing in this repo made that connection visible.
 

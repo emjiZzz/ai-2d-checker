@@ -4,38 +4,38 @@
 | :------------- | :-------------------------------------- | :----------------------- |
 | `standards`    | `StandardChunk` documents in MongoDB    | published standard       |
 | `domain_rules` | client rule notes in the vault          | client-authored rule     |
-| `lessons`      | **APPROVED** `AuditViolation`s          | a human confirmed it     |
+| `lessons`      | APPROVED `AuditViolation`s          | a human confirmed it     |
 | `corrections`  | non-retracted `AuditFeedbackDocument`s  | a human corrected it     |
-| `findings`     | **every** `AuditViolation`              | mostly unreviewed output |
+| `findings`     | every `AuditViolation`              | mostly unreviewed output |
 | `vault`        | `docs/vault/**/*.md`, by heading        | engineering knowledge    |
 | `entities`     | `ExtractedEntity` text                  | raw drawing content      |
 
-**`vault` is knowledge about the *system*, not about a drawing.** It answers *"why is this built
+`vault` is knowledge about the *system*, not about a drawing. It answers *"why is this built
 this way"*, which serves an agent or the copilot; it does not answer *"what does this tolerance
 mean"*. Do not read a healthy record count here as coverage of the checker's domain.
 
-**`entities` is customer drawing content**, so it is client-local and carries the same privacy
+`entities` is customer drawing content, so it is client-local and carries the same privacy
 edge as `checker_remarks` — see `service.violation_record`. Local-only at R1.
 
-**`lessons` is a subset of `findings`, deliberately, and they are separate collections because
-the chance floor is per-collection.** `metrics.chance_recall_at_k` is `k/N` over one collection's
+`lessons` is a subset of `findings`, deliberately, and they are separate collections because
+the chance floor is per-collection. `metrics.chance_recall_at_k` is `k/N` over one collection's
 own `n_records`, so a 17-record `lessons` cannot be measured no matter how much is indexed
 elsewhere. They share `service.violation_record` so the two can never disagree about how a
 violation becomes text.
 
-**A `findings` hit is not knowledge.** Most of that collection has never been reviewed, so its
+A `findings` hit is not knowledge. Most of that collection has never been reviewed, so its
 records carry their review state in `Record.source` ("Confirmed finding" / "Rejected finding" /
 "Unreviewed finding") rather than only in metadata — a citation that does not say whether a human
 ever agreed is the "near-miss rules surfaced as authoritative" hazard [[ADR-008]] named.
 
-**Why `domain_rules` reads markdown at R1 when the plan says "from the bundle".** The bundle is an
+Why `domain_rules` reads markdown at R1 when the plan says "from the bundle". The bundle is an
 R3 deliverable and does not exist yet. Rather than block, the source is expressed as a *function
 returning records* (`RecordSource`) instead of a path, so R3 swaps the source and touches nothing
 else. That is the same "bundle source abstraction rather than a path" seam R3 was already going to
 build — building it here costs nothing and means R1 ships working retrieval over the rules that
 exist today.
 
-**The fetch/fit split is load-bearing, not stylistic.** Fetching is async (Mongo); fitting a
+The fetch/fit split is load-bearing, not stylistic. Fetching is async (Mongo); fitting a
 TF-IDF vocabulary over the corpus is CPU-bound. They are separate functions so the CPU half is a
 plain synchronous callable that `asyncio.to_thread` can offload — see
 `StandardsLoader.ingest_standard`, and the guard in `tests/test_standards_loader_async.py`. The
@@ -63,11 +63,11 @@ STANDARDS = "standards"
 DOMAIN_RULES = "domain_rules"
 LESSONS = "lessons"
 #: Stage A (2026-08-17): the human-judgement collections. Both are sourced from the local
-#: MongoDB, so both are **client-local** — see `tools/retrieval_eval.py::CLIENT_LOCAL_COLLECTIONS`.
+#: MongoDB, so both are client-local — see `tools/retrieval_eval.py::CLIENT_LOCAL_COLLECTIONS`.
 CORRECTIONS = "corrections"
 FINDINGS = "findings"
 #: Stage A, second pass. `ENTITIES` is customer drawing content and therefore client-local;
-#: `VAULT` is git-tracked and identical on every install at a given commit, so it is **not**.
+#: `VAULT` is git-tracked and identical on every install at a given commit, so it is not.
 VAULT = "vault"
 ENTITIES = "entities"
 
@@ -106,8 +106,8 @@ def chunk_markdown_by_heading(text: str, source: str) -> list[Record]:
     body = _FENCE.sub(" ", text)
     matches = list(_HEADING.finditer(body))
     records: list[Record] = []
-    # A record id is `sha256(f"{source}::{discriminator}")`, and a heading is **not unique within
-    # a note**: `AI Maturity Ladder — Staged Plan` carries six `Exit criterion` sections, one per
+    # A record id is `sha256(f"{source}::{discriminator}")`, and a heading is not unique within
+    # a note: `AI Maturity Ladder — Staged Plan` carries six `Exit criterion` sections, one per
     # stage. Without this counter all six hash to one id, so twelve of the vault's 990 chunks
     # shared four ids. Harmless while nothing pins a chunk id, and fatal at the moment a relevance
     # label names one — which is exactly what `RetrievalLabel.relevant_ids` does.
@@ -248,7 +248,7 @@ def records_from_vault_notes(
     from `VaultSyncManager.CLIENT_RULES_DIR` and `learning.config.MODEL_DIRNAME` rather than
     restating two magic strings that would then be free to drift from their owners.
 
-    **Both exclusions are load-bearing.** The client-rules directory is already the `domain_rules`
+    Both exclusions are load-bearing. The client-rules directory is already the `domain_rules`
     collection, so indexing it here would put identical text in two collections with different
     trust levels; and the learned-models directory is a gitignored generated artifact, so
     including it would make an otherwise reproducible collection vary per install.
@@ -263,7 +263,7 @@ def records_from_vault_notes(
 
 
 #: Below this, an entity's text is not something any real query retrieves — a stray `A`, a bare
-#: `1`, a leader's single-character tag. **A convention, not a measured optimum**, in the same
+#: `1`, a leader's single-character tag. A convention, not a measured optimum, in the same
 #: sense `min_structured_value_length` was one: nothing here has been swept, and the corpus to
 #: sweep it against is what Stage A is building. Recorded as arbitrary rather than dressed up.
 MIN_ENTITY_TEXT_CHARS = 3
@@ -289,7 +289,7 @@ def records_from_entities(
     `drawing_names` maps `drawing_id` to a human-readable file name so a citation reads
     `M745230A01.dxf > NOTES` rather than a 32-character hex id. Absent, the id is used.
 
-    **This is customer drawing content.** Local-only at R1; strip at the edge before anything
+    This is customer drawing content. Local-only at R1; strip at the edge before anything
     is transmitted. See `service.violation_record` for the same constraint on `checker_remarks`.
     """
     names = drawing_names or {}
@@ -343,7 +343,7 @@ def _collapse_duplicate_texts(
 ) -> tuple[list[Record], int]:
     """Keep one record per distinct text, first occurrence wins.
 
-    **This guards the metric's denominator, and it is a net rather than a fix.** `corpus_size` in
+    This guards the metric's denominator, and it is a net rather than a fix. `corpus_size` in
     `metrics.py` is `manifest.n_records`, and the chance floor every verdict is gated on is `k/N`
     over that count. Index the same text twice and N doubles while the number of *distinguishable*
     answers does not, so the floor halves and a corpus reports itself as discriminating when it is
@@ -353,7 +353,7 @@ def _collapse_duplicate_texts(
     `chance_recall_at_k` — so the floor climbs on the inflated count too. Both routes end at "not
     informative", by different arithmetic.
 
-    **This would not have caught the incident that prompted it, and saying so is the point.** On
+    This would not have caught the incident that prompted it, and saying so is the point. On
     2026-08-14 `standards` reported 32 records that were 16 texts each present twice. The source
     was not a double ingest — `build_index` never saw 32 records. Mongo held one standard and 16
     chunks; the other 16 were the chunks of a *deleted* standard, still in a stale index that
@@ -362,7 +362,7 @@ def _collapse_duplicate_texts(
     case that genuinely reaches here: `lessons` in particular, where two approved violations on
     different drawings routinely carry identical text and are one answer to a query.
 
-    **First occurrence wins** so the result is deterministic and the earliest record keeps the
+    First occurrence wins so the result is deterministic and the earliest record keeps the
     citation. Each drop is logged with both citations, on the `zone_ownership` principle — anything
     this net catches is a bug upstream, and it stays findable only if the net says what it caught.
     """
@@ -386,9 +386,9 @@ def _collapse_duplicate_texts(
         logger.debug(f"[retrieval] '{collection}': dropping {citation}. Only the first is indexed.")
 
     if dropped:
-        # **One line, with a bounded sample of citations.** This was a WARNING *per drop* until
+        # One line, with a bounded sample of citations. This was a WARNING *per drop* until
         # 2026-08-17, which is fine for a startup build and pathological for `lessons`: that
-        # collection is rebuilt on **every supervisor verdict** and drops ~67 duplicates each
+        # collection is rebuilt on every supervisor verdict and drops ~67 duplicates each
         # time, so a single click emitted 67 warnings and buried the one line that matters.
         #
         # The citations are kept rather than moved wholesale to DEBUG, because
@@ -412,7 +412,7 @@ def build_index(
     records: Sequence[Record],
     root: Path | None = None,
 ) -> BuildResult:
-    """Fit an encoder over `records` and write the index. **Synchronous and CPU-bound.**
+    """Fit an encoder over `records` and write the index. Synchronous and CPU-bound.
 
     Call this via `asyncio.to_thread` from any async context.
     """

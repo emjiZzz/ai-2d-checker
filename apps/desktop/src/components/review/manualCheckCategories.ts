@@ -4,7 +4,7 @@ import { DIAMETER_CHARS, MULTIPLY_CHARS, cleanCadText } from '../../utils/cadGly
 /**
  * Diameter and size callouts, from the shared glyph set.
  *
- * These read `[ØøφΦ]` until 2026-09-01 and therefore matched none of the **U+2300 ⌀** that
+ * These read `[ØøφΦ]` until 2026-09-01 and therefore matched none of the U+2300 ⌀ that
  * `cleanCadText` produces from the DXF `%%c` escape — so `⌀125` did not read as a drawing view
  * and `6×⌀145` did not read as a bill-of-materials value. Both still returned a category, from
  * the generic fallthrough at the bottom of `inferCategoryForEntity`, which is why the gap was

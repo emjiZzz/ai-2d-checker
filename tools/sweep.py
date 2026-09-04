@@ -5,7 +5,7 @@
     ... tools/sweep.py --params changed_similarity_floor,min_fuzzy_length
     ... tools/sweep.py --include-zone --json sweep.json
 
-**This is a sensitivity analysis, not a calibration.** The corpus is one drawing family of
+This is a sensitivity analysis, not a calibration. The corpus is one drawing family of
 synthetic edits, so a best value found here is the best value *for that sheet against the
 mutator*. The report says so, and there is deliberately no flag that writes results back into
 `DEFAULT_PARAMS`.

@@ -9,7 +9,7 @@
 collection. A recall figure over an empty or tiny corpus is arithmetic, not evidence, and this
 system's corpus turned out to be exactly that case.
 
-`worksheet` generates a markdown draft for a human to fill in. It deliberately does **not**
+`worksheet` generates a markdown draft for a human to fill in. It deliberately does not
 generate labels — it retrieves candidates and leaves the relevance judgement blank, because a
 label a script wrote is not evidence about whether retrieval helps a person. See `labels.py`.
 """
@@ -238,7 +238,7 @@ def cmd_smoke(args: argparse.Namespace) -> int:
     rather than after.
 
     The result is circular by construction and the report says so. What is worth reading is not
-    the recall figure but **which gates fire**: a collection that cannot clear the chance floor
+    the recall figure but which gates fire: a collection that cannot clear the chance floor
     today will not clear it with real labels either, and that is knowable now.
     """
     label_set = synthetic_label_set(args.collection, limit=args.limit)

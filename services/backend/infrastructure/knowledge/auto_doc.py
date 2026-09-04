@@ -27,7 +27,7 @@ MIN_DISMISSALS_TO_PROMOTE = 3
 
 
 def build_dismissal_filter(target_text: str, client_name: Optional[str]) -> Dict[str, Any]:
-    """The Mongo filter for *"how many times has **this client** dismissed **this pattern**"*.
+    """The Mongo filter for *"how many times has this client dismissed this pattern"*.
 
     Returned as a plain dict rather than inlined as Beanie expressions, for one reason: this
     filter is the entire defect surface of this module, and the test suite has no database.
@@ -37,13 +37,13 @@ def build_dismissal_filter(target_text: str, client_name: Optional[str]) -> Dict
 
     Two clauses here are load-bearing and were both absent:
 
-    - **`client_name`** — the rule is filed under `feedback.client_name`, so it must be promoted
-      by *that client's* evidence. Counting sheet-wide meant a pattern dismissed **once at each
-      of three different clients** reached the threshold and landed in whichever client's file
+    - `client_name` — the rule is filed under `feedback.client_name`, so it must be promoted
+      by *that client's* evidence. Counting sheet-wide meant a pattern dismissed once at each
+      of three different clients reached the threshold and landed in whichever client's file
       happened to trip it, writing customer A's verbatim drawing text into customer B's rules.
       This is the contamination the retired two-tier overlay existed to prevent
       ([[ADR-009 Retiring the Standards Knowledge Track]]); nothing else prevents it now.
-    - **`retracted_at`** — a retraction is a human saying *"I clicked that by mistake"*.
+    - `retracted_at` — a retraction is a human saying *"I clicked that by mistake"*.
       `trainer.py` already skips retracted rows, and a permanent vault rule is a far stronger
       artifact than a training row, so counting them here let three taken-back clicks write a
       rule that suppresses findings forever. `None` matches both null and missing.
@@ -78,7 +78,7 @@ class AutoDocEngine:
         client. If so, auto-writes a learned Markdown rule into
         `docs/vault/08 - Client Domain & CAD Rules/`.
 
-        That directory is the only part of the vault that is a **runtime input** — it feeds
+        That directory is the only part of the vault that is a runtime input — it feeds
         `get_learned_dismissal_rules()` → `safe_filter` → the zone pools — so a rule written here
         suppresses real findings. Every guard below errs towards not writing.
         """

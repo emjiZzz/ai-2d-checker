@@ -369,7 +369,7 @@ async def get_session_summary(id: str):
     ADR-010. The model receives the structured finding list and nothing else, and every generated
     summary passes a deterministic verification gate — cited ids must resolve, every finding must
     be cited by some claim, and the echoed count must match — before it can be returned. A summary
-    that fails is **withheld whole** and `fallback_text` carries the deterministic template.
+    that fails is withheld whole and `fallback_text` carries the deterministic template.
 
     This endpoint never fails because a summary could not be produced. `status` distinguishes the
     reasons (`disabled` is the default, since ADR-010 ships this opt-in and off), and
@@ -873,7 +873,7 @@ async def retract_audit_feedback(feedback_id: str, background_tasks: BackgroundT
     Idempotent — retracting twice is not an error, because the client's retry after a dropped
     response must not turn into a 404 the user cannot act on.
 
-    **What this does not undo:** `AutoDocEngine` may already have written a learned dismissal
+    What this does not undo: `AutoDocEngine` may already have written a learned dismissal
     rule into the vault, which `safe_filter` reads on the default comparison path. Those notes
     are human-editable documentation and are deliberately not rewritten from here — a retract
     that silently edited the vault would be a bigger surprise than one that does not.

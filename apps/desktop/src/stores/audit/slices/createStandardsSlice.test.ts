@@ -1,7 +1,7 @@
 /** The standards upload posts to the route that accepts POST.
  *
  * This existed as a defect for the whole life of the feature: the slice posted to
- * `/api/v1/standards`, which is **GET-only** (`standards.py::list_standards`), so every upload
+ * `/api/v1/standards`, which is GET-only (`standards.py::list_standards`), so every upload
  * returned `405 Method Not Allowed` and no standard could be ingested through the UI. The live
  * backend's own route table:
  *
@@ -10,7 +10,7 @@
  *     /api/v1/standards/{id}      DELETE, GET
  *
  * It is worth a test rather than a comment because of what it cost downstream. An empty
- * `standard_chunks` collection was read as *"no standard has ever been uploaded"* — a **data**
+ * `standard_chunks` collection was read as *"no standard has ever been uploaded"* — a data
  * problem — and a whole track was retired on that reading. The real cause was one missing path
  * segment. Same family as `Gotcha - A Tested Endpoint That Nothing Ever Called`: the endpoint
  * was fine and nothing reached it.

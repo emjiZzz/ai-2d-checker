@@ -1,18 +1,18 @@
 """The durable query store — Stage B of the corpus widening ([[ADR-012]]).
 
-**A query and a relevance judgement have different lifetimes, and conflating them is what makes a
-retrieval corpus expensive to grow.** `labels.LabelSet` pins the `source_digest` of the index it
+A query and a relevance judgement have different lifetimes, and conflating them is what makes a
+retrieval corpus expensive to grow. `labels.LabelSet` pins the `source_digest` of the index it
 was authored against and `assert_matches_index` refuses to score across a mismatch — so every time
 the corpus grows, every label written so far dies. That is correct: a judgement about *which chunk
 answers this* is only meaningful against the chunks that existed when it was made.
 
-A **query** has no such dependency. "What did a checker actually ask?" is a fact about the checker,
+A query has no such dependency. "What did a checker actually ask?" is a fact about the checker,
 not about the index, and it survives any number of rebuilds. Queries are also the input that takes
 longest to gather and that no tooling can synthesise — see the guideline's *"Where queries come
 from"*, which is emphatic that a query written while looking at a chunk is a paraphrase of that
 chunk and measures nothing.
 
-So this store deliberately records **neither `source_digest` nor `guideline_version`**:
+So this store deliberately records neither `source_digest` nor `guideline_version`:
 
 * no `source_digest`, because a query does not become wrong when the corpus changes — that is the
   entire reason Stage B can run before Stage C, and in parallel with more sources landing;
@@ -149,14 +149,14 @@ class QuerySet:
         return entry
 
     def drop_origin(self, origin: QueryOrigin) -> int:
-        """Remove every query of one origin, returning how many went. Ids are **not** renumbered.
+        """Remove every query of one origin, returning how many went. Ids are not renumbered.
 
         Exists for `production`, which is a *projection* of the current query construction over
         the current drawings — so a harvest must be idempotent, and re-running it after the
         construction changes must not leave the store holding queries production can no longer
         issue alongside the new ones.
 
-        **Never call this with a human origin.** `checker` and `finding` queries are the input
+        Never call this with a human origin. `checker` and `finding` queries are the input
         nothing can regenerate; that asymmetry is the entire reason `QueryOrigin` is required.
         Guarded by `test_dropping_a_human_origin_is_refused`.
         """
@@ -246,14 +246,14 @@ _MIN_STEM_PART = 3
 def build_drawing_keywords(drawing: Any, layer_names: Iterable[str] = ()) -> list[str]:
     """The deduplicated, capped keyword list the audit pipeline derives from a drawing.
 
-    Separate from `build_drawing_query` because the orchestrator needs **both**: the joined
+    Separate from `build_drawing_query` because the orchestrator needs both: the joined
     query text for the lexical index, and the keyword list for the MongoDB substring fallback.
     Deriving the second by splitting the first on spaces would corrupt it for any drawing whose
     file name contains a space.
 
-    **`layer_names` is a parameter, not something read off the drawing, and that is the fix
-    for a defect rather than a style choice.** Until 2026-08-17 this read
-    `drawing.metadata["layers"]` — **a key nothing has ever written** — so the branch its own
+    `layer_names` is a parameter, not something read off the drawing, and that is the fix
+    for a defect rather than a style choice. Until 2026-08-17 this read
+    `drawing.metadata["layers"]` — a key nothing has ever written — so the branch its own
     comment called *"the strongest signal"* contributed nothing on all 44 drawings in the
     database, and a production query was the file name plus a constant. Layer names live on
     `ExtractedEntity.layer`, one collection over, indexed. Passing them in keeps this function
@@ -291,8 +291,8 @@ def build_drawing_query(drawing: Any, layer_names: Iterable[str] = ()) -> str | 
     """The query the audit pipeline searches `standards` with, for one drawing.
 
     Extracted from `AuditOrchestrator._retrieve_lessons_learned` on 2026-08-17 so that Stage B
-    can harvest real production queries without reimplementing how one is built. **A harvester
-    that built a nearly-identical query would measure something the product does not do** — the
+    can harvest real production queries without reimplementing how one is built. A harvester
+    that built a nearly-identical query would measure something the product does not do — the
     same defect one layer up from `mutator.py` sharing `apply_zone_overrides` with the engine.
 
     Returns `None` when no keyword survives, matching the orchestrator's skip.

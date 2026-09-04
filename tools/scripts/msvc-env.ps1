@@ -21,17 +21,17 @@
 #
 # -- so on any machine without a portable MSVC unpacked under the repo or the home directory,
 # `$msvcRoot` became a path that does not exist. `$msvcVer` then fell back to a hardcoded
-# "14.51.36231", INCLUDE and LIB were **overwritten** with directories that were not there, and
+# "14.51.36231", INCLUDE and LIB were overwritten with directories that were not there, and
 # the script printed *"MSVC Environment injected."* and carried on.
 #
 # Three separate faults, all silent:
 #
-#   1. **A real Visual Studio install was never consulted.** `vswhere.exe` is the supported
+#   1. A real Visual Studio install was never consulted. `vswhere.exe` is the supported
 #      discovery mechanism and shipped on the machine this was first run on.
-#   2. **The version fallbacks were guesses that reported success.** A hardcoded MSVC and SDK
+#   2. The version fallbacks were guesses that reported success. A hardcoded MSVC and SDK
 #      version that happen to be absent produce the same "injected" message as ones that are
 #      present.
-#   3. **`Select-Object -First 1` over `Get-ChildItem` picks the OLDEST version**, because the
+#   3. `Select-Object -First 1` over `Get-ChildItem` picks the OLDEST version, because the
 #      listing is ascending. Where several toolchains were installed it silently chose the
 #      earliest one.
 #
@@ -49,7 +49,7 @@
 #   3. `vswhere` -> Visual Studio / Build Tools  (NEW -- this is the case that used to fail)
 #
 # A machine that builds today takes the same branch it takes today. Nothing is exported until
-# `cl.exe` and `link.exe` have actually been found, and if no toolchain resolves this **throws**
+# `cl.exe` and `link.exe` have actually been found, and if no toolchain resolves this throws
 # rather than exporting paths that do not exist.
 
 $ErrorActionPreference = "Stop"

@@ -6,7 +6,7 @@ test that says so is the most important one in the file: without it the ledger e
 "fixed" by someone computing those features in TypeScript, which is strictly worse than the
 nulls it replaces (see test_finding_snapshot_nulls_are_recomputed_server_side).
 
-**0a.1's two tests are gone** (ADR-006). They pinned the signature of
+0a.1's two tests are gone (ADR-006). They pinned the signature of
 `full_ai_orchestrator.generate_ai_vision_candidates`, whose `request`-NameError made `hybrid`
 100% non-functional. That module was deleted with the three AI methods, so the defect is
 unreachable rather than fixed, and a test asserting on a deleted function's signature would

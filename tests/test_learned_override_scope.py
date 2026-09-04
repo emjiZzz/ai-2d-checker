@@ -1,10 +1,10 @@
 """A human's dismissal must not silently suppress unrelated findings.
 
-**The defect this file exists for**, reported from live use 2026-08-17 and measured on
+The defect this file exists for, reported from live use 2026-08-17 and measured on
 `M745230A01`: the checker saw a marker pairing the dimension `25` on the reference with `60` on
-the revision and labelling it **MATCHED**. The deterministic engine had reported it as CHANGED.
+the revision and labelling it MATCHED. The deterministic engine had reported it as CHANGED.
 
-`_decide`'s substring branch compared the stored override and the marking **in both directions**
+`_decide`'s substring branch compared the stored override and the marking in both directions
 with a 2-character floor:
 
 ```python
@@ -16,8 +16,8 @@ So a marking whose value was `"25"` matched any override key *containing* `"25"`
 dismissed because `line_attribute_differ` reports line attributes as ADDED on a re-traced
 revision.
 
-The resulting loop is the worst shape available for human-in-the-loop learning: **dismissing a
-false positive manufactured false negatives.** Every correction made the tool quieter *and* less
+The resulting loop is the worst shape available for human-in-the-loop learning: dismissing a
+false positive manufactured false negatives. Every correction made the tool quieter *and* less
 correct, and nothing in the UI explained why. Measured on that one pair, 12 of 75 findings were
 force-matched, including three real dimension changes.
 

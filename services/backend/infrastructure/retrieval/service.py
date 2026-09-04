@@ -4,14 +4,14 @@ This is the only module in the package that knows about Beanie documents or the 
 `index_builder` deliberately takes already-fetched objects so it stays synchronous and testable
 without a database; the async fetching lives here.
 
-**Every rebuild is a whole-corpus rebuild, and that is not laziness.** TF-IDF's idf term is a
+Every rebuild is a whole-corpus rebuild, and that is not laziness. TF-IDF's idf term is a
 property of the *corpus*, not of a document: adding one chunk changes the weight of every n-gram
 it contains everywhere else. An incremental "append one vector" would leave the index internally
 inconsistent — ranking new chunks under different weights than old ones — which is the kind of
 error that produces plausible orderings and no symptom. At this corpus size a full rebuild is
 around a second, so correctness is nearly free.
 
-**All CPU work is offloaded.** Every `build_index` call here goes through `asyncio.to_thread`,
+All CPU work is offloaded. Every `build_index` call here goes through `asyncio.to_thread`,
 because fitting a vocabulary over the corpus blocks the event loop for its whole duration. The
 predecessor called indexing inline and got away with it only because its "embedding" was a random
 number generator. Guarded by `tests/test_standards_loader_async.py`.
@@ -60,7 +60,7 @@ MAX_RECORDS_PER_COLLECTION = 50_000
 #: One lock per collection, so a rebuild of `lessons` never overlaps another rebuild of
 #: `lessons` — while still letting different collections build concurrently at startup.
 #:
-#: `review_violation` rebuilds `lessons` on **every** supervisor verdict, and the build itself
+#: `review_violation` rebuilds `lessons` on every supervisor verdict, and the build itself
 #: runs in a worker thread (`asyncio.to_thread`), so two verdicts submitted close together
 #: genuinely execute `VectorStore.write` in parallel. The writes are atomic per file now, which
 #: bounds the damage to "one run's files win"; this removes the interleaving entirely so the
@@ -100,7 +100,7 @@ async def rebuild_domain_rules_index(root: Path | None = None) -> BuildResult:
 async def rebuild_lessons_index(root: Path | None = None) -> BuildResult:
     """Rebuild `lessons` from supervisor-confirmed violations.
 
-    **The index is derived, not authoritative.** Its source of truth is the `AuditViolation`
+    The index is derived, not authoritative. Its source of truth is the `AuditViolation`
     documents themselves, so it can be dropped and rebuilt at any time. That is the structural
     fix for the R0 defect: the old code wrote "lessons" into a *separate* store that nothing else
     populated or verified, so when the write silently failed there was nothing to compare against.
@@ -144,7 +144,7 @@ async def rebuild_entities_index(root: Path | None = None) -> BuildResult:
     a 32-character id. Fetched whole rather than projected: this collection is tens of drawings
     against thousands of entities, so the drawings are not where the cost is.
 
-    **Customer drawing content.** Client-local, local-only at R1.
+    Customer drawing content. Client-local, local-only at R1.
     """
     drawings = await DrawingDocument.find_all().to_list()
     names = {str(d.id): d.file_name for d in drawings}
@@ -161,7 +161,7 @@ async def rebuild_corrections_index(root: Path | None = None) -> BuildResult:
     engine got something wrong, and unlike `lessons` it is not restricted to findings a
     supervisor happened to route through the review queue.
 
-    **Retracted rows are dropped by `feedback_record`, not filtered here**, so the "a retracted
+    Retracted rows are dropped by `feedback_record`, not filtered here, so the "a retracted
     correction teaches nothing" rule has exactly one implementation on the retrieval side and
     reads the same as `trainer.build_bundle`'s.
     """
@@ -171,10 +171,10 @@ async def rebuild_corrections_index(root: Path | None = None) -> BuildResult:
 
 
 async def rebuild_findings_index(root: Path | None = None) -> BuildResult:
-    """Rebuild `findings` from **every** violation, reviewed or not.
+    """Rebuild `findings` from every violation, reviewed or not.
 
-    **This collection is mostly unreviewed engine output, and that is the point of indexing it
-    separately from `lessons` rather than widening `lessons`.** `lessons` answers *"what has a
+    This collection is mostly unreviewed engine output, and that is the point of indexing it
+    separately from `lessons` rather than widening `lessons`. `lessons` answers *"what has a
     human confirmed"*; this answers *"has this system ever reported anything like this"*. Each
     record's `Record.source` states its review state, so a citation cannot present an unreviewed
     finding as a confirmed one.
@@ -206,7 +206,7 @@ def violation_record(violation: AuditViolation) -> Record | None:
     drift apart on how a violation becomes text — two copies of that rule would keep working
     while slowly disagreeing, which is the expensive shape in this codebase.
 
-    **The text is byte-identical to what `_lesson_record` produced.** That is deliberate and is
+    The text is byte-identical to what `_lesson_record` produced. That is deliberate and is
     what keeps the `lessons` `source_digest` stable across this change: `index_builder._digest`
     hashes texts only, so any label set authored against `lessons` survives. `resolution_type`
     was added to *metadata*, which the digest does not cover — verified, not assumed.
@@ -214,7 +214,7 @@ def violation_record(violation: AuditViolation) -> Record | None:
     `checker_remarks` is included because it is the most valuable part — it is what a human
     actually said about this finding. It is also, per [[ADR-008]], the sharpest privacy edge in
     the system: unbounded free text a person typed, which may quote drawing content verbatim.
-    **That is safe at R1 because nothing leaves the machine.** R4 is where anything is
+    That is safe at R1 because nothing leaves the machine. R4 is where anything is
     transmitted, and this field must be stripped at the edge before it is — not at the transport
     layer, where a later refactor could route around it. See
     [[Standards Knowledge — Rule Bundle Format]].
@@ -246,18 +246,18 @@ def violation_record(violation: AuditViolation) -> Record | None:
 def feedback_record(feedback: AuditFeedbackDocument) -> Record | None:
     """One human correction as a retrievable record.
 
-    **A retracted correction is not indexed.** Same rule `trainer.build_bundle` applies for
+    A retracted correction is not indexed. Same rule `trainer.build_bundle` applies for
     training: a correction the human took back teaches nothing, and the collection keeps the row
     only as an audit trail of who taught the model what. Indexing it would let a withdrawn
     judgement be cited back at the next checker as though it still stood.
 
-    **`client_name` is metadata, not a filter.** Nothing here scopes retrieval to one client,
+    `client_name` is metadata, not a filter. Nothing here scopes retrieval to one client,
     so a query can surface another client's correction. That is the same cross-client
     contamination `AutoDocEngine` was fixed for on 2026-08-10 — it is *not* reintroduced here
     (this path writes no rules and suppresses no findings), but a consumer that turns a hit into
     a rule must scope on this field. Recorded so the next caller does not have to rediscover it.
 
-    **`human_comment` carries the same privacy edge as `checker_remarks`** — see
+    `human_comment` carries the same privacy edge as `checker_remarks` — see
     `violation_record`. Local-only at R1; strip at the edge before anything is transmitted.
     """
     if getattr(feedback, "retracted_at", None):
@@ -311,7 +311,7 @@ async def bootstrap_retrieval_indexes(root: Path | None = None) -> dict[str, Bui
     `manifest.source_digest` exists for that, and acting on it is R2/R3 work once there is a
     metric to say whether staleness is actually costing anything.
 
-    **Usable means `IndexStatus.OK`, not "the files are present".** This gated on `store.exists()`
+    Usable means `IndexStatus.OK`, not "the files are present". This gated on `store.exists()`
     until 2026-08-14, which checks for a manifest and a records file and nothing about their
     contents — so `INDEX_SCHEMA_VERSION` was inert in practice. An index left behind by an older
     build reported STALE at every `search()` and was never rebuilt by anything, meaning the guard

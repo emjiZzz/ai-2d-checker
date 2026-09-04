@@ -34,7 +34,7 @@ import type { EntityLocator } from '../../stores/workspace/types';
  * and no extra `flipWorldY` belongs here — adding one would mirror every badge about the
  * sheet's centreline, plausibly near the middle and far out at the edges.
  *
- * `worldToCanvas`, taking the FRAME's `scale`/`transX`/`transY`, **not** `worldToScreen` taking
+ * `worldToCanvas`, taking the FRAME's `scale`/`transX`/`transY`, not `worldToScreen` taking
  * the viewport. The two are the same arithmetic on screen and diverge completely on export, where
  * the frame carries a fit-to-page transform and the viewport is whatever pan and zoom the user
  * left behind — which put every mark in the corner of the exported sheet.

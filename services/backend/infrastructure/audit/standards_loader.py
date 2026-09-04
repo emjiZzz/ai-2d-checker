@@ -21,7 +21,7 @@ from .standards_parser import (
 def standards_storage_dir() -> Path:
     """Where ingested standards are kept, as a path the sandbox guard will accept.
 
-    Derived from `get_storage_root()` and **not** from `settings.STORAGE_ROOT`, which defaults to
+    Derived from `get_storage_root()` and not from `settings.STORAGE_ROOT`, which defaults to
     the relative `"./storage"` and therefore resolves against the backend's working directory.
     Those two disagreed, and the disagreement was a live 400 on every upload:
 
@@ -133,7 +133,7 @@ class StandardsLoader:
             raise
 
         if not chunks:
-            # **This used to succeed.** A parse yielding nothing substituted one chunk holding
+            # This used to succeed. A parse yielding nothing substituted one chunk holding
             # only the title the uploader typed, saved it, and returned 200. The standard then
             # appeared in the list, reported a chunk, and contained none of its own content —
             # for a scanned PDF, the most likely failure of all, and permanently, because

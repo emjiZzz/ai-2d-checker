@@ -16,10 +16,10 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
     a plain `write_text` — i.e. a claimed control with no implementation, which is exactly the kind
     of line a security audit reads as a verified fact.
 
-    **POSIX:** `0o600` is real — owner read/write, nothing for group or other.
+    POSIX: `0o600` is real — owner read/write, nothing for group or other.
 
-    **Windows, which is the primary platform here:** `chmod` maps only onto the read-only flag and
-    does **not** restrict other users; the file inherits its parent ACL. So on Windows this call is
+    Windows, which is the primary platform here: `chmod` maps only onto the read-only flag and
+    does not restrict other users; the file inherits its parent ACL. So on Windows this call is
     close to a no-op and the file's protection is the user profile directory, not this line. Doing
     it properly needs an ACL rewrite (`icacls` or pywin32) and is not attempted here rather than
     being faked. The token is AES-GCM encrypted at rest, but see `core/encryption.py` — the key is
@@ -35,7 +35,7 @@ def _restrict_token_file_permissions(token_file: Path) -> None:
 
 #: Folder name under the per-user data root that the token is published to.
 #:
-#: **Deliberately NOT the Tauri bundle identifier** (`com.kmti.draftcheck`), which this used to be.
+#: Deliberately NOT the Tauri bundle identifier (`com.kmti.draftcheck`), which this used to be.
 #: That directory is the desktop app's OWN data directory: WebView2 stores its profile there, and
 #: the uninstaller deletes it. Publishing the credential inside it meant an uninstall/reinstall
 #: cycle removed the token -- and because it was written only at backend startup, nothing put it
@@ -64,7 +64,7 @@ def user_storage_root() -> Path:
     `C:\\Program Files\\DraftCheck\\` has no `storage` anywhere up that tree.
 
     The result was not a visible error. `GET /health` requires no token and returned 200, so the
-    app reported itself **connected** while every authenticated call answered 401: the rooms list
+    app reported itself connected while every authenticated call answered 401: the rooms list
     came back empty and "Create Room" did nothing at all. Reported from the first installed
     prototype build as "I can't create a room and proceed".
 
@@ -76,7 +76,7 @@ def user_storage_root() -> Path:
     decrypt. Writing it under the user's own local app data is the same trust boundary as
     `<repo>/storage/secure`, not a wider one.
 
-    **Local, never roaming.** On Windows this is `%LOCALAPPDATA%`, not `%APPDATA%`, precisely
+    Local, never roaming. On Windows this is `%LOCALAPPDATA%`, not `%APPDATA%`, precisely
     because the key is machine-bound: a roaming profile would sync a credential to machines where
     it cannot decrypt, which is all cost and no benefit.
     """
@@ -306,12 +306,12 @@ def sandboxed_path(*parts: str | Path) -> Path:
     Prefer this over ``get_storage_root() / a / b`` at every file-serving site. Two reasons, both
     of which were live defects:
 
-    **1. `/` silently discards the root when the right operand is absolute.**
+    1. `/` silently discards the root when the right operand is absolute.
     ``get_storage_root() / drawing.file_path`` evaluates to ``drawing.file_path`` alone if that
     DB value is ever absolute — the sandbox does not fail, it ceases to exist. Any part that is
     absolute is rejected here rather than honoured.
 
-    **2. Validate-and-discard.** Most existing callers ran ``validate_sandboxed_path(p)`` for its
+    2. Validate-and-discard. Most existing callers ran ``validate_sandboxed_path(p)`` for its
     exception and then used ``p`` — so the canonical, checked path was computed and thrown away.
     A helper that returns the only path you have no reason to discard removes the opportunity.
 
@@ -336,8 +336,8 @@ def sandboxed_path(*parts: str | Path) -> Path:
     return validate_sandboxed_path(candidate)
 
 
-# `mask_secret()` was removed 2026-08-11. It masked a secret for logging and had **zero call
-# sites** from the day it was written — a repo-wide grep returned only its own definition. It was
+# `mask_secret()` was removed 2026-08-11. It masked a secret for logging and had zero call
+# sites from the day it was written — a repo-wide grep returned only its own definition. It was
 # deleted rather than kept because it was not neutral dead code: the 2026-08-11 audit package
 # cited it as a verified control ("automatically obfuscates API keys and bearer tokens prior to
 # writing diagnostic logs"), which was true of the function and false of the system.

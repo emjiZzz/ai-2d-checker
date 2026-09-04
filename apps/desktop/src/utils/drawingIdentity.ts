@@ -8,10 +8,10 @@
  *
  * The tokens come from the backend (`infrastructure/cad/drawing_identity.py`), which collects
  * every drawing-number-shaped string on the sheet. Neither side tries to identify *the*
- * drawing number; the question is only whether the two sheets **share** one. Measured over
+ * drawing number; the question is only whether the two sheets share one. Measured over
  * the eval corpus: 7/7 real pairs share a token, 42/42 cross-pairings share none.
  *
- * **Absent evidence is not a mismatch.** A drawing whose numbering does not match the
+ * Absent evidence is not a mismatch. A drawing whose numbering does not match the
  * expected shape yields no tokens, and an older drawing ingested before the field existed
  * carries none at all. Both must pass. A false reject deletes a drawing the user just
  * uploaded; a false accept only runs the comparison they already asked for.

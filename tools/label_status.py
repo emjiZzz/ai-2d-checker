@@ -7,22 +7,22 @@
 Reads the live `audit_feedback` collection and reports the corpus the way `trainer.build_bundle`
 counts it, not the way a human would skim it. Three things it exists to make visible:
 
-**1. The class balance, not the row count.** `MIN_TRAIN` is a floor, and crossing it is not the
+1. The class balance, not the row count. `MIN_TRAIN` is a floor, and crossing it is not the
 same as being ready. `inference._decide` flips a deterministic `CHANGED/ADDED/REMOVED` to
 `MATCHED` whenever the trained head returns `p_true < LOW_THRESH`, so a head trained on a corpus
 that is mostly label 0 suppresses findings — the false-negative direction, in the system whose
 headline gap is that false negatives have never been measured. A tool that printed only
 "36 / 40" would actively encourage the cheapest and worst way to reach 40.
 
-**2. Which verbs train nothing.** `MATCHER_FEEDBACK` and `value_correction` are captured and
+2. Which verbs train nothing. `MATCHER_FEEDBACK` and `value_correction` are captured and
 deliberately unlabelled. They are real human judgments that move no model today, and if that
 bucket is the largest one, the corpus is telling you where the defect is.
 
-**3. Which bundle is live.** The `.meta.json` is the only figure in this project that changes
+3. Which bundle is live. The `.meta.json` is the only figure in this project that changes
 without a commit, so the ledger's copy of it goes stale silently. It did: it read 21 for weeks
 while the corpus held 36.
 
-The label sets and thresholds are **imported** from `trainer`/`config` rather than restated
+The label sets and thresholds are imported from `trainer`/`config` rather than restated
 here. That is deliberate and is the opposite of the convention in `tests/` — a test pins the
 backend's wording literally so a change *fails*, but this tool must report what the trainer will
 actually do, so it has to move when the trainer moves.

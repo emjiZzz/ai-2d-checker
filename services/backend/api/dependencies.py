@@ -41,9 +41,9 @@ def resolve_username(
     `X-Engineer-Name` carries the name chosen in `EngineerPromptModal` so those records can be
     attributed and separated per tester.
 
-    **It is NOT authentication and must never be treated as such.** The name is picked from a
+    It is NOT authentication and must never be treated as such. The name is picked from a
     21-entry dropdown with no password, every installed client holds the same API bearer token,
-    and this header is set by the client. Anyone can send any name. It buys **separation**
+    and this header is set by the client. Anyone can send any name. It buys separation
     — "your workspace lists your work" — not confidentiality, and any endpoint that fetches by id
     still serves any record to any caller.
 
@@ -84,14 +84,14 @@ async def get_or_404(model, id: str, detail: str, projection: dict | None = None
     unhandled 500. Use this instead of calling `Model.get(id)` directly in
     route handlers.
 
-    **Catch both exception types, and do not "tidy" either away.** Which one
+    Catch both exception types, and do not "tidy" either away. Which one
     fires depends on the Beanie version, and this guard has already gone inert
     once because of that:
 
     - Older Beanie called into bson directly and raised `bson.errors.InvalidId`.
     - Beanie 2.x (2.1.0 here) validates the id through a Pydantic `TypeAdapter`
       first (`documents.py::get` -> `parse_object_as`), so it raises
-      `pydantic.ValidationError` and **never reaches the bson path at all**.
+      `pydantic.ValidationError` and never reaches the bson path at all.
 
     So on this version the original `except InvalidId` caught an exception that
     could no longer occur, and every one of the ~24 call sites — annotations,
@@ -100,8 +100,8 @@ async def get_or_404(model, id: str, detail: str, projection: dict | None = None
     (`phys_chk_restored_1_1786329084013`) and getting INTERNAL_SERVER_ERROR
     instead of "not found".
 
-    The lesson generalises past the version bump: **a guard clause naming a
-    concrete exception type is a dependency on that library's internals**, and
+    The lesson generalises past the version bump: a guard clause naming a
+    concrete exception type is a dependency on that library's internals, and
     nothing fails when the library stops raising it — the code keeps compiling,
     the tests keep passing, and the guard silently stops guarding.
 

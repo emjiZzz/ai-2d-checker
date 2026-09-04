@@ -1,7 +1,7 @@
 """Stage 1a — a learned dismissal acts only in the category a human dismissed it in.
 
 `get_learned_dismissals()` returns bare strings, and the orchestrator used to flatten every
-category into one set and apply it to the **drawing_views** pool. Two silent consequences:
+category into one set and apply it to the drawing_views pool. Two silent consequences:
 
 * a `title_block` dismissal suppressed drawing geometry, and
 * a `drawing_views` dismissal never reached the notes or isometric pools, so the
@@ -10,7 +10,7 @@ category into one set and apply it to the **drawing_views** pool. Two silent con
 Suppression is the one direction this system cannot detect being wrong — nothing measures its
 false-negative rate — so applying a dismissal outside its evidence is not a small liberty.
 
-**Measured effect on the corpus: zero.** The live vault holds two patterns, `8`
+Measured effect on the corpus: zero. The live vault holds two patterns, `8`
 (`drawing_views`) and `ユニットNo.` (`title_block`), and the eval scores byte-identical before
 and after this change: P 0.98 / R 0.87 / F1 0.92. That is recorded rather than hidden — the
 change is justified by the hazard it closes and by these tests, not by a metric move. The same

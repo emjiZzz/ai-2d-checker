@@ -13,7 +13,7 @@ perfectly, because the key is derived from machine and user rather than from pro
 nothing rejected it until the backend answered 401 on every authenticated request. `/health` needs
 no token and stayed 200, so the app displayed itself as CONNECTED.
 
-**Why a test rather than a comment.** The per-user branch already carried a comment calling
+Why a test rather than a comment. The per-user branch already carried a comment calling
 itself *"the only branch an INSTALLED build can reach"*. It was wrong for as long as any directory
 named `storage` sat above the install location, and a comment cannot notice that.
 

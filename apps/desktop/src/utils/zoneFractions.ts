@@ -7,20 +7,20 @@
  *
  * ## The two spaces
  *
- * 1. **Detected zone boxes** (`GET /drawings/:id/zones`) are absolute CAD units, **Y-up**:
+ * 1. Detected zone boxes (`GET /drawings/:id/zones`) are absolute CAD units, Y-up:
  *    a larger `y` is nearer the top of the sheet. Verified against real entity coordinates
  *    rather than inferred — the two notes lines in `M7452A0N01_reference.dxf` sit at CAD
  *    y=599.5 and y=577.9 within bounds y −37.125…779.625, and they render 22% down from the
  *    sheet top, which is where they visibly are. Read-only rendering of these uses
  *    `worldToScreen`, which applies the flip.
  *
- * 2. **`customRegions` / template fractions** are 0..1 of `render_bounds`, **Y-down**:
+ * 2. `customRegions` / template fractions are 0..1 of `render_bounds`, Y-down:
  *    fraction 0 is the top of the sheet. Confirmed by the pre-existing defaults (`title`,
  *    a bottom-right title block, is `yMin: 0.75`) and by the drag hit-test in
  *    `useCanvasInteraction.ts`, where `yMin = 0` maps to `viewport.y` (screen top). That
  *    hit-test does not invert Y and is correct for this space — do not "fix" it.
  *
- * So converting between them flips Y **and swaps min/max**: a zone's CAD `ymax` becomes its
+ * So converting between them flips Y and swaps min/max: a zone's CAD `ymax` becomes its
  * fractional `yMin`. X is a plain ratio in both directions.
  *
  * Getting this wrong produces a vertically mirrored set of boxes, which reads as plausible
@@ -365,15 +365,15 @@ export function pointInShape(frac: RegionFractions, x: number, y: number): boole
  * Pure, for the same reason as `zonesToTemplatePayload` below: the defect was invisible inside a
  * component that cannot be mounted without flexlayout, a canvas and a ResizeObserver.
  *
- * **The defect this exists to prevent.** The call site was `{ ...oldReg, ...newReg }`, described
+ * The defect this exists to prevent. The call site was `{ ...oldReg, ...newReg }`, described
  * as merging the two sides so "the REVISION's boxes win on any zone aligned differently on the
  * two sides". That reads correctly only if the two arguments hold *edited* zones. They do not —
  * `getRegionsFor` returns a drawing's COMPLETE zone set, seeded from detection and stamped from
  * the template on every editor open, so both objects always carry all seven keys and the spread
  * resolves to "the revision's boxes, always".
  *
- * The consequence was that **editing a zone on the reference pane and saving was a silent
- * no-op**: the reference's box was dropped before the request was built, and `applyZoneTemplate`
+ * The consequence was that editing a zone on the reference pane and saving was a silent
+ * no-op: the reference's box was dropped before the request was built, and `applyZoneTemplate`
  * then wrote the revision-derived set back over both panes, so the edit visibly snapped back and
  * `userAlignedZoneKeys` was cleared along with it. The user's report was "I adjusted it and
  * clicked save, it just pops back there."
@@ -414,7 +414,7 @@ export function mergeSidesForTemplate(
  * component that cannot be mounted without flexlayout, a canvas and a ResizeObserver. Same
  * reason `zoneGate.ts` is pure.
  *
- * **The defect this exists to prevent.** The original built each zone as a four-field object
+ * The defect this exists to prevent. The original built each zone as a four-field object
  * literal — `{ xMin, xMax, yMin, yMax }` — which was complete when a zone *was* four scalars.
  * Reshaping added `points`, and this construction site was never updated, so every hand-drawn
  * outline was silently flattened to its bounding box on save. Silent because the outline is

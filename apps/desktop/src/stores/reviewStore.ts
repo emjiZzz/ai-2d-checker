@@ -190,7 +190,7 @@ interface ReviewState {
   pinnedZoneKeys: Record<string, string[]>;
   getPinnedZoneKeys: (drawingId: string | null | undefined) => string[];
   /**
-   * Zone keys a **human** has moved, resized or reshaped, per drawing. Persisted.
+   * Zone keys a human has moved, resized or reshaped, per drawing. Persisted.
    *
    * ## Why this has to exist
    *
@@ -198,10 +198,10 @@ interface ReviewState {
    * boxes the *user* dragged. They are indistinguishable once written, and localStorage keeps
    * both. That ambiguity caused a bug in each direction:
    *
-   * - Trusting localStorage meant a stale **detector** seed masked a pinned template zone, so
+   * - Trusting localStorage meant a stale detector seed masked a pinned template zone, so
    *   a saved alignment looked reverted.
    * - The fix for that — stamping the template over everything on every editor open — meant a
-   *   **user's** own alignment was silently destroyed, on every open and on every restart.
+   *   user's own alignment was silently destroyed, on every open and on every restart.
    *
    * Recording *who* placed a box resolves both: the template overrides a detector seed and
    * never overrides a human one.

@@ -32,7 +32,7 @@ import { cleanCadText } from '../../utils/cadGlyphs';
  * accept. Now every stroke and every glyph gets the same near-black, matching a standard
  * monochrome plot.
  *
- * **This is NOT used for overlay markers or annotation pins**, which carry their own
+ * This is NOT used for overlay markers or annotation pins, which carry their own
  * surface-aware palettes through `markerInkFor` / `getAnnotationPinPrintColor`.
  */
 const PRINT_INK = '#000000';
@@ -89,7 +89,7 @@ const MAX_LINEWEIGHT_DISPLAY_PX = 6;
  *
  * A stroke of width `w` device px centred at device coordinate `c` covers `c ± w/2`. That fills
  * whole pixels only when `c` is a half-integer for odd `w`, or an integer for even `w`. At any
- * other phase the browser splits the ink across two columns — **measured**: a 1px hairline at
+ * other phase the browser splits the ink across two columns — measured: a 1px hairline at
  * phase 0 comes out as two columns at alpha 0.498 / 0.502. Total ink is conserved at exactly
  * 1.0, so the line is not thicker; it is *spread*, which reads as roughly half a pixel of extra
  * width per side against a CAD viewer that snaps (iCAD SX does).
@@ -141,7 +141,7 @@ const capHeightRatioCache = new Map<string, number>();
 /**
  * Cap height as a fraction of the em square, for a given font size + stack.
  *
- * DXF text `height` is the **cap** height. CSS `font-size` sets the **em** size. ezdxf, and
+ * DXF text `height` is the cap height. CSS `font-size` sets the em size. ezdxf, and
  * every CAD viewer, scales glyphs so the cap height lands exactly on the DXF height — so
  * `font: ${height}px` draws every string at roughly 76% of its correct size. Measured against
  * the ezdxf raster before this fix, `height_ratio` was a flat 0.7617 across all 221 comparable
@@ -260,8 +260,8 @@ const attachmentAnchor = (
  * of percent, and a canvas `measureText` returns the ADVANCE width while a column width was
  * authored against the ink.
  *
- * Measured on M745221N01: of 247 MTEXT entities carrying a column width, **99 would wrap at
- * zero tolerance and every one of them is over by less than 6%** — most by exactly 3.0%, which
+ * Measured on M745221N01: of 247 MTEXT entities carrying a column width, 99 would wrap at
+ * zero tolerance and every one of them is over by less than 6% — most by exactly 3.0%, which
  * is the signature of an exporter that set each column to its own text's natural width. None of
  * those breaks is intended. Honouring them put a lone `）` on a line of its own in
  * `４ロール：２４（４×６台）` and split single characters off title-block headers.
@@ -691,7 +691,7 @@ export const renderEntities = ({
   //
   // An entity can record 1.00mm and still be meant to display as a hairline: the weight is a
   // plotting instruction, and this header is the switch deciding whether the viewer honours it
-  // on screen. It is **0 on both M745221N01 files**, which is exactly why iCAD SX shows uniform
+  // on screen. It is 0 on both M745221N01 files, which is exactly why iCAD SX shows uniform
   // thin linework on a sheet carrying 1.00mm on 136 entities and 0.50mm on 331.
   //
   // Defaults to OFF when absent, which covers both the DXF default and any drawing ingested
@@ -1279,15 +1279,15 @@ const MARKER_DOT_PX = 5.5;
 /**
  * How a mark is painted, per surface.
  *
- * On the dark canvas a mark is an **interaction affordance**: high-chroma, heavy enough to find
+ * On the dark canvas a mark is an interaction affordance: high-chroma, heavy enough to find
  * at a glance and to stay legible while zoomed out, and opaque so it reads as a thing you can
- * click. On the printed page it is an **annotation over someone else's drawing**, and it has to
+ * click. On the printed page it is an annotation over someone else's drawing, and it has to
  * read as added to the sheet rather than as competing with it.
  *
  * The print numbers are derived from what is actually next to them on the page, not chosen by
- * eye. At the report's A4 capture the drawing's own linework is a **0.42 mm** hairline and its
- * title-block text is about **2.5 mm** tall — against which the screen values gave a **4.3 mm**
- * tick drawn with a **1.25 mm** stroke in neon green. Three times the weight of the drawing, and
+ * eye. At the report's A4 capture the drawing's own linework is a 0.42 mm hairline and its
+ * title-block text is about 2.5 mm tall — against which the screen values gave a 4.3 mm
+ * tick drawn with a 1.25 mm stroke in neon green. Three times the weight of the drawing, and
  * the first thing the eye landed on.
  *
  * `checkRisePx` lifts the tick clear of the value it marks. The mark's coordinate is the entity's
@@ -1764,7 +1764,7 @@ export interface RenderZoneEditorParams {
  * here — that walk is over every entity on the sheet and belongs in a memo, not in a function
  * that runs on every pan frame.
  *
- * **An inferred datum is drawn DASHED.** Only one view per sheet has its origin stated by the
+ * An inferred datum is drawn DASHED. Only one view per sheet has its origin stated by the
  * file (`ucs_origin` projected); the rest are read off the drawn geometry, and the overlay says
  * which is which — the same idiom `renderZoneEditor` uses for a zone the detector never
  * anchored, so a guess is never mistaken for a measurement. See `viewDatums.ts` for the ladder
@@ -1779,20 +1779,20 @@ export interface RenderZoneEditorParams {
  * ## The Y flip belongs HERE, not in the canvas transform
  *
  * This function previously claimed *"the canvas transform already carries the flip, so the up
- * arm is drawn toward +y here and lands upward on screen."* **That was false.**
+ * arm is drawn toward +y here and lands upward on screen."* That was false.
  * `CanvasRenderer` sets `ctx.scale(scale, scale)` — no negative — and every entity is mirrored
  * at draw time instead, through `flipY(y) = ymax + ymin - y` against `render_bounds`. So world
- * space on this canvas is **Y-DOWN**, and a marker drawn at a raw CAD `y` lands mirrored about
+ * space on this canvas is Y-DOWN, and a marker drawn at a raw CAD `y` lands mirrored about
  * the sheet's horizontal centreline while its "up" arm points down.
  *
  * It survived because the error is proportional to distance from that centreline. On
  * `M745221N01` the two viewports near the middle were 18 and 6 units out — visually fine — and
  * only the isometric view, high on the sheet at paper y 224.8 against a centreline of 148.5,
- * was **152 units out**: drawn at the bottom of the sheet while the view it marks is at the top.
+ * was 152 units out: drawn at the bottom of the sheet while the view it marks is at the top.
  * The same "mirrored overlay that looks plausible" failure the zone-fraction conversion carries
  * a warning about.
  *
- * This is the **only** overlay in this file that stays in world space. `renderViolationReticles`,
+ * This is the only overlay in this file that stays in world space. `renderViolationReticles`,
  * `renderAnnotationPins` and `renderZoneEditor` all open with
  * `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` and place things in canvas pixels via `worldToCanvas`
  * / `fractionsToScreenRect`, which apply the flip themselves. So "does this renderer owe the

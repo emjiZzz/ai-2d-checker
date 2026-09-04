@@ -4,7 +4,7 @@ import type { PersistedViolation } from "./persistedViolations";
 /**
  * Fetches the `AuditViolation` documents the backend persisted for a comparison session.
  *
- * **Never throws.** The checklist renders from `canvas_markings` and is fully usable without
+ * Never throws. The checklist renders from `canvas_markings` and is fully usable without
  * this; all the call buys is the ability to *review* a finding. A failed fetch must therefore
  * degrade to "no verdict controls", exactly as it does for a MATCHED row — not to a broken
  * checklist. The alternative, letting it reject, would mean a transient network blip wipes the

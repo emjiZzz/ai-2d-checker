@@ -165,8 +165,8 @@ def test_a_zone_can_be_omitted_from_the_views_subtraction():
     extractor had already rejected that row as not-a-values-row and never claimed it as a field.
     Claimed by the zone for exclusion, unclaimed by it for comparison, compared by nobody.
 
-    **The rule: a zone may only take content out of the shared pool if it is going to compare
-    it.** Everything else falls through to `views`, the drawing area, which is the right home
+    The rule: a zone may only take content out of the shared pool if it is going to compare
+    it. Everything else falls through to `views`, the drawing area, which is the right home
     for content no specialised pass wanted.
     """
     from services.backend.infrastructure.audit.bom.zone_detector import views_exclusions

@@ -2,7 +2,7 @@
 
 Search is an exact brute-force cosine over every record — no approximation, no index structure.
 
-**Why an empty index is a first-class state.** The staged plan names this as R1's risk: *"an empty
+Why an empty index is a first-class state. The staged plan names this as R1's risk: *"an empty
 index returns zero results, which is indistinguishable from 'nothing relevant'."* That is the same
 shape as the R0 defect, where a read path returning `[]` concealed a write path that never wrote.
 So `search()` does not return a bare list. It returns a `SearchOutcome` carrying a `status`, and
@@ -41,7 +41,7 @@ from scipy.sparse import csr_matrix, load_npz, save_npz
 
 from ...logger import logger
 
-#: Bump when the on-disk layout changes shape, **or when what a record means changes**. An index
+#: Bump when the on-disk layout changes shape, or when what a record means changes. An index
 #: written under an older version is refused rather than misread — the manifest is checked on
 #: every load, and `bootstrap_retrieval_indexes` rebuilds anything that does not report OK.
 #:
@@ -82,7 +82,7 @@ class Record:
     def citation(self) -> str:
         """Human-readable provenance, e.g. `JIS B 0405 > TOLERANCES > p.12`.
 
-        **ASCII separator on purpose.** This string is logged, and the console on a Japanese
+        ASCII separator on purpose. This string is logged, and the console on a Japanese
         Windows install is cp932, which cannot encode `·` (U+00B7) — a citation containing one
         raises `UnicodeEncodeError` at the log call rather than at any point near the bug. The
         record text itself is of course Japanese; it is only the punctuation *we* add that has to
@@ -190,7 +190,7 @@ class VectorStore:
         # never sees a half-written index — and more importantly the three files never come from
         # two different builds. `review_violation` rebuilds `lessons` on every verdict via
         # `asyncio.to_thread`, so two verdicts submitted close together genuinely run this method
-        # in **parallel threads**; in-place writes could pair one run's matrix with another run's
+        # in parallel threads; in-place writes could pair one run's matrix with another run's
         # records. `load()` detects that (`matrix.shape[0] != len(records)` -> STALE) but nothing
         # prevented it, and a STALE index silently drops the audit path to substring matching.
         #
@@ -201,7 +201,7 @@ class VectorStore:
         self.directory.mkdir(parents=True, exist_ok=True)
 
         # The temp name keeps the `.npz` extension — `vectors.tmp.npz`, not `vectors.npz.tmp`.
-        # `scipy.sparse.save_npz` **appends `.npz`** when the filename does not already end in
+        # `scipy.sparse.save_npz` appends `.npz` when the filename does not already end in
         # it, so the obvious `.tmp` suffix silently produces `vectors.npz.tmp.npz` and the rename
         # below then fails with FileNotFoundError on a path that was never written.
         matrix_tmp = self.matrix_path.with_name(

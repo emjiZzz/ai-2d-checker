@@ -24,12 +24,12 @@ from .zone_geometry import ZONE_POLYGONS_KEY
 # Detection-only override
 # ---------------------------------------------------------------------------
 #: When true, every zone falls back to keyword detection. This is the configuration an end user
-#: without a hand-aligned template is in, and until 2026-08-12 there was **no committed way to
-#: run it** — `baseline-v45-detection.json` was published from a throwaway script that no longer
+#: without a hand-aligned template is in, and until 2026-08-12 there was no committed way to
+#: run it — `baseline-v45-detection.json` was published from a throwaway script that no longer
 #: exists, so the one baseline describing the shipping configuration could not be regenerated
 #: from the repo.
 #:
-#: **The gate is NOT here** — it is in `table_extractor.extract_dynamic_regions_async`, which
+#: The gate is NOT here — it is in `table_extractor.extract_dynamic_regions_async`, which
 #: is the single funnel both template paths pass through. Gating this function alone was tried
 #: first and silently did nothing: the offline eval runner never calls it. It passes the
 #: corpus's captured fractions straight into `generate_deterministic_candidates` as
@@ -82,8 +82,8 @@ def fractions_to_absolute_bbox(
 
     ## The Y axis is flipped here, deliberately
 
-    Template fractions are **Y-DOWN**: `yMin = 0` is the *top* of the sheet, matching screen
-    orientation and the client's `customRegions` convention. CAD coordinates are **Y-UP**.
+    Template fractions are Y-DOWN: `yMin = 0` is the *top* of the sheet, matching screen
+    orientation and the client's `customRegions` convention. CAD coordinates are Y-UP.
     So the conversion measures down from `by1` (the top), and min/max swap:
 
         cad_ymin = by1 - yMax * h        cad_ymax = by1 - yMin * h
@@ -190,13 +190,13 @@ def overrides_from_template_zones(
 ) -> Dict[str, Any]:
     """The pure half of `resolve_zone_overrides`: template fractions → absolute boxes.
 
-    Split out so a caller that already holds a template can apply it **without a database**.
+    Split out so a caller that already holds a template can apply it without a database.
     The offline eval runner is the reason this exists: `resolve_zone_overrides` needs a
     Beanie session, an offline run has none, and `extract_dynamic_regions_async` then
     degrades to plain detection — correct for the app, silently wrong for a measurement.
     See docs/vault/06 - .../Gotcha - Zone Templates Vanish in Offline Eval.
 
-    Deliberately takes the **fractions**, not resolved boxes, so an offline run exercises
+    Deliberately takes the fractions, not resolved boxes, so an offline run exercises
     `fractions_to_absolute_bbox` and `fractions_to_absolute_polygon` exactly as the app
     does. Handing it pre-resolved boxes would bypass the Y-flip — the one conversion in this
     file whose failure mode is a plausible-looking mirrored zone — and the eval would be

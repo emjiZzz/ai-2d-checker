@@ -1,7 +1,7 @@
 """The backend's layer direction, enforced instead of reviewed.
 
-`.claude/agents/architect-reviewer.md` lists **layer inversion** — `domain/` importing from
-`infrastructure/` — as a violation to flag, and **schema leakage** — `api/schemas.py` models
+`.claude/agents/architect-reviewer.md` lists layer inversion — `domain/` importing from
+`infrastructure/` — as a violation to flag, and schema leakage — `api/schemas.py` models
 used as internal domain objects — as another. Neither was enforced by anything: CI's ruff and
 mypy gates are `continue-on-error`, so the only thing standing between the rule and its breach
 was whether a reviewer happened to look.
@@ -13,10 +13,10 @@ They had both been breached, and had been for months:
   `infrastructure/ingestion/` on 2026-08-14; see that package's `__init__.py` for why relocating
   beat inverting three imports and leaving a web framework in the domain layer.
 * `domain/contracts.py` re-exported seven Pydantic models from `api/schemas.py` as "canonical
-  domain data contracts". It had **zero importers** — dead code whose only live effect was the
+  domain data contracts". It had zero importers — dead code whose only live effect was the
   `domain -> api` edge itself. Deleted the same day.
 
-This test is deliberately structural rather than a `grep`: it resolves **relative** imports to
+This test is deliberately structural rather than a `grep`: it resolves relative imports to
 their real targets, which is what the original violations were written as. A substring search
 for "infrastructure" over `domain/` matches half a dozen prose comments and misses nothing that
 matters; `from ..cad.processing_queue import ...` is invisible to it entirely.

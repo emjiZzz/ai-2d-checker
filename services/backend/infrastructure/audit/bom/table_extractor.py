@@ -107,7 +107,7 @@ async def extract_dynamic_regions_async(
     ## `zone_template` — the offline seam
 
     `None` (the app) means *resolve the template from Mongo*. A dict means *use exactly
-    this*, with **no database access and no silent degradation**; `{}` asserts positively
+    this*, with no database access and no silent degradation; `{}` asserts positively
     that the sheet has no pinned zones.
 
     That three-way distinction is the whole point. An offline eval run has no Beanie
@@ -164,7 +164,7 @@ def extract_dynamic_regions_with_template(
     """The synchronous twin of `extract_dynamic_regions_async`, for a caller that already
     holds the template and cannot await.
 
-    The eval mutator is why this exists. It has to build its zone map from the **same** boxes
+    The eval mutator is why this exists. It has to build its zone map from the same boxes
     the engine will use, because those boxes decide both where a mutation lands and which
     category its expected finding gets — and when they disagreed, the corpus graded the
     engine against an answer key describing different zones. See

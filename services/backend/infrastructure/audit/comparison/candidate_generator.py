@@ -155,8 +155,8 @@ def keep_for_title_extraction(entity, tolerance_bbox, title_bbox, title_ul_bbox=
     anything the title-block field search finds inside them is a second reading of a cell that
     is already reported.
 
-    * **Tolerance table** — its numeric cells were being misread as title fields.
-    * **Upper-left table** — `extract_title_ul_kv` owns it. The bottom title block's `QTY`
+    * Tolerance table — its numeric cells were being misread as title fields.
+    * Upper-left table — `extract_title_ul_kv` owns it. The bottom title block's `QTY`
       field searches for the labels ``T. Q'ty`` / ``総製作個数``, which is precisely the
       upper-left table's own column header, so the proximity search walked hundreds of units
       up the sheet and read that table's cell. The value then surfaced twice in one checklist:
@@ -421,7 +421,7 @@ def _normalize_value_text(t) -> str:
 def _collect_structured_text_values(*sources) -> set:
     """Structured title-block/BOM values, normalised, for the suppression net.
 
-    `MIN_STRUCTURED_VALUE_LENGTH` is read **inside the body, on every call** — never as a
+    `MIN_STRUCTURED_VALUE_LENGTH` is read inside the body, on every call — never as a
     default argument and never captured at def time. `params.sweep_override` rebinds the
     module global, so a value frozen at definition would make the sweep report this
     parameter as having no effect while the engine quietly ran on the old number.
@@ -1081,8 +1081,8 @@ async def generate_deterministic_candidates(
     # from `views` by the box while being claimed by no comparison at all. That is a silent false
     # negative, and it is the one failure mode this system cannot detect.
     #
-    # **The rule, for any zone: a zone may only take content out of the shared pool if it is
-    # going to compare it.** Everything else falls through to `views`, which is the drawing area
+    # The rule, for any zone: a zone may only take content out of the shared pool if it is
+    # going to compare it. Everything else falls through to `views`, which is the drawing area
     # and the correct home for content no specialised pass wanted.
     _ref_claimed = {id(e) for e in ref_notes_entities} | ref_title_ul_claimed_ids
     _rev_claimed = {id(e) for e in rev_notes_entities} | rev_title_ul_claimed_ids
@@ -1456,7 +1456,7 @@ async def generate_deterministic_candidates(
 
     # SAFE-ZONE NET — the last word on `shim` and `tolerance`.
     #
-    # Both are reference data that is **never compared**: their boxes exist so other pools can
+    # Both are reference data that is never compared: their boxes exist so other pools can
     # subtract them, and nothing inside either may reach the user as a finding. Every producer
     # above is meant to honour that, but each honours it differently -- `safe_filter` guards
     # only the drawing_views pool, the BOM and title-block injections consult no zone at all,
@@ -1466,7 +1466,7 @@ async def generate_deterministic_candidates(
     #
     # So it is enforced once, here, where every marking finally has its coordinates.
     #
-    # Ownership, not a bare box test, because **a box is not a claim**: the revision's
+    # Ownership, not a bare box test, because a box is not a claim: the revision's
     # `tolerance` box over-reaches into the title block on M745227N01 and 7 real `title_block`
     # findings sit inside it. `owner_of` walks ZONE_PRECEDENCE and `title` outranks
     # `tolerance`, so all 7 are claimed by `title` and survive -- measured, this net drops 0 of

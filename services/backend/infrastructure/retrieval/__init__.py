@@ -13,16 +13,16 @@ for hit in outcome.hits:
     print(hit.rank, round(hit.score, 3), hit.record.citation())
 ```
 
-**What this is.** Exact char n-gram TF-IDF cosine over a local sparse index. Offline, no model
+What this is. Exact char n-gram TF-IDF cosine over a local sparse index. Offline, no model
 download, no network, no LLM. Retrieval *only* — it hands cited chunks to a human and generates
 nothing, so there is no hallucination surface ([[ADR-008]]).
 
-**What this is not.** It is not semantic. It cannot match a synonym, a paraphrase, or an English
+What this is not. It is not semantic. It cannot match a synonym, a paraphrase, or an English
 term against its Japanese equivalent unless they share characters. Saying so plainly is the point:
 the stack this replaces claimed "semantic vector similarity" and computed
 `np.random.default_rng(sha256(text))`.
 
-**Empty is not the same as nothing relevant.** `query()` returns a `SearchOutcome` whose `status`
+Empty is not the same as nothing relevant. `query()` returns a `SearchOutcome` whose `status`
 distinguishes *"the index answered and nothing matched"* from *"there is no index"*. The staged
 plan names that conflation as R1's chief risk, and it is the same shape as the R0 defect: a read
 path returning `[]` hid a write path that had never written a record.

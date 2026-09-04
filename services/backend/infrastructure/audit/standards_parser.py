@@ -38,7 +38,7 @@ class StandardIngestError(ValueError):
     """A problem with the uploaded file that the person who uploaded it can act on.
 
     Separate from every other exception for one reason: the upload router surfaces this message
-    **verbatim** and replaces everything else with an opaque correlation id. That generic
+    verbatim and replaces everything else with an opaque correlation id. That generic
     handler is correct — an unexpected exception can carry a filesystem path or an internal
     detail — but it also meant a wrong-but-fixable file ("this is a scanned PDF", "re-save as
     .xlsx") produced *"Ingestion process failed. Reference: <uuid>"*, which names neither the
@@ -128,7 +128,7 @@ class StandardsParser:
         wb = openpyxl.load_workbook(file_path, data_only=True)
         meta["page_count"] = len(wb.sheetnames)
 
-        # Embedded pictures are **not** read. `iter_rows()` yields cells only, so a diagram or a
+        # Embedded pictures are not read. `iter_rows()` yields cells only, so a diagram or a
         # pasted screenshot contributes no text and no chunk. Counted and reported rather than
         # silently dropped; reading them would need OCR, which is a decision, not an oversight.
         images = 0
@@ -167,7 +167,7 @@ class StandardsParser:
         it, bold and fill colour are unavailable and `.xls` would silently lose the semantic
         highlighting `.xlsx` gets — the same content producing a different corpus depending on
         which extension it was saved as. Measured on a real 30.8 MB, 18-sheet standards workbook:
-        **1.2 s, 67 MB peak**, no different from `formatting_info=False`, so the flag is free
+        1.2 s, 67 MB peak, no different from `formatting_info=False`, so the flag is free
         here. It also reports slightly *larger* sheet extents, because styled-but-empty cells
         count toward dimensions — harmless, as empty cells are skipped below.
         """
@@ -220,7 +220,7 @@ class StandardsParser:
     def _parse_excel(file_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Chunks a workbook of either Excel format.
 
-        The two formats differ only in **how a cell is read**. Everything that decides what the
+        The two formats differ only in how a cell is read. Everything that decides what the
         output *means* — what a fill colour signifies, that bold becomes markdown, that a row is
         joined with ` | `, that ten rows make a chunk — lives here, once, and is shared. That
         split is the whole point: a second copy of the colour rules would be free to disagree

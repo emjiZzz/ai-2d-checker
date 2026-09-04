@@ -2,9 +2,9 @@
 
 Two properties matter, and they are not symmetric:
 
-  * A **false reject** deletes a drawing the user just uploaded. Absent or unrecognised
+  * A false reject deletes a drawing the user just uploaded. Absent or unrecognised
     evidence must therefore never reject.
-  * A **false accept** only runs the comparison the user already asked for.
+  * A false accept only runs the comparison the user already asked for.
 
 The discrimination numbers quoted in `drawing_identity.py` come from the eval corpus
 (7/7 real pairs share a token, 42/42 cross-pairings share none). That corpus is gitignored,

@@ -5,7 +5,7 @@ and the cache filename. `"rag"` named a technique the engine does not contain â€
 no LLM â€” which was tolerable while it was one default of four and became the system's entire
 vocabulary once [[ADR-006]] removed the other three.
 
-What these tests pin is the part that can silently rot: **the alias is permanent.** Rooms
+What these tests pin is the part that can silently rot: the alias is permanent. Rooms
 written before the rename still say `"rag"` on disk and no migration was run, so the day the
 alias is "cleaned up" as dead code is the day those rooms stop loading. Each test below says
 which artifact would break.

@@ -132,7 +132,7 @@ class ZoneTemplateDocument(Document):
 def zone_signature(render_bounds: list[float] | tuple) -> Optional[str]:
     """Derives a sheet-template identity from render_bounds.
 
-    Currently the bucketed aspect ratio. **Known limitation, recorded rather than hidden:**
+    Currently the bucketed aspect ratio. Known limitation, recorded rather than hidden:
     every A-series sheet is 1.414, so two genuinely different layouts printed on A-series
     paper collide into one template. That is acceptable for a single company's drawing
     standard (the actual corpus) and is why the document carries an editable `name` — a

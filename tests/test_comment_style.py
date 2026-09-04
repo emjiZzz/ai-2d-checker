@@ -17,7 +17,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.comment_style import MARKERS, scan, scan_text, strip_text
+from tools.comment_style import (
+    MARKERS,
+    bold_pairs,
+    scan,
+    scan_bold,
+    scan_text,
+    strip_bold,
+    strip_text,
+)
 
 # Written as escapes so this file's own source carries no marker outside a string literal.
 WARNING = "⚠"
@@ -125,3 +133,94 @@ def test_strip_is_idempotent():
     src = f"# {WARNING} A note.\nx = 1\n"
     once = strip_text(Path("a.py"), src)
     assert strip_text(Path("a.py"), once) == once
+
+
+# --- markdown bold -------------------------------------------------------------------------------
+#
+# Emphasis in a code comment is the second-loudest formatting tell after the emoji, and it carries
+# nothing a sentence does not. The hazards are that a span wraps across lines and that a doubled
+# asterisk is not always emphasis.
+
+BOLD = "*" * 2
+
+
+def test_no_markdown_bold_in_comments():
+    """The guard. Run `python tools/comment_style.py --fix` if this fails."""
+    findings = scan_bold()
+    assert findings == [], (
+        f"{len(findings)} markdown bold span(s) in comments or docstrings. "
+        "CLAUDE.md's Writing style section forbids them; "
+        "run `services/backend/.venv/Scripts/python.exe tools/comment_style.py --fix`. "
+        f"First few: {findings[:5]}"
+    )
+
+
+def test_bold_is_found_in_a_python_comment():
+    src = f"# {BOLD}Careful.{BOLD} Then the rest.\nx = 1\n"
+    assert len(bold_pairs(Path("a.py"), src)) == 1
+
+
+def test_bold_is_found_when_the_span_wraps_across_lines():
+    """168 prose lines carried an odd asterisk count purely because spans wrap.
+
+    A per-line strip would have removed the opener and left the closer stranded, so this is the
+    case the block-level pairing exists for.
+    """
+    src = f"# The lesson is {BOLD}a guard clause naming a\n# concrete type is a dependency{BOLD}, and\nx = 1\n"
+    assert len(bold_pairs(Path("a.py"), src)) == 1
+    out = strip_bold(Path("a.py"), src)
+    assert BOLD not in out
+
+
+def test_exponentiation_in_prose_is_not_bold():
+    """This tree writes 2**14 and 2**16 in prose. An even number of them in one comment block
+    would pair with each other and be stripped, corrupting the text."""
+    src = "# A dense 2**14 space costs more than a 2**16 sparse one.\nx = 1\n"
+    assert bold_pairs(Path("a.py"), src) == []
+    assert strip_bold(Path("a.py"), src) == src
+
+
+def test_a_glob_is_not_bold():
+    """`docs/vault/**/*.md` appears in a documented path inside a docstring."""
+    src = f'"""Indexes docs/vault/{BOLD}/*.md by heading."""\nx = 1\n'
+    assert bold_pairs(Path("a.py"), src) == []
+
+
+def test_a_jsdoc_opener_is_not_bold():
+    src = f"/{BOLD} Some doc.\n * More.\n */\nconst a = 1;\n"
+    assert bold_pairs(Path("a.ts"), src) == []
+
+
+def test_kwargs_in_a_comment_is_left_alone():
+    """A single doubled asterisk makes the block's count odd, so the whole block is skipped."""
+    src = f"# `{BOLD}kwargs` so the stub keeps matching as the signature grows.\nx = 1\n"
+    assert bold_pairs(Path("a.py"), src) == []
+    assert strip_bold(Path("a.py"), src) == src
+
+
+def test_bold_in_a_string_literal_is_left_alone():
+    src = f'LABEL = "{BOLD}bold{BOLD}"\n'
+    assert bold_pairs(Path("a.py"), src) == []
+
+
+def test_strip_bold_is_idempotent():
+    src = f"# {BOLD}Careful.{BOLD}\nx = 1\n"
+    once = strip_bold(Path("a.py"), src)
+    assert strip_bold(Path("a.py"), once) == once
+
+
+def test_finding_repr_renders_for_both_kinds():
+    """The assertion messages above are the only caller of Finding.__repr__.
+
+    It called `ord` on a field that holds two characters for a bold finding, so the bold guard
+    raised TypeError and never printed the instruction to run --fix. A guard whose failure path
+    has never run is not yet a guard.
+    """
+    emoji_src = f"# {WARNING} note\nx = 1\n"
+    bold_src = f"# {BOLD}note{BOLD}\nx = 1\n"
+    marker = scan_text(Path("a.py"), emoji_src)[0]
+    assert "U+26A0" in repr(marker)
+
+    from tools.comment_style import Finding
+    o, _ = bold_pairs(Path("a.py"), bold_src)[0]
+    assert "**" in repr(Finding(Path("a.py"), 1, o, "**", bold_src))

@@ -179,7 +179,7 @@ export function useCanvasInteraction({
    *
    * ## What broke
    *
-   * This was `useState` with a check but **no setter** — `handleContextMenu` could clear it and
+   * This was `useState` with a check but no setter — `handleContextMenu` could clear it and
    * nothing could ever set it, so the guard had been inert. It was not born that way: `243582e`
    * and `d98e3bb` both armed it with `if (e.buttons === 2) setPreventNextContextMenu(true)` in
    * the pan path, and `92e3d3c` dropped that line while rewriting the pan fast path. The check

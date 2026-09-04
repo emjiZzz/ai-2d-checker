@@ -148,7 +148,7 @@ def test_duplicates_require_the_same_handle_or_text_not_mere_proximity():
 
 
 def test_bom_row_reported_cell_by_cell_counts_as_over_reporting():
-    """The annotation guideline: an edited BOM row is **one** finding, not one per cell.
+    """The annotation guideline: an edited BOM row is one finding, not one per cell.
 
     The engine reports the row's five cells separately. Four of those are over-reporting
     and must count against precision — forgiving them as duplicates would let a real

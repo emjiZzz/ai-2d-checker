@@ -160,7 +160,7 @@ export function featureLabel(category: string, featureKey: string | undefined | 
  * hand-written character class.
  *
  * The classes these replace were `[ØøφΦ]`, and `cleanCadText` transcodes the DXF escape `%%c`
- * to **U+2300 ⌀** — which is in none of them. So `⌀145` was invisible to the hole-property rule
+ * to U+2300 ⌀ — which is in none of them. So `⌀145` was invisible to the hole-property rule
  * and `6×⌀145` was invisible to the material-specification rule, on text that reaches here from
  * every drawing in the corpus. Both then fell through to their branch's catch-all and came out
  * looking classified. See `utils/cadGlyphs.ts`.
@@ -174,7 +174,7 @@ const DIAMETER_VALUE_RE = new RegExp(`[${DIAMETER_CHARS}]\\s*\\d+`);
 /**
  * This client's known title-block signatories.
  *
- * **A lookup, not a rule, and incomplete by construction.** It was written inline as
+ * A lookup, not a rule, and incomplete by construction. It was written inline as
  * `/design|設計|橋本|増田/` and `/draw|製図|ZHR/`, which reads like a pattern and is not one: of
  * the four signatures in the corpus — `橋本` and `津田` on 設計, `中川` and `ZHR` on 製図 — this
  * list holds two. It cannot be completed either, because the next revision is signed by whoever
@@ -199,7 +199,7 @@ const PERSONAL_NAME_RE = /^[一-鿿]{2}$/;
 /**
  * A drawing number: `M745221N01`, `M7452A2N01`, `M745230A01`.
  *
- * **`\d{5,}` was wrong and had been wherever it was written.** Half this corpus's drawing
+ * `\d{5,}` was wrong and had been wherever it was written. Half this corpus's drawing
  * numbers are `M` + a FOUR-digit job block + an alphanumeric tail (`M7452` + `A2N01`), so
  * `^[A-Z]\d{5,}` matched `M745221N01` and missed `M7452A1N01`, `M7452A2N01` and `M745230A01`
  * — on the two pairs currently queued for labelling. It is one constant now because
@@ -233,7 +233,7 @@ export function inferFeatureKey(
   }
 
   const cat = category || 'drawing_views';
-  // **Classify what the user sees.** Callers pass raw `ref_text`/`rev_text` off the marking,
+  // Classify what the user sees. Callers pass raw `ref_text`/`rev_text` off the marking,
   // and every card renders `cleanCadText` of that same field — so without this line the rules
   // below judge a string nobody is looking at. It is not a near-miss: a real size cell is stored
   // `6×%%c145` and shown `6×⌀145`, and the material-size rule needs digits either side of the
@@ -360,7 +360,7 @@ export function inferFeatureKey(
   if (cat === 'title_block') {
     if (/Roll|Cassette|Mill|ロールカセット|カセット|ミル|machine|機名/i.test(clean)) return 'machine_name';
 
-    // **Both of these are anchored, and that is the whole fix.** The scale rule used to read
+    // Both of these are anchored, and that is the whole fix. The scale rule used to read
     // `/(SCALE|尺度)?\s*(\d+(\.\d+)?\s*[:/]\s*\d+(\.\d+)?)/` — keyword OPTIONAL, no anchors — so
     // it was really "a number, a colon or slash, another number", which every date on every sheet
     // satisfies. `2026/07/03` matched on its leading `2026/07`, and because scale was tested
@@ -401,8 +401,8 @@ export function inferFeatureKey(
     // KNOWN_SIGNATORIES for what that list is and why it cannot be relied on alone.
     if (/design|設計/i.test(clean) || KNOWN_SIGNATORIES.designed.test(clean)) return 'designed';
     if (/draw|製図/i.test(clean) || KNOWN_SIGNATORIES.drawn.test(clean)) return 'drawn';
-    // A name the lookup does not know. 設計 and 製図 both hold a bare surname and **nothing in
-    // the string says which** — only the field label does, and a manual marking carries no
+    // A name the lookup does not know. 設計 and 製図 both hold a bare surname and nothing in
+    // the string says which — only the field label does, and a manual marking carries no
     // field. `other` rather than let it fall to the Machine Name default below, which is how
     // `橋本 → 津田` came to sit under Machine Name with the two signature rows reading *Pending*.
     //
@@ -421,7 +421,7 @@ export function inferFeatureKey(
     if (DRAWING_NUMBER_RE.test(clean)) return OTHER_FEATURE_KEY;
 
     // Default: the free-text identity fields. Unlike the BOM branch's old catch-all this one is
-    // **measured** — of the 15 corpus values that reach it, 12 are the TITLE / TITLE (2nd line)
+    // measured — of the 15 corpus values that reach it, 12 are the TITLE / TITLE (2nd line)
     // part name or an upper-left Part No./Unit No. code, all of which the backend's own
     // `title_feature_map` and `classify_title_ul_feature` also call `machine_name`. The three it
     // got wrong were the signatures, and the rule above is what takes them out of its way.
@@ -443,7 +443,7 @@ export function inferFeatureKey(
 }
 
 /**
- * Resolve a finding's sub-item from **both** of its texts, preferring whichever side a rule can
+ * Resolve a finding's sub-item from both of its texts, preferring whichever side a rule can
  * actually identify.
  *
  * ## Why one side is not enough
@@ -474,11 +474,11 @@ export function inferFeatureKeyForPair(
 
   const cat = category || 'drawing_views';
 
-  // **`other` is the ONLY answer that defers, and the reason is worth reading before widening
-  // it.** The first version also deferred on each category's *fallback* — the branch's last
+  // `other` is the ONLY answer that defers, and the reason is worth reading before widening
+  // it. The first version also deferred on each category's *fallback* — the branch's last
   // `return` — on the theory that a fallback means "could not tell". For two categories it does
   // not: `drawing_views` falls back to `dimensions` and `notes_section` to `standard_notes`, and
-  // both are substantive. A bare `145` **is** a plain dimension; that is an answer, not a shrug.
+  // both are substantive. A bare `145` is a plain dimension; that is an answer, not a shrug.
   //
   // The damage was immediate and it was reported: `⌀145 → 145` had the revision correctly reading
   // `dimensions`, that got treated as a non-answer, the reference `⌀145` was consulted and

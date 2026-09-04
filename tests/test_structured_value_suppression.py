@@ -4,7 +4,7 @@ Values captured by structured title-block/BOM extraction are excluded from the g
 zone passes so they are not reported twice (`_collect_structured_text_values` in
 `orchestrator.generate_deterministic_candidates`). That net is keyed on TEXT ALONE and applied
 sheet-wide, so before `min_structured_value_length` a value short enough to recur innocently
-suppressed every occurrence of that string in every zone, on **both** sides -- which makes the
+suppressed every occurrence of that string in every zone, on both sides -- which makes the
 suppressed content's deletion unreportable rather than merely unreported.
 
 Measured on `M7452A0N01-rev-mut012`: the BOM row is numbered `1`, the notes zone contains a

@@ -1,15 +1,15 @@
 """Retrieval metrics — R2. `recall@k` and `MRR`, with counts and a chance baseline.
 
-**Why this stage exists at all.** The standards pipeline shipped SHA-256 noise as an embedding
+Why this stage exists at all. The standards pipeline shipped SHA-256 noise as an embedding
 model and it survived for months, because *no number would have moved if it had been replaced by
 a real one*. A retrieval system with no metric cannot tell a working encoder from a random one.
 That is the whole argument, and it is why nothing tunes retrieval before this lands.
 
-**Counts beside every rate**, on the pattern of `infrastructure/eval/scorer.py`. `0.83` means
+Counts beside every rate, on the pattern of `infrastructure/eval/scorer.py`. `0.83` means
 nothing on its own; `0.83 (5/6)` tells you the sample is six queries and invites the right amount
 of scepticism.
 
-**And a chance baseline beside every rate**, which is this module's own addition and matters more
+And a chance baseline beside every rate, which is this module's own addition and matters more
 here than on the comparison track. `recall@k` is bounded below by what a *random* ranker achieves,
 which is roughly `k/N` for a corpus of N documents. Over a 6-document corpus, `recall@5 = 0.83` is
 exactly what shuffling would give you — a number that looks like success and measures nothing.
@@ -127,14 +127,14 @@ class RetrievalScore:
         Four independent gates, all of which must pass. Each exists because of a specific way a
         number here could be quoted misleadingly:
 
-        - **enough queries** — the plan asks for ~30; below that a single query swings recall by
+        - enough queries — the plan asks for ~30; below that a single query swings recall by
           more than the margin we are testing against.
-        - **a low enough chance floor** — the corpus must be large enough relative to k that a
+        - a low enough chance floor — the corpus must be large enough relative to k that a
           shuffling ranker does not already score well. Retrieving 5 documents out of 6 is not
           retrieval, however good the resulting number looks.
-        - **lift over chance** — `recall@5 = 1.00` on a 6-document corpus is a chance score of
+        - lift over chance — `recall@5 = 1.00` on a 6-document corpus is a chance score of
           0.83 wearing a good disguise.
-        - **no synthetic labels** — generated labels are circular by construction.
+        - no synthetic labels — generated labels are circular by construction.
         """
         return (
             self.n_queries >= MIN_QUERIES_FOR_VERDICT

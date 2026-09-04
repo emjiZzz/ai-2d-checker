@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
    * how `RoomsView.test.tsx` came to fail on two assertions about a dialog: `RoomsView` gained a
    * lazy-loading sentinel, and neither test mentions scrolling.
    *
-   * **This never fires its callback.** Anything it observes stays permanently un-intersected,
+   * This never fires its callback. Anything it observes stays permanently un-intersected,
    * so a list paginated by a sentinel shows only its first page under test. That is fine for
    * asserting on what is rendered initially and useless for asserting that more loads — a test
    * of lazy loading has to drive the callback itself rather than trust this stub.

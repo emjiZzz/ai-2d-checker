@@ -225,7 +225,7 @@ export interface ZoneTemplateFractions {
   /**
    * The reshaped outline, when the zone is a polygon rather than a rectangle.
    *
-   * **Load-bearing, and it was missing.** A zone stopped being four scalars when reshaping
+   * Load-bearing, and it was missing. A zone stopped being four scalars when reshaping
    * landed, but this interface — and `saveZonesAsTemplate`, which rebuilt each zone as a
    * four-field literal — still described the old shape. So every hand-drawn outline was
    * silently flattened to its bounding box on save, and `applyZoneTemplate` then wrote that

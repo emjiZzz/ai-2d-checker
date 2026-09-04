@@ -19,7 +19,7 @@ import { mapCanvasMarkingsToMarkers } from "../utils/restoreCanvasMarkings";
  * The only comparison method. Renamed from `"rag"`, which named a technique it does not
  * contain — no retrieval, no LLM (see docs/vault/00 - AI Maturity Status.md).
  *
- * The backend accepts `"rag"` on input **permanently** and normalises it, so rooms written
+ * The backend accepts `"rag"` on input permanently and normalises it, so rooms written
  * before the rename still load. That means this type describes what the API *returns*, and
  * nothing here needs to handle the legacy spelling.
  */

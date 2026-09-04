@@ -5,7 +5,7 @@ Original finding (audit finding #2, `docs/refactoring-audit-2026-07-23.md`): `in
 `async`, and every CPU/IO-bound step inside it must go through `asyncio.to_thread` or it stalls
 every other concurrent request for the duration of a PDF parse.
 
-**Rewritten by R0.** The original test proved this against
+Rewritten by R0. The original test proved this against
 `StandardsVectorIndexer.index_standard_chunks`, which R0 deleted along with the rest of the fake
 embedding stack — the "embedding generation" it was offloading was `np.random.default_rng(...)`,
 so the guard was protecting the event loop from a random number generator. The property it tested
@@ -14,7 +14,7 @@ heaviest surviving offload is `StandardsParser.parse_file` (`standards_loader.py
 PDFs and Excel workbooks. `calculate_file_hash` (:67) and `shutil.copy2` (:85) are offloaded too
 and are checked here as well.
 
-**Extended by R1**, as R0 said it would be. Real lexical indexing is back in `ingest_standard`,
+Extended by R1, as R0 said it would be. Real lexical indexing is back in `ingest_standard`,
 and unlike what it replaced it is genuinely CPU-bound: fitting a TF-IDF vocabulary runs over the
 *whole* standards corpus, not just the chunks being added, because idf is a corpus-level property.
 `build_index` is therefore covered here alongside the parse and hash.

@@ -321,13 +321,13 @@ class ComparisonCacheManager:
     # `extract_title_ul_kv` subtracting the sibling zones' shapes before banding. It measured
     # well on three unlabelled sheets and was a regression on the corpus that scores --
     # detection-only F1 0.7736 -> 0.7339, fp 10 -> 14, tp 41 -> 40, three new `title_block`
-    # false positives. **The templated eval could not see it**: all three v46 mechanisms are
+    # false positives. The templated eval could not see it: all three v46 mechanisms are
     # byte-identical at F1 0.9231 with zones pinned, because a pinned box does not over-reach so
     # none of them ever fires. That is why `tools/eval.py --no-templates` now exists. Do not
     # re-land the subtraction as a per-call-site exclusion list; see orchestrator's
     # `extract_title_ul_kv` docstring and zone_ownership.py.
     #
-    # v47: **the notes pool is chosen per ENTITY, not per box.** `extract_note_entities` +
+    # v47: the notes pool is chosen per ENTITY, not per box. `extract_note_entities` +
     # `notes_classifier.classify_notes` replace `extract_zone_entities(..., notes_bbox, ...)`,
     # `views_exclusions` takes `omit=("notes",)` and the claimed notes are subtracted from the
     # `views` pool by identity instead, and ownership between overlapping zones now comes from
@@ -349,15 +349,15 @@ class ComparisonCacheManager:
     # v47 also, folded in because v47 has not shipped and each change alone invalidates the same
     # entries. Both come from one owner report on M745227N01 -- `４ロール：１２（２×６台）` ADDED
     # with no REMOVED counterpart on a sheet carrying it on both sides:
-    #   * **`title_upper_left` subtracts from `views` only what it CLAIMED**, not its whole box.
+    #   * `title_upper_left` subtracts from `views` only what it CLAIMED, not its whole box.
     #     The reference's copy sits 4.5 units inside that box (y=767.5 vs a bottom edge at
     #     y=763.0) while its sibling 24 units lower falls outside and paired correctly -- and the
     #     UL extractor had already cut that row as not-a-values-row. Claimed by the zone for
     #     exclusion, unclaimed by it for comparison, compared by nobody: a silent false negative.
     #     `extract_title_ul_kv` now returns its claimed entity ids alongside its pairs.
-    #     **The rule for any zone: only take content out of the shared pool if you will compare
-    #     it.** Everything else falls through to `views`.
-    #   * **cross-text pairs are ordered by proximity AND similarity** (`spatial_differ`,
+    #     The rule for any zone: only take content out of the shared pool if you will compare
+    #     it. Everything else falls through to `views`.
+    #   * cross-text pairs are ordered by proximity AND similarity (`spatial_differ`,
     #     `CROSS_TEXT_SIMILARITY_WEIGHT`). Proximity alone crossed the two production-count lines
     #     once both were present -- the block moved 0.055 normalized against a 0.025 row pitch,
     #     so each line's nearest neighbour was its sibling -- reporting `4 ロール：12 (2x6台)` ->
@@ -365,10 +365,10 @@ class ComparisonCacheManager:
     # Both verified on the reported pair; both leave BOTH baselines byte-identical, because
     # M745227N01 is one of the six pairs the runner skips for having no labels.
     #
-    # v48: **`ZONE_MAX_LIMITS["shim"]` was smaller than the table it caps** -- 0.35 of sheet
+    # v48: `ZONE_MAX_LIMITS["shim"]` was smaller than the table it caps -- 0.35 of sheet
     # height against a drawn シム表 of 337.5 units on an 891-unit sheet (37.9%). The box came
     # out 311.8 tall, its cap to the unit, and the bottom row `総厚サ 6mm` (y=311.1) sat
-    # **35.8 units below the bottom edge of its own zone**, fell through to the `drawing_views`
+    # 35.8 units below the bottom edge of its own zone, fell through to the `drawing_views`
     # pool, and was compared and marked -- reported from a live review, where `shim` is a SAFE
     # zone like `tolerance` and none of its rows may be compared at all. Height 0.35 -> 0.45.
     # Now 0 rows uncovered on both sides, and the only thing inside the box but outside the
@@ -384,7 +384,7 @@ class ComparisonCacheManager:
     # no pairing code.
     #
     # v48 also, folded in because v48 is unshipped and it invalidates the same entries: a
-    # **SAFE-ZONE NET** in `orchestrator`, after `resolve_marking_coordinates`. `shim` and
+    # SAFE-ZONE NET in `orchestrator`, after `resolve_marking_coordinates`. `shim` and
     # `tolerance` are never compared, but that invariant was being kept in three different
     # places and three different ways -- `safe_filter` guards only the drawing_views pool, the
     # BOM and title-block injections consult no zone at all, and coordinate resolution can move
@@ -396,7 +396,7 @@ class ComparisonCacheManager:
     # that pair and leaves both baselines byte-identical. It is a net, not a fix -- anything it
     # ever drops is a bug upstream of it, and it logs each drop so that bug is findable.
     #
-    # v49: **`line_attributes` produces findings.** The sub-item has existed since the checklist
+    # v49: `line_attributes` produces findings. The sub-item has existed since the checklist
     # was grouped and no generator has ever assigned it -- `feature_classifier` names Generator B
     # as its intended source and ADR-006 deleted Generator B -- so the card was reachable only
     # through its empty state, which reads "No changes detected." It reported a clean result for
@@ -408,7 +408,7 @@ class ComparisonCacheManager:
     # the key. Every cached audit is invalidated because drawing_views gains rows and its rollup
     # status can flip to CHANGED on a one-sided line attribute.
     #
-    # v50: **an uncorroborated OCR title-block value is no longer promoted to a field.**
+    # v50: an uncorroborated OCR title-block value is no longer promoted to a field.
     # `resolve_field`'s grounding-miss branch returned the OCR string whenever the spatial
     # search also came back NONE -- i.e. it trusted the value in the one case where *nothing*
     # corroborated it. On M745227N01 that published `ME17227N24`, a string appearing nowhere on
@@ -419,7 +419,7 @@ class ComparisonCacheManager:
     # exist. Cached audits are invalidated because any title-block field resolved through that
     # branch can change value, which changes findings.
     #
-    # v51: **Mach. code / Unit Code got a checklist item of its own.** The marking already
+    # v51: Mach. code / Unit Code got a checklist item of its own. The marking already
     # carried the combined label " Mach. code /  Unit Code", but `title_feature_map` had no
     # entry for it, so every one of these findings was tagged `OTHER_FEATURE_KEY` and rendered
     # under "Other / Unclassified". New `title_block.machine_unit_code` covers 機器記号 AND
@@ -428,7 +428,7 @@ class ComparisonCacheManager:
     # reads it as one string. The `feature` tag travels on the cached marking, so every cached
     # audit carries the old `other` value and would render the finding in the wrong card.
     #
-    # v52: **line attributes report the line TYPES used, not stroke tallies.** Reported by the
+    # v52: line attributes report the line TYPES used, not stroke tallies. Reported by the
     # owner against the live card: `CENTER 0.25MM X9` as a heading over a body reading x8 vs x9,
     # and `CONTINUOUS 0.25mm x20` vs `x2` badged MATCHED. The count was baked into `describe()`,
     # so it was the card's headline, part of the row's IDENTITY (the same line type rendered as
@@ -439,7 +439,7 @@ class ComparisonCacheManager:
     # v53: Exact-first priority matching in SpatialDiffer. Identical dimension
     # and annotation values (e.g. 60==60, 40==40, 170==170, 25==25) are paired first across
     # both standard and widened radius, preventing nearby different numbers from stealing them.
-    # v54: **the BOM column -> checklist sub-item map named the wrong two items.** `CODE` is
+    # v54: the BOM column -> checklist sub-item map named the wrong two items. `CODE` is
     # built from `材質` and holds the material (SS400), so it is Material TYPE, not Material
     # Specification; `DIMENSION` is built from `材料寸法/型式` and holds `6×⌀145`, so it is the
     # Material SPECIFICATION and was falling to `other`. A cached audit carries the old tags in

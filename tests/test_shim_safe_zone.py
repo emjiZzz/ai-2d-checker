@@ -4,12 +4,12 @@ The `shim` zone must cover its own table, because nothing inside it is ever comp
 `shim` (シム表) is a SAFE zone like `tolerance`: assembly-thickness reference data, detected
 and subtracted from `views`, never diffed as its own category. So a row the box fails to
 reach does not merely land in the wrong zone — it falls through to the `drawing_views` pool
-and **is compared and marked**, which is what a live review reported: `総厚サ 6mm` shown as
+and is compared and marked, which is what a live review reported: `総厚サ 6mm` shown as
 `[REMOVED] drawing views` on a table that is identical on both sides.
 
 The cause was a cap smaller than the thing it capped. On M745227N01's reference the drawn
-シム表 is 337.5 units tall on an 891-unit sheet (**37.9%**) and its anchor cluster spans 345.9
-(**38.8%**), against `ZONE_MAX_LIMITS["shim"]` of 0.35. The box was clamped to exactly 311.8,
+シム表 is 337.5 units tall on an 891-unit sheet (37.9%) and its anchor cluster spans 345.9
+(38.8%), against `ZONE_MAX_LIMITS["shim"]` of 0.35. The box was clamped to exactly 311.8,
 `_clamp_bbox` shrinks symmetrically, and the bottom row finished 35.8 units *below the bottom
 edge of its own zone*.
 
@@ -150,9 +150,9 @@ def test_a_title_field_inside_an_overreaching_tolerance_box_is_owned_by_title():
     """The safety property the orchestrator's safe-zone net rests on.
 
     That net drops any finding whose owning zone is `shim` or `tolerance`. It uses ownership
-    rather than a bare box test because **a box is not a claim**: on M745227N01 the revision's
-    detected `tolerance` box over-reaches into the title block and **7 real `title_block`
-    findings sit inside it**. `title` outranks `tolerance` in ZONE_PRECEDENCE, so they are
+    rather than a bare box test because a box is not a claim: on M745227N01 the revision's
+    detected `tolerance` box over-reaches into the title block and 7 real `title_block`
+    findings sit inside it. `title` outranks `tolerance` in ZONE_PRECEDENCE, so they are
     claimed by `title` and survive. A naive "inside the tolerance box?" test would delete all
     seven — silently, which is the direction this system cannot detect.
     """

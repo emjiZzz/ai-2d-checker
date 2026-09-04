@@ -1,8 +1,8 @@
 """Where a checklist marker's glyph is drawn, in CAD units.
 
 `renderEntities.ts` draws the marker glyph with `textAlign='center'` and
-`textBaseline='middle'` at exactly the coordinate it is given, so **the coordinate IS the
-glyph's centre**. Every anchor in this codebase must therefore be the centre of the thing the
+`textBaseline='middle'` at exactly the coordinate it is given, so the coordinate IS the
+glyph's centre. Every anchor in this codebase must therefore be the centre of the thing the
 marker refers to.
 
 They previously were not. The formula was `[bbox.xmax + height * 0.8, vertical centre]` --

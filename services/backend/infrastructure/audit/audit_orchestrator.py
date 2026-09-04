@@ -175,7 +175,7 @@ class AuditOrchestrator:
 
         Feeds the Gemini context window as "Lessons Learned", so this is *retrieval-augmented*
         in the real sense — there is a generation step downstream. The retrieval itself is
-        **lexical, not semantic**: char n-gram TF-IDF cosine. It matches shared character
+        lexical, not semantic: char n-gram TF-IDF cosine. It matches shared character
         sequences, so it handles `ユニット No` against `ユニットNo.` and tolerates a typo, but
         it cannot match a synonym or an English term against its Japanese equivalent.
 
@@ -204,13 +204,13 @@ class AuditOrchestrator:
         # engine's zone rules. One construction, two callers. See [[ADR-012]].
         #
         # Layer names come from `ExtractedEntity.layer`, fixed 2026-08-17. They were read from
-        # `drawing.metadata["layers"]` — **a key nothing has ever written** — so the branch this
+        # `drawing.metadata["layers"]` — a key nothing has ever written — so the branch this
         # builder's own comment calls "the strongest signal" contributed nothing on all 44
         # drawings, and a production query was the file name plus a constant. It could not fail:
         # a missing key yields a shorter query, not an error.
         # See [[Gotcha - The Strongest Signal in the Audit Query Was Never Written]].
         #
-        # The layer fetch is a **database call**, and it sits inside the try below rather than
+        # The layer fetch is a database call, and it sits inside the try below rather than
         # above it on purpose. Everything about lessons retrieval is non-fatal by design — "if
         # retrieval fails, the audit continues without lessons" — and hoisting a Mongo round
         # trip out of that guard would let a transient DB error crash a whole audit for the sake

@@ -2,14 +2,14 @@
 
 Two changes are pinned here:
 
-1. **A pinned `bom` grows against detection.** Templates are aligned against whatever
+1. A pinned `bom` grows against detection. Templates are aligned against whatever
    drawing the user happened to have open. A BOM aligned on a one-row sheet is a shallow
    band; a later drawing with three rows extends further down. The template application used
    to overwrite the detected box outright, so those extra rows fell outside the zone and were
    dropped from BOM extraction with no warning — the pinned box made the zone *worse* than
    detection on exactly the drawings that needed it.
 
-2. **`views` is templatable, and keeps its exclusion.** `views` is defined by exclusion, but
+2. `views` is templatable, and keeps its exclusion. `views` is defined by exclusion, but
    that is baked into `_derive_views_zone`. A pinned `views` is a plain rectangle over the
    drawing area with no exclusion in it, so the sibling zones have to be subtracted at the
    point of use or notes/title content inside the rectangle reads as drawing geometry.

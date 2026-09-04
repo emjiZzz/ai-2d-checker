@@ -86,7 +86,7 @@ export const markerStyle = (type: string): MarkerStyle =>
  * purpose; `ui` / `uiLight` exist because — as the table above already says — `#39ff14` is
  * "unusable on white".
  *
- * **The PDF export paints on white.** It had been using `color`, so every checkmark on the
+ * The PDF export paints on white. It had been using `color`, so every checkmark on the
  * printed sheet was neon green over near-black linework: three times the weight of the drawing it
  * was annotating, and the first thing the eye landed on. That is the exact problem `uiLight` was
  * introduced to solve, so it is the same answer rather than a fourth column in the table.
@@ -152,7 +152,7 @@ export function markerTypeOf(v: {
 /**
  * Which sheet a marker type belongs on, or `null` when it belongs on both.
  *
- * **This is the same rule as `TOOL_SIDE` in `createManualCheckSlice`, one layer down.** That
+ * This is the same rule as `TOOL_SIDE` in `createManualCheckSlice`, one layer down. That
  * one decides what the engineer may RECORD; this one decides what is DRAWN. They must agree:
  * a status recordable on the reference but undrawable there is a marking that vanishes the
  * moment it is made, which reads as a failed write.

@@ -5,7 +5,7 @@ states it directly: *"A BOM row edited => 1 CHANGED per row, not per cell."* The
 append a marking per column, so a row whose Code, Q'ty and Remark all moved as part of one edit
 produced three checklist items where a checker sees one -- and where a human label will say one.
 
-**These tests exist because `tools/eval.py` cannot reach this path.** Every BOM mutation operator
+These tests exist because `tools/eval.py` cannot reach this path. Every BOM mutation operator
 edits a single entity (`mutator.py` `_pick_zone` picks one target), so no mutation pair ever
 produces a row with two changed cells, and the eval scores byte-identical with and without the
 collapse. That is the same structural blindness recorded for the spatial constants in

@@ -8,7 +8,7 @@ matcher depends on.
 
 ## The zero-finding operators are the point
 
-Three of the eight operators are designed to produce **no** finding:
+Three of the eight operators are designed to produce no finding:
 
   * `null_mutation` — re-save with no edit at all. Ground truth is zero findings, so every
     finding produced is a measured false positive. Highest-value operator here.
@@ -24,7 +24,7 @@ failure would be invisible without them.
 
 ## What a mutation pair does *not* measure
 
-**Category attribution is not independent here.** An operator picks its target *inside* a
+Category attribution is not independent here. An operator picks its target *inside* a
 detected zone and derives the finding's category from that zone, so the label agrees with
 `zone_detector` by construction. A mutation pair therefore measures detection honestly and
 category attribution circularly. Only human pairs can gate a category-attribution claim —
@@ -33,11 +33,11 @@ reason.
 
 ## Why the mutated side gets its own drawing id
 
-`extract_title_block` lets a cached OCR value **win** over the spatial reading
+`extract_title_block` lets a cached OCR value win over the spatial reading
 (`title_block_extractor.py:490-509`). If both sides shared one OCR cache entry, a title
 mutation would be masked and its label would be a guaranteed false negative caused by the
 harness rather than by the engine. So each mutated side gets a synthetic, seed-derived
-`drawing_id` and the generator writes it a **derived** OCR cache entry: a copy of the base's,
+`drawing_id` and the generator writes it a derived OCR cache entry: a copy of the base's,
 with the same edit applied. Offline-ness is preserved and `title_block` stays measurable.
 """
 
@@ -59,8 +59,8 @@ from .serialize import EvalDrawing, EvalEntity
 # mean what their labels say. Recorded per pair so a stale pair is identifiable.
 #
 # v2: zone scoping honours the sheet's hand-aligned template (see `Mutator.__init__`). Both
-#     halves of a v1 label are affected, not just one: the regions decide **where** a
-#     mutation may land and **which category** its finding gets, so a v1 pair was targeted
+#     halves of a v1 label are affected, not just one: the regions decide where a
+#     mutation may land and which category its finding gets, so a v1 pair was targeted
 #     and categorised against detector boxes while the engine now compares against pinned
 #     ones. v1 pairs must be regenerated, not re-scored.
 MUTATION_SCHEMA_VERSION = 2
@@ -152,8 +152,8 @@ class Mutator:
         self.base_ocr = base_ocr or {}
         self._anchor = entity_anchor
 
-        # These regions do two jobs: they decide **where a mutation may land** and they
-        # assign each ExpectedFinding its **category**. So they have to be the boxes the
+        # These regions do two jobs: they decide where a mutation may land and they
+        # assign each ExpectedFinding its category. So they have to be the boxes the
         # engine will use, or the corpus grades the engine against an answer key describing
         # a different sheet layout.
         #
@@ -192,7 +192,7 @@ class Mutator:
     # finding under the annotation guideline — grid labels and table furniture are on its
     # "what is not a finding" list — so the recall miss was the mutator's, not the engine's.
     #
-    # **Limitation, stated rather than buried:** targeting the engine's own comparison pool
+    # Limitation, stated rather than buried: targeting the engine's own comparison pool
     # means a mutation can never land somewhere the pool wrongly excludes. Mutation pairs
     # therefore cannot detect a *scoping* bug — and scoping bugs are a real class here; see
     # [[Gotcha - Dimension Scoped by Its Span Midpoint]], where an over-grown safe zone
@@ -654,7 +654,7 @@ def op_restyle_dimension_text(mutator, rng, entities, pending, ocr) -> str | Non
 
     `%%c120` and a dimension-style default both render ⌀120. Per the annotation guideline
     that is a transcoding, not a change, and the differ compares `measurement` for exactly
-    this reason. Emits **no finding** — this is a precision probe aimed at the regression
+    this reason. Emits no finding — this is a precision probe aimed at the regression
     where display text creeps back into the comparison key.
     """
     box = mutator.zones.get("views")
@@ -683,8 +683,8 @@ def op_restyle_dimension_text(mutator, rng, entities, pending, ocr) -> str | Non
 def op_translate_entities(mutator, rng, entities, pending, ocr) -> str | None:
     """Nudge a cluster of text without editing it.
 
-    The guideline: pure relocation with identical text is not a finding. Emits **no
-    finding**. The offset is small on purpose — a large one would push entities out of the
+    The guideline: pure relocation with identical text is not a finding. Emits no
+    finding. The offset is small on purpose — a large one would push entities out of the
     views box, at which point the engine is *right* to report them, and the probe would be
     measuring the wrong thing.
     """

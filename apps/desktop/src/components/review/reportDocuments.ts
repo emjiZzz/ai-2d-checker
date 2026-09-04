@@ -2,12 +2,12 @@
  * Which pages end up in which file when the compliance report is saved as a pair.
  *
  * Split out of `useComplianceReportExport` on 2026-08-25, when the report stopped being one
- * merged PDF. The rule is worth its own module for one reason: **the two paths are not
- * symmetrical**, and the asymmetry is invisible in the output.
+ * merged PDF. The rule is worth its own module for one reason: the two paths are not
+ * symmetrical, and the asymmetry is invisible in the output.
  *
- * * **Vector path** — the backend returns page 1 as a complete PDF and jsPDF holds *only* the
+ * * Vector path — the backend returns page 1 as a complete PDF and jsPDF holds *only* the
  *   checklist. Nothing has to be taken apart.
- * * **Raster fallback** — the backend could not supply a vector sheet, so jsPDF drew the canvas
+ * * Raster fallback — the backend could not supply a vector sheet, so jsPDF drew the canvas
  *   capture as its own page 0 and the checklist after it. Here the split is real work.
  *
  * Get the fallback branch backwards and the file named `-drawing.pdf` opens on a checklist sheet.
@@ -28,7 +28,7 @@ export interface ReportDocuments {
 /**
  * A new PDF holding just `indices` of `source`, in that order.
  *
- * **Copied, not deleted.** The obvious alternative — load the document twice and `removePage`
+ * Copied, not deleted. The obvious alternative — load the document twice and `removePage`
  * the unwanted half from each — leaves every object those pages referenced still in the file: the
  * fonts, the 304 dpi page images, all of it. Both halves come out roughly the size of the whole
  * and neither looks wrong. Copying pulls across only what the kept pages actually reference.
@@ -75,11 +75,11 @@ export async function splitReportDocuments(
 /**
  * The two BARE filenames for one export. Join them onto the chosen directory yourself.
  *
- * **Bare names, and the export asks for a FOLDER rather than a filename, because of Tauri's
- * scope model — not as a UI preference.** `tauri-plugin-dialog` grants filesystem access to
+ * Bare names, and the export asks for a FOLDER rather than a filename, because of Tauri's
+ * scope model — not as a UI preference. `tauri-plugin-dialog` grants filesystem access to
  * exactly what the dialog returned: `save()` calls `allow_file(&path)` for that one path, while
  * `open({ directory: true })` calls `allow_directory(&path, recursive)`. So a save dialog
- * authorises **one** file, and deriving a sibling from its path writes somewhere never granted.
+ * authorises one file, and deriving a sibling from its path writes somewhere never granted.
  *
  * That is not a theoretical concern — it shipped. The first version of this feature asked for a
  * filename and wrote `<chosen>-drawing.pdf` beside it, which failed for any location outside the

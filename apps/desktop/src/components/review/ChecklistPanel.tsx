@@ -486,11 +486,11 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         //    Two rules here exist because their absence produced "click a card, the canvas
         //    jumps to a different finding":
         //
-        //    a) **A violation is claimed by at most one row.** This used to be a plain
+        //    a) A violation is claimed by at most one row. This used to be a plain
         //       `violations.find(...)` per row with no claim tracking, so several rows could
         //       resolve to the same marker — first match wins, every time — and the row that
         //       actually owned it got nothing or someone else's.
-        //    b) **Exact matches are claimed before substring ones.** The predicate accepts
+        //    b) Exact matches are claimed before substring ones. The predicate accepts
         //       `descLower.includes(target) || target.includes(descLower)`, so a row reading
         //       `230` matches a marker reading `1230` or `230.5`. Run greedily in row order,
         //       a loose match on an early row can steal the marker an exact match later

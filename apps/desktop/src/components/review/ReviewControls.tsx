@@ -10,17 +10,17 @@ import {
  *
  * ## Why this exists
  *
- * `PATCH /audits/violations/{id}/review` shipped with **no caller anywhere in this app**. Nothing
+ * `PATCH /audits/violations/{id}/review` shipped with no caller anywhere in this app. Nothing
  * rendered a button for it, so all 1,322 violations in the database were unreviewed and the
  * `lessons` retrieval collection was permanently empty — a read path querying an index no writer
  * could populate. That was never user neglect; there was no UI. This is that UI.
  *
  * ## Approve and Reject are different signals, and only one of them teaches
  *
- * **Approve** says the engine was right. It feeds the `lessons` index (the backend re-derives it
+ * Approve says the engine was right. It feeds the `lessons` index (the backend re-derives it
  * from confirmed violations on each review), so a confirmed finding informs later audits.
  *
- * **Reject** says the engine raised something a human judged wrong. It is recorded and it is
+ * Reject says the engine raised something a human judged wrong. It is recorded and it is
  * *deliberately not* indexed as a lesson — feeding a false positive back as a lesson teaches the
  * opposite of the intended thing. Its value is measurement, not learning: rejections are the only
  * record this system has of its own false-positive rate.

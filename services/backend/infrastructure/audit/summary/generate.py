@@ -138,7 +138,7 @@ def deterministic_summary(findings: list[Finding]) -> str:
     """The always-available fallback.
 
     This is not a legacy path waiting to be removed. ADR-010 ships generation behind a flag with
-    **no measurement** that it is better, so this stays as the permanent floor: offline, free,
+    no measurement that it is better, so this stays as the permanent floor: offline, free,
     deterministic, and incapable of omitting a finding.
     """
     if not findings:

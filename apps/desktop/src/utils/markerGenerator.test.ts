@@ -122,7 +122,7 @@ describe('markerGenerator tests', () => {
   it('does NOT scatter an UNRESOLVED bom value across every same-valued cell on the sheet', () => {
     // Regression, reported from a live review on M745227N01 and the failure path the test
     // above never exercised: the guard it pins used to require `hasBackendCoord`, so it
-    // **failed open in exactly the case it was written for**. The backend could not place
+    // failed open in exactly the case it was written for. The backend could not place
     // this BOM row (`Q'ty: 1 vs 1` arrives with `coordinates: null`,
     // `resolution_method: "unresolved"`), the guard therefore did not apply, and the
     // marking was text-matched against every entity reading "1" — one marker per match —

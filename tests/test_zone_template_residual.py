@@ -7,7 +7,7 @@ place. This file is that check.
 ## Why it is content-based, and not a geometry adjacency assertion
 
 The obvious implementation — assert no vertical gap between vertically adjacent boxes — was
-written, measured against the live template, and **rejected**. On `aspect-1.414` there are five
+written, measured against the live template, and rejected. On `aspect-1.414` there are five
 stacked pairs whose gaps are all the same order of magnitude:
 
     bom              above views        0.0228  (~7.4 CAD)   <- the real defect
@@ -16,14 +16,14 @@ stacked pairs whose gaps are all the same order of magnitude:
     views            above title        0.0213  (~7.0 CAD)   <- ordinary sheet whitespace
     title_upper_left above notes        0.0136  (~4.5 CAD)
 
-No threshold separates them, because size is not what makes a gap a defect: **content sitting in
-it** is. The margin between the drawing area and the title block is supposed to be empty. A
+No threshold separates them, because size is not what makes a gap a defect: content sitting in
+it is. The margin between the drawing area and the title block is supposed to be empty. A
 geometry-only guard would fail on four harmless gaps, and a guard that cries wolf gets its
 tolerance widened until it passes — which is how the original defect survived hand-alignment in
 the first place.
 
-So the invariant asserted here is the one that actually matters: **no comparable row lands
-outside every zone.** It needs real pairs, and the eval payloads are gitignored, so it skips in
+So the invariant asserted here is the one that actually matters: no comparable row lands
+outside every zone. It needs real pairs, and the eval payloads are gitignored, so it skips in
 CI exactly like `test_eval_corpus.py::test_deterministic_candidates_run_offline_over_a_real_pair`.
 That is a real limitation and is stated rather than papered over.
 """
@@ -60,7 +60,7 @@ def _inventory(entities, side):
 def _rows_in_no_zone(pair):
     """Unmatched rows that belong to no zone, as `(address, x, y, text)`.
 
-    **Unmatched only**, and that scope is the point. A row present and identical on both sides
+    Unmatched only, and that scope is the point. A row present and identical on both sides
     cannot hide a change, so it costs nothing wherever it sits — and the sheet frame's grid
     labels (`Ａ`, `Ｂ`, `１`, `２`, …) sit outside every zone by design on every drawing here.
     Asserting over all rows flags ~60 of those per pair, and the guideline already excludes them
@@ -123,7 +123,7 @@ def test_no_corpus_row_falls_outside_every_zone():
     """The residual check, stated as the annotator experiences it.
 
     A row here is not merely mis-filed — the annotation guideline instructs the checker to
-    **skip** it and file a zone-detection bug, so it produces a *missing* label rather than a
+    skip it and file a zone-detection bug, so it produces a *missing* label rather than a
     wrong one, and the engine misses it too. Precision and recall both stay clean while ground
     truth quietly loses a real change. That is the one failure mode this corpus cannot
     self-detect, which is why it is asserted rather than reported.

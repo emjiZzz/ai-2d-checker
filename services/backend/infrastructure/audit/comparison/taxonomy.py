@@ -44,7 +44,7 @@ OTHER_FEATURE_LABEL = "Other / Unclassified"
 # so they don't read as "checked and clean" when nothing was actually checked.
 #
 # `origin`, `alignment_of_views` and `text_attributes` joined `line_name` on 2026-08-14.
-# All three are `drawing_views` sub-items that **no code can assign**: `feature_classifier`'s
+# All three are `drawing_views` sub-items that no code can assign: `feature_classifier`'s
 # module docstring names Generator B as their intended source, ADR-006 deleted Generator B,
 # and `classify_drawing_view_feature` returns `OTHER_FEATURE_KEY` for anything it cannot
 # confidently match. So each was rendering "No changes detected." on every comparison this

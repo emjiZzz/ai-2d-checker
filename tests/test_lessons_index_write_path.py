@@ -1,14 +1,14 @@
 """R1 — the `lessons` write path, pinned by reading the record back.
 
-**Why this file exists, specifically.** The path it covers was written once, never worked, and
+Why this file exists, specifically. The path it covers was written once, never worked, and
 was never noticed. `audits.py` called `provider.embed_text(...)` — singular — against a provider
 defining only `embed_texts`, so an `AttributeError` fired on the first line of a `try` whose
 `except Exception` logged a warning and returned 200. The `lessons_learned` collection was never
 written a single record. The endpoint's test asserted the request succeeded, which it always did.
 See [[Gotcha - A Swallowed AttributeError Made a Write Path a Permanent No-Op]].
 
-So the rule this file enforces is the one that gotcha ends on: **assert that a write wrote, not
-that it did not throw.** Every test below performs the write and then reads the record back out of
+So the rule this file enforces is the one that gotcha ends on: assert that a write wrote, not
+that it did not throw. Every test below performs the write and then reads the record back out of
 the index by querying for it. None of them assert "no exception was raised".
 
 The second rule is structural. The endpoint's exception guard must not catch `AttributeError` —

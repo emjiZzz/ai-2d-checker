@@ -36,7 +36,7 @@ VERDICT_ZERO = {"dismissed", "verdict_matched"}
 VERDICT_ONE = {"confirmed_valid", "verdict_changed", "confirmed_change"}
 
 # Pairing feedback: the human says the engine matched the wrong two entities, or missed a
-# match that exists. **Captured, never mapped to a verdict label**, and the restraint is the
+# match that exists. Captured, never mapped to a verdict label, and the restraint is the
 # point — both available mappings would teach the verdict head something false:
 #
 #   * label 0 ("not a real discrepancy") would suppress a finding that may well be genuine.
@@ -70,11 +70,11 @@ def _snapshot_of(doc: Any) -> dict:
 
 
 def majority_class_baseline(balance: Mapping[str, int]) -> Optional[float]:
-    """Accuracy of a model that always predicts the most common class. **The floor.**
+    """Accuracy of a model that always predicts the most common class. The floor.
 
     `verdict_cv_accuracy` is meaningless on its own, and on this corpus it is actively
     misleading: at 71 class-0 against 41 class-1, always answering *"not a real change"* scores
-    **0.634**. A reported 0.733 is therefore about **ten points of skill**, not seventy-three —
+    0.634. A reported 0.733 is therefore about ten points of skill, not seventy-three —
     and a reader who does not know the split has no way to tell those apart.
 
     This is the same rule `retrieval/metrics.py` already enforces for recall, where every rate is
@@ -140,7 +140,7 @@ def build_bundle(docs: list) -> dict:
         n_total += 1
         snap = _snapshot_of(doc)
         category = snap.get("category") or getattr(doc, "category", None)
-        # **Both sides.** Keying a verdict override on one value let a single dismissal of a
+        # Both sides. Keying a verdict override on one value let a single dismissal of a
         # finding involving `20` force-match every other finding where either side was `20`.
         # See `exact_pair_key`. `entity_text` is the legacy fallback for thin feedback rows with
         # no snapshot; those carry only the revision side, which keys as an ADDED-shaped pair and
@@ -208,7 +208,7 @@ def build_bundle(docs: list) -> dict:
 
     metrics["verdict_class_balance"] = balance
     metrics["verdict_minority_share"] = round(minority_share, 4)
-    # Recorded whether or not the head activated, and **always beside the accuracy** — see
+    # Recorded whether or not the head activated, and always beside the accuracy — see
     # `majority_class_baseline` for why a bare accuracy figure over an unbalanced corpus reads
     # far stronger than it is.
     metrics["verdict_majority_baseline"] = majority_class_baseline(balance)
@@ -332,7 +332,7 @@ _TRAIN_LOCK = asyncio.Lock()
 
 
 def _train_sync(docs: list) -> tuple[dict, dict]:
-    """The whole CPU-bound and disk-bound half of a retrain. **Runs in a worker thread.**"""
+    """The whole CPU-bound and disk-bound half of a retrain. Runs in a worker thread."""
     bundle = build_bundle(docs)
     save_bundle(bundle)
     _write_model_card(bundle)
@@ -346,18 +346,18 @@ async def train_from_feedback() -> dict:
 
     Returns the same shape as LearnedModelHolder.status() so callers can report it.
 
-    **Everything after the fetch runs in a worker thread, and that is load-bearing rather than
-    tidy.** `build_bundle` fits a classifier and then cross-validates it — `_cv_accuracy` runs a
+    Everything after the fetch runs in a worker thread, and that is load-bearing rather than
+    tidy. `build_bundle` fits a classifier and then cross-validates it — `_cv_accuracy` runs a
     3-fold `StratifiedKFold`, fitting a model per fold and calling `predict_one` per test row.
-    Measured on the live corpus at 112 verdict labels: **7.2 s, every call.**
+    Measured on the live corpus at 112 verdict labels: 7.2 s, every call.
 
-    This is called from `BackgroundTasks`, which runs an async task **on the event loop**, so
+    This is called from `BackgroundTasks`, which runs an async task on the event loop, so
     before this change a single verdict blocked the whole backend for those 7.2 seconds. The
     desktop app polls `/health` every 5 s and aborts at 3 s
     (`connectionStore.checkHealth`), so every verdict produced a "Connection Lost" and a
     reconnect.
 
-    **It only started happening when the verdict head crossed its activation threshold**, because
+    It only started happening when the verdict head crossed its activation threshold, because
     `_cv_accuracy` is inside the branch that only runs once `minority_share >= MIN_MINORITY_SHARE`.
     Below it `build_bundle` abstains and returns in milliseconds — so the cost arrived with the
     milestone, not with a code change, which is why nothing flagged it.

@@ -3,12 +3,12 @@
  *
  * ## Why this is the render source, and persisted violations are not
  *
- * A comparison produces markings for **every** compared row. `orchestrator.py` then persists an
+ * A comparison produces markings for every compared row. `orchestrator.py` then persists an
  * `AuditViolation` only for the non-MATCHED ones (`non_matched = [m for m in clean_markings if
  * m.get("status") != "MATCHED"]`), because a violation is a *finding* — there is nothing to
  * review about a row that matched.
  *
- * So the MATCHED rows — every green checkmark on the canvas — exist **only** in
+ * So the MATCHED rows — every green checkmark on the canvas — exist only in
  * `physical_comparison_results.canvas_markings` on the Room document. Restoring a room from its
  * audit session's violations alone brings back the findings and silently drops every checkmark,
  * which is exactly the bug this module was extracted to fix: results present, checkmarks gone.

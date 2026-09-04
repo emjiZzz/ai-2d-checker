@@ -3,13 +3,13 @@ import { create } from "zustand";
 /**
  * Where the app looks for the backend before anyone changes it.
  *
- * **This must be permitted by the `connect-src` in `src-tauri/tauri.conf.json`.** The CSP is
+ * This must be permitted by the `connect-src` in `src-tauri/tauri.conf.json`. The CSP is
  * enforced by the webview, so a default the CSP does not allow fails *before the request leaves
  * the app* — no network error, no backend log, nothing to debug against. The two used to be
  * separate literals that happened to agree, and `connectionStore.csp.test.ts` now pins that they
  * still do.
  *
- * **The port is not fixed.** `.env` documents `SIDECAR_PORT=0` for dynamic allocation, and
+ * The port is not fixed. `.env` documents `SIDECAR_PORT=0` for dynamic allocation, and
  * `services/backend/config.py` honours it, so the running backend legitimately answers on a port
  * nothing can predict at build time. That is why the CSP allows `http://127.0.0.1:*` rather than
  * pinning 8080 — pinning would make the documented dynamic-port mode permanently unreachable, and
@@ -147,7 +147,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
    * `%LOCALAPPDATA%/draftcheck/secure/.api-token`, so whichever started last owned it, and an
    * app opened before that point held a token the running backend had never issued.
    *
-   * **This used to `set({ apiToken: null })` first, and that null was itself a bug.** The
+   * This used to `set({ apiToken: null })` first, and that null was itself a bug. The
    * synchronous `buildHeaders()` -- 71 call sites, `createRoom` among them -- omits the
    * `Authorization` header entirely when the token is null rather than waiting for one. So between
    * the clear and the next successful read, requests went out UNAUTHENTICATED, and the backend

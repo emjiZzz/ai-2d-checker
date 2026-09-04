@@ -1,6 +1,6 @@
 """Machine Type/Code, Unit No./Unit Code and Part No. are segments of the drawing number.
 
-`M745203N01` is `M745` + `203` + `N01`, each in its own ruled sub-cell under the **bottom**
+`M745203N01` is `M745` + `203` + `N01`, each in its own ruled sub-cell under the bottom
 title block's DWG No. header, so the checklist listed four items for one identifier — and three
 of them cannot change without the DWG No. changing too.
 
@@ -8,8 +8,8 @@ They are suppressed only when the DWG No. is shown to account for them. That che
 point: unconditional suppression would mean a changed segment goes unreported on any sheet
 where the DWG No. fails to extract, and it does fail — the live KEMCO revision reads NONE.
 
-**The UPPER-LEFT table's `Unit No.` and `Part No.` are different cells that happen to share
-these names, and they are genuine standalone fields — they must keep their own items.** They
+The UPPER-LEFT table's `Unit No.` and `Part No.` are different cells that happen to share
+these names, and they are genuine standalone fields — they must keep their own items. They
 are produced by a separate path (`extract_title_ul_kv` → the `title_ul_table`, tagged
 `zone: 'title_upper_left'` and prefixed `Title Block (Upper-Left)`), never by
 `build_title_block_table` or `inject_title_block_markings`. The collision is the hazard this

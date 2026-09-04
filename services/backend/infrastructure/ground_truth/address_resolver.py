@@ -10,16 +10,16 @@ be done from durable keys, on demand, rather than by storing a pointer.
 
 ## The tiers, and why the order is what it is
 
-1. **`handle`** -- written by the CAD application into the DXF, so it is identical across any
+1. `handle` -- written by the CAD application into the DXF, so it is identical across any
    number of re-extractions of the same file. Trustworthy, but absent for anything exploded
    out of a block, which on this client's reference sheets is nearly everything.
-2. **`parent_handle` + type + layer + text** -- for block-exploded children, the owning
+2. `parent_handle` + type + layer + text -- for block-exploded children, the owning
    INSERT's handle narrows the search to one block instance, and the text picks the child.
-3. **type + layer + normalised text** -- no handle at all. Safe only when unique; a tie is
+3. type + layer + normalised text -- no handle at all. Safe only when unique; a tie is
    reported as unresolved rather than guessed at.
-4. **nearest by coordinate**, within a tolerance, among candidates of the same type.
+4. nearest by coordinate, within a tolerance, among candidates of the same type.
 
-**Every tier returns `None` rather than a plausible wrong answer.** An unresolved marking is a
+Every tier returns `None` rather than a plausible wrong answer. An unresolved marking is a
 known, countable gap. A mis-resolved one silently attributes a human's judgement to the wrong
 entity, which is worse than losing it -- it corrupts the dataset in a way nothing downstream
 can detect. `MatchTier` is returned alongside the entity so the caller can record *how* a
@@ -70,7 +70,7 @@ def _norm(value: str | None) -> str:
     `SpatialDiffer._normalize_text` is private and reaching for it crosses a module boundary
     on purpose -- the same trade `line_attribute_differ` makes when it calls
     `GeometrySerializer._resolve_lineweight`. The alternative is a second opinion about
-    whether two strings are "the same text", and here that drift would be **invisible**: a
+    whether two strings are "the same text", and here that drift would be invisible: a
     marking that fails to resolve looks exactly like a marking whose entity genuinely went
     away, so nothing would ever surface the disagreement.
     """
@@ -86,7 +86,7 @@ def _entity_point(entity: Any) -> tuple[float, float] | None:
     """Best available (x, y) for an entity, from whichever geometry key it carries.
 
     Retained as the last-resort fallback for an entity that contributes no drawable geometry
-    at all. **It is not what tier 4 measures against** -- see `_entity_distance`.
+    at all. It is not what tier 4 measures against -- see `_entity_distance`.
     """
     geometry = getattr(entity, "geometry", None) or {}
     for key in ("insert", "text_point", "def_point", "start", "center"):
@@ -125,7 +125,7 @@ def _entity_distance(entity: Any, target: tuple[float, float]) -> float | None:
 
     ## Why this is not `distance(target, _entity_point(entity))`
 
-    `EntityAddress.point` is **where the engineer clicked** -- `useEntityPicking` sends the
+    `EntityAddress.point` is where the engineer clicked -- `useEntityPicking` sends the
     pointer's world position verbatim. `_entity_point` returns the entity's *canonical anchor*
     (`start` for a line, `center` for an arc). For text and inserts those nearly coincide,
     which is why nothing surfaced this: measured 2026-08-20 over 3611 real reference entities,
@@ -135,7 +135,7 @@ def _entity_distance(entity: Any, target: tuple[float, float]) -> float | None:
     the click 415 units from that line's own `start`, so the entity the engineer actually
     picked fails `COORDINATE_TOLERANCE` and is not even a candidate -- while any unrelated line
     whose `start` happens to sit near the click is returned instead. On `M745204N01` one such
-    click resolved to the wrong line at **distance 0.0**: the strongest possible match, and the
+    click resolved to the wrong line at distance 0.0: the strongest possible match, and the
     wrong entity. 31 of 33 mis-resolutions measured had exactly this shape.
 
     This is the same defect the vault records for zone scoping in
@@ -288,7 +288,7 @@ _DISTANCE_EPSILON = 1e-9
 def _nearest(candidates: Sequence[Any], address: EntityAddress) -> Optional[Any]:
     """The one candidate the click identifies, or None if none does -- or if several do.
 
-    **A tie is refused, not broken.** Ranking by `<` alone silently returned whichever
+    A tie is refused, not broken. Ranking by `<` alone silently returned whichever
     coincident entity came first in payload order, which is a guess wearing the costume of a
     measurement. Measured 2026-08-20 across the eight human pairs: 101 of 1737 coordinate-tier
     resolutions were ambiguous, and order-breaking got 44 of them wrong.

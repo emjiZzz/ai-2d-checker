@@ -1,6 +1,6 @@
 """Fixed-field shapes for grounded summarization (ADR-010).
 
-**Every model in this file that reaches Gemini as a `response_schema` must stay fixed-field.**
+Every model in this file that reaches Gemini as a `response_schema` must stay fixed-field.
 A bare `dict` emits open-ended `additionalProperties`, which Gemini rejects with
 `400 INVALID_ARGUMENT` on *every* request rather than only when the field is populated --
 `CLAUDE.md` constraint 1, ADR-002. That is also why these live here instead of being nested into

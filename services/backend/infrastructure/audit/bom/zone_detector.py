@@ -4,7 +4,7 @@ zone_detector.py
 Content-Aware Zone Detector for 2D CAD Engineering Drawings.
 
 Instead of relying on layer names or blind percentage grids, this module
-identifies drawing zones by finding semantic **anchor text signatures** that
+identifies drawing zones by finding semantic anchor text signatures that
 are always present in each zone type, then flood-fills a bounding box
 around all content spatially clustered near those anchors.
 
@@ -144,7 +144,7 @@ ZONE_ANCHORS: dict[str, list[str]] = {
     # 2026-08-12 for exactly that: it matches `仕上げ記号` ("finish symbol"), a label in the
     # bottom-left tolerance block, on every side of every corpus pair. On `M7452A0N01`'s reference
     # the real notes sit at (606, 552-600) and `仕上げ記号` at (77, 123); the box came out
-    # x 105-578, y 120-603 and contained **none** of the three notes rows. Removing it took notes
+    # x 105-578, y 120-603 and contained none of the three notes rows. Removing it took notes
     # rows inside the detected box from 16/45 to 27/45 across the corpus, and took the three
     # `M7452A*` reference sides from 0/3 to 3/3.
     #
@@ -152,7 +152,7 @@ ZONE_ANCHORS: dict[str, list[str]] = {
     # drawing title is `ロールカセット 12"ミル`, so it matches the title block and repeats the same
     # failure. Coverage appears to rise to 39/45, but the gain is the box INFLATING to span from
     # the roll counts down to the title — on the three large pairs' reference sides the resulting
-    # notes box sits **100% inside `tolerance`**, a safe zone. Coverage alone cannot see that; a
+    # notes box sits 100% inside `tolerance`, a safe zone. Coverage alone cannot see that; a
     # box grown to cover the sheet scores perfectly and means nothing. The roll-count lines have
     # no keyword that distinguishes them from the title and need a different signal.
     "notes": [
@@ -243,17 +243,17 @@ ZONE_MAX_LIMITS: dict[str, tuple] = {
     "title_upper_left": (0.40, 0.35),
     "notes": (0.45, 0.65),
     "iso": (0.45, 0.45),
-    # The height was 0.35 and that is **smaller than the table it caps**. Measured on
+    # The height was 0.35 and that is smaller than the table it caps. Measured on
     # M745227N01's reference: the drawn シム表 is 337.5 units tall on an 891-unit sheet
     # (37.9%). The box came out 311.8 tall — its cap to the unit — with the bottom row
-    # `総厚サ 6mm` (y=311.1) finishing **35.8 units below the bottom edge of its own zone**,
+    # `総厚サ 6mm` (y=311.1) finishing 35.8 units below the bottom edge of its own zone,
     # from where it fell through to the `drawing_views` pool and was compared and marked.
     # A SAFE zone's content must never be compared. Raising the cap to 0.45 covers every row
     # on both sides; the box then stops on its own content, not on the limit.
     #
     # The growth loop refuses any point that would push the cluster past the cap
     # (`_expand_bbox`), so a cap below the table's own size does not shrink the box, it
-    # **excludes real rows from the zone that owns them** — silently, and in the direction
+    # excludes real rows from the zone that owns them — silently, and in the direction
     # that creates findings rather than suppressing them.
     "shim": (0.30, 0.45),             # a compact parts table, but see above: 0.35 clipped it
 }
@@ -262,7 +262,7 @@ ZONE_MAX_LIMITS: dict[str, tuple] = {
 #
 # `views` is defined by exclusion -- it is the drawing area, meaning everything that is not
 # sheet furniture or a floating annotation block. When `views` is *detected* that exclusion
-# is baked into `_derive_views_zone`. When it is **pinned from a template** it is a plain
+# is baked into `_derive_views_zone`. When it is pinned from a template it is a plain
 # rectangle covering the whole drawing area, so the exclusion has to be re-applied at the
 # point of use or notes/iso/title content inside that rectangle reads as drawing geometry.
 VIEWS_EXCLUDED_ZONES: tuple = (
@@ -284,7 +284,7 @@ def views_exclusions(regions: dict, omit: tuple = ()) -> list:
     land in no category at all. That is the silent false-negative direction.
 
     `omit` drops a zone from the subtraction because the caller is subtracting that zone's
-    content **by entity identity** instead. `notes` is passed there by the comparison
+    content by entity identity instead. `notes` is passed there by the comparison
     orchestrator: its pool is now chosen per entity rather than per box, so subtracting the box
     as well would be wrong in both directions — it would drop view geometry that merely sits
     near the notes, and leave a note that fell outside the box in the `views` pool to be
@@ -440,7 +440,7 @@ def scope_entities_to_views(
     """Entities that belong to the `views` zone: anchor inside the views SHAPE and not inside
     any sibling zone in `exclude_bboxes` (pass `views_exclusions(regions)`).
 
-    Returns [] when `views_bbox` is falsy — strict scoping with **no residual fallback**: a
+    Returns [] when `views_bbox` is falsy — strict scoping with no residual fallback: a
     sheet with no views box contributes nothing to the drawing_views comparison, by design.
     This is what makes the `views` box the definitive comparison boundary instead of comparing
     everything that falls outside the other zones.
@@ -954,17 +954,17 @@ def detect_zones_by_content(entities: list) -> dict:
 
 
 def _derive_views_zone(entities: list, detected: dict, sheet: Optional[tuple] = None) -> Optional[tuple]:
-    """The drawing area: **the sheet**. The exclusion lives in `in_views`, not in this box.
+    """The drawing area: the sheet. The exclusion lives in `in_views`, not in this box.
 
     `views` is defined by exclusion — it is whatever is not sheet furniture or a floating
     annotation block — which makes it irregular by construction. It was previously reduced to
     a rectangle by taking the 5–95 percentile of non-excluded content and padding it. Two
     things were wrong with that:
 
-    * **It was not a bound.** Measured across the corpus on 2026-07-29 the resulting box
-      covered **119.7% of the sheet** — larger than the drawing — because the percentile is of
+    * It was not a bound. Measured across the corpus on 2026-07-29 the resulting box
+      covered 119.7% of the sheet — larger than the drawing — because the percentile is of
       content that extends past the line-derived frame, and then padding is added on top.
-    * **It was not exact either.** Anything in the outer 5% of the drawing area fell outside
+    * It was not exact either. Anything in the outer 5% of the drawing area fell outside
       the box, so a containment test produced false negatives at exactly the sheet edges where
       views content legitimately reaches.
 

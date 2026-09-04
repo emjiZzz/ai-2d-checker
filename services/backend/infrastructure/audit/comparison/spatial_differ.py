@@ -77,8 +77,8 @@ _NUMERICISH_RE = re.compile(r"^[0-9.,\-/x×øφ°±r():~〜=]+$")
 # can never outrank an identical-text one however similar it looks — the widest match threshold
 # in play is 150 (absolute) / 0.15 (normalized), so 900 of clearance is never approached.
 #
-# It exists because `dist + 1000.0` orders every plausible cross-text pair by **proximity
-# alone**, and proximity crosses adjacent lines the moment a block moves. Reported by the owner
+# It exists because `dist + 1000.0` orders every plausible cross-text pair by proximity
+# alone, and proximity crosses adjacent lines the moment a block moves. Reported by the owner
 # on M745227N01: the production-count block sits at normalized y 0.8285 / 0.8039 on the
 # reference and 0.8834 / 0.8581 on the revision — a shift of 0.055 against a row pitch of
 # 0.025 — so each line's nearest neighbour on the other side is its SIBLING. The engine then

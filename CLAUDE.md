@@ -73,7 +73,10 @@ self-propagating. Keep it plain.
   JSX, yielded in a Copilot error, or written by a `Write-Host` is content, not decoration. The
   set is deliberately narrow — `⌀`, `×`, `→` and the GD&T symbols are CAD semantics, and `✓` is
   parsed by `complianceChecklistSheet.ts`, so none of them are markers.
-- No bold for emphasis, no markdown headings inside comments.
+- No markdown bold for emphasis, and no markdown headings inside comments. Bold is enforced by
+  the same test and removed by the same `--fix`. Backticks around an identifier are kept: they
+  mark a name, which is information, where bold only marks loudness. If a sentence needs emphasis
+  to land, it is usually the wrong sentence.
 - No rhetorical framing. Write "this was measured", not "this is a measurement, not a preference".
 - If an explanation needs more than about five lines, it belongs in a vault note or in a test name.
   Link the note; do not inline it.

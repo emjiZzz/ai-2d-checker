@@ -13,7 +13,7 @@ from services.backend.config import settings
 # were a two-line comment beginning "In production:". Found by the R0 capability guard.
 class BackupManager:
     """
-    Lists local backup archives. Creating them is **not implemented**.
+    Lists local backup archives. Creating them is not implemented.
     """
 
     @staticmethod

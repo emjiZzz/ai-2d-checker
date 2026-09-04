@@ -1,13 +1,13 @@
 """The test that decides whether ground-truth markings are worth collecting.
 
-A marking outlives the extraction it was made against. `ExtractionPipeline.run` **deletes and
-re-inserts** a drawing's entities (`extraction_pipeline.py`, "Re-extraction: cleared N existing
+A marking outlives the extraction it was made against. `ExtractionPipeline.run` deletes and
+re-inserts a drawing's entities (`extraction_pipeline.py`, "Re-extraction: cleared N existing
 entities"), so every `ExtractedEntity` gets a fresh ObjectId on re-extraction —
 `EXTRACTION_SCHEMA_VERSION` is at 6, meaning that has already happened six times for reasons
 having nothing to do with this feature.
 
 So a marking that stored an entity id would dangle the first time anyone ran
-`POST /drawings/{id}/reextract`, and it would dangle **silently**: the marking still reads
+`POST /drawings/{id}/reextract`, and it would dangle silently: the marking still reads
 perfectly, it just no longer points at anything. Nobody would find out until the dataset was
 used, by which point the labelling effort is unrecoverable.
 
@@ -17,7 +17,7 @@ against it. If the resolver can still find the entity, the address is durable. I
 the data collected by this feature has a shelf life, and that is worth knowing on day one.
 
 The second theme here is the one that makes a dataset *wrong* rather than merely incomplete:
-**the resolver must never guess.** An unresolved marking is a countable gap. A mis-resolved one
+the resolver must never guess. An unresolved marking is a countable gap. A mis-resolved one
 attributes a human's judgement to the wrong entity, and nothing downstream can detect it. The
 `_never_guesses` tests pin that boundary from both sides.
 """
@@ -134,7 +134,7 @@ def test_text_alone_resolves_when_it_is_unambiguous():
 def test_geometry_with_no_text_resolves_by_coordinate():
     """A line inside an isometric view — the case the corpus most needs and text cannot serve.
 
-    Both human pairs in the eval corpus add an isometric view, and both hold **zero** text or
+    Both human pairs in the eval corpus add an isometric view, and both hold zero text or
     dimension entities in the `iso` box. The only thing an engineer can anchor such a finding to
     is geometry, which carries no text at all.
     """
@@ -277,7 +277,7 @@ def test_a_click_on_a_line_resolves_to_that_line_not_to_a_stranger_near_its_anch
     the entity the engineer actually picked failed `COORDINATE_TOLERANCE` and was not even a
     candidate, while `stranger` -- an unrelated line that merely begins near the click -- was
     returned instead. Measured on the real corpus 2026-08-20, one such click resolved to the
-    wrong line at distance **0.0**, the strongest possible match.
+    wrong line at distance 0.0, the strongest possible match.
 
     Distance is now measured to the geometry the entity DRAWS, so a click lands on what it
     selected, which is what selecting something means.

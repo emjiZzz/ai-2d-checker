@@ -2,7 +2,7 @@
  * Tests for prototype-mode detection.
  *
  * Prototype mode is the configuration this project actually ships to evaluators, and until now it
- * had **zero** test coverage: no test referenced `isPrototypeMode` or `VITE_PROTOTYPE_MODE`, and
+ * had zero test coverage: no test referenced `isPrototypeMode` or `VITE_PROTOTYPE_MODE`, and
  * vitest runs with the flag unset, so all 633 tests exercised the non-prototype branch of every
  * gate. The shipped build was the untested one.
  */

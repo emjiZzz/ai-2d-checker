@@ -32,7 +32,7 @@ Output verified byte-identical to the live fetch.
    an extraction-time field is added, so every such bump orphans every entry for free.
 2. `clear_for_drawing` is called at all three sites that write entities (the extraction
    pipeline's replace, and the two deletes). This is the precise mechanism.
-3. **The stored entity count is re-checked against the database on every read.** This is the
+3. The stored entity count is re-checked against the database on every read. This is the
    safety net for a write site added later that forgets (1) and (2). It costs one indexed
    `count_documents` — 34 ms against 8500 — and turns "stale forever, silently" into "stale
    until the count changes", which is the failure mode this repo pays for most often.

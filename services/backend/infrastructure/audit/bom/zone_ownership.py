@@ -19,7 +19,7 @@ the detector's quadrant priors are written. Measured over the corpus (12 sides),
 | `title_upper_left` x `notes` |      1 |       31 |
 | `bom` x `iso`                |      1 |       24 |
 
-**Collisions are 5-30x worse without a hand-aligned template**, which is exactly the direction
+Collisions are 5-30x worse without a hand-aligned template, which is exactly the direction
 this system is trying to move in. Two of those pairs are structural, not accidental: `iso`'s
 quadrant prior is `x > 0.30w` with *no y bound*, so it strictly contains `bom`'s
 `x > 0.50w and y > 0.35h`; and `notes`' prior is `y > 0.15h` with *no x bound*, so it spans the
@@ -27,27 +27,27 @@ whole of `title_upper_left`'s. Those two pairs cannot be separated by the priors
 
 ## Why this module exists
 
-Before it, ownership in an intersection was decided at **four** separate call sites, with an
+Before it, ownership in an intersection was decided at four separate call sites, with an
 order that was implicit and incomplete:
 
   * `views_exclusions()` / `VIEWS_EXCLUDED_ZONES` -- `views` yields to everyone
   * `extract_zone_entities(exclude_bboxes=[tolerance, title, bom])` -- for `notes`
   * the same list again -- for `iso`
-  * a fourth list added to `extract_title_ul_kv` on 2026-08-12 -- and **reverted the same day**
+  * a fourth list added to `extract_title_ul_kv` on 2026-08-12 -- and reverted the same day
     for costing detection-only F1 0.7736 -> 0.7339
 
-`notes` vs `iso` had **no rule in any of them**: neither pool excluded the other and the
+`notes` vs `iso` had no rule in any of them: neither pool excluded the other and the
 markings are concatenated with no de-duplication, so an entity in that intersection is diffed
 twice and emitted under two categories.
 
-**That hole is latent, not live.** The census above finds `notes` x `iso` firing on **zero**
+That hole is latent, not live. The census above finds `notes` x `iso` firing on zero
 corpus sides, pinned or detected, so it has never produced a duplicate here and closing it moves
 no metric. It is closed because it costs nothing to close and because the priors permit it --
 not because it was hurting.
 
 ## The precedence, and why it is this order
 
-**A zone with a drawn border outranks a zone without one.** The ruled-border spike measured, for
+A zone with a drawn border outranks a zone without one. The ruled-border spike measured, for
 each zone, the best-IoU rectangle that is actually *drawn* on the sheet (chosen knowing the
 answer, so it bounds any rule rather than describing one):
 
@@ -55,8 +55,8 @@ answer, so it bounds any rule rather than describing one):
     bom   0.37 | notes 0.08 | iso       0.06
 
 `title` and `tolerance` are real ruled boxes and win. `bom` and `title_upper_left` are partially
-ruled and come next. `notes` and `iso` score 0.06-0.08 because **these sheets contain no drawn
-box around either** — their best candidate is the whole sheet frame — so they rank last among
+ruled and come next. `notes` and `iso` score 0.06-0.08 because these sheets contain no drawn
+box around either — their best candidate is the whole sheet frame — so they rank last among
 content zones.
 
 `views` has the *best* border of all and still yields to everyone, because it is not a block: it
@@ -76,23 +76,23 @@ from .zone_geometry import point_in_shape, polygon_for
 
 #: Ownership order, strongest first. Peers within a tier never evict each other.
 #:
-#: **Tier 0 — ruled tables.** A drawn box the detector recovers reliably, corroborated two ways:
+#: Tier 0 — ruled tables. A drawn box the detector recovers reliably, corroborated two ways:
 #: the ruled-border ceiling (`title` 0.95, `tolerance` 0.85) and, decisively, the eval itself —
-#: `bill_of_materials` and `title_block` score **byte-identical detected vs templated**, so
+#: `bill_of_materials` and `title_block` score byte-identical detected vs templated, so
 #: detection needs no human for either. `shim` joins them as a compact ruled parts table and a
 #: SAFE zone whose whole job is keeping its reference rows out of everyone else's pool. `bom`'s
 #: own border ceiling is only 0.37, so it sits here on the eval evidence, not the geometry.
 #:
-#: **Tier 1 — no reliable box.** These may not evict each other, because none of them is
+#: Tier 1 — no reliable box. These may not evict each other, because none of them is
 #: trustworthy enough to overrule another's content.
 #:
 #: `title_upper_left` was ranked ABOVE `notes` first, on its 0.62 border ceiling, and that was
-#: **measured wrong**. Under detection its box swallows the notes block whole — the census finds
+#: measured wrong. Under detection its box swallows the notes block whole — the census finds
 #: 31 texts in that intersection at frac 1.00 over 6 of 12 sides — so on `M7452A0N01` it claims
-#: all five notes lines and vetoing on it dropped `notes_section` recall to **0.54**. Its box
+#: all five notes lines and vetoing on it dropped `notes_section` recall to 0.54. Its box
 #: over-reaching *is* the defect the 2026-08-12 work was chasing; a zone cannot both be the
-#: known-unreliable one and outrank a peer. The border ceiling measures how well a **hand-aligned**
-#: box sits on ruled lines. It says nothing about whether the **detected** box is right, and this
+#: known-unreliable one and outrank a peer. The border ceiling measures how well a hand-aligned
+#: box sits on ruled lines. It says nothing about whether the detected box is right, and this
 #: is the pair where those two diverge. Peers now, with content breaking the tie: the UL table's
 #: values are short codes and note lines are instruction sentences, which no box needs to separate.
 ZONE_PRECEDENCE: tuple[tuple[str, ...], ...] = (
@@ -120,7 +120,7 @@ def rank_of(zone: str) -> Optional[int]:
 def shapes_for(regions: Optional[dict], zones: Iterable[str]) -> list[tuple]:
     """`(bbox, outline)` pairs for `zones` present in `regions`, in precedence order.
 
-    Pairs rather than bare boxes so a **reshaped** zone excludes only what it actually covers.
+    Pairs rather than bare boxes so a reshaped zone excludes only what it actually covers.
     Using its bounding box instead over-excludes: content sitting in a notch the user cut out of
     a zone would be dropped from the other pool as well and land in no category at all. That is
     the silent false-negative direction, which is the one this system cannot detect.

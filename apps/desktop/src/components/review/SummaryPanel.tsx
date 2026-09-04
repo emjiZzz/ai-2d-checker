@@ -7,15 +7,15 @@ import { getComparisonSummary, type ComparisonSummary } from "../../services/aud
  *
  * ## Three rules this component exists to keep
  *
- * **1. It renders BELOW the checklist, never above it.** The structured findings are the product
+ * 1. It renders BELOW the checklist, never above it. The structured findings are the product
  * of record; this is derived and disposable. A summary placed above the list invites a reader to
  * stop there.
  *
- * **2. It always states the finding count.** Whatever the status, a reader who stops at the
+ * 2. It always states the finding count. Whatever the status, a reader who stops at the
  * summary still knows how many items they skipped. That is the mitigation for the new failure mode
  * ADR-010 introduces — the summary becoming the thing people read instead of the checklist.
  *
- * **3. A withheld summary shows the deterministic text and SAYS SO.** It is never silently
+ * 3. A withheld summary shows the deterministic text and SAYS SO. It is never silently
  * replaced. If verification failed, the reader is told, because "the generated summary was
  * rejected" and "there were no notable changes" must never look the same. `fallback_text` is
  * populated on every status, so there is always something true to render.

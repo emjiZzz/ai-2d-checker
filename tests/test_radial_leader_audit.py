@@ -6,7 +6,7 @@ as `drawn` -- so 490/518 stays green while a leader is missing.
 
 The load-bearing test here is `test_a_one_arrow_callout_is_never_reported_short`. The first
 version of this harness flagged anything reaching under 95% of the way to the centre and reported
-**36 of 92** radial dimensions SHORT across the corpus. That threshold came from a single sheet,
+36 of 92 radial dimensions SHORT across the corpus. That threshold came from a single sheet,
 and sweeping `storage/uploads` refuted it: a one-arrow callout's leader length is set by where the
 CAD put its text, so the rule condemned every one of them. Only the two-arrow form carries an
 invariant. A checker that cries wolf is how a real regression gets waved through.
