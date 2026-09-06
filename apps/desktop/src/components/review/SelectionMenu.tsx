@@ -387,7 +387,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
         >
           {selectedCategory ? (
             <button
-              className="flex items-center gap-1.5 hover:text-cyan-400 text-left transition-colors font-semibold"
+              className="flex items-center gap-1.5 hover:text-cyan-400 text-left transition-colors font-semibold cursor-pointer"
               onClick={() => setSelectedCategory(null)}
             >
               <ArrowLeft className="w-3 h-3 text-cyan-400" />

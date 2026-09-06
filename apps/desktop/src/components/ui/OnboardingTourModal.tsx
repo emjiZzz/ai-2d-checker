@@ -48,7 +48,7 @@ export const OnboardingTourModal: React.FC<OnboardingTourModalProps> = ({
         },
         {
           title: "Add Revision File",
-          detail: "Upload the new updated CAD drawing that needs inspection.",
+          detail: "Upload the new updated CAD drawing that needs checking.",
         },
       ],
       graphic: (
@@ -56,7 +56,7 @@ export const OnboardingTourModal: React.FC<OnboardingTourModalProps> = ({
           <div className="flex items-center justify-between text-xs font-mono font-bold text-text-primary border-b border-border-color/60 pb-2">
             <div className="flex items-center gap-2">
               <UploadCloud size={16} className="text-accent-cyan" />
-              <span>New Inspection Room</span>
+              <span>New Checking Room</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs font-mono">
@@ -154,7 +154,7 @@ export const OnboardingTourModal: React.FC<OnboardingTourModalProps> = ({
       stepNumber: 4,
       badge: "STEP 4 OF 4",
       title: "Save & Complete Check",
-      summary: "Review your marked items and finish the inspection.",
+      summary: "Review your marked items and finish the checking.",
       points: [
         {
           title: "Checklist Review",
@@ -165,7 +165,7 @@ export const OnboardingTourModal: React.FC<OnboardingTourModalProps> = ({
           detail: "Your markings and notes are saved automatically as you work.",
         },
         {
-          title: "Complete Inspection",
+          title: "Complete Checking",
           detail: "Click 'Complete' to log your check result and return to your workspaces.",
         },
       ],
@@ -189,7 +189,7 @@ export const OnboardingTourModal: React.FC<OnboardingTourModalProps> = ({
             </div>
           </div>
           <div className="mt-1 bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan text-[11px] font-mono py-1 text-center font-bold">
-            Complete Inspection
+            Complete Checking
           </div>
         </div>
       ),

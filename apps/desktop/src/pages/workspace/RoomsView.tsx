@@ -254,18 +254,6 @@ export const RoomsView: React.FC = () => {
     <div className="flex flex-col flex-1 w-full h-full bg-bg-dark overflow-y-auto select-none text-text-primary p-6 md:p-8">
       <div className="max-w-7xl w-full mx-auto flex flex-col flex-1 gap-6">
 
-        {/* ── 1. CAD Hub Header ── */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-border-color">
-          <div>
-            <h1 className="text-xl md:text-2xl font-black font-mono tracking-wider uppercase text-text-primary">
-              Inspection Workspaces
-            </h1>
-            <p className="text-xs text-text-muted mt-0.5">
-              Manage drawing comparison sessions, check reference vs revision CAD files, and label errors.
-            </p>
-          </div>
-        </div>
-
         {/* ── 2. Filters & View Controls Bar ── */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-2 bg-bg-card border border-border-color">
           {/* Left: Search Input */}
@@ -276,7 +264,7 @@ export const RoomsView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter drawings or room names... (Press '/' to focus)"
+              placeholder="Search..."
               className="w-full bg-bg-dark border border-border-color focus:border-accent-cyan pl-9 pr-8 py-1.5 text-xs text-text-primary outline-none rounded-none font-mono placeholder:text-text-muted/60 transition-colors"
             />
             {searchQuery && (
@@ -357,7 +345,7 @@ export const RoomsView: React.FC = () => {
                   NO MATCHING WORKSPACES FOUND
                 </h3>
                 <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
-                  No CAD inspection rooms match your current search query.
+                  No CAD checking rooms match your current search query.
                 </p>
                 <Button
                   variant="outline"
@@ -373,7 +361,7 @@ export const RoomsView: React.FC = () => {
         ) : (
           /* ── 4-COLUMN GRID BLUEPRINT GALLERY ── */
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4.5" data-tour="rooms-gallery">
-            {/* Quick Action "Start New Inspection" Card */}
+            {/* Quick Action "Start New Checking" Card */}
             <div
               onClick={() => setCreateOpen(true)}
               className="border-2 border-dashed border-border-color hover:border-accent-cyan bg-bg-card/40 hover:bg-accent-cyan/5 p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[220px] group rounded-none"
@@ -385,11 +373,11 @@ export const RoomsView: React.FC = () => {
                 Create New
               </h3>
               <p className="text-[11px] text-text-muted mt-1 max-w-[200px] font-sans">
-                Set up a new workspace for CAD drawing comparison.
+                Set up a new room for CAD drawing comparison.
               </p>
             </div>
 
-            {/* Inspection Room Blueprint Cards */}
+            {/* Checking Room Blueprint Cards */}
             {visibleRooms.map((room) => {
               const hasPair = !!(room.active_old_drawing_name && room.active_new_drawing_name);
               return (
@@ -458,12 +446,12 @@ export const RoomsView: React.FC = () => {
 
       </div>
 
-      {/* ── 4. Create Inspection Room Dialog (Global Modal Standard) ── */}
+      {/* ── 4. Create Checking Room Dialog (Global Modal Standard) ── */}
       <Modal
         isOpen={isCreating}
         onClose={() => setCreateOpen(false)}
-        title="Create Inspection Room"
-        description="Set up a new workspace to compare drawing revisions."
+        title="Create Checking Room"
+        description="Set up a new room to compare drawings."
         maxWidthClassName="max-w-lg"
         footer={
           <div className="flex items-center justify-end gap-3">
@@ -495,8 +483,8 @@ export const RoomsView: React.FC = () => {
               <label className="text-xs font-mono font-bold uppercase tracking-wider text-text-secondary">
                 Room Name
               </label>
-              <span className="text-[10px] font-mono text-accent-cyan uppercase font-semibold">
-                Required
+              <span className="text-[12px] font-mono text-red-500 uppercase font-semibold">
+                *
               </span>
             </div>
             <input
@@ -504,13 +492,10 @@ export const RoomsView: React.FC = () => {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. M7452 Bracket Rev B"
+              placeholder="Enter a name to identify this drawing."
               required
               className="w-full bg-bg-dark border border-border-color focus:border-accent-cyan px-3.5 py-2.5 text-sm text-text-primary outline-none transition-colors rounded-none font-mono placeholder:text-text-muted/50"
             />
-            <p className="text-xs text-text-muted">
-              Enter a name to identify this drawing inspection.
-            </p>
             {createError && (
               <div
                 role="alert"
@@ -528,7 +513,7 @@ export const RoomsView: React.FC = () => {
         isOpen={!!deletingRoom}
         onClose={() => !isDeleting && setDeletingRoom(null)}
         onConfirm={handleConfirmDelete}
-        title="DELETE INSPECTION ROOM"
+        title="DELETE CHECKING ROOM"
         message={
           <div className="flex flex-col gap-1.5">
             <p>

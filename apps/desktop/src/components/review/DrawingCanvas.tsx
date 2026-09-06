@@ -153,7 +153,7 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
                 </p>
                 <button
                   onClick={resetErrorBoundary}
-                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded shadow-md transition-colors w-full"
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded shadow-md transition-colors w-full cursor-pointer"
                 >
                   Reset Renderer
                 </button>

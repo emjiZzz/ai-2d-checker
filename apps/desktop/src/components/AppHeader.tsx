@@ -28,7 +28,7 @@ const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, ac
     aria-controls={`${navKey}-panel`}
     tabIndex={0}
     onClick={() => onSelect(navKey)}
-    className={`flex items-center gap-1.5 h-full px-2.5 py-0.5 rounded-sm text-xs font-semibold transition-all duration-150 shrink-0 ${
+    className={`flex items-center gap-1.5 h-full px-2.5 py-0.5 rounded-sm text-xs font-semibold transition-all duration-150 shrink-0 cursor-pointer ${
       isActive
         ? "text-text-primary font-bold bg-bg-card shadow-xs border border-border-color"
         : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
@@ -156,7 +156,7 @@ export const AppHeader: React.FC = () => {
                 <button
                   title="Change Layout"
                   onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
-                  className={`flex p-1.5 rounded-md border transition-all duration-200 ${
+                  className={`flex p-1.5 rounded-md border transition-all duration-200 cursor-pointer ${
                     isLayoutMenuOpen
                       ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30"
                       : "text-text-muted border-border-color hover:text-text-primary hover:bg-sidebar-item-hover"
@@ -169,7 +169,7 @@ export const AppHeader: React.FC = () => {
                   <div className="absolute top-full right-0 mt-2 flex flex-col gap-1 p-1.5 glass-panel rounded-xl shadow-2xl z-[99999] animate-in fade-in slide-in-from-top-2 duration-150">
                     <button
                       onClick={() => { setActiveLayoutPreset('grid'); setIsLayoutMenuOpen(false); }}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
                         activeLayoutPreset === 'grid' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                     >
@@ -177,7 +177,7 @@ export const AppHeader: React.FC = () => {
                     </button>
                     <button
                       onClick={() => { setActiveLayoutPreset('left'); setIsLayoutMenuOpen(false); }}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
                         activeLayoutPreset === 'left' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                     >
@@ -185,7 +185,7 @@ export const AppHeader: React.FC = () => {
                     </button>
                     <button
                       onClick={() => { setActiveLayoutPreset('right'); setIsLayoutMenuOpen(false); }}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
                         activeLayoutPreset === 'right' ? "text-accent-cyan bg-accent-cyan/15 border border-accent-cyan/20" : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                     >
@@ -201,7 +201,7 @@ export const AppHeader: React.FC = () => {
               <button
                 onClick={() => setIsUpgradeModalOpen(true)}
                 title="MongoDB Atlas Cluster Storage (Admin View) — Click to view capacity & upgrade details"
-                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all duration-150 ${
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all duration-150 cursor-pointer ${
                   dbStatus.storage.is_warning
                     ? "bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25 animate-pulse"
                     : dbStatus.mode === "cloud_primary"
@@ -220,7 +220,7 @@ export const AppHeader: React.FC = () => {
             <button
               onClick={() => logout()}
               title="Logout Portal"
-              className="flex p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger/10 transition-all duration-150 active:scale-95"
+              className="flex p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger/10 transition-all duration-150 active:scale-95 cursor-pointer"
             >
               <LogOut size={15} />
             </button>
@@ -231,19 +231,19 @@ export const AppHeader: React.FC = () => {
         <div className="flex h-full">
           <button
             onClick={handleMinimize}
-            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors"
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors cursor-pointer"
           >
             <Minus size={15} />
           </button>
           <button
             onClick={handleToggleMaximize}
-            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors"
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors cursor-pointer"
           >
             <Square size={13} />
           </button>
           <button
             onClick={handleClose}
-            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-red-600 hover:text-white transition-colors"
+            className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
           >
             <X size={15} />
           </button>

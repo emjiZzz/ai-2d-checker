@@ -53,7 +53,7 @@ export const TOUR_STEPS: TourStepInfo[] = [
     title: "5. Right-Click: Add Annotations",
     targetSelector: '[data-tour="cad-canvas"]',
     description: "Right-click anywhere on the drawing canvas to add custom annotations, defect flags, or reviewer notes.",
-    tips: "Use right-click actions to highlight subtle discrepancies or document inspection comments.",
+    tips: "Use right-click actions to highlight subtle discrepancies or document checking comments.",
     position: "top",
   },
   {

@@ -94,7 +94,7 @@ export const Modal: React.FC<ModalProps> = ({
             {!disableDismiss && (
               <button
                 onClick={onClose}
-                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-none p-1 transition-all duration-150 shrink-0"
+                className="text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover rounded-none p-1 transition-all duration-150 shrink-0 cursor-pointer"
                 aria-label="Close"
               >
                 <X size={14} />

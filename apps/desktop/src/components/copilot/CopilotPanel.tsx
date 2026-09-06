@@ -439,19 +439,19 @@ export const CopilotPanel: React.FC = () => {
 
             {/* Quick Action Analysis */}
             <div className="bg-bg-card border border-border-color rounded-lg p-3 flex flex-col gap-2 shadow-xs">
-              <h4 className="text-xs font-bold text-accent-cyan m-0">AI Geometry Inspection</h4>
+              <h4 className="text-xs font-bold text-accent-cyan m-0">AI Geometry Checking</h4>
               <p className="text-[11px] text-text-muted m-0 leading-relaxed">
                 Scan all layers and entities for structural inconsistencies or missing dimensions.
               </p>
               <button
                 onClick={() => {
                   setActiveTab("chat");
-                  handleSend("Perform a comprehensive CAD geometry inspection and summarize potential risks or structural concerns.");
+                  handleSend("Perform a comprehensive CAD geometry checking and summarize potential risks or structural concerns.");
                 }}
                 disabled={isSending || !newDrawing}
                 className="w-full bg-accent-cyan text-on-accent text-xs font-semibold py-2 px-3 rounded-md cursor-pointer hover:brightness-110 transition-all disabled:opacity-50 disabled:pointer-events-none mt-1 shadow-xs"
               >
-                Run AI Geometry Inspection
+                Run AI Geometry Checking
               </button>
             </div>
           </div>

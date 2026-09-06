@@ -361,7 +361,7 @@ export const ChecklistPanel: React.FC<ChecklistPanelProps> = ({ aiChecklistResul
         gap: "10px"
       }}>
         <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent-cyan)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-          INSPECTION SUMMARY REPORT
+          CHECKING SUMMARY REPORT
         </div>
         {/* auto-fit rather than a hard 1fr 1fr: at the panel's minimum width two columns leave
             ~92px per chip, not enough for "Drawing Views" plus its status. */}
