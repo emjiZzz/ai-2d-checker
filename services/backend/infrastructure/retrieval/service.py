@@ -30,6 +30,7 @@ from ...domain.models.audit_violation import (
 )
 from ...domain.models.drawing_document import DrawingDocument
 from ...domain.models.extracted_entity import ExtractedEntity
+from ...domain.models.ground_truth import GroundTruthMarking
 from ...domain.models.standard_chunk import StandardChunk
 from ...logger import logger
 from ..knowledge.vault_sync import VaultSyncManager
@@ -39,6 +40,7 @@ from .index_builder import (
     DOMAIN_RULES,
     ENTITIES,
     FINDINGS,
+    GROUND_TRUTH,
     LESSONS,
     STANDARDS,
     VAULT,
@@ -188,6 +190,22 @@ async def rebuild_findings_index(root: Path | None = None) -> BuildResult:
     return await asyncio.to_thread(build_index, FINDINGS, records, root)
 
 
+async def rebuild_ground_truth_index(root: Path | None = None) -> BuildResult:
+    """Rebuild `ground_truth` from every Manual Check marking that has not been retracted.
+
+    The only collection here that can contain a finding the engine never produced. `CORRECTIONS`
+    and `FINDINGS` are both anchored to engine output, so a query answered from them alone can
+    only ever describe the inside of the engine's own recall boundary. See `GROUND_TRUTH` in
+    `index_builder` for why the pools stay separate.
+
+    Retracted rows are dropped by `ground_truth_record`, not filtered here, so the rule has one
+    implementation and reads the same as `feedback_record`'s.
+    """
+    markings = await GroundTruthMarking.find_all().limit(MAX_RECORDS_PER_COLLECTION).to_list()
+    records = [r for r in (ground_truth_record(m) for m in markings) if r is not None]
+    return await asyncio.to_thread(build_index, GROUND_TRUTH, records, root)
+
+
 #: How a violation's review state is spoken in its citation. In `Record.source` rather than only
 #: in metadata because `source` is what `Record.citation()` renders, and a hit that does not say
 #: whether a human ever agreed with it is the hazard [[ADR-008]] named for retrieval:
@@ -303,6 +321,67 @@ def feedback_record(feedback: AuditFeedbackDocument) -> Record | None:
     )
 
 
+def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
+    """One independent human marking as a retrievable record.
+
+    A retracted marking is not indexed, the same rule `feedback_record` applies. The hazard is
+    recorded rather than assumed: a converter that ignored `retracted_at` would have
+    manufactured 31 findings a person had explicitly taken back, and they would have read as
+    ordinary ground truth forever. See
+    [[Gotcha - Two Ground-Truth Stores That Never Met]].
+
+    The status goes in the indexed text, not only in metadata, for `feedback_record`'s reason —
+    two markings on the same text that reached opposite statuses are two answers to a query, and
+    with the status in metadata alone their texts are byte-identical, so
+    `_collapse_duplicate_texts` keeps one and silently discards the disagreement. Measured on
+    this corpus: four repeat passes over one pair agreed on 27 of 32 findings, and the five that
+    moved are the informative rows.
+
+    ASCII arrow deliberately, like `feedback_record`: citations are printed and this console is
+    cp932.
+    """
+    if getattr(marking, "retracted_at", None):
+        return None
+
+    ref_text = (marking.ref_text or "").strip()
+    rev_text = (marking.rev_text or "").strip()
+    notes = (marking.notes or "").strip()
+    if not ref_text and not rev_text and not notes:
+        # A category and a status with no text is not retrievable by any real query, and would
+        # collapse against every other text-free marking in the same category.
+        return None
+
+    if ref_text and rev_text and ref_text != rev_text:
+        observed = f"{ref_text} -> {rev_text}"
+    else:
+        observed = ref_text or rev_text
+
+    parts = [
+        marking.category,
+        observed,
+        f"Human ground truth: {marking.status}",
+        notes,
+    ]
+    text = "\n".join(p for p in parts if p and p.strip())
+
+    address = marking.ref_address or marking.rev_address
+    return Record(
+        id=str(marking.id),
+        text=text,
+        source="Human ground truth",
+        section=marking.category,
+        metadata={
+            "drawing_id": getattr(address, "drawing_id", None),
+            "session_id": marking.session_id,
+            "annotator": marking.annotator,
+            "status": marking.status,
+            "side": marking.side,
+            "feature": marking.feature,
+            "is_bulk": marking.is_bulk,
+        },
+    )
+
+
 async def bootstrap_retrieval_indexes(root: Path | None = None) -> dict[str, BuildResult]:
     """Build any collection without a *usable* index. Called once at startup.
 
@@ -325,6 +404,7 @@ async def bootstrap_retrieval_indexes(root: Path | None = None) -> dict[str, Bui
         LESSONS: rebuild_lessons_index,
         CORRECTIONS: rebuild_corrections_index,
         FINDINGS: rebuild_findings_index,
+        GROUND_TRUTH: rebuild_ground_truth_index,
         VAULT: rebuild_vault_index,
         ENTITIES: rebuild_entities_index,
     }

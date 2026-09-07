@@ -65,6 +65,7 @@ CLIENT_LOCAL_COLLECTIONS = frozenset(
         retrieval.DOMAIN_RULES,
         retrieval.CORRECTIONS,
         retrieval.FINDINGS,
+        retrieval.GROUND_TRUTH,
         retrieval.ENTITIES,
     }
 )

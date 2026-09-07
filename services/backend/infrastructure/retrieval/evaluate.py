@@ -22,6 +22,7 @@ from .index_builder import (
     DOMAIN_RULES,
     ENTITIES,
     FINDINGS,
+    GROUND_TRUTH,
     LESSONS,
     STANDARDS,
     VAULT,
@@ -31,7 +32,16 @@ from .labels import LabelSet
 from .metrics import QueryOutcome, RetrievalScore, score_retrieval
 from .store import IndexStatus
 
-ALL_COLLECTIONS = (STANDARDS, DOMAIN_RULES, LESSONS, CORRECTIONS, FINDINGS, VAULT, ENTITIES)
+ALL_COLLECTIONS = (
+    STANDARDS,
+    DOMAIN_RULES,
+    LESSONS,
+    CORRECTIONS,
+    FINDINGS,
+    GROUND_TRUTH,
+    VAULT,
+    ENTITIES,
+)
 
 
 @dataclass(frozen=True)
