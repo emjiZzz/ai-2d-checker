@@ -307,12 +307,14 @@ class ExtractionPipeline:
             drawing.updated_at = datetime.now(UTC)
             await drawing.save()
 
-            # --- PHASE 8: Async 6-View AI Summarization Enrichment ---
-            try:
-                from .summarization_queue import summarization_queue
-                await summarization_queue.enqueue(str(drawing.id))
-            except Exception as queue_err:
-                logger.error(f"Failed to enqueue summarization task for drawing {drawing.id}: {queue_err}")
+            # --- PHASE 8: Async 6-View AI Summarization Enrichment (Disabled) ---
+            # Disabled to avoid consuming external API tokens during standard ingestion.
+            # Local CAD geometry extraction, rendering, and indexing are completely self-sufficient.
+            # try:
+            #     from .summarization_queue import summarization_queue
+            #     await summarization_queue.enqueue(str(drawing.id))
+            # except Exception as queue_err:
+            #     logger.error(f"Failed to enqueue summarization task for drawing {drawing.id}: {queue_err}")
 
             logger.info(
                 f"Successfully completed CAD drawing ingestion pipeline for {drawing.file_name} "
