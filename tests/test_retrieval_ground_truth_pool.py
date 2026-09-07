@@ -12,7 +12,8 @@ import inspect
 
 import pytest
 
-from services.backend.domain.models.ground_truth import GroundTruthMarking
+from services.backend.domain.models.cad_point import CadPoint
+from services.backend.domain.models.ground_truth import EntityAddress, GroundTruthMarking
 from services.backend.infrastructure.retrieval import evaluate as retrieval_evaluate
 from services.backend.infrastructure.retrieval import service as retrieval_service
 from services.backend.infrastructure.retrieval.index_builder import (
@@ -140,6 +141,45 @@ def test_status_is_in_the_indexed_text_not_only_in_metadata():
     assert changed.text != matched.text
     assert "CHANGED" in changed.text
     assert "MATCHED" in matched.text
+
+
+def test_the_pattern_carries_what_a_query_can_match_on():
+    """A hit has to answer "what kind of thing, where, and what changed", not just the text.
+
+    Entity type and layer are query terms; a corpus that indexes only the changed string cannot
+    answer "what have engineers seen on this layer".
+    """
+    address = EntityAddress.model_construct(
+        drawing_id="d1", handle="1B2A", entity_type="dimension", layer="DIM", text="55-15",
+        point=CadPoint.model_construct(x=120.5, y=44.0, space="model"),
+    )
+    record = retrieval_service.ground_truth_record(_marking(ref_address=address))
+    assert "dimension" in record.text
+    assert "DIM" in record.text
+
+
+def test_location_is_metadata_not_indexed_text():
+    """Coordinates are not query terms; indexing them would be noise in a lexical encoder.
+
+    They still have to survive, or a hit cannot be placed back on the sheet.
+    """
+    address = EntityAddress.model_construct(
+        drawing_id="d1", handle="1B2A", entity_type="text", layer="TITLE", text="x",
+        point=CadPoint.model_construct(x=120.5, y=44.0, space="model"),
+    )
+    record = retrieval_service.ground_truth_record(_marking(ref_address=address))
+    assert record.metadata["x"] == 120.5
+    assert record.metadata["y"] == 44.0
+    assert record.metadata["handle"] == "1B2A"
+    assert record.metadata["layer"] == "TITLE"
+    assert "120.5" not in record.text
+
+
+def test_a_marking_with_no_address_still_builds():
+    """`ref_address`/`rev_address` are optional on the model, so the record cannot assume one."""
+    record = retrieval_service.ground_truth_record(_marking(ref_address=None, rev_address=None))
+    assert record is not None
+    assert record.metadata["x"] is None
 
 
 def test_the_citation_says_the_record_is_ground_truth():

@@ -341,15 +341,24 @@ def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
     else:
         observed = ref_text or rev_text
 
+    address = marking.ref_address or marking.rev_address
+    entity_type = (getattr(address, "entity_type", "") or "").strip()
+    layer = (getattr(address, "layer", "") or "").strip()
+    # Entity type and layer are query terms, so they belong in the text; coordinates are not, and
+    # sit in metadata where a consumer can place the hit without polluting the lexical index.
+    where = " ".join(p for p in (entity_type, f"on layer {layer}" if layer else "") if p)
+
     parts = [
         marking.category,
+        marking.feature or "",
+        where,
         observed,
         f"Human ground truth: {marking.status}",
         notes,
     ]
     text = "\n".join(p for p in parts if p and p.strip())
 
-    address = marking.ref_address or marking.rev_address
+    point = getattr(address, "point", None)
     return Record(
         id=str(marking.id),
         text=text,
@@ -364,6 +373,13 @@ def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
             "side": marking.side,
             "feature": marking.feature,
             "is_bulk": marking.is_bulk,
+            "entity_type": entity_type,
+            "layer": layer,
+            "handle": getattr(address, "handle", None),
+            "x": getattr(point, "x", None),
+            "y": getattr(point, "y", None),
+            "space": getattr(getattr(point, "space", None), "value", None)
+            or getattr(point, "space", None),
         },
     )
 

@@ -29,12 +29,12 @@ const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, ac
     aria-controls={`${navKey}-panel`}
     tabIndex={0}
     onClick={() => onSelect(navKey)}
-    className={`flex items-center gap-1.5 h-full px-2.5 py-0.5 rounded-sm text-xs font-semibold transition-all duration-150 shrink-0 cursor-pointer ${isActive
+    className={`flex items-center gap-1.5 h-full px-2 py-0.5 rounded-sm text-xs font-semibold transition-all duration-150 shrink-0 cursor-pointer ${isActive
         ? "text-text-primary font-bold bg-bg-card shadow-xs border border-border-color"
         : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
       }`}
   >
-    <Icon size={15} className={`transition-transform duration-200 shrink-0 ${isActive ? `${activeColor} scale-110` : ""}`} />
+    <Icon size={13} className={`transition-transform duration-200 shrink-0 ${isActive ? `${activeColor} scale-110` : ""}`} />
     <span className="whitespace-nowrap">{label}</span>
   </button>
 );
@@ -89,9 +89,9 @@ export const AppHeader: React.FC = () => {
 
   const getActiveLayoutIcon = () => {
     switch (activeLayoutPreset) {
-      case 'left': return <PanelLeft size={16} />;
-      case 'right': return <PanelRight size={16} />;
-      default: return <Columns size={16} />;
+      case 'left': return <PanelLeft size={13} />;
+      case 'right': return <PanelRight size={13} />;
+      default: return <Columns size={13} />;
     }
   };
 
@@ -112,14 +112,14 @@ export const AppHeader: React.FC = () => {
   return (
     <div
       data-tauri-drag-region
-      className="flex justify-between items-center h-10 bg-bg-topbar border-b border-border-color select-none relative z-[9999] px-2.5"
+      className="flex justify-between items-center h-8 bg-bg-topbar border-b border-border-color select-none relative z-[9999] pl-2.5 pr-0"
     >
       {/* LEFT: Branding */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-2 px-2 h-full cursor-default"
+        className="flex items-center gap-2 px-1.5 h-full cursor-default"
       >
-        <img src={kmtiLogo} alt="KMTI Logo" className="h-6 w-auto object-contain shrink-0" />
+        <img src={kmtiLogo} alt="KMTI Logo" className="h-[18px] w-auto object-contain shrink-0" />
         <span className="text-xs font-black tracking-wide text-text-primary">
           DraftCheck
         </span>
@@ -134,7 +134,7 @@ export const AppHeader: React.FC = () => {
           <div
             role="tablist"
             aria-label="Workspace Navigation"
-            className="flex items-center gap-[4px] h-[28px] px-1"
+            className="flex items-center gap-[4px] h-[24px] px-1"
           >
             <NavTab navKey="workspace" label="2D Workspace" icon={Compass} activeColor="text-accent-cyan" isActive={currentNav === "workspace"} onSelect={setCurrentNav} />
             <NavTab navKey="3d-workspace" label="3D Workspace" icon={Box} activeColor="text-violet-400" isActive={currentNav === "3d-workspace"} onSelect={setCurrentNav} />
@@ -149,17 +149,17 @@ export const AppHeader: React.FC = () => {
 
       {/* RIGHT: User Info & Actions */}
       <div className="flex items-center h-full">
-        <div className="flex items-center gap-2.5 h-6 pr-3 mr-2 border-r border-border-color">
+        <div className="flex items-center gap-2 h-5 pr-2.5 mr-1 border-r border-border-color">
           {/* Quick Tour Button */}
           <button
             onClick={() => startTour()}
             title="Quick Tour"
             aria-label="Quick Tour"
-            className="flex items-center justify-center p-1.5 rounded-md text-accent-cyan hover:bg-accent-cyan/15 hover:brightness-110 transition-all duration-150 active:scale-95 cursor-pointer"
+            className="flex items-center justify-center p-1 rounded-md text-accent-cyan hover:bg-accent-cyan/15 hover:brightness-110 transition-all duration-150 active:scale-95 cursor-pointer"
           >
             <svg
-              width="25"
-              height="25"
+              width="15"
+              height="15"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -176,11 +176,11 @@ export const AppHeader: React.FC = () => {
             <>
               {/* Layout Toggles (Only show in workspace when a room is active) */}
               {currentNav === "workspace" && activeRoom && (
-                <div ref={layoutMenuRef} className="relative mr-1">
+                <div ref={layoutMenuRef} className="relative">
                   <button
                     title="Change Layout"
                     onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
-                    className={`flex p-1.5 rounded-md border transition-all duration-200 cursor-pointer ${isLayoutMenuOpen
+                    className={`flex p-1 rounded-md border transition-all duration-200 cursor-pointer ${isLayoutMenuOpen
                         ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30"
                         : "text-text-muted border-border-color hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
@@ -239,9 +239,9 @@ export const AppHeader: React.FC = () => {
               <button
                 onClick={() => logout()}
                 title="Logout Portal"
-                className="flex p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger/10 transition-all duration-150 active:scale-95 cursor-pointer"
+                className="flex p-1 rounded-md text-text-muted hover:text-danger hover:bg-danger/10 transition-all duration-150 active:scale-95 cursor-pointer"
               >
-                <LogOut size={15} />
+                <LogOut size={13} />
               </button>
             </>
           )}
@@ -253,19 +253,19 @@ export const AppHeader: React.FC = () => {
             onClick={handleMinimize}
             className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors cursor-pointer"
           >
-            <Minus size={15} />
+            <Minus size={13} />
           </button>
           <button
             onClick={handleToggleMaximize}
             className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-sidebar-item-hover hover:text-text-primary transition-colors cursor-pointer"
           >
-            <Square size={13} />
+            <Square size={11} />
           </button>
           <button
             onClick={handleClose}
             className="w-[46px] h-full flex items-center justify-center text-text-muted hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
           >
-            <X size={15} />
+            <X size={13} />
           </button>
         </div>
       </div>
