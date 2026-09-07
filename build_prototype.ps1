@@ -6,6 +6,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Taken before anything is built, and used at the end to say which installers this run actually
+# produced. Anything in the bundle folder older than this existed before the script started, so
+# it cannot be from this build regardless of what its filename says.
+$buildStart = Get-Date
+
 Write-Host "=====================================================" -ForegroundColor Magenta
 Write-Host "    AI-2D-Checker Prototype Installer Builder        " -ForegroundColor Magenta
 Write-Host "=====================================================" -ForegroundColor Magenta
@@ -140,7 +145,10 @@ Write-Host "Prototype Installer Build Complete!" -ForegroundColor Green
 # artifacts is a real, runnable installer carrying whatever bugs it shipped with, and the operator
 # has no way to tell from the banner which is the build that was just verified.
 #
-# So: match on the version this build actually stamped, read from the same file the bundler read.
+# Matched on VERSION until 2026-09-07, which the DraftCheck rename defeated: it kept 0.1.9, so a
+# ten-day-old `KMTI Checker_0.1.9` was listed as a product of this run, directly above the warning
+# it belonged in. Version collides across renames and rebuilds; write time does not. Matching on a
+# timestamp taken before the build is the property actually being claimed, not a proxy for it.
 $appVersion = ""
 $confPath = "$PSScriptRoot\apps\desktop\src-tauri\tauri.conf.json"
 if (Test-Path $confPath) {
@@ -156,18 +164,11 @@ if (Test-Path $bundleDir) {
     $allBundles = @(Get-ChildItem -Path $bundleDir -Recurse -Include *.msi, *.exe -ErrorAction SilentlyContinue)
 }
 
-# Fall back to "everything" only if the version could not be read -- listing too much beats
-# listing nothing and claiming the build produced no installer.
-if ([string]::IsNullOrWhiteSpace($appVersion)) {
-    $installers = $allBundles
-    $stale = @()
-} else {
-    $installers = @($allBundles | Where-Object { $_.Name -like "*$appVersion*" })
-    $stale = @($allBundles | Where-Object { $_.Name -notlike "*$appVersion*" })
-}
+$installers = @($allBundles | Where-Object { $_.LastWriteTime -ge $buildStart })
+$stale = @($allBundles | Where-Object { $_.LastWriteTime -lt $buildStart })
 
 if ($installers.Count -gt 0) {
-    Write-Host "Installers (version $appVersion):" -ForegroundColor Cyan
+    Write-Host "Installers built by this run (version $appVersion):" -ForegroundColor Cyan
     foreach ($installer in $installers) {
         $mb = [math]::Round($installer.Length / 1MB, 1)
         Write-Host "  $($installer.FullName)  ($mb MB)" -ForegroundColor White
@@ -175,12 +176,21 @@ if ($installers.Count -gt 0) {
 
     if ($stale.Count -gt 0) {
         Write-Host ""
-        Write-Host "  $($stale.Count) installer(s) from an earlier version are also in that folder." -ForegroundColor Yellow
-        Write-Host "  They are NOT this build and must not be distributed:" -ForegroundColor Yellow
+        Write-Host "  $($stale.Count) older installer(s) are also in that folder." -ForegroundColor Yellow
+        Write-Host "  They predate this run and must not be distributed:" -ForegroundColor Yellow
         foreach ($old in $stale) {
-            Write-Host "    $($old.Name)" -ForegroundColor DarkYellow
+            Write-Host "    $($old.Name)  ($($old.LastWriteTime.ToString('yyyy-MM-dd HH:mm')))" -ForegroundColor DarkYellow
         }
     }
+} elseif ($allBundles.Count -gt 0) {
+    # Installers exist but none is newer than this run. Under the old version filter this printed
+    # them as deliverables; the whole point of the timestamp is that it can say "not from here".
+    Write-Host "No installer was produced by this run." -ForegroundColor Red
+    Write-Host "  $($allBundles.Count) older file(s) are in $bundleDir and are NOT this build:" -ForegroundColor Red
+    foreach ($old in $allBundles) {
+        Write-Host "    $($old.Name)  ($($old.LastWriteTime.ToString('yyyy-MM-dd HH:mm')))" -ForegroundColor DarkYellow
+    }
+    Write-Host "The bundler reported success, so check whether it wrote somewhere else." -ForegroundColor Red
 } else {
     Write-Host "No installer found under:" -ForegroundColor Red
     Write-Host "  $bundleDir" -ForegroundColor White
