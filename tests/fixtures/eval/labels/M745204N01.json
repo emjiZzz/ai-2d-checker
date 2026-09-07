@@ -1,0 +1,64 @@
+{
+  "pair_id": "M745204N01",
+  "guideline_version": "2026-08-06",
+  "annotator": "engineer",
+  "annotated_at": "2026-08-19",
+  "notes": "Converted from manual-check session 6a83aeabcc0c4a5453e2d988 (7 live marking(s), annotator 'engineer').",
+  "findings": [
+    {
+      "entity_handle": "REV-355",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "2 ロール： 4 (2x2台)",
+      "rev_text": "２ロール：　４（２×６台）",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-1F7",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "指示なき角部は糸面取りのこと",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-1F8",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "タップ、キリ穴は面取り仕上げのこと",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-1F9",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "完成時、バリ、キリ粉はなきこと",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-356",
+      "category": "notes_section",
+      "status": "CHANGED",
+      "ref_text": "注 1.二ツ割ノコト。",
+      "rev_text": "二ツ割ノコト。",
+      "notes": "",
+      "is_bulk": false
+    }
+  ],
+  "not_findings": [
+    {
+      "entity_handle": "REV-354",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-149",
+      "reason": "engineer verified this as unchanged"
+    }
+  ]
+}

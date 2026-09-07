@@ -1,8 +1,9 @@
-import time
-from typing import Any, Dict, List
-from ...logger import logger
+from typing import Any
+
 from ...domain.models.audit_session import AuditSession
 from ...domain.models.audit_violation import AuditViolation
+from ...logger import logger
+
 
 class AuditDiagnostics:
     """
@@ -11,7 +12,7 @@ class AuditDiagnostics:
     """
 
     @staticmethod
-    async def get_session_diagnostics(session_id: str) -> Dict[str, Any]:
+    async def get_session_diagnostics(session_id: str) -> dict[str, Any]:
         """
         Gathers live DB records to present a performance and analytics snapshot.
         """

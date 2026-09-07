@@ -1,9 +1,11 @@
-import json
 import hashlib
-from typing import Any, Dict, Optional
+import json
 from pathlib import Path
-from ...logger import logger
+from typing import Any
+
 from ...config import settings
+from ...logger import logger
+
 
 class RenderCache:
     """
@@ -20,18 +22,18 @@ class RenderCache:
         return cache_dir / f"{safe_hash}.json"
 
     @staticmethod
-    def get_cached_payload(drawing_id: str) -> Optional[Dict[str, Any]]:
+    def get_cached_payload(drawing_id: str) -> dict[str, Any] | None:
         cache_file = RenderCache._get_cache_path(drawing_id)
         if cache_file.exists():
             try:
-                with open(cache_file, "r") as f:
+                with open(cache_file) as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Render cache read failed: {e}")
         return None
 
     @staticmethod
-    def set_cached_payload(drawing_id: str, payload: Dict[str, Any]) -> None:
+    def set_cached_payload(drawing_id: str, payload: dict[str, Any]) -> None:
         cache_file = RenderCache._get_cache_path(drawing_id)
         try:
             with open(cache_file, "w") as f:

@@ -1,0 +1,95 @@
+{
+  "cache_version": "v38",
+  "category_attribution": {
+    "accuracy": 0.8055555555555556,
+    "confusion": {
+      "isometric_view->bill_of_materials": 4,
+      "notes_section->title_block": 3
+    },
+    "correct": 29,
+    "matched": 36
+  },
+  "macro_f1": 0.750203026947213,
+  "match_tiers": {
+    "handle": 11,
+    "text": 25
+  },
+  "method": "rag",
+  "micro": {
+    "duplicates": 0,
+    "f1": 0.7128712871287128,
+    "fn": 19,
+    "fp": 10,
+    "precision": 0.782608695652174,
+    "recall": 0.6545454545454545,
+    "tp": 36
+  },
+  "pairs": 36,
+  "per_category": {
+    "bill_of_materials": {
+      "duplicates": 0,
+      "f1": 0.7142857142857143,
+      "fn": 4,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.5555555555555556,
+      "tp": 5
+    },
+    "drawing_views": {
+      "duplicates": 0,
+      "f1": 0.7906976744186046,
+      "fn": 7,
+      "fp": 2,
+      "precision": 0.8947368421052632,
+      "recall": 0.7083333333333334,
+      "tp": 17
+    },
+    "isometric_view": {
+      "duplicates": 0,
+      "f1": 0.888888888888889,
+      "fn": 1,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.8,
+      "tp": 4
+    },
+    "notes_section": {
+      "duplicates": 0,
+      "f1": 0.5,
+      "fn": 6,
+      "fp": 8,
+      "precision": 0.4666666666666667,
+      "recall": 0.5384615384615384,
+      "tp": 7
+    },
+    "other_engineering_references": {
+      "duplicates": 0,
+      "f1": null,
+      "fn": 0,
+      "fp": 0,
+      "precision": null,
+      "recall": null,
+      "tp": 0
+    },
+    "title_block": {
+      "duplicates": 0,
+      "f1": 0.8571428571428571,
+      "fn": 1,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.75,
+      "tp": 3
+    }
+  },
+  "scored_pairs": 25,
+  "scorer_note": "Mutation pairs are drawn from the engine's own comparison pool, so they cannot reveal a scoping bug and their category attribution is not independent. Human pairs are required for both.",
+  "status_confusion": {
+    "ADDED->ADDED": 6,
+    "CHANGED->CHANGED": 21,
+    "REMOVED->CHANGED": 4,
+    "REMOVED->REMOVED": 5
+  },
+  "unresolvable_labels": [],
+  "zero_finding_false_positives": 0,
+  "zero_finding_pairs": 11
+}

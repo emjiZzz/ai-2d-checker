@@ -1,0 +1,46 @@
+name: Deploy Backend to Render
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'services/backend/**'
+      - 'tests/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'render.yaml'
+      - '.github/workflows/deploy-backend.yml'
+      - '.github/workflows/ci-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci-backend.yml
+
+  build-docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Container
+        run: |
+          docker build -t ai-2d-checker-backend:ci .
+
+  deploy:
+    needs: [test, build-docker]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning ::RENDER_DEPLOY_HOOK_URL secret is not set in repository secrets. Skipping deploy webhook."
+          else
+            echo "Triggering Render auto-deploy..."
+            curl -fsSL -X POST "$RENDER_DEPLOY_HOOK_URL"
+            echo "Render deploy hook triggered successfully."
+          fi

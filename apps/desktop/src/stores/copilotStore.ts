@@ -14,7 +14,7 @@ interface CopilotState {
   isThinking: boolean;
   
   addMessage: (msg: Message) => void;
-  updateStreamingMessage: (id: string, chunk: string) => void;
+  updateStreamingMessage: (id: string, chunk: string, isStreaming?: boolean) => void;
   setThinking: (status: boolean) => void;
   clearSession: () => void;
 }
@@ -28,9 +28,9 @@ export const useCopilotStore = create<CopilotState>((set) => ({
     messages: [...state.messages, msg] 
   })),
   
-  updateStreamingMessage: (id, chunk) => set((state) => ({
+  updateStreamingMessage: (id, chunk, isStreaming = true) => set((state) => ({
     messages: state.messages.map(m => 
-      m.id === id ? { ...m, content: m.content + chunk, isStreaming: true } : m
+      m.id === id ? { ...m, content: m.content + chunk, isStreaming } : m
     )
   })),
   

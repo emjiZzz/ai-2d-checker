@@ -1,8 +1,21 @@
+param(
+    [switch]$Prototype
+)
+
 $ErrorActionPreference = "Stop"
 
+$modeLabel = if ($Prototype) { "PROTOTYPE (2D Workspace Only)" } else { "FULL DEVELOPMENT" }
+
 Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "      AI-2D-Checker Tauri Desktop Launcher      " -ForegroundColor Cyan
+Write-Host "      AI-2D-Checker Tauri Desktop Launcher           " -ForegroundColor Cyan
+Write-Host "      Mode: $modeLabel                               " -ForegroundColor $(if ($Prototype) { "Magenta" } else { "Green" })
 Write-Host "=====================================================" -ForegroundColor Cyan
+
+if ($Prototype) {
+    $env:VITE_PROTOTYPE_MODE = "true"
+} else {
+    $env:VITE_PROTOTYPE_MODE = "false"
+}
 
 # 1. Inject Rust Cargo Path
 $cargoPath = "$env:USERPROFILE\.cargo\bin"
@@ -10,79 +23,78 @@ if ($env:Path -notmatch [regex]::Escape($cargoPath)) {
     $env:Path += ";$cargoPath"
 }
 
-# 1.5 Inject Node.js Path
+# 1.5 Inject Node.js & pnpm Path
 $nodePath = "C:\Program Files\nodejs"
+$npmGlobalPath = "$env:APPDATA\npm"
+if ($env:Path -notmatch [regex]::Escape($npmGlobalPath)) {
+    $env:Path = "$npmGlobalPath;$env:Path"
+}
 if (Test-Path $nodePath) {
     if ($env:Path -notmatch [regex]::Escape($nodePath)) {
         $env:Path = "$nodePath;$env:Path"
     }
 }
 
-# 2. Setup Portable MSVC Environment (link.exe, cl.exe, Windows SDK)
-$msvcRoot = "$env:USERPROFILE\msvc"
-$msvcVer = "14.51.36231"
-$sdkVer = "10.0.28000.0"
-
-$msvcBin = "$msvcRoot\VC\Tools\MSVC\$msvcVer\bin\Hostx64\x64"
-$sdkBin = "$msvcRoot\Windows Kits\10\bin\$sdkVer\x64"
-
-# Add MSVC and SDK binaries to PATH
-$env:Path = "$msvcBin;$sdkBin;$env:Path"
-
-# Set INCLUDE paths for the compiler
-$env:INCLUDE = @(
-    "$msvcRoot\VC\Tools\MSVC\$msvcVer\include",
-    "$msvcRoot\Windows Kits\10\Include\$sdkVer\ucrt",
-    "$msvcRoot\Windows Kits\10\Include\$sdkVer\shared",
-    "$msvcRoot\Windows Kits\10\Include\$sdkVer\um",
-    "$msvcRoot\Windows Kits\10\Include\$sdkVer\winrt",
-    "$msvcRoot\Windows Kits\10\Include\$sdkVer\cppwinrt"
-) -join ";"
-
-# Set LIB paths for the linker
-$env:LIB = @(
-    "$msvcRoot\VC\Tools\MSVC\$msvcVer\lib\x64",
-    "$msvcRoot\Windows Kits\10\Lib\$sdkVer\ucrt\x64",
-    "$msvcRoot\Windows Kits\10\Lib\$sdkVer\um\x64"
-) -join ";"
-
-Write-Host "MSVC link.exe and Windows SDK injected successfully." -ForegroundColor Green
+# 2. Setup MSVC Environment (link.exe, cl.exe, Windows SDK).
+. "$PSScriptRoot\tools\scripts\msvc-env.ps1"
 Write-Host ""
 
-# Ensure MongoDB and Backend are running
-Write-Host "Checking services status..." -ForegroundColor Yellow
-powershell -ExecutionPolicy Bypass -File .\start-mongo.ps1
+if (-not $isProdTarget) {
+    # Ensure local MongoDB and Backend are running
+    Write-Host "Checking local services status..." -ForegroundColor Yellow
+    powershell -ExecutionPolicy Bypass -File .\start-mongo.ps1
 
-# Determine port from Env or default
-$envFile = ".\.env"
-$port = 8080
-if (Test-Path $envFile) {
-    $envContent = Get-Content $envFile -Raw
-    if ($envContent -match "SIDECAR_PORT=(\d+)") {
-        $foundPort = [int]$Matches[1]
-        if ($foundPort -ne 0) {
-            $port = $foundPort
+    # Determine port from Env or default
+    $envFile = ".\.env"
+    $port = 8080
+    if (Test-Path $envFile) {
+        $envContent = Get-Content $envFile -Raw
+        if ($envContent -match "SIDECAR_PORT=(\d+)") {
+            $foundPort = [int]$Matches[1]
+            if ($foundPort -ne 0) {
+                $port = $foundPort
+            }
         }
     }
+
+    $backendRunning = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+    if (-not $backendRunning) {
+        Write-Host "Backend is not running on port $port. Launching FastAPI Backend Service..." -ForegroundColor Yellow
+        Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoExit -File .\services\backend\start.ps1" -WorkingDirectory $PWD
+        Write-Host "Waiting for backend service to be ready on port $port..." -ForegroundColor Gray
+        $timeoutSec = 20
+        $elapsed = 0
+        while ($elapsed -lt $timeoutSec) {
+            Start-Sleep -Seconds 1
+            $elapsed += 1
+            if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
+                Write-Host "✅ Local Backend is ready on port $port ($elapsed s)." -ForegroundColor Green
+                break
+            }
+        }
+    }
+    else {
+        Write-Host "✅ Local Backend is already running on port $port." -ForegroundColor Green
+    }
+} else {
+    Write-Host "Connected to cloud backend. Skipping local Mongo & FastAPI startup." -ForegroundColor Green
 }
 
-$backendRunning = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-if (-not $backendRunning) {
-    Write-Host "Backend is not running on port $port. Launching FastAPI Backend Service..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoExit -File .\services\backend\start.ps1" -WorkingDirectory $PWD
-    Write-Host "Waiting a few seconds for backend to initialize..." -ForegroundColor Gray
-    Start-Sleep -Seconds 5
-}
-else {
-    Write-Host "✅ Backend is already running on port $port." -ForegroundColor Green
+# Free port 1420 if previously occupied by background vite process
+$vitePortConn = Get-NetTCPConnection -LocalPort 1420 -State Listen -ErrorAction SilentlyContinue
+if ($vitePortConn) {
+    Write-Host "Freeing occupied port 1420..." -ForegroundColor Yellow
+    Stop-Process -Id $vitePortConn.OwningProcess -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "Starting Tauri Desktop Dev Server..." -ForegroundColor Green
 Write-Host ""
 
+$pnpmExe = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } elseif (Test-Path "$env:APPDATA\npm\pnpm.cmd") { "$env:APPDATA\npm\pnpm.cmd" } else { "npx pnpm" }
+
 # 3. Install packages
 Write-Host "Installing packages..." -ForegroundColor Yellow
-npx pnpm install
+& $pnpmExe install
 
 # 4. Launch Tauri
-npx pnpm --filter desktop tauri dev
+& $pnpmExe --filter desktop tauri dev

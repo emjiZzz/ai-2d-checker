@@ -1,6 +1,8 @@
-from typing import Any, Dict, List, Tuple
-from ...logger import logger
+from typing import Any
+
 from ...domain.models.extracted_entity import ExtractedEntity
+from ...logger import logger
+
 
 class ComparisonEngine:
     """
@@ -9,7 +11,7 @@ class ComparisonEngine:
     """
 
     @staticmethod
-    def compare_drawings(base_entities: List[ExtractedEntity], new_entities: List[ExtractedEntity]) -> Dict[str, Any]:
+    def compare_drawings(base_entities: list[ExtractedEntity], new_entities: list[ExtractedEntity]) -> dict[str, Any]:
         """
         Calculates diff between two entity sets.
         Uses simplistic coordinate hashing for exact matching.

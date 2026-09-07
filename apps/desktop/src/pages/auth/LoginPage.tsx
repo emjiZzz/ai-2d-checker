@@ -1,10 +1,12 @@
 import React, { useState } from "react";
+import kmtiLogo from "../../assets/kmti_logo.png";
 import { useAuthStore } from "../../stores/authStore";
-import { KeyRound, ShieldAlert, User, Cpu } from "lucide-react";
+import { KeyRound, ShieldAlert, User, Eye, EyeOff, ArrowRight } from "lucide-react";
 
 export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login, error } = useAuthStore();
 
@@ -17,268 +19,118 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="login-viewport">
-      <div className="login-card">
-        {/* Technical Branding Header */}
-        <div className="login-branding">
-          <div className="branding-logo">
-            <Cpu size={28} className="logo-icon" />
+    <div className="flex flex-col w-full h-full bg-bg-dark overflow-hidden select-none font-sans text-text-primary transition-colors duration-300">
+      {/* Main Container */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 relative">
+        {/* Centered Login Card */}
+        <div className="w-full max-w-[420px] bg-bg-card rounded-2xl p-8 sm:p-10 shadow-xl border border-border-color z-10 animate-fade-in">
+          {/* Logo Header */}
+          <div className="flex flex-col items-center text-center mb-8">
+            <img src={kmtiLogo} alt="KMTI Logo" className="w-16 h-16 object-contain mb-5 shrink-0" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text-primary mb-1">
+              DraftCheck
+            </h1>
+            <p className="text-[10px] font-bold text-text-muted tracking-widest uppercase">
+              Enterprise Compliance Portal
+            </p>
           </div>
-          <h2 className="branding-title">AI-2D-Checker</h2>
-          <span className="branding-subtitle">Enterprise CAD Compliance Platform</span>
+
+          {/* Credentials Form */}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            {error && (
+              <div className="flex items-center gap-2 text-red-500 bg-red-500/10 border border-red-500/20 px-3.5 py-2.5 rounded-xl text-xs font-semibold animate-fade-in">
+                <ShieldAlert size={16} className="shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted" htmlFor="username">
+                Username
+              </label>
+              <div className="relative flex items-center">
+                <User size={16} className="absolute left-4 text-text-muted pointer-events-none" />
+                <input
+                  id="username"
+                  type="text"
+                  autoComplete="off"
+                  className="w-full py-3.5 pl-11 pr-4 bg-bg-sidebar border border-border-color rounded-xl text-text-primary placeholder:text-text-muted text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent-cyan/30 focus:border-accent-cyan transition-all"
+                  placeholder="Username or ID"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={isSubmitting}
+                  autoFocus
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted" htmlFor="password">
+                Password
+              </label>
+              <div className="relative flex items-center">
+                <KeyRound size={16} className="absolute left-4 text-text-muted pointer-events-none" />
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="off"
+                  className="w-full py-3.5 pl-11 pr-11 bg-bg-sidebar border border-border-color rounded-xl text-text-primary placeholder:text-text-muted text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent-cyan/30 focus:border-accent-cyan transition-all"
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isSubmitting}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full mt-1 py-3.5 bg-accent-cyan hover:brightness-110 active:scale-[0.99] text-on-accent font-bold text-xs uppercase tracking-wider rounded-xl transition-all duration-150 shadow-lg shadow-accent-cyan/20 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>{isSubmitting ? "Authenticating..." : "SIGN IN"}</span>
+              {!isSubmitting && <ArrowRight size={16} />}
+            </button>
+          </form>
+
+          {/* Quick Fill Accounts */}
+          <div className="mt-8 flex items-center justify-center gap-3 text-[11px] text-text-muted">
+            <span>Quick fill:</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setUsername("admin"); setPassword("admin123"); }}
+                className="px-3 py-1.5 rounded-full bg-bg-sidebar border border-border-color hover:border-accent-cyan/50 hover:text-accent-cyan text-text-secondary transition-colors font-medium cursor-pointer"
+              >
+                admin
+              </button>
+              <button
+                type="button"
+                onClick={() => { setUsername("engineer"); setPassword("engineer123"); }}
+                className="px-3 py-1.5 rounded-full bg-bg-sidebar border border-border-color hover:border-accent-cyan/50 hover:text-accent-cyan text-text-secondary transition-colors font-medium cursor-pointer"
+              >
+                engineer
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Credentials Form */}
-        <form onSubmit={handleSubmit} className="login-form">
-          {error && (
-            <div className="error-banner">
-              <ShieldAlert size={16} style={{ flexShrink: 0 }} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="username">
-              Username or ID
-            </label>
-            <div className="input-icon-wrapper">
-              <User size={16} className="input-icon" />
-              <input
-                id="username"
-                type="text"
-                className="form-input"
-                placeholder="e.g. engineer"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                disabled={isSubmitting}
-                autoFocus
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">
-              Security Password
-            </label>
-            <div className="input-icon-wrapper">
-              <KeyRound size={16} className="input-icon" />
-              <input
-                id="password"
-                type="password"
-                className="form-input"
-                placeholder="••••••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isSubmitting}
-                required
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary login-btn"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Authenticating session..." : "Initialize Portal Access"}
-          </button>
-        </form>
-
-        {/* Enterprise Context Footer */}
-        <div className="login-help-box">
-          <p className="help-heading">Demo Workspace Access Accounts:</p>
-          <div className="help-credentials-grid">
-            <span className="help-label">Admin Role:</span>
-            <code className="help-code">admin</code>
-            <code className="help-code">admin123</code>
-
-            <span className="help-label">Engineer Role:</span>
-            <code className="help-code">engineer</code>
-            <code className="help-code">engineer123</code>
-          </div>
+        {/* Bottom Footer */}
+        <div className="mt-8 text-[11px] font-medium text-text-muted tracking-wide text-center">
+          DraftCheck · Enterprise Edition
         </div>
-      </div>
-
-      <style>{`
-        .login-viewport {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100vw;
-          height: 100vh;
-          background: #09090b;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          color: #e4e4e7;
-          overflow: hidden;
-        }
-
-        .login-card {
-          width: 100%;
-          max-width: 420px;
-          background: #18181b;
-          border: 1px solid #27272a;
-          border-radius: 12px;
-          padding: 40px 32px;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
-          animation: slideUp 0.4s ease-out;
-        }
-
-        .login-branding {
-          text-align: center;
-          margin-bottom: 30px;
-        }
-
-        .branding-logo {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 56px;
-          height: 56px;
-          border-radius: 12px;
-          background: rgba(0, 229, 255, 0.1);
-          border: 1px solid rgba(0, 229, 255, 0.2);
-          margin-bottom: 12px;
-        }
-
-        .logo-icon {
-          color: #00e5ff;
-        }
-
-        .branding-title {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: #ffffff;
-          margin: 0;
-          letter-spacing: -0.025em;
-        }
-
-        .branding-subtitle {
-          font-size: 0.8rem;
-          color: #a1a1aa;
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .error-banner {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.2);
-          padding: 12px;
-          border-radius: 6px;
-          color: #fca5a5;
-          font-size: 0.85rem;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .form-label {
-          font-size: 0.75rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          color: #a1a1aa;
-          letter-spacing: 0.05em;
-        }
-
-        .input-icon-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .input-icon {
-          position: absolute;
-          left: 12px;
-          color: #71717a;
-        }
-
-        .form-input {
-          width: 100%;
-          padding: 10px 12px 10px 38px;
-          background: #09090b;
-          border: 1px solid #27272a;
-          border-radius: 6px;
-          color: #ffffff;
-          font-size: 0.9rem;
-          transition: all 0.2s ease;
-        }
-
-        .form-input:focus {
-          border-color: #00e5ff;
-          outline: none;
-          box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.15);
-        }
-
-        .login-btn {
-          margin-top: 10px;
-          padding: 12px;
-          font-weight: 600;
-          background: #00e5ff !important;
-          color: #09090b !important;
-          border: none !important;
-          width: 100%;
-        }
-
-        .login-btn:hover {
-          background: #33ebff !important;
-          color: #09090b !important;
-          transform: translateY(-1px);
-        }
-
-        .login-help-box {
-          margin-top: 30px;
-          padding-top: 20px;
-          border-top: 1px solid #27272a;
-          font-size: 0.75rem;
-        }
-
-        .help-heading {
-          font-weight: 600;
-          color: #a1a1aa;
-          margin-bottom: 8px;
-        }
-
-        .help-credentials-grid {
-          display: grid;
-          grid-template-columns: 80px 1fr 1fr;
-          gap: 6px;
-          align-items: center;
-        }
-
-        .help-label {
-          color: #71717a;
-        }
-
-        .help-code {
-          font-family: monospace;
-          background: #09090b;
-          padding: 2px 6px;
-          border-radius: 4px;
-          color: #00e5ff;
-          text-align: center;
-        }
-
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+      </main>
     </div>
   );
 };
+

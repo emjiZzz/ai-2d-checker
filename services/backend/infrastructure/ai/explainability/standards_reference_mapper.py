@@ -1,5 +1,7 @@
-from typing import Any, Dict
+from typing import Any
+
 from ....logger import logger
+
 
 class StandardsReferenceMapper:
     """
@@ -7,7 +9,7 @@ class StandardsReferenceMapper:
     """
     
     @staticmethod
-    def map_to_standard(violation: Any) -> Dict[str, str]:
+    def map_to_standard(violation: Any) -> dict[str, str]:
         """
         Looks up the closest matching standard document and clause.
         """

@@ -78,25 +78,39 @@ def test_storage_bootstrap():
 
 @pytest.mark.asyncio
 async def test_database_retry_handling():
+    """Retry limits and exponential backoff, with no reachable database of either kind.
+
+    Both URIs have to be dead, not just the primary. `connect()` tries `MONGO_URI` and then
+    falls back to `MONGO_FALLBACK_URI`, which defaults to `mongodb://127.0.0.1:27017` — the local
+    MongoDB most developers here have running. Pointing only the primary at a dead port therefore
+    asserted "the connection failed" on a machine where it had just succeeded through the
+    fallback, so this test passed or failed according to whether `mongod` was up. That is the
+    environment-dependence this repo has paid for before: a red test for a reason unrelated to the
+    code under test.
     """
-    Test that connection manager correctly implements retry limits and exponential backoff.
-    """
-    # Create isolated manager with dummy URI to trigger quick connection failures
     manager = DatabaseConnectionManager()
-    
-    # Temporarily force MONGO_URI to invalid loopback
-    old_uri = settings.MONGO_URI
-    settings.MONGO_URI = "mongodb://127.0.0.1:9999"  # Non-existent port
-    
+
+    old_uri, old_fallback = settings.MONGO_URI, settings.MONGO_FALLBACK_URI
+    # Two DIFFERENT dead ports, so the fallback is a genuinely separate candidate -- `connect`
+    # skips it when it matches the primary, which would leave only one attempt to count.
+    settings.MONGO_URI = "mongodb://127.0.0.1:9999"
+    settings.MONGO_FALLBACK_URI = "mongodb://127.0.0.1:9998"
+
     try:
-        # Run connect with 2 retries, 0.1 second delay
         success = await manager.connect(max_retries=2, initial_delay=0.1)
         assert success is False
         assert manager.is_connected is False
-        assert manager.retry_count == 2
-        assert manager.total_attempts == 2
+        # The counters ACCUMULATE across candidates rather than resetting per URI, so two dead
+        # candidates at two retries each is four. Written as the product rather than as `4` so
+        # the assertion says which quantity it is checking -- `max_retries` is honoured per
+        # candidate, which is the actual contract, and a bare 4 would hide a change in either
+        # factor behind a change in the other.
+        candidates = 2
+        assert manager.retry_count == 2 * candidates
+        assert manager.total_attempts == 2 * candidates
     finally:
         settings.MONGO_URI = old_uri
+        settings.MONGO_FALLBACK_URI = old_fallback
 
 def test_token_auth_validation():
     """

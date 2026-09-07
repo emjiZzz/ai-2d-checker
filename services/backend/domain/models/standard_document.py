@@ -1,8 +1,10 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
+
 from beanie import Document
 from pydantic import Field
-from pymongo import IndexModel, ASCENDING
+from pymongo import ASCENDING, IndexModel
+
 
 class StandardDocument(Document):
     name: str = Field(..., description="Name of the engineering standard document")
@@ -11,10 +13,10 @@ class StandardDocument(Document):
     file_size_bytes: int = Field(..., description="File size in bytes")
     format: str = Field(..., description="File extension/format: pdf, txt, md")
     scope: str = Field("client_specific", description="Scope of standard: 'universal' or 'client_specific'")
-    client_name: Optional[str] = Field(None, description="Associated client name if scope is client_specific")
-    category: Optional[str] = Field(None, description="Category of the standard e.g., Dimensioning, Tolerancing, Welding")
-    description: Optional[str] = Field(None, description="Detailed description of the standard contents")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata from parsing")
+    client_name: str | None = Field(None, description="Associated client name if scope is client_specific")
+    category: str | None = Field(None, description="Category of the standard e.g., Dimensioning, Tolerancing, Welding")
+    description: str | None = Field(None, description="Detailed description of the standard contents")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata from parsing")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:

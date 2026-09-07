@@ -1,6 +1,8 @@
 from pymongo import ASCENDING
+
 from ...logger import logger
 from .connection import db_manager
+
 
 async def bootstrap_indexes() -> bool:
     """

@@ -1,0 +1,92 @@
+{
+  "cache_version": "v42",
+  "category_attribution": {
+    "accuracy": 1.0,
+    "confusion": {},
+    "correct": 47,
+    "matched": 47
+  },
+  "macro_f1": 0.8714970432617491,
+  "match_tiers": {
+    "handle": 22,
+    "text": 25
+  },
+  "method": "rag",
+  "micro": {
+    "duplicates": 0,
+    "f1": 0.912621359223301,
+    "fn": 8,
+    "fp": 1,
+    "precision": 0.9791666666666666,
+    "recall": 0.8545454545454545,
+    "tp": 47
+  },
+  "pairs": 36,
+  "per_category": {
+    "bill_of_materials": {
+      "duplicates": 0,
+      "f1": 0.7058823529411764,
+      "fn": 4,
+      "fp": 1,
+      "precision": 0.8571428571428571,
+      "recall": 0.6,
+      "tp": 6
+    },
+    "drawing_views": {
+      "duplicates": 0,
+      "f1": 0.962962962962963,
+      "fn": 2,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.9285714285714286,
+      "tp": 26
+    },
+    "isometric_view": {
+      "duplicates": 0,
+      "f1": null,
+      "fn": 0,
+      "fp": 0,
+      "precision": null,
+      "recall": null,
+      "tp": 0
+    },
+    "notes_section": {
+      "duplicates": 0,
+      "f1": 0.9600000000000001,
+      "fn": 1,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.9230769230769231,
+      "tp": 12
+    },
+    "other_engineering_references": {
+      "duplicates": 0,
+      "f1": null,
+      "fn": 0,
+      "fp": 0,
+      "precision": null,
+      "recall": null,
+      "tp": 0
+    },
+    "title_block": {
+      "duplicates": 0,
+      "f1": 0.8571428571428571,
+      "fn": 1,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 0.75,
+      "tp": 3
+    }
+  },
+  "scored_pairs": 25,
+  "scorer_note": "Mutation pairs are drawn from the engine's own comparison pool, so they cannot reveal a scoping bug and their category attribution is not independent. Human pairs are required for both.",
+  "status_confusion": {
+    "ADDED->ADDED": 6,
+    "CHANGED->CHANGED": 32,
+    "REMOVED->CHANGED": 2,
+    "REMOVED->REMOVED": 7
+  },
+  "unresolvable_labels": [],
+  "zero_finding_false_positives": 0,
+  "zero_finding_pairs": 11
+}

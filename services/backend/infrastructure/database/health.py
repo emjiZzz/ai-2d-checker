@@ -1,6 +1,8 @@
 import time
+
 from ...logger import logger
 from .connection import db_manager
+
 
 async def check_database_health() -> dict:
     """

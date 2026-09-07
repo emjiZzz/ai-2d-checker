@@ -1,7 +1,8 @@
-from typing import Any, Dict, List
-from ...logger import logger
+from typing import Any
+
 from ...domain.models.audit_violation import AuditViolation
-from ...domain.models.overlay_region import OverlayRegion
+from ...logger import logger
+
 
 class OverlayBuilder:
     """
@@ -18,7 +19,7 @@ class OverlayBuilder:
     }
 
     @staticmethod
-    def build_violation_overlays(violations: List[AuditViolation]) -> List[Dict[str, Any]]:
+    def build_violation_overlays(violations: list[AuditViolation]) -> list[dict[str, Any]]:
         """
         Maps AuditViolation documents into frontend-renderable geometric overlays.
         """

@@ -1,19 +1,24 @@
-from .drawing import Drawing
+from .annotation_document import AnnotationDocument
 from .audit import AuditResult
-from .comparison import Comparison
-from .report import Report
-from .standard import Standard
-from .drawing_document import DrawingDocument
-from .extraction_job import ExtractionJob
-from .extracted_entity import ExtractedEntity
-from .standard_document import StandardDocument
-from .standard_chunk import StandardChunk
+from .audit_feedback import AuditFeedbackDocument
 from .audit_session import AuditSession
 from .audit_violation import AuditViolation
+from .client import ClientDocument
+from .comparison import Comparison
+from .drawing import Drawing
+from .drawing_document import DrawingDocument
+from .extracted_entity import ExtractedEntity
+from .extraction_job import ExtractionJob
+from .report import Report
+from .role_permissions import RolePermissionsDocument
+from .room import Room
+from .standard import Standard
+from .standard_chunk import StandardChunk
+from .standard_document import StandardDocument
 from .user_account import UserAccountDocument
 from .user_session import UserSessionDocument
-from .role_permissions import RolePermissionsDocument
-from .client import ClientDocument
+from .zone_template import ZoneTemplateDocument
+from .ground_truth import GroundTruthMarking, ManualCheckSession
 
 # Document list for typed Beanie initialization mapping
 __all_models__ = [
@@ -29,8 +34,14 @@ __all_models__ = [
     StandardChunk,
     AuditSession,
     AuditViolation,
+    AuditFeedbackDocument,
     UserAccountDocument,
     UserSessionDocument,
     RolePermissionsDocument,
-    ClientDocument
+    ClientDocument,
+    Room,
+    AnnotationDocument,
+    ZoneTemplateDocument,
+    ManualCheckSession,
+    GroundTruthMarking,
 ]

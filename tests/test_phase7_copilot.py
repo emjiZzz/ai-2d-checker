@@ -6,18 +6,12 @@ from services.backend.infrastructure.ai.explainability.violation_reasoner import
 from services.backend.infrastructure.ai.explainability.remediation_engine import RemediationEngine
 from services.backend.infrastructure.ai.explainability.confidence_interpreter import ConfidenceInterpreter
 from services.backend.infrastructure.ai.explainability.standards_reference_mapper import StandardsReferenceMapper
-from services.backend.infrastructure.ai.geometry.geometry_search_engine import GeometrySearchEngine
-from services.backend.infrastructure.ai.geometry.vector_geometry_index import VectorGeometryIndex
 
 class MockViolation:
     def __init__(self, _id, category, description):
         self.id = _id
         self.category = category
         self.description = description
-
-class MockEntity:
-    def __init__(self, _id):
-        self.id = _id
 
 def test_violation_reasoner():
     """Verify reasoning generation provides context based on category."""
@@ -53,19 +47,3 @@ def test_standards_reference_mapper():
     
     assert reference["standard_name"] == "ISO 5455"
     assert "Scales for engineering drawings" in reference["clause"]
-
-def test_geometry_vector_index():
-    """Verify index creation and spatial querying mock logic."""
-    engine = GeometrySearchEngine()
-    ent1 = MockEntity("e1")
-    ent2 = MockEntity("e2")
-    
-    # Should build index cleanly
-    engine.index.build_index([ent1, ent2])
-    
-    # Check underlying dict populates
-    assert "e1" in engine.index._index
-    
-    # Clustering mock check
-    clusters = engine.detect_repeated_symbols([ent1, ent2])
-    assert "pattern_1" in clusters

@@ -1,7 +1,9 @@
-from typing import Any, Dict
+from typing import Any
+
 from ...domain.models.drawing_document import DrawingDocument
-from ...domain.models.extraction_job import ExtractionJob
 from ...domain.models.extracted_entity import ExtractedEntity
+from ...domain.models.extraction_job import ExtractionJob
+
 
 class CADDiagnostics:
     """
@@ -9,7 +11,7 @@ class CADDiagnostics:
     durations, entity statistics, and error logs.
     """
     @staticmethod
-    async def get_job_diagnostics(job_id: str) -> Dict[str, Any]:
+    async def get_job_diagnostics(job_id: str) -> dict[str, Any]:
         """
         Gathers complete execution details, times, and errors for a specific extraction job.
         """

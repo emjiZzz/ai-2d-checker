@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useAuditStore } from "../stores/auditStore";
 import { useDrawingStore } from "../stores/drawingStore";
-import { useConnectionStore } from "../stores/connectionStore";
+import { buildHeaders, baseUrl, parseOrThrow } from "../services/fetchUtils";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { CopilotPanel } from "./copilot/CopilotPanel";
 import {
   ShieldCheck,
   Play,
-  Loader2,
   AlertTriangle,
   CheckCircle,
   Clock,
@@ -17,6 +17,8 @@ import {
   Filter,
   XCircle
 } from "lucide-react";
+import { Button } from "./ui/Button";
+import { SquareAccordion } from "./ui/LoadingOverlay";
 
 export const AuditConsole: React.FC = () => {
   const {
@@ -30,8 +32,10 @@ export const AuditConsole: React.FC = () => {
     resetStore
   } = useAuditStore();
 
+  const selectedViolation = useWorkspaceStore((s) => s.selectedViolation);
+  const selectViolation = useWorkspaceStore((s) => s.selectViolation);
+
   const { activeDrawing } = useDrawingStore();
-  const { backendUrl, apiToken } = useConnectionStore.getState();
 
   const [selectedDrawingId, setSelectedDrawingId] = useState("");
   const [selectedStandardId, setSelectedStandardId] = useState("");
@@ -51,16 +55,10 @@ export const AuditConsole: React.FC = () => {
 
   const fetchLocalDrawings = async () => {
     try {
-      const headers: Record<string, string> = { "Accept": "application/json" };
-      if (apiToken) {
-        headers["Authorization"] = `Bearer ${apiToken}`;
-      }
-      const response = await fetch(`${backendUrl}/api/v1/drawings`, { headers });
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          setLocalDrawingsList(result.data);
-        }
+      const response = await fetch(`${baseUrl()}/api/v1/drawings`, { headers: buildHeaders() });
+      const data = await parseOrThrow<any>(response);
+      if (data?.data) {
+        setLocalDrawingsList(data.data);
       }
     } catch (err) {
       console.warn("Failed to load drawings dropdown list", err);
@@ -154,21 +152,23 @@ export const AuditConsole: React.FC = () => {
             </div>
           </div>
 
-          <button
-            className="btn btn-primary mt-4"
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "14px" }}
+          <Button
+            variant="primary"
+            className="mt-4 w-full h-14"
             onClick={handleStartAudit}
             disabled={!selectedDrawingId || !selectedStandardId}
           >
-            <Play size={18} fill="#fff" /> Run Comparative Standards Compliance Audit
-          </button>
+            <Play size={18} fill="currentColor" /> Run Comparative Standards Compliance Audit
+          </Button>
         </div>
       )}
 
       {/* 2. PROGRESS QUEUE LOADING STATE */}
       {auditState === "processing" && activeSession && (
         <div className="card loading-card">
-          <Loader2 size={48} className="spin-animation text-purple" style={{ marginBottom: "20px" }} />
+          <div className="mb-5 flex items-center justify-center">
+            <SquareAccordion size={5} cellSize={18} className="text-purple-400" />
+          </div>
           <h4>Audit Pipeline Active</h4>
           <span className="loading-sub">
             Session ID: <code style={{ color: "#c084fc" }}>{activeSession.id}</code>
@@ -207,9 +207,9 @@ export const AuditConsole: React.FC = () => {
           <XCircle size={48} className="text-red" style={{ marginBottom: "16px" }} />
           <h4>Auditing Pipeline Aborted</h4>
           <p className="card-description" style={{ color: "#fca5a5" }}>{errorMessage}</p>
-          <button className="btn btn-primary mt-3" onClick={resetStore}>
+          <Button variant="primary" className="mt-3" onClick={resetStore}>
             Return & Reconfigure Run
-          </button>
+          </Button>
         </div>
       )}
 
@@ -224,16 +224,16 @@ export const AuditConsole: React.FC = () => {
               <span className="results-subtitle">Grounded on: {getStandardName(activeSession.standard_id || "")}</span>
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                className={`btn ${showCopilot ? 'btn-primary' : 'btn-secondary'}`}
+              <Button
+                variant={showCopilot ? "primary" : "secondary"}
                 onClick={() => setShowCopilot(!showCopilot)}
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                className="gap-2"
               >
                 <span>🤖</span> {showCopilot ? "Hide Copilot" : "Ask Engineering Copilot"}
-              </button>
-              <button className="btn btn-secondary" onClick={resetStore}>
+              </Button>
+              <Button variant="secondary" onClick={resetStore}>
                 Launch New Audit
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -331,39 +331,45 @@ export const AuditConsole: React.FC = () => {
                     Drawing Infraction Feed ({filteredViolations.length})
                   </h3>
 
+
                   <div className="filter-group">
                     <Filter size={14} className="text-purple" />
                     <span className="filter-label">Filter Severity:</span>
-                    <button
-                      className={`btn-filter ${severityFilter === "all" ? "active" : ""}`}
+                    <Button
+                      variant={severityFilter === "all" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("all")}
                     >
                       All
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "critical" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "critical" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("critical")}
                     >
                       Critical
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "high" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "high" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("high")}
                     >
                       High
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "medium" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "medium" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("medium")}
                     >
                       Medium
-                    </button>
-                    <button
-                      className={`btn-filter ${severityFilter === "low" ? "active" : ""}`}
+                    </Button>
+                    <Button
+                      variant={severityFilter === "low" ? "primary" : "outline"}
+                      size="sm"
                       onClick={() => setSeverityFilter("low")}
                     >
                       Low
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -378,11 +384,35 @@ export const AuditConsole: React.FC = () => {
                   <div className="infractions-list">
                     {filteredViolations.map((violation) => {
                       const styles = getSeverityStyles(violation.severity);
+                      const isSelected = selectedViolation?.id === violation.id;
                       return (
                         <div
-                          className="violation-card card"
+                          className={`violation-card card ${isSelected ? 'selected' : ''}`}
                           key={violation.id}
-                          style={{ borderLeft: `4px solid ${styles.iconColor}` }}
+                          style={{
+                            borderLeft: isSelected ? `6px solid ${styles.iconColor}` : `4px solid ${styles.iconColor}`,
+                            cursor: 'pointer',
+                            transform: isSelected ? 'translateX(4px)' : 'none',
+                            boxShadow: isSelected ? `0 4px 20px rgba(${styles.iconColor === '#ef4444' ? '239, 68, 68' : styles.iconColor === '#f97316' ? '249, 115, 22' : '234, 179, 8'}, 0.2)` : 'none',
+                            background: isSelected ? 'rgba(255, 255, 255, 0.02)' : undefined,
+                            borderColor: isSelected ? styles.iconColor : undefined
+                          }}
+                          onClick={() => {
+                            selectViolation(isSelected ? null : {
+                              id: violation.id,
+                              severity: violation.severity as any,
+                              category: violation.category,
+                              description: violation.description,
+                              recommendation: violation.recommendation,
+                              affected_entities: (violation.affected_entities || []).map((e: any) => e.type || String(e)),
+                              confidence: violation.confidence,
+                              coordinates: violation.coordinates && violation.coordinates.length > 0 ? (Array.isArray(violation.coordinates[0]) ? (violation.coordinates[0] as [number, number]) : (violation.coordinates as any)) : undefined,
+                              standard_reference: violation.standard_reference || undefined,
+                              pen_type: violation.pen_type || undefined,
+                              is_resolved: violation.is_resolved,
+                              checker_remarks: violation.checker_remarks || undefined
+                            });
+                          }}
                         >
                           <div className="violation-card-top">
                             <div className="violation-title-group">
@@ -432,6 +462,7 @@ export const AuditConsole: React.FC = () => {
                               </div>
                             )}
                           </div>
+
                         </div>
                       );
                     })}
@@ -492,12 +523,12 @@ export const AuditConsole: React.FC = () => {
         .loading-card h4 {
           font-size: 1.15rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
           margin-bottom: 4px;
         }
         .loading-sub {
           font-size: 0.78rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
           margin-bottom: 24px;
         }
         .loading-steps-list {
@@ -507,17 +538,17 @@ export const AuditConsole: React.FC = () => {
           text-align: left;
           width: 100%;
           max-width: 450px;
-          background: rgba(0,0,0,0.15);
+          background: var(--bg-dark);
           padding: 16px;
           border-radius: 8px;
-          border: 1px solid rgba(255,255,255,0.03);
+          border: 1px solid var(--border-color);
         }
         .step-item {
           display: flex;
           align-items: center;
           gap: 10px;
           font-size: 0.82rem;
-          color: #71717a;
+          color: var(--text-muted);
         }
         .step-item.active {
           color: #e4e4e7;
@@ -557,18 +588,18 @@ export const AuditConsole: React.FC = () => {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 24px;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
+          border-bottom: 1px solid var(--border-color);
           padding-bottom: 16px;
         }
         .results-title {
           font-size: 1.15rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
           margin-bottom: 2px;
         }
         .results-subtitle {
           font-size: 0.82rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
         }
         
         .scores-grid {
@@ -586,7 +617,7 @@ export const AuditConsole: React.FC = () => {
         .score-label {
           font-size: 0.78rem;
           font-weight: 600;
-          color: #a1a1aa;
+          color: var(--text-muted);
           text-transform: uppercase;
           letter-spacing: 0.05em;
           margin-bottom: 16px;
@@ -621,7 +652,7 @@ export const AuditConsole: React.FC = () => {
         }
         .confidence-desc {
           font-size: 0.72rem;
-          color: #71717a;
+          color: var(--text-muted);
           text-align: center;
           max-width: 250px;
           line-height: 1.3;
@@ -642,12 +673,12 @@ export const AuditConsole: React.FC = () => {
         .timing-title {
           font-size: 0.85rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
           display: flex;
           align-items: center;
           gap: 6px;
           margin-bottom: 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.03);
+          border-bottom: 1px solid var(--border-color);
           padding-bottom: 8px;
         }
         .timing-grid {
@@ -662,7 +693,7 @@ export const AuditConsole: React.FC = () => {
         }
         .timing-label {
           font-size: 0.72rem;
-          color: #71717a;
+          color: var(--text-muted);
         }
         .timing-value {
           font-size: 0.88rem;
@@ -683,20 +714,20 @@ export const AuditConsole: React.FC = () => {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: rgba(0,0,0,0.25);
+          background: var(--bg-dark);
           padding: 4px 8px;
           border-radius: 6px;
-          border: 1px solid rgba(255,255,255,0.04);
+          border: 1px solid var(--border-color);
         }
         .filter-label {
           font-size: 0.72rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
           margin-right: 4px;
         }
         .btn-filter {
           background: none;
           border: none;
-          color: #71717a;
+          color: var(--text-muted);
           font-size: 0.72rem;
           font-weight: 600;
           padding: 3px 8px;
@@ -704,29 +735,29 @@ export const AuditConsole: React.FC = () => {
           cursor: pointer;
         }
         .btn-filter:hover {
-          color: #fff;
+          color: var(--text-primary);
         }
         .btn-filter.active {
           color: #fff;
           background: #a855f7;
         }
-        
+
         .empty-feed-card {
-          background: rgba(0,0,0,0.15);
-          border: 1px solid rgba(255,255,255,0.04);
+          background: var(--bg-dark);
+          border: 1px solid var(--border-color);
           border-radius: 8px;
           padding: 30px;
           text-align: center;
         }
         .empty-feed-card h4 {
           font-size: 0.95rem;
-          color: #fff;
+          color: var(--text-primary);
           font-weight: 500;
           margin-bottom: 4px;
         }
         .empty-feed-card p {
           font-size: 0.78rem;
-          color: #a1a1aa;
+          color: var(--text-muted);
         }
         
         .infractions-list {
@@ -755,7 +786,7 @@ export const AuditConsole: React.FC = () => {
         .violation-category {
           font-size: 0.95rem;
           font-weight: 600;
-          color: #fff;
+          color: var(--text-primary);
         }
         .severity-badge {
           font-size: 0.65rem;
@@ -770,20 +801,20 @@ export const AuditConsole: React.FC = () => {
           font-weight: 600;
           padding: 2px 6px;
           border-radius: 4px;
-          background: rgba(255,255,255,0.06);
-          color: #a1a1aa;
+          background: var(--sidebar-item-hover);
+          color: var(--text-muted);
           display: flex;
           align-items: center;
         }
         .violation-desc {
           font-size: 0.82rem;
-          color: #d4d4d8;
+          color: var(--text-secondary);
           line-height: 1.4;
           margin-bottom: 14px;
         }
         .violation-recommendation-box {
-          background: rgba(0,0,0,0.18);
-          border: 1px solid rgba(255,255,255,0.03);
+          background: var(--bg-dark);
+          border: 1px solid var(--border-color);
           border-radius: 6px;
           padding: 10px 14px;
           margin-bottom: 14px;
@@ -799,7 +830,7 @@ export const AuditConsole: React.FC = () => {
         }
         .rec-text {
           font-size: 0.8rem;
-          color: #e4e4e7;
+          color: var(--text-primary);
           line-height: 1.45;
         }
         .violation-footer {
@@ -812,8 +843,8 @@ export const AuditConsole: React.FC = () => {
           align-items: center;
           gap: 5px;
           font-size: 0.7rem;
-          color: #71717a;
-          background: rgba(0,0,0,0.12);
+          color: var(--text-muted);
+          background: var(--sidebar-item-hover);
           padding: 2px 8px;
           border-radius: 4px;
         }

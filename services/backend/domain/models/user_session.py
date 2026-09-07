@@ -1,7 +1,9 @@
 from datetime import datetime
+
 from beanie import Document
 from pydantic import Field
-from pymongo import IndexModel, ASCENDING
+from pymongo import ASCENDING, IndexModel
+
 
 class UserSessionDocument(Document):
     token: str = Field(..., description="Encrypted session token / JWT")

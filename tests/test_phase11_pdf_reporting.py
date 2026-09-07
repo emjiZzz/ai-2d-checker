@@ -4,25 +4,24 @@ from services.backend.infrastructure.cad.pdf_parser import PDFParser
 from services.backend.infrastructure.cad.pdf_diff_engine import PDFDiffEngine
 from services.backend.infrastructure.audit.report_generator import ReportGenerator
 
-def test_pdf_parser_fallback_robustness(monkeypatch):
-    """
-    Validates that PDFParser returns clean structural layers and entity counts 
-    even when running under fallback mechanisms.
+def test_pdf_parser_fails_loudly_without_pymupdf(monkeypatch):
+    """PDF extraction must fail rather than fabricate.
+
+    This test previously asserted the opposite -- that the parser "NEVER fails" and
+    returns entity counts even without PyMuPDF. What produced those counts was 120
+    synthetic lines and 40 synthetic text entities ("Annotation standard block {j}"),
+    persisted to MongoDB indistinguishable from real extracted geometry and consumed
+    downstream by the comparison engine, the AI context and the canvas as though they
+    were the drawing's actual content.
+
+    A failed extraction is recoverable: the job is marked failed and the user is told
+    why. Silent fabrication yields confident, entirely fictional audit findings.
     """
     import sys
     monkeypatch.setitem(sys.modules, "fitz", None)
-    
-    parser = PDFParser()
-    temp_file = Path("dummy_blueprint.pdf")
-    
-    entities, layers, counts, metadata = parser.parse_file(temp_file)
-    
-    assert len(layers) == 3
-    assert "PDF_Geometry" in [l["layer"] for l in layers]
-    assert "PDF_Text" in [l["layer"] for l in layers]
-    assert counts["line"] > 0
-    assert counts["text"] > 0
-    assert metadata["format"] == "pdf"
+
+    with pytest.raises(RuntimeError, match="PyMuPDF"):
+        PDFParser().parse_file(Path("dummy_blueprint.pdf"))
 
 
 def test_pdf_diff_engine_color_rules():

@@ -1,0 +1,28 @@
+{
+  "collections": [
+    {
+      "client_local": false,
+      "collection": "standards",
+      "encoder": "",
+      "n_records": 0,
+      "source_digest": "",
+      "status": "missing"
+    },
+    {
+      "client_local": true,
+      "collection": "domain_rules",
+      "note": "Sourced from the gitignored client rules directory, so record count, digest and encoder state vary per install. Deliberately not pinned: a committed value here would match one machine and read as a regression everywhere else."
+    },
+    {
+      "client_local": false,
+      "collection": "lessons",
+      "encoder": "",
+      "n_records": 0,
+      "source_digest": "",
+      "status": "missing"
+    }
+  ],
+  "guideline_version": "2026-08-07",
+  "reason": "No human-labelled queries exist for any collection, and two of three collections hold zero documents. recall@5 cannot be computed, and computing it over the third (6 records, k=5) would report a chance score of 0.83 as if it were a result.",
+  "status": "no-measurement"
+}

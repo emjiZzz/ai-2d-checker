@@ -1,5 +1,7 @@
-from typing import Any, Dict
+from typing import Any
+
 from ....logger import logger
+
 
 class ViolationReasoner:
     """
@@ -7,7 +9,7 @@ class ViolationReasoner:
     """
     
     @staticmethod
-    def generate_explanation(violation: Any) -> Dict[str, str]:
+    def generate_explanation(violation: Any) -> dict[str, str]:
         """
         Derives the 'WHY' behind a CAD compliance violation.
         """

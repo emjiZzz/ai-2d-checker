@@ -144,22 +144,23 @@ STEP 3: Open the file ".env" in the root of the project folder and set:
   ODA_CONVERTER_PATH=C:\Program Files\ODA\ODAFileConverter_25.12.0\ODAFileConverter.exe
 
 
-7. SET UP YOUR GEMINI API KEY
+7. SET UP YOUR AI API KEYS (GEMINI & OPENAI)
 ──────────────────────────────────────────────────────────────────────────────
-The AI compliance checking is powered by Google's Gemini Flash model.
-You need a free API key to enable it.
+The AI compliance checking and multimodal features support both Google Gemini and OpenAI models.
 
-STEP 1: Go to Google AI Studio:
-  https://aistudio.google.com/
+FOR GOOGLE GEMINI:
+  STEP 1: Go to Google AI Studio: https://aistudio.google.com/
+  STEP 2: Sign in and click "Create API Key".
+  STEP 3: Open the ".env" file in the project root and paste your key:
+    GEMINI_API_KEY=AIzaSy...your-key-here...
 
-STEP 2: Sign in with your Google account.
+FOR OPENAI:
+  STEP 1: Go to OpenAI Platform: https://platform.openai.com/api-keys
+  STEP 2: Create a new API key (starts with "sk-proj-...").
+  STEP 3: Open the ".env" file in the project root and paste your key:
+    OPENAI_API_KEY=sk-proj...your-key-here...
 
-STEP 3: Click "Create API Key". Copy the key (starts with "AIza...").
-
-STEP 4: Open the ".env" file in the project root and paste your key:
-  GEMINI_API_KEY=AIzaSy...your-key-here...
-
-  ⚠️ NEVER share this key or commit it to Git. The .env file is already
+  ⚠️ NEVER share these keys or commit them to Git. The .env file is already
      in .gitignore to protect you.
 
 

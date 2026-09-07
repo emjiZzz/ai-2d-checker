@@ -1,5 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any
+
 from ....logger import logger
+
 
 class RemediationEngine:
     """
@@ -7,7 +9,7 @@ class RemediationEngine:
     """
     
     @staticmethod
-    def suggest_fixes(violation: Any) -> List[Dict[str, str]]:
+    def suggest_fixes(violation: Any) -> list[dict[str, str]]:
         """
         Returns an ordered list of recommendations to resolve the violation.
         """

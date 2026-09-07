@@ -5,6 +5,7 @@ import { AIConfiguration } from "./AIConfiguration";
 import { BackupRecovery } from "./BackupRecovery";
 import { StandardsAdministration } from "./StandardsAdministration";
 import { AuditHistory } from "./AuditHistory";
+import { CustomReportingEngine } from "./CustomReportingEngine";
 import {
   Users,
   Database,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"diagnostics" | "users" | "standards" | "audits" | "ai" | "backups">("diagnostics");
+  const [activeTab, setActiveTab] = useState<"diagnostics" | "users" | "standards" | "audits" | "ai" | "backups" | "reporting">("diagnostics");
 
   return (
     <div className="admin-dashboard-container">
@@ -27,6 +28,7 @@ export const AdminDashboard: React.FC = () => {
             { key: "users", icon: <Users size={22} />, label: "User Directory" },
             { key: "standards", icon: <BookOpen size={22} />, label: "Standards Library" },
             { key: "audits", icon: <FileText size={22} />, label: "Audit History" },
+            { key: "reporting", icon: <FileText size={22} />, label: "Custom Reporting Engine" },
             { key: "ai", icon: <Sliders size={22} />, label: "AI Configurations" },
             { key: "backups", icon: <Archive size={22} />, label: "Snapshots & Backups" },
           ] as const).map(({ key, icon, label }) => (
@@ -48,6 +50,7 @@ export const AdminDashboard: React.FC = () => {
         { activeTab === "users" && <UserManagement /> }
         { activeTab === "standards" && <StandardsAdministration /> }
         { activeTab === "audits" && <AuditHistory /> }
+        { activeTab === "reporting" && <CustomReportingEngine /> }
         { activeTab === "ai" && <AIConfiguration /> }
         { activeTab === "backups" && <BackupRecovery /> }
       </main>

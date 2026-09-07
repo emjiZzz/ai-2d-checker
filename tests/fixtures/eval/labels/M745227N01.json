@@ -1,0 +1,139 @@
+{
+  "pair_id": "M745227N01",
+  "guideline_version": "2026-08-06",
+  "annotator": "imrysn",
+  "annotated_at": "2026-08-17",
+  "notes": "Second labelled pair. Sheets are ref 1260x891 and rev 420x297, exactly 3:1 — but ONLY the sheet furniture maps across that scale. The title block and BOM land bit-on (ref (105,822)/3 = rev (35,273) for the 45/227/16組/0 row), while the drawing area was re-laid out: the `279` dimension sits at ref (215.5,112.6)/3 against rev (203.0,201.1). So position pairs the title block and BOM and proves nothing in the views area; findings there were settled by content and by whole-sheet sweeps instead. TWO DEFECTS FOUND WHILE LABELLING, both recorded here because each would mislead the next annotator. (1) The pinned template for aspect-1.414 has NO `shim` zone at all — its zones are bom/iso/notes/title/title_upper_left/tolerance/views — so the entire シム表 is attributed to `views` and will be compared, against a guideline that says it must never be. The worksheet's own instruction covers this case: if a grouping looks wrong, say so rather than labelling around it. (2) `tools/eval_corpus.py worksheet` renders DIMENSION entities with no position and no zone (`@?` / `—`) because it reads `insert`, and a dimension carries `def_point`. That is how REV-11C appeared out of scope when its def_point (226.9, 86.5) is inside the views polygon — and a dimension is in COMPARABLE_ENTITY_TYPES. CORRECTION, on reading the code after these labels were written: the row was NOT hidden. `triage_row` explicitly refuses to exclude on missing information and routes an anchorless row to `review`, so the safety net held; the defect is that the tool then marked that row with the two symbols the guideline treats as 'ignore'. See the vault note 'Gotcha - The Worksheet Cannot Place a Dimension'. Also noted, not labelled: REV-2DB is not the empty string the worksheet prints, it holds the byte \\x82 where the シム表's fifth row label `ｅ` should be — a real corruption in the revision file, inside a safe zone.",
+  "findings": [
+    {
+      "entity_handle": "REV#462",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2004/12/22",
+      "rev_text": "2026/07/03",
+      "notes": "ONE finding, though the reference draws the date as TWO entities: REF#138 '20' and REF#106 '04/12/22'. Their bboxes are contiguous — '20' ends at x=826.44, the date starts at x=826.06, same y, same 10.5 height — so the reference reads 2004/12/22. Treated as one field by the same rule that keeps DWG No. sub-cells together: the segments cannot change independently.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#459",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2589",
+      "rev_text": "9324",
+      "notes": "Number field at the bottom of the title block. Same field as the M7452A0N01 finding at REV#418, and the revision writes the same value 9324 at the same position (196.0, 11.5) on both sheets.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#461",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "Roll Cassette 12\" Mill",
+      "rev_text": "ロールカセット 12\"ミル",
+      "notes": "The 名称/TITLE cell holds two ruled rows and only the upper one changed: the lower row reads `シム` on both sides (ref @(1076.7, 95.6) / 3 = 358.9, rev @(358.1, 32.5)) and is byte-identical, so it never reaches the worksheet. One finding for the changed row, per the guideline's ruled-rows rule.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#464",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "中川",
+      "rev_text": "ZHR",
+      "notes": "One of two name fields on this sheet; the other is the finding at REV#465. Both sit on the title row at rev y=36.0.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#465",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "橋本",
+      "rev_text": "津田",
+      "notes": "The second name field. Paired by scaled position: ref 橋本 @(685.1, 100.4)/3 = (228.4, 33.5) against rev 津田 @(232.3, 36.0), with 中川/ZHR the next column over on both sides.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REF#113",
+      "category": "bill_of_materials",
+      "status": "REMOVED",
+      "ref_text": "単 / 全",
+      "rev_text": "",
+      "notes": "ONE finding for the BOM header block losing its per-unit/total sub-columns. Five reference entities are covered: REF#117 Q'ty, REF#120 and REF#130 Unit/total, REF#113 and REF#129 単 / 全. Verified that every OTHER header matches on both sides — ユニットNo., コードNo., 総製作個数, 在庫棚入庫, Unit No., Part No., T. Q'ty, Stock Q'ty, 材質/Code, 材料寸法／型式, 材料個数, 素材重量 Kg, 仕上重量 Kg, Material Weight(kg), Finished Weight(kg), 備考/Remark, No. — so what changed is specifically the sub-column labels under the two weight columns, not the table. Anchored at REF#113 by anchor rule 2 (largest text, h=9.0 against 7.2 and 6.6), lowest payload index among the two that tie. REMOVED anchors on the reference side by definition.",
+      "is_bulk": true
+    },
+    {
+      "entity_handle": "REF#374",
+      "category": "bill_of_materials",
+      "status": "REMOVED",
+      "ref_text": "a",
+      "rev_text": "",
+      "notes": "The five lettered balloons a–e are gone from the revision. Reference: text + circle (r=15) + block at (421–496, 654–706) — REF#374/#377/#380/#383/#386 with circles #375/#378/#381/#384/#387 and blocks REF-242 through REF-247. Revision: a whole-sheet sweep for a–e in BOTH half-width and full-width forms returns only the シム表's own row labels (REV-2D1/2D2/2D3/2DA plus the corrupted 2DB), and the revision carries ONE circle in total, r=6 at (45, 251), against the reference's six. Categorised `bill_of_materials` on the guideline's balloon rule — it is a parts-list error that happens to be drawn on a view — because both sides' シム表 still lists five shim rows the revision's drawing no longer locates. `drawing_views` would be the defensible alternative; recorded so the choice is visible if attribution disagrees. Anchored at REF#374, the lowest payload index among the balloon texts.",
+      "is_bulk": true
+    },
+    {
+      "entity_handle": "REV-157",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "指示なき角部は糸面取りのこと",
+      "notes": "The reference has no notes block at all — a whole-sheet sweep for のこと / 面取 / バリ / 注記 returns ZERO hits on the reference and four on the revision, the fourth being 必要な場合は、粗さ区分を記入のこと inside the tolerance safe zone and therefore not labelled. Three separate findings for the three notes, per the guideline's 'two independent notes both edited = 2 CHANGED, two acts'; these are three independent manufacturing instructions, and the bulk convention does not trigger at three.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-158",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "タップ、キリ穴は面取り仕上げのこと",
+      "notes": "Second of the three added notes. See REV-157.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-159",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "完成時、バリ、キリ粉はなきこと",
+      "notes": "Third of the three added notes. See REV-157.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-11C",
+      "category": "drawing_views",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "ｔ",
+      "notes": "A thickness dimension ｔ = 5.0 added on the revision. Established by comparing every dimension on both sides: the reference has five (279, 195, 130, 24, 271) and the revision has those same five plus this one. ⚠ The worksheet shows this row with position `@?` and zone `—`, which reads as out-of-scope, and that is a worksheet defect rather than a zone fact: it resolves position from `insert` and a DIMENSION carries `def_point`. This one's def_point (226.9, 86.5) is inside the views polygon, and a dimension is in COMPARABLE_ENTITY_TYPES, so the engine can and should see it.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#508",
+      "category": "isometric_view",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "",
+      "notes": "An isometric view was added — the same shape as the M7452A0N01 finding and invisible to the worksheet for the same reason: it carries no text. Measured against the pinned aspect-1.414 iso box: the reference's (x 966–1170, y 549–757) holds ONE stray line; the revision's (x 322–390, y 183–252) holds 20 entities — 13 line, 6 ellipse, 1 block — and the reference has no ellipse anywhere on the sheet. BOTH sides hold zero text and zero dimension there, so with COMPARABLE_ENTITY_TYPES = ('text', 'dimension') the engine cannot report this at any setting: a structural false negative, now recorded on a second human pair. Anchored at REV#508, the first ellipse. ⚠ A strict reading of anchor rule 3 would give REV#394 — the lowest payload index inside the box — but that is a BOM rule line bleeding into the region, not part of the view; the rule needs judgement where a box and a view are not the same set.",
+      "is_bulk": true
+    }
+  ],
+  "not_findings": [
+    {
+      "entity_handle": "REV#463",
+      "reason": "1:3 vs 1/3 — the same scale written with a different separator. Notation, not a change. Same decision as M7452A0N01's REV#422, kept deliberately consistent across pairs."
+    },
+    {
+      "entity_handle": "REV-2E2",
+      "reason": "Roll-count line, ref REF-23E '4 ロール：12 (2x6台)' against rev '４ロール：１２（２×６台）'. NFKC-folded the only differences are spacing and ASCII 'x' against U+00D7 — same content, same decision as M7452A0N01's %%c265x20/%%c265×20. The line also MOVED (ref @(179.2, 767.5)/3 = (59.7, 255.8) against rev @(118.4, 273.8)) and changed zone attribution, notes → views. Recorded because these two lines are the ones the ledger's 2026-08-12 entries name as having produced two real engine defects, so any report on them is now a measured false positive rather than an anecdote."
+    },
+    {
+      "entity_handle": "REV-2E3",
+      "reason": "The second roll-count line, ref REF-23F '2 ロール： 4 (2x2台)' against rev '２ロール：　４（２×２台）'. Same decision and same reasoning as REV-2E2."
+    },
+    {
+      "entity_handle": "REV-2D4",
+      "reason": "シム表 title, ref REF-1CD 'シム表' against rev 'L　シム表　l'. The shim table is a safe zone and is never compared, so a difference in its title is not a finding. ⚠ The pinned aspect-1.414 template has NO `shim` zone, so both sides' title is attributed to `views` and the engine WILL compare it — a template defect, recorded in this file's top-level notes rather than labelled around."
+    },
+    {
+      "entity_handle": "REV-2DB",
+      "reason": "The worksheet prints this row as empty text; it actually holds the byte \\x82, where the シム表's fifth row label `ｅ` should be. A real corruption in the revision file, but inside the shim safe zone, so not a finding under the guideline. Flagged in the top-level notes because it is a data defect worth someone's attention even though it is not a comparison finding."
+    }
+  ]
+}

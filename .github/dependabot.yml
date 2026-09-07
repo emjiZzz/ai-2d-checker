@@ -12,9 +12,13 @@ updates:
           - "prettier*"
           - "typescript*"
 
-  # pip dependencies for Python sidecar
+  # pip dependencies for Python sidecar.
+  # This pointed at /services/ai-auditor until 2026-08-11 — a directory that has never existed in
+  # this layout. Dependabot silently raises nothing for a directory it cannot find, so between
+  # this and the dependency-audit workflow's dead path, the backend's Python dependencies had
+  # *two* automated security controls and neither had ever inspected them.
   - package-ecosystem: "pip"
-    directory: "/services/ai-auditor"
+    directory: "/services/backend"
     schedule:
       interval: "weekly"
 

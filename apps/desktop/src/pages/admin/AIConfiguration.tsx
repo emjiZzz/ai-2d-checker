@@ -6,7 +6,9 @@ export const AIConfiguration: React.FC = () => {
   const { aiModelStatus, isLoading } = useAdminStore();
   const [apiKey, setApiKey] = useState("AIzaSyA4bc9X-y7Z1W92kd813A29kZ109dk");
   const [showKey, setShowKey] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("gemini-1.5-pro");
+  const [openaiApiKey, setOpenaiApiKey] = useState("sk-proj-................................");
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("gpt-5.4");
   const [localFallback, setLocalFallback] = useState(true);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
@@ -38,7 +40,7 @@ export const AIConfiguration: React.FC = () => {
         <div className="card settings-card">
           <h3 className="card-title">
             <Cpu size={18} style={{ color: "var(--accent-cyan)" }} />
-            Gemini Vision Grounding Engine
+            AI Model Engine Credentials
           </h3>
 
           <form onSubmit={handleSave} className="admin-form" style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "20px" }}>
@@ -66,14 +68,41 @@ export const AIConfiguration: React.FC = () => {
             </div>
 
             <div className="form-group">
+              <label className="form-label">OpenAI API Token Key</label>
+              <div className="input-icon-wrapper" style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <Key size={16} style={{ position: "absolute", left: "12px", color: "#71717a" }} />
+                <input
+                  type={showOpenaiKey ? "text" : "password"}
+                  className="form-input"
+                  style={{ paddingLeft: "38px", paddingRight: "38px" }}
+                  value={openaiApiKey}
+                  onChange={(e) => setOpenaiApiKey(e.target.value)}
+                  disabled={isLoading}
+                  placeholder="sk-proj-..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  style={{ position: "absolute", right: "12px", background: "transparent", border: "none", color: "#71717a", cursor: "pointer", display: "flex", alignItems: "center" }}
+                >
+                  {showOpenaiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group">
               <label className="form-label">Target LLM Model Node</label>
               <select
                 className="form-input select-input"
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
               >
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Multimodal Drawing Reasoning)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (High speed geometric inference)</option>
+                <option value="gpt-5.4">OpenAI GPT-5.4 (Current Workhorse Standard)</option>
+                <option value="gpt-5.6-sol">OpenAI GPT-5.6 Sol (Flagship Multimodal Reasoning)</option>
+                <option value="gpt-5.6-terra">OpenAI GPT-5.6 Terra (Balanced Speed & Cost)</option>
+                <option value="gpt-5.6-luna">OpenAI GPT-5.6 Luna (Fast Lightweight Inference)</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Multimodal Drawing Reasoning)</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash (High speed geometric inference)</option>
                 <option value="llama-3-local">Local Llama-3 8B (Pure offline loopback mode)</option>
               </select>
             </div>
@@ -115,6 +144,13 @@ export const AIConfiguration: React.FC = () => {
                 <td className="stats-value" style={{ color: "#10b981", padding: "12px 8px", display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
                   <span className="status-pulse-dot active" style={{ width: "6px", height: "6px" }} />
                   <span>{aiModelStatus?.gemini_vision || "ONLINE (Active)"}</span>
+                </td>
+              </tr>
+              <tr className="stats-row">
+                <td className="stats-label" style={{ padding: "12px 8px" }}>OpenAI Engine Loop</td>
+                <td className="stats-value" style={{ color: "#10b981", padding: "12px 8px", display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
+                  <span className="status-pulse-dot active" style={{ width: "6px", height: "6px" }} />
+                  <span>{"ONLINE (Standby)"}</span>
                 </td>
               </tr>
               <tr className="stats-row">

@@ -1,0 +1,154 @@
+{
+  "pair_id": "M745203N01",
+  "guideline_version": "2026-08-06",
+  "annotator": "imrysn",
+  "annotated_at": "2026-08-17",
+  "notes": "Human ground truth for M745203N01 (M745203N01_reference.dxf vs M745203N01_FSRS2_kmti.dxf). Revision updates title block fields (date, scale, title, drafter, approver, code), updates BOM material length (4.5x40x48 -> 4.5x40x52), adds 3 manufacturing notes, and updates part dimensions.",
+  "findings": [
+    {
+      "entity_handle": "REV#420",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "04/12/22",
+      "rev_text": "2026/07/03",
+      "notes": "Date field updated.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#417",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2589",
+      "rev_text": "9324",
+      "notes": "Drawing number / code field at the bottom of the title block.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#421",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "1:1",
+      "rev_text": "1/1",
+      "notes": "Scale format 1:1 -> 1/1.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#419",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "Roll Cassette 12\"Mill",
+      "rev_text": "ロールカセット 12\"ミル",
+      "notes": "Drawing title re-authored from English to Japanese.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#422",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "中川",
+      "rev_text": "ZHR",
+      "notes": "Drafter author field.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#423",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "橋本",
+      "rev_text": "津田",
+      "notes": "Approver field.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#405",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "4.5x40x48",
+      "rev_text": "4.5×40×52",
+      "notes": "Material dimension length modified from 48 to 52.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-17D",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "指示なき角部は糸面取りのこと",
+      "notes": "Added manufacturing note 1.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-17E",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "タップ、キリ穴は面取り仕上げのこと",
+      "notes": "Added manufacturing note 2.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-17F",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "完成時、バリ、キリ粉はなきこと",
+      "notes": "Added manufacturing note 3.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-107",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "40",
+      "rev_text": "30",
+      "notes": "Dimension 40 -> 30.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-FB",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "25",
+      "rev_text": "20",
+      "notes": "Dimension 25 -> 20.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-144",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "10",
+      "rev_text": "5",
+      "notes": "Dimension 10 -> 5.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-D7",
+      "category": "drawing_views",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "40",
+      "notes": "Added dimension 40 on revision view.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-EB",
+      "category": "drawing_views",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "25",
+      "notes": "Added dimension 25 on revision view.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-115",
+      "category": "drawing_views",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "10",
+      "notes": "Added dimension 10 on revision view.",
+      "is_bulk": false
+    }
+  ],
+  "not_findings": []
+}

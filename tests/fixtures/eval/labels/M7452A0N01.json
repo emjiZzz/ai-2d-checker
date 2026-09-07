@@ -1,0 +1,115 @@
+{
+  "pair_id": "M7452A0N01",
+  "guideline_version": "2026-08-06",
+  "annotator": "imrysn",
+  "annotated_at": "2026-08-17",
+  "notes": "Calibration pair, labelled first per the ledger. The revision is a full re-trace: ref is 1050x742.5, rev is 420x297 (exactly 2.5:1), and every layer was renamed (WAKU -> NoLayerName_001, etc). The 67-row entity-count delta in the worksheet is therefore the re-trace, not content, and nothing is labelled from it; NoLayerName_004 was confirmed to be the sheet frame (its texts are the margin grid 1-8 / A-F). Positions below are given in revision units; divide a REF coordinate by 2.5 to compare. Both sides carry zone_signature aspect-1.414 and a template is pinned for it, so this pair has no aspect-mismatch caveat. Two findings (7, 8) are not visible in the worksheet's text diff and were found in the frozen payload; see their notes. Four judgement calls (the scale separator, the drilling callout's orthography, the note's dropped unit, and the section callout) were put to the owner and confirmed 2026-08-17.",
+  "findings": [
+    {
+      "entity_handle": "REV#421",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2010/09/13",
+      "rev_text": "2026/07/03",
+      "notes": "Date field. Shares a title-block row with the scale and the drafter name (all at rev y=36.0), which is the layout behind 'Gotcha - SCALE Field Read the Date Column' - if the engine reports these shifted by a column, that is the cause.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#418",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2589",
+      "rev_text": "9324",
+      "notes": "Number field at the bottom of the title block, rev @(196.0, 11.5).",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#420",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "Roll Cassette 12\" Mill",
+      "rev_text": "ロールカセット 12\"ミル",
+      "notes": "Drawing title re-authored from English to Japanese. Same product, but the field value differs and a checker reads the title as a field to match.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#423",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "中川",
+      "rev_text": "ZHR",
+      "notes": "Drafter / author field.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#398",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "5.4",
+      "rev_text": "5.31",
+      "notes": "ONE finding for the whole BOM row, per the guideline's '1 CHANGED per row, not per cell'. The row is Diameter265x20 | 8.7 | 5.4 -> Diameter265x20 | 8.65 | 5.31, all at ref y=679.1 / rev y=269.5. The second changed cell is REV#401 (8.7 -> 8.65) and is folded in here; the diameter cell REV#406 did not change (see not_findings). Anchored at REV#398 as the lowest payload index among the changed cells. Split into two findings only if the two weights are judged to have changed for unrelated reasons.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-2BD",
+      "category": "notes_section",
+      "status": "CHANGED",
+      "ref_text": "素材調質施工　硬度HS35～38度",
+      "rev_text": "素材調質施工　硬度ＨＳ３５～３８",
+      "notes": "Moved and edited, which the guideline treats as one editorial act. NFKC-folded, the only residual difference is the trailing unit character 'do' being dropped; the note also moved from rev-equivalent (145.1, 239.8) to (55.0, 246.0), about 90 units left. The hardness spec means the same thing either way - labelled CHANGED deliberately, because a character was genuinely deleted and the corpus should not begin by excusing edits it happens to find harmless. Owner-confirmed 2026-08-17.",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-2C8",
+      "category": "drawing_views",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "Ａ－Ａ",
+      "notes": "A section cut A-A was added. Verified in the payload rather than inferred from the worksheet's 'A 2 -> 4' count row: the reference's only two A texts are margin grid labels at the sheet edges (1028.6, 679.3) and (45.9, 679.3) on layer WAKU; the revision carries those same two re-traced onto the frame layer PLUS two more at (262.0, 219.0) and (262.0, 81.7) on NoLayerName_001, vertically aligned - a cut plane with a label at each end. Those two (REV-11D, REV-11F) plus the cut line and its ticks are part of THIS finding, not separate ones. The view being cut already exists on both sides. is_bulk true: designation + 2 end labels + cut line + arrow ticks exceeds the 5-entity convention. WARNING - this is a deliberate known false negative: DROP_SECTION_CALLOUT_LABELS has been True since cache v38 and the gotcha 'The Engine Ignored the Section Callout but the Canvas Still Drew It' argues the engine is right to drop the letters. Labelled anyway because a newly indicated section cut is a real drawing change even when the letter naming it is arbitrary. Owner-confirmed 2026-08-17.",
+      "is_bulk": true
+    },
+    {
+      "entity_handle": "REV#526",
+      "category": "isometric_view",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "",
+      "notes": "An isometric view was added, and NOTHING in the worksheet's text diff can show it - it carries no text at all. Measured against the pinned aspect-1.414 iso zone: the reference's iso box (x 805-975, y 458-631) holds 0 entities; the revision's (x 322-390, y 183-252) holds 43 - 38 ellipse, 4 line, 1 block - of which 0 are text or dimension. 13 concentric ellipses (major axis 12-26) centred at (365.6, 224.0) plus 25 small ones, a circular feature in projection. Because COMPARABLE_ENTITY_TYPES is ('text', 'dimension'), the engine cannot report this under any tuning: it is a structural false negative, and it corroborates the ledger's own negative result that isometric_view has no coverage because the correct iso box holds zero comparable entities - here on a human pair rather than a mutation. Anchored by anchor rule 3 (lowest payload index, REV#526 = the first ellipse); rules 1 and 2 are unavailable because there is no callout and no text. is_bulk true at 43 entities.",
+      "is_bulk": true
+    }
+  ],
+  "not_findings": [
+    {
+      "entity_handle": "REV#406",
+      "reason": "%%c265x20 vs %%c265×20 - ASCII 'x' against U+00D7 MULTIPLICATION SIGN. The same measurement, an encoding difference, not a change. Same BOM row as the CHANGED finding at REV#398, so if the engine reports this cell separately it is a false positive attributable to this decision."
+    },
+    {
+      "entity_handle": "REV#422",
+      "reason": "1:2.5 vs 1/2.5 - the same scale written with a different separator. Notation, not a change. Owner-confirmed 2026-08-17."
+    },
+    {
+      "entity_handle": "REV-12D",
+      "reason": "6-6.6kiri11zaguri fuka6.5 vs its fullwidth counterpart. NFKC-folded, the only residual difference is 'fuka' written as one character on the reference and two on the revision. Identical drilling spec, orthographic variant. Owner-confirmed 2026-08-17."
+    },
+    {
+      "entity_handle": "REV-1E5",
+      "reason": "Amendment-table furniture on a newly added revision row (the worksheet's 'Amd. 1 -> 2' count row). The guideline is explicit: a new revision row on the revision side is not a finding. The engine reports these by construction - amendment_table_bboxes reclassifies rather than excludes - so expect a title_block false positive here, and that is the intended outcome."
+    },
+    {
+      "entity_handle": "REV-16B",
+      "reason": "Margin grid label 'A' at the left sheet edge (18.4, 271.7), sheet frame furniture, explicitly exempt. Recorded to resolve the worksheet's 'A 2 -> 4' count row: two of the four are these grid labels, the other two are the section cut's end labels and belong to the ADDED finding at REV-2C8."
+    },
+    {
+      "entity_handle": "REV-17B",
+      "reason": "Margin grid label 'A' at the right sheet edge (411.4, 271.7), sheet frame furniture, explicitly exempt. See REV-16B."
+    },
+    {
+      "entity_handle": "REV-2F4",
+      "reason": "G section marker, present on both sides with identical text, so it never reaches the worksheet's text diff. Pure relocation. Recorded per the guideline so that a false positive here is attributable to a decision. FLAG FOR REVISIT: the G-G pair's separation changed from 15.6 units on the reference (scaled) to 19.4 on the revision, and both moved up about 3.7 units. Treated as re-trace drift rather than a moved cut plane; if a later pair shows the same pattern it may be worth re-reading."
+    },
+    {
+      "entity_handle": "REV-30D",
+      "reason": "The second G section marker, rev @(173.0, 85.3), reference-equivalent @(137.5, 81.6). See REV-2F4 - same decision, same flag."
+    }
+  ]
+}

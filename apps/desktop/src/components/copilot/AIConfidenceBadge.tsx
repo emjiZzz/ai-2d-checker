@@ -16,8 +16,18 @@ export const AIConfidenceBadge: React.FC<AIConfidenceBadgeProps> = ({ score }) =
     label = 'Medium Confidence';
   }
 
+  const getBadgeClass = (level: string) => {
+    const base = "py-0.5 px-2 rounded text-[10px] font-bold uppercase tracking-wider border inline-block";
+    switch (level) {
+      case "high": return `${base} bg-emerald-500/15 border-emerald-500/35 text-emerald-400`;
+      case "medium": return `${base} bg-amber-500/15 border-amber-500/35 text-amber-400`;
+      case "low": return `${base} bg-red-500/15 border-red-500/35 text-red-400`;
+      default: return base;
+    }
+  };
+
   return (
-    <div className={`ai-confidence-badge ${confidenceLevel}`} title={`AI Certainty: ${(score * 100).toFixed(1)}%`}>
+    <div className={getBadgeClass(confidenceLevel)} title={`AI Certainty: ${(score * 100).toFixed(1)}%`}>
       {label}
     </div>
   );

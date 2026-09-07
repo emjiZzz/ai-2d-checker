@@ -100,6 +100,15 @@ def mock_beanie_docs(monkeypatch):
                         count += 1
             return count
 
+        async def delete(self):
+            """`ExtractionPipeline.run` clears a drawing's entities before inserting the new
+            ones, so a re-extraction replaces rather than doubles. This double has to answer
+            that call or the pipeline dies before it ever writes."""
+            class _Result:
+                deleted_count = 0
+
+            return _Result()
+
     def mock_find(cls, *args, **kwargs):
         # Parse query expressions (e.g. ExtractedEntity.job_id == job_id)
         job_id = None

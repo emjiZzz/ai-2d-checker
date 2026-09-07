@@ -12,15 +12,15 @@ export const ViolationExplanation: React.FC = () => {
   };
 
   return (
-    <div className="violation-explanation">
-      <div className="violation-explanation-header">
-        <h3>Missing Dimension</h3>
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-between items-center">
+        <h3 className="text-sm font-bold text-red-400 m-0">Missing Dimension</h3>
         <AIConfidenceBadge score={mockExplanation.confidence} />
       </div>
       
-      <div className="geometry-insight-card">
-        <p style={{ fontSize: "0.85rem", color: "#e2e8f0", fontWeight: 500, marginBottom: "6px" }}>{mockExplanation.summary}</p>
-        <p style={{ fontSize: "0.75rem", color: "#94a3b8", fontStyle: "italic", lineHeight: 1.4 }}>{mockExplanation.detailed_reasoning}</p>
+      <div className="bg-sidebar-item-hover border border-border-color p-3 rounded-lg flex flex-col gap-1.5">
+        <p className="text-xs font-semibold text-text-primary m-0">{mockExplanation.summary}</p>
+        <p className="text-[11px] text-text-muted italic leading-relaxed m-0">{mockExplanation.detailed_reasoning}</p>
       </div>
 
       <StandardsReferenceCard />
