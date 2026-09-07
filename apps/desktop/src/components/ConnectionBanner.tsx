@@ -1,15 +1,25 @@
 import React, { useEffect, useState } from "react";
-import { WifiOff, RefreshCw, CheckCircle2 } from "lucide-react";
+import { WifiOff, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useConnectionStore } from "../stores/connectionStore";
 import { isPrototypeMode } from "../config/features";
 
 export const ConnectionBanner: React.FC = () => {
-  const { status, checkHealth, backendUrl, setBackendUrl, remoteApiToken, setRemoteApiToken } = useConnectionStore();
+  const { status, checkHealth, backendUrl, setBackendUrl, remoteApiToken, setRemoteApiToken, usingFallback } = useConnectionStore();
   const [isRetrying, setIsRetrying] = useState(false);
   const [showRestoredOverlay, setShowRestoredOverlay] = useState(false);
   const [prevStatus, setPrevStatus] = useState(status);
   const [urlDraft, setUrlDraft] = useState(backendUrl);
   const [tokenDraft, setTokenDraft] = useState(remoteApiToken || "");
+  const [forcePreview, setForcePreview] = useState(false);
+
+  useEffect(() => {
+    (window as any).__showConnectionModal = (show: boolean = true) => {
+      setForcePreview(show);
+    };
+    return () => {
+      delete (window as any).__showConnectionModal;
+    };
+  }, []);
 
   // Keep the draft in step with the store while the field is not the thing driving the change.
   useEffect(() => {
@@ -61,19 +71,53 @@ export const ConnectionBanner: React.FC = () => {
     );
   }
 
+  // 1b. Running on the fallback backend.
+  //
+  // Persistent rather than a toast, and it names the consequence rather than the state: uploads
+  // are refused here because `storage/uploads` is per server, so a file uploaded to the fallback
+  // never reaches the primary. An engineer who only saw "fallback" would try to upload and read
+  // the refusal as a bug.
+  if (usingFallback && status === "online") {
+    return (
+      <div className="fixed bottom-6 right-6 z-[9999] animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="bg-bg-card/95 border border-amber-500/40 rounded-none px-4 py-3 shadow-2xl flex items-center gap-3 backdrop-blur-md max-w-[380px]">
+          <div className="w-8 h-8 rounded-none bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+            <AlertTriangle size={16} className="text-amber-500" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-text-primary">Using Backup Server</h3>
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              The main server is unreachable. Marking works normally; uploading is disabled until
+              it returns.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // 2. Production Connection Offline / Reconnecting Overlay (Slight Backdrop Blur, square borders)
   // Only shown when confirmed offline/failed/invalid or reconnecting after confirmed disconnection
   if (
+    forcePreview ||
     status === "offline" ||
     status === "reconnecting" ||
     status === "failed" ||
     status === "invalid"
   ) {
-    const isReconnecting = status === "reconnecting" || isRetrying;
+    const isReconnecting = !forcePreview && (status === "reconnecting" || isRetrying);
 
     return (
       <div className="absolute inset-0 z-[9999] bg-bg-dark/50 backdrop-blur-sm flex flex-col items-center justify-center p-6 animate-in fade-in duration-300 select-none">
-        <div className="bg-bg-card/95 border border-border-color rounded-none p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+        <div className="bg-bg-card/95 border border-border-color rounded-none p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative">
+          {forcePreview && (
+            <button
+              onClick={() => setForcePreview(false)}
+              className="absolute top-2 right-2 text-text-muted hover:text-text-primary px-2 py-0.5 text-xs font-semibold cursor-pointer border border-border-color bg-bg-dark/60 rounded-none"
+            >
+              ✕ Close Preview
+            </button>
+          )}
           
           {/* Minimal Production Icon */}
           <div className="w-14 h-14 rounded-none bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">

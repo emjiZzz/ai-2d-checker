@@ -2,6 +2,7 @@ import { StateCreator } from "zustand";
 import { WorkspaceState, UploadSlice, UploadState, QueueEntry } from "../types";
 import { uploadFile } from "../../../services/fetchUtils";
 import { deleteDrawing, reextractDrawing } from "../../../services/drawingsApi";
+import { useConnectionStore } from "../../connectionStore";
 import {
   describeDrawingPairMismatch,
   isDrawingPairMismatch,
@@ -185,6 +186,23 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
 
   uploadDrawingFile: async (file, side) => {
     const isOld = side === "old";
+
+    // Refused on the fallback backend, and this is the reason failover is safe to have at all.
+    // The two backends share one Atlas -- so rooms, markings and entities are identical on
+    // either -- but `storage/uploads` is per server. A drawing uploaded here would be invisible
+    // from the primary, and on an ephemeral disk it would not survive the next restart, which is
+    // how two failed ingestions became four rows on 2026-09-07.
+    if (useConnectionStore.getState().usingFallback) {
+      const message =
+        "Connected to the fallback backend, which cannot accept uploads — the file would not " +
+        "reach the main server. Marking already-uploaded drawings still works.";
+      if (isOld) {
+        set({ oldUploadState: "failed", oldError: message, oldFailedDrawingId: null });
+      } else {
+        set({ newUploadState: "failed", newError: message, newFailedDrawingId: null });
+      }
+      return false;
+    }
 
     // Capture the drawing this slot currently holds BEFORE the reset below nulls
     // it. In the room-owned model each drawing belongs to exactly one slot, so

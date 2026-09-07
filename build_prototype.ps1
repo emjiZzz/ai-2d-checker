@@ -1,6 +1,11 @@
 param(
     [switch]$LeanCloud = $true,
     [string]$BackendUrl = "https://ai-2d-checker-backend.onrender.com",
+    # Where the client goes when -BackendUrl is unreachable. Must be permitted by `connect-src`
+    # in tauri.conf.json, or failover fails before the request leaves the app and looks exactly
+    # like the primary staying down. Empty disables failover. Uploads are refused while the
+    # fallback is active, because storage/uploads is per server.
+    [string]$FallbackUrl = "",
     [string]$ApiToken = ""
 )
 
@@ -47,6 +52,15 @@ if (![string]::IsNullOrWhiteSpace($BackendUrl)) {
 if (![string]::IsNullOrWhiteSpace($ApiToken)) {
     $env:VITE_REMOTE_API_TOKEN = $ApiToken.Trim()
     Write-Host "Remote API Token     : [Configured / Baked]" -ForegroundColor Cyan
+}
+
+# Cleared rather than left inherited: a previous build in the same shell would otherwise bake a
+# fallback this invocation did not ask for, and nothing downstream would say so.
+$env:VITE_FALLBACK_BACKEND_URL = ""
+if (![string]::IsNullOrWhiteSpace($FallbackUrl)) {
+    $env:VITE_FALLBACK_BACKEND_URL = $FallbackUrl.Trim()
+    Write-Host "Fallback Backend     : $env:VITE_FALLBACK_BACKEND_URL" -ForegroundColor Cyan
+    Write-Host "                       uploads are refused while it is in use." -ForegroundColor DarkGray
 }
 
 # The token used to be a string literal in connectionStore.ts, so this script worked with no
