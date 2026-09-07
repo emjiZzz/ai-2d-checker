@@ -39,7 +39,12 @@ datas = []
 binaries = []
 hiddenimports = []
 
-for package in ("ezdxf", "matplotlib", "fitz", "uvicorn"):
+# `certifi` ships `cacert.pem` as package DATA, so collecting only its code leaves a frozen build
+# with no CA bundle. TLS then depends entirely on the host's own certificate store: it worked on
+# the build machine and failed on a fresh Windows Server with
+# `CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate` against Atlas, which needs
+# TLS. Bundled so the executable carries its own roots; `server_main` points OpenSSL at them.
+for package in ("ezdxf", "matplotlib", "fitz", "uvicorn", "certifi"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
     datas += pkg_datas
     binaries += pkg_binaries

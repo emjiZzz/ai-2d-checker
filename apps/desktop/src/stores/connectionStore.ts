@@ -487,7 +487,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
       // the engineer on a dead connection -- both backends share one Atlas, so every room,
       // session and marking is the same on either. Uploads are refused while there; see
       // FALLBACK_BACKEND_URL for why that is not a limitation but the point.
-      if (!get().usingFallback && FALLBACK_BACKEND_URL) {
+      // Never from a loopback primary. There the backend is this machine's own sidecar, holding
+      // this machine's storage, and the recovery is to start it -- see the start_backend block
+      // below, which this would otherwise pre-empt by moving to a different data location
+      // entirely. The mirror of the rule that a remote failure must never spawn a local server.
+      if (!isLoopback && !get().usingFallback && FALLBACK_BACKEND_URL) {
         if (await get().failOverToFallback()) {
           return true;
         }

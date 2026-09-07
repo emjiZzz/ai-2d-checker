@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { useConnectionStore, FALLBACK_BACKEND_URL } from "./connectionStore";
 import { useWorkspaceStore } from "./workspaceStore";
@@ -92,6 +96,24 @@ describe("backend failover", () => {
 
     expect(restored).toBe(false);
     expect(useConnectionStore.getState().usingFallback).toBe(true);
+  });
+
+  it("never fails over from a loopback primary", async () => {
+    /**
+     * A loopback primary is this machine's own sidecar, holding this machine's storage. The
+     * recovery there is to start it, not to move to a shared cloud -- which is a different data
+     * location, and would pre-empt the start_backend branch that exists for exactly this.
+     *
+     * Asserted on the source because the branch lives inside checkHealth's catch, which needs a
+     * failing fetch, a Tauri global and a token read to reach.
+     */
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "connectionStore.ts"),
+      "utf8",
+    );
+    const i = src.indexOf("failOverToFallback()");
+    const guard = src.slice(Math.max(0, i - 400), i);
+    expect(guard).toMatch(/!isLoopback\s*&&/);
   });
 
   it("a manual address choice re-pins the primary and cancels the fallback", () => {
