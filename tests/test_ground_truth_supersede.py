@@ -82,6 +82,37 @@ def test_handle_less_entities_match_on_type_layer_text_and_position():
     assert _addr().identifies_same_entity_as(_addr())
 
 
+def test_an_absent_handle_is_the_empty_string_not_none():
+    """The regression that reached production on 2026-09-07.
+
+    The extractor writes `""` for a block-exploded child, not `None`. `handle is not None` was
+    therefore true for every such entity, so the comparison short-circuited on `"" == ""` and
+    called them all one entity -- the tier-2 discriminators never ran. A live session superseded
+    17 unrelated markings in a chain and the engineer kept 11 of 18 without seeing anything.
+
+    Two entities with empty-string handles at different places must be different.
+    """
+    here = _addr(handle="", point=CadPoint.model_construct(x=87.5, y=685.017, space="model"))
+    there = _addr(handle="", point=CadPoint.model_construct(x=136.875, y=685.0, space="model"))
+    assert not here.identifies_same_entity_as(there)
+
+
+def test_an_empty_handle_still_matches_itself_through_the_fallback():
+    """Normalising `""` to absent must not stop a genuine re-mark from being recognised."""
+    assert _addr(handle="").identifies_same_entity_as(_addr(handle=""))
+
+
+def test_an_empty_handle_and_a_real_handle_are_not_the_same_entity():
+    assert not _addr(handle="").identifies_same_entity_as(_addr(handle="1B2A"))
+
+
+def test_an_empty_parent_handle_is_also_absent():
+    """`parent_handle` reaches the same comparison and has the same empty-string shape."""
+    assert _addr(handle="", parent_handle="").identifies_same_entity_as(
+        _addr(handle="", parent_handle=None)
+    )
+
+
 def test_handle_less_entities_at_different_places_are_different():
     """Two identical strings elsewhere on the sheet are two entities, not one."""
     far = _addr(point=CadPoint.model_construct(x=100.0, y=200.0, space="model"))

@@ -108,12 +108,18 @@ class EntityAddress(BaseModel):
         """
         if other is None or self.drawing_id != other.drawing_id:
             return False
-        if (self.handle is None) != (other.handle is None):
+        # Absent is `""` in practice, not None -- the extractor writes an empty string for a
+        # block-exploded child. Comparing `is not None` made every handle-less entity equal to
+        # every other one, so on 2026-09-07 a live session superseded 17 unrelated markings in a
+        # chain and the engineer silently kept 11 of 18. Normalise before comparing, never after.
+        mine = self.handle or None
+        theirs = other.handle or None
+        if (mine is None) != (theirs is None):
             return False
-        if self.handle is not None:
-            return self.handle == other.handle
+        if mine is not None:
+            return mine == theirs
         if (
-            self.parent_handle != other.parent_handle
+            (self.parent_handle or None) != (other.parent_handle or None)
             or self.entity_type != other.entity_type
             or self.layer != other.layer
             or (self.text or "").strip() != (other.text or "").strip()
