@@ -50,6 +50,12 @@ MarkingStatus = Literal["MATCHED", "ADDED", "REMOVED", "CHANGED", "MISMATCHED", 
 SessionStatus = Literal["in_progress", "submitted"]
 
 
+#: Drawing units within which two handle-less addresses are treated as one entity. Small because
+#: the address point is snapped to the entity, not the raw cursor: the two duplicates observed on
+#: 2026-09-07 agreed to twelve decimal places on both sides.
+SAME_ENTITY_TOLERANCE = 0.01
+
+
 class EntityAddress(BaseModel):
     """Everything that might still identify one entity after the drawing is re-extracted.
 
@@ -90,6 +96,37 @@ class EntityAddress(BaseModel):
     def _coerce_point(cls, value: object) -> "CadPoint | None":
         """Accept a bare [x, y] from any writer that bypasses the router's stamping."""
         return coerce_cad_point(value)
+
+    def identifies_same_entity_as(self, other: "EntityAddress | None") -> bool:
+        """Whether two addresses name one entity, answered conservatively.
+
+        Tiered like the resolver: a handle decides it outright, and only when neither side has
+        one do the tier-2 discriminators and the position apply. Errs toward "different",
+        because a false match discards a real marking while a false miss only leaves a
+        duplicate. Block-exploded children have no handle, which is the case this has to get
+        right -- both duplicates observed on 2026-09-07 were handle-less.
+        """
+        if other is None or self.drawing_id != other.drawing_id:
+            return False
+        if (self.handle is None) != (other.handle is None):
+            return False
+        if self.handle is not None:
+            return self.handle == other.handle
+        if (
+            self.parent_handle != other.parent_handle
+            or self.entity_type != other.entity_type
+            or self.layer != other.layer
+            or (self.text or "").strip() != (other.text or "").strip()
+        ):
+            return False
+        if (self.point is None) != (other.point is None):
+            return False
+        if self.point is None:
+            return True
+        return (
+            abs(self.point.x - other.point.x) <= SAME_ENTITY_TOLERANCE
+            and abs(self.point.y - other.point.y) <= SAME_ENTITY_TOLERANCE
+        )
 
 
 class ManualCheckSession(Document):
@@ -245,6 +282,32 @@ class GroundTruthMarking(Document):
     #: both the dataset and the record of who asserted what. A row that silently vanishes is
     #: unauditable.
     retracted_at: datetime | None = Field(None)
+
+    #: Set when this row was retracted by the system because the engineer marked the same entity
+    #: again, rather than by the engineer changing their mind. The distinction is the point: a
+    #: human retraction is a judgement a consumer may want to weigh, a supersession is
+    #: bookkeeping. Names the row that replaced it, so the history is walkable.
+    superseded_by: str | None = Field(None, description="Marking that replaced this one")
+
+    def targets_same_entity_as(self, other: "GroundTruthMarking") -> bool:
+        """Whether two markings are about the same thing, so the later one replaces the earlier.
+
+        Both addressed sides must agree, and at least one side must be addressed on both -- a
+        CHANGED marking spans two entities and matching on the reference alone would merge two
+        different revisions of it.
+        """
+        pairs = [
+            (self.ref_address, other.ref_address),
+            (self.rev_address, other.rev_address),
+        ]
+        compared = 0
+        for mine, theirs in pairs:
+            if mine is None and theirs is None:
+                continue
+            if mine is None or not mine.identifies_same_entity_as(theirs):
+                return False
+            compared += 1
+        return compared > 0
 
     class Settings:
         name = "ground_truth_markings"

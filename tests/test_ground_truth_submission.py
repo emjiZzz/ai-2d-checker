@@ -63,6 +63,9 @@ def offline(monkeypatch):
     monkeypatch.setattr(gt.GroundTruthMarking, "save", AsyncMock(), raising=False)
     monkeypatch.setattr(gt.DrawingDocument, "get", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(gt, "_recount", AsyncMock())
+    # Like `_recount`: a helper that queries the session's other markings, so it needs a
+    # database. Its own behaviour is covered offline in `test_ground_truth_supersede.py`.
+    monkeypatch.setattr(gt, "_supersede_earlier_markings_on", AsyncMock(return_value=0))
     monkeypatch.setattr(gt, "get_or_404", AsyncMock(return_value=_session()))
 
 

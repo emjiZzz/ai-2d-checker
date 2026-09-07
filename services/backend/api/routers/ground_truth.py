@@ -367,6 +367,38 @@ async def _require_open(session: ManualCheckSession) -> ManualCheckSession:
     return session
 
 
+async def _supersede_earlier_markings_on(marking: GroundTruthMarking) -> int:
+    """Retract any earlier live marking in this session that names the same entity.
+
+    Marking one entity twice produced two live rows, which becomes two labels for one entity in
+    the corpus and two records in retrieval. Observed twice in 163 markings, both on
+    handle-less block-exploded children. Replacing rather than refusing matches what the second
+    click means, and supersession rather than deletion keeps the first judgement readable.
+
+    Runs after the insert, so a failure here leaves a duplicate -- recoverable, and visible in
+    the panel -- rather than losing the marking the engineer just made.
+    """
+    earlier = await GroundTruthMarking.find(
+        GroundTruthMarking.session_id == marking.session_id,
+        GroundTruthMarking.retracted_at == None,  # noqa: E711 — Beanie query, not a bool
+    ).to_list()
+
+    now = datetime.now(UTC)
+    superseded = 0
+    for other in earlier:
+        if other.id == marking.id or not marking.targets_same_entity_as(other):
+            continue
+        other.retracted_at = now
+        other.superseded_by = str(marking.id)
+        await other.save()
+        superseded += 1
+        logger.info(
+            f"[ground_truth] Marking {other.id} superseded by {marking.id} "
+            f"in session {marking.session_id}"
+        )
+    return superseded
+
+
 async def _recount(session: ManualCheckSession) -> None:
     """Recompute `marking_count` from the live rows rather than incrementing.
 
@@ -564,6 +596,7 @@ async def create_marking(
     )
     marking.side = _side_of(marking)
     await marking.save()
+    await _supersede_earlier_markings_on(marking)
     await _recount(session)
 
     return StandardResponse(success=True, data=_marking_response(marking))
