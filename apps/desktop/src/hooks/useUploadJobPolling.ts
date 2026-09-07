@@ -44,21 +44,19 @@ export function useUploadJobPolling(jobId: string | null, side: "old" | "new") {
             });
         }
       } else if (job.status === "failed") {
+        // The job carries both the reason and the drawing it was for, and both were going to
+        // the console only. The reason is what the engineer needs to see, and the drawing id is
+        // what makes `/reextract` possible -- without it the sole recovery is another upload,
+        // which creates a second row because dedupe is deliberately gone.
         console.error(`Upload job ${jobId} failed: ${job.error_message}`);
-        if (side === "old") {
-          state.setOldUploadState("failed");
-        } else {
-          state.setNewUploadState("failed");
-        }
+        state.setUploadFailure(side, job.drawing_id ?? null, job.error_message ?? null);
       }
     } else if (query.isError && jobId) {
+      // Polling itself failed, so nothing is known about the drawing's state on the server.
+      // No drawing id: offering a retry here would be guessing at what to retry.
       console.error(`Upload job polling for ${jobId} failed:`, query.error);
       const state = useWorkspaceStore.getState();
-      if (side === "old") {
-        state.setOldUploadState("failed");
-      } else {
-        state.setNewUploadState("failed");
-      }
+      state.setUploadFailure(side, null, "Lost contact with the server while it was ingesting.");
     }
   }, [query.data, query.isError, query.error, jobId, side]);
 

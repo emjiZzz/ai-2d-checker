@@ -1,7 +1,7 @@
 import { StateCreator } from "zustand";
 import { WorkspaceState, UploadSlice, UploadState, QueueEntry } from "../types";
 import { uploadFile } from "../../../services/fetchUtils";
-import { deleteDrawing } from "../../../services/drawingsApi";
+import { deleteDrawing, reextractDrawing } from "../../../services/drawingsApi";
 import {
   describeDrawingPairMismatch,
   isDrawingPairMismatch,
@@ -24,9 +24,56 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
   uploadQueue: [],
   activeOldJobId: null,
   activeNewJobId: null,
+  oldFailedDrawingId: null,
+  newFailedDrawingId: null,
 
   setOldUploadState: (state) => set({ oldUploadState: state }),
   setNewUploadState: (state) => set({ newUploadState: state }),
+
+  setUploadFailure: (side, drawingId, message) => {
+    if (side === "old") {
+      set({ oldUploadState: "failed", oldError: message, oldFailedDrawingId: drawingId });
+    } else {
+      set({ newUploadState: "failed", newError: message, newFailedDrawingId: drawingId });
+    }
+  },
+
+  retryExtraction: async (side) => {
+    const isOld = side === "old";
+    const drawingId = isOld ? get().oldFailedDrawingId : get().newFailedDrawingId;
+    if (!drawingId) return false;
+
+    // Back to `processing` immediately: the retry is queued server-side and the existing job
+    // polling drives the rest, so the panel shows the same progress it would on a first run.
+    if (isOld) {
+      set({ oldUploadState: "processing", oldUploadProgress: 10, oldError: null });
+    } else {
+      set({ newUploadState: "processing", newUploadProgress: 10, newError: null });
+    }
+
+    try {
+      const job = await reextractDrawing(drawingId);
+      if (isOld) {
+        set({ activeOldJobId: job.id, oldFailedDrawingId: null });
+      } else {
+        set({ activeNewJobId: job.id, newFailedDrawingId: null });
+      }
+      return true;
+    } catch (err) {
+      // 422 means the source file is gone, which a retry cannot fix -- an ephemeral disk
+      // discards the upload before extraction runs. Say so rather than inviting another retry.
+      const message = err instanceof Error ? err.message : String(err);
+      const gone = message.includes("422");
+      get().setUploadFailure(
+        side,
+        gone ? null : drawingId,
+        gone
+          ? "The uploaded file is no longer on the server, so extraction cannot be retried. Upload it again."
+          : message,
+      );
+      return false;
+    }
+  },
 
   applyCompletedDrawing: (drawing, side) => {
     const isOld = side === "old";

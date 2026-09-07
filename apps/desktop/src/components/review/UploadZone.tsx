@@ -11,6 +11,9 @@ export interface UploadZoneProps {
   fileSize: number | null;
   error: string | null;
   activeDrawing: DrawingItem | null;
+  /** The drawing to re-extract, when the row exists and only its extraction failed. */
+  failedDrawingId?: string | null;
+  retryExtraction?: (side: "old" | "new") => Promise<boolean>;
   uploadDrawingFile: (file: File, side: "old" | "new") => Promise<boolean>;
   clearUpload: (side: "old" | "new") => void;
   currentNav: string;
@@ -22,6 +25,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   progress,
   fileName,
   error,
+  failedDrawingId,
+  retryExtraction,
   uploadDrawingFile,
   currentNav,
 }) => {
@@ -263,16 +268,36 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             </p>
           </div>
 
-          <button
-            type="button"
-            className="mt-1 text-[11px] font-semibold px-3 py-1 rounded-sm border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-all cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerFileInput();
-            }}
-          >
-            Try Another File
-          </button>
+          <div className="flex items-center gap-2 mt-1">
+            {/*
+              Retry before re-upload, and only when there is a row to retry. Re-uploading the
+              same file makes a SECOND drawing -- dedupe is deliberately gone -- which is how one
+              sheet became four rows with its markings split across them. `/reextract` keeps the
+              id, the room slot and the history.
+            */}
+            {failedDrawingId && retryExtraction && (
+              <button
+                type="button"
+                className="text-[11px] font-semibold px-3 py-1 rounded-sm border border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20 transition-all cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void retryExtraction(side);
+                }}
+              >
+                Retry Extraction
+              </button>
+            )}
+            <button
+              type="button"
+              className="text-[11px] font-semibold px-3 py-1 rounded-sm border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-all cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerFileInput();
+              }}
+            >
+              Try Another File
+            </button>
+          </div>
         </div>
       )}
     </div>
