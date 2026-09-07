@@ -65,7 +65,9 @@ describe('RoomsView — Create Room dialog', () => {
     // and the submit button read "Create & Open". Neither rename broke anything — they are
     // matched here because this dialog has no test ids, so a copy edit shows up as a failure
     // in a test about the comparison-engine picker.
-    const nameInput = screen.getByPlaceholderText(/bracket rev/i);
+    // Third copy edit to break this selector. It matches on dialog copy because the dialog has
+    // no test ids; give it one if it moves again.
+    const nameInput = screen.getByPlaceholderText(/identify this drawing/i);
     fireEvent.change(nameInput, { target: { value: 'Bracket Rev C vs Rev D' } });
     // Exactly "Create" — `/create/i` would also match the empty-state "Create Room" button
     // behind the modal.
