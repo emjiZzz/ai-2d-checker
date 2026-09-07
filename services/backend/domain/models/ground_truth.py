@@ -187,24 +187,11 @@ class GroundTruthMarking(Document):
 
     session_id: str = Field(..., description="Owning ManualCheckSession")
 
-    #: The room the owning session was opened from, denormalised so a marking states where it
-    #: belongs without a join. The hierarchy is room -> session -> marking, and it was only
-    #: reachable through `manual_check_sessions`, so every read grouping by room -- and every
-    #: browse of the raw collection -- had to resolve `session_id` first.
-    #:
-    #: Denormalised rather than embedded. The alternative shapes both lose: a collection per room
-    #: breaks the one-model-one-collection binding every tool queries through, and an array of
-    #: markings inside the room document puts them all under one `_id`, which
-    #: [[Gotcha - A Union Sync Means No Deletion Is Durable]] makes unsafe -- `sync_manager`
-    #: merges by `_id`, so separate documents reconcile between the two stores while concurrent
-    #: writes into one array are a lost update it cannot detect.
-    #:
-    #: A session does not change rooms, so this cannot drift; `tests/test_ground_truth_hierarchy.py`
-    #: pins it against the session rather than trusting that.
-    #:
-    #: Defaults to empty because rows in `storage/backups/` predate the field, and a restore must
-    #: read back rather than fail validation. An empty value means "written before 2026-09-07",
-    #: not "no room".
+    #: Denormalised from the owning session so a marking states its room without a join. Not
+    #: embedded under a room: `sync_manager` merges by `_id`, and one array would be a lost
+    #: update. Empty means "written before 2026-09-07", not "no room". Reasoning in
+    #: [[Gotcha - The Ground Truth Store the RAG Could Not Read]]; pinned by
+    #: `tests/test_ground_truth_hierarchy.py`.
     room_id: str = Field("", description="Room the owning session was opened from")
 
     #: Which side the engineer clicked. A CHANGED carries both addresses; an ADDED carries only

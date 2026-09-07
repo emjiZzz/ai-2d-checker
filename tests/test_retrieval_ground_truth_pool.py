@@ -1,15 +1,10 @@
 """The `ground_truth` retrieval collection, and the separation that makes it worth having.
 
-Added 2026-09-07, when `ground_truth_markings` turned out to be the one human-judgement store
-the retrieval layer did not index. Why that matters, and why the pools are not merged, is in
-[[Gotcha - The Ground Truth Store the RAG Could Not Read]]; the short version is that
-`corrections` and `findings` are anchored to engine output and so cannot contain a finding the
-engine never reported, while a Manual Check marking can.
-
-Four properties are pinned, each a way this goes quietly wrong: the collection is enumerated in
-`ALL_COLLECTIONS`, no rebuild reads both an engine-anchored source and ground truth, a retracted
-marking is not indexed, and a marking's status reaches the indexed text rather than only its
-metadata.
+Why the pools are not merged is in
+[[Gotcha - The Ground Truth Store the RAG Could Not Read]]. Four properties are pinned, each a way
+it goes quietly wrong: the collection is enumerated in `ALL_COLLECTIONS`, no rebuild reads both an
+engine-anchored source and ground truth, a retracted marking is not indexed, and a marking's
+status reaches the indexed text rather than only its metadata.
 """
 from __future__ import annotations
 

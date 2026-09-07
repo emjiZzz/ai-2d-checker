@@ -545,10 +545,8 @@ async def create_marking(
 
     marking = GroundTruthMarking(
         session_id=session_id,
-        # Taken from the session already loaded above, so the room costs no extra read. Stamped
-        # at write time rather than resolved on read: the marking is the record of what an
-        # engineer asserted and where, and a join is not available to anything browsing the
-        # collection directly.
+        # From the session loaded above, so the room costs no extra read. Never from the payload;
+        # `tests/test_ground_truth_hierarchy.py` pins that.
         room_id=session.room_id,
         side="rev",  # replaced below, once both addresses are known
         ref_address=await _to_address(payload.ref_address),

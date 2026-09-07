@@ -1,18 +1,9 @@
 """A marking states its room, and states the same room its session does.
 
-The hierarchy is room -> session -> marking. It was only ever reachable downward: a marking
-carried `session_id` and the room lived one join away on `ManualCheckSession`, so grouping the
-raw collection by room was not possible without resolving every session first.
-
-`room_id` is denormalised onto the marking rather than the markings being embedded under a room,
-because `sync_manager` merges the two stores by `_id`. Separate documents reconcile; markings
-inside one room document are a single `_id`, and two stores taking markings on the same room
-would be a lost update the sync cannot detect. See
-[[Gotcha - A Union Sync Means No Deletion Is Durable]].
-
-Denormalisation that is not pinned is just duplication, so this pins it: the writer takes the
-value from the session it already loaded, and the field is indexed for the reads that motivated
-it.
+Denormalised rather than embedded, for reasons in
+[[Gotcha - The Ground Truth Store the RAG Could Not Read]]. Denormalisation that is not pinned is
+just duplication, so this pins it: the writer takes the room from the session it already loaded
+and never from the payload, and the field is indexed for the reads that motivated it.
 """
 from __future__ import annotations
 

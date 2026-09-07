@@ -193,13 +193,9 @@ async def rebuild_findings_index(root: Path | None = None) -> BuildResult:
 async def rebuild_ground_truth_index(root: Path | None = None) -> BuildResult:
     """Rebuild `ground_truth` from every Manual Check marking that has not been retracted.
 
-    The only collection here that can contain a finding the engine never produced. `CORRECTIONS`
-    and `FINDINGS` are both anchored to engine output, so a query answered from them alone can
-    only ever describe the inside of the engine's own recall boundary. See `GROUND_TRUTH` in
-    `index_builder` for why the pools stay separate.
-
-    Retracted rows are dropped by `ground_truth_record`, not filtered here, so the rule has one
-    implementation and reads the same as `feedback_record`'s.
+    The only collection here that can contain a finding the engine never produced; see
+    `GROUND_TRUTH` in `index_builder` for why it is its own pool. Retracted rows are dropped by
+    `ground_truth_record`, not here, so that rule has one implementation.
     """
     markings = await GroundTruthMarking.find_all().limit(MAX_RECORDS_PER_COLLECTION).to_list()
     records = [r for r in (ground_truth_record(m) for m in markings) if r is not None]
@@ -324,21 +320,10 @@ def feedback_record(feedback: AuditFeedbackDocument) -> Record | None:
 def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
     """One independent human marking as a retrievable record.
 
-    A retracted marking is not indexed, the same rule `feedback_record` applies. The hazard is
-    recorded rather than assumed: a converter that ignored `retracted_at` would have
-    manufactured 31 findings a person had explicitly taken back, and they would have read as
-    ordinary ground truth forever. See
-    [[Gotcha - Two Ground-Truth Stores That Never Met]].
-
-    The status goes in the indexed text, not only in metadata, for `feedback_record`'s reason —
-    two markings on the same text that reached opposite statuses are two answers to a query, and
-    with the status in metadata alone their texts are byte-identical, so
-    `_collapse_duplicate_texts` keeps one and silently discards the disagreement. Measured on
-    this corpus: four repeat passes over one pair agreed on 27 of 32 findings, and the five that
-    moved are the informative rows.
-
-    ASCII arrow deliberately, like `feedback_record`: citations are printed and this console is
-    cp932.
+    A retracted marking is not indexed, and the status reaches the indexed text rather than only
+    metadata, both for `feedback_record`'s reasons. ASCII arrow for its reason too.
+    Measurements behind the second one are in
+    [[Gotcha - The Ground Truth Store the RAG Could Not Read]].
     """
     if getattr(marking, "retracted_at", None):
         return None

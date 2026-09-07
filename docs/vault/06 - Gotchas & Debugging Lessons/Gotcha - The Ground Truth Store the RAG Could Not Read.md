@@ -88,6 +88,32 @@ Removing the two collections is cosmetic on its own. The deprecated judgement ke
 All three are suppression, which is the false-negative direction, in the system whose headline
 gap is that false negatives have never been measured.
 
+## Why a marking carries its room instead of living under one
+
+Added 2026-09-07, from the observation that the raw collection reads as mixed up. The hierarchy is
+room -> session -> marking and it was only reachable downward: a marking carried `session_id`, the
+room lived one join away on `ManualCheckSession`, so grouping by room meant resolving every session
+first.
+
+Three shapes were possible and two of them lose:
+
+- A collection per room breaks the one-model-one-collection binding that `from-manual-check`, the
+  retrieval index builder and `eval_corpus` all query through, and the collection count grows with
+  the rooms.
+- Markings embedded as an array in the room document is real nesting, and unsafe here.
+  `sync_manager` merges the two stores by `_id`. Separate marking documents reconcile -- that is
+  why 108 markings survived the sync reverting a delete on 2026-09-07 -- while concurrent writes
+  into one array are a lost update it cannot detect. See
+  [[Gotcha - A Union Sync Means No Deletion Is Durable]].
+- `room_id` denormalised onto the marking, indexed, taken at write time from the session
+  `create_marking` has already loaded. This is what landed.
+
+Two properties keep the copy honest, both in `tests/test_ground_truth_hierarchy.py`: the room comes
+from the loaded session and never from the request payload, so a caller cannot file a marking under
+a room its session does not belong to; and the field defaults to empty rather than being required,
+because the rows in `storage/backups/` predate it and a restore has to read back rather than fail
+validation. Empty means "written before 2026-09-07", not "no room".
+
 ## Related
 
 - [[Gotcha - Two Ground-Truth Stores That Never Met]] -- the same two stores, the earlier half of
