@@ -187,6 +187,26 @@ class GroundTruthMarking(Document):
 
     session_id: str = Field(..., description="Owning ManualCheckSession")
 
+    #: The room the owning session was opened from, denormalised so a marking states where it
+    #: belongs without a join. The hierarchy is room -> session -> marking, and it was only
+    #: reachable through `manual_check_sessions`, so every read grouping by room -- and every
+    #: browse of the raw collection -- had to resolve `session_id` first.
+    #:
+    #: Denormalised rather than embedded. The alternative shapes both lose: a collection per room
+    #: breaks the one-model-one-collection binding every tool queries through, and an array of
+    #: markings inside the room document puts them all under one `_id`, which
+    #: [[Gotcha - A Union Sync Means No Deletion Is Durable]] makes unsafe -- `sync_manager`
+    #: merges by `_id`, so separate documents reconcile between the two stores while concurrent
+    #: writes into one array are a lost update it cannot detect.
+    #:
+    #: A session does not change rooms, so this cannot drift; `tests/test_ground_truth_hierarchy.py`
+    #: pins it against the session rather than trusting that.
+    #:
+    #: Defaults to empty because rows in `storage/backups/` predate the field, and a restore must
+    #: read back rather than fail validation. An empty value means "written before 2026-09-07",
+    #: not "no room".
+    room_id: str = Field("", description="Room the owning session was opened from")
+
     #: Which side the engineer clicked. A CHANGED carries both addresses; an ADDED carries only
     #: `rev_address`; a REMOVED only `ref_address` -- the reference is where a removal exists.
     side: Literal["ref", "rev", "both"] = Field(...)
@@ -249,4 +269,10 @@ class GroundTruthMarking(Document):
             IndexModel([("created_at", DESCENDING)]),
             # The training/export read is "every live marking in this session".
             IndexModel([("session_id", ASCENDING), ("retracted_at", ASCENDING)]),
+            # Grouping by room is a browse and a per-room export, both of which want the live
+            # rows in the order they were taken.
+            IndexModel([("room_id", ASCENDING)]),
+            IndexModel(
+                [("room_id", ASCENDING), ("retracted_at", ASCENDING), ("created_at", ASCENDING)]
+            ),
         ]

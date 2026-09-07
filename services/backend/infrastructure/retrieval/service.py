@@ -372,6 +372,7 @@ def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
         section=marking.category,
         metadata={
             "drawing_id": getattr(address, "drawing_id", None),
+            "room_id": getattr(marking, "room_id", ""),
             "session_id": marking.session_id,
             "annotator": marking.annotator,
             "status": marking.status,
