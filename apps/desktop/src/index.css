@@ -2,8 +2,8 @@
 
 :root {
   /* Common Palette / Brand Accent Gradients */
-  --primary-glow: linear-gradient(135deg, #00e5ff, #0088ff);
-  --accent-cyan: #00e5ff;
+  --primary-glow: linear-gradient(135deg, #18181b, #27272a);
+  --accent-cyan: #09090b;
   --accent-purple: #2563eb;
   --accent-pink: #1d4ed8;
 
@@ -32,11 +32,8 @@
   --app-gradient: none;
   --sidebar-item-hover: rgba(255, 255, 255, 0.15);
 
-  --primary-glow: linear-gradient(135deg, #00e5ff, #0088ff);
-  --accent-cyan: #00e5ff;
-  /* Text color to use ON TOP of a solid --accent-cyan fill. Cyan is bright in
-     dark mode (needs dark text) but --accent-cyan is remapped to a darker blue
-     in light mode (needs light text) — see hc-light block below. */
+  --primary-glow: linear-gradient(135deg, #ffffff, #e4e4e7);
+  --accent-cyan: #ffffff;
   --on-accent: #09090b;
 
   --danger: #ef4444;
@@ -62,8 +59,8 @@
   --app-gradient: none;
   --sidebar-item-hover: rgba(0, 0, 0, 0.04);
 
-  --primary-glow: linear-gradient(135deg, #0284c7, #0369a1);
-  --accent-cyan: #0284c7;
+  --primary-glow: linear-gradient(135deg, #09090b, #27272a);
+  --accent-cyan: #09090b;
   --on-accent: #ffffff;
 
   --danger: #dc2626;

@@ -4,8 +4,7 @@ import {
   X,
   ArrowRight,
   Search,
-  ArrowUpDown,
-  HelpCircle
+  ArrowUpDown
 } from "lucide-react";
 import { useRoomStore, type RoomMode } from "../../stores/roomStore";
 import { useRooms } from "../../hooks/useRooms";
@@ -278,20 +277,8 @@ export const RoomsView: React.FC = () => {
             )}
           </div>
 
-          {/* Center / Right: Filter Pills, Sort & Quick Tour */}
+          {/* Center / Right: Filter Pills & Sort */}
           <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-            {/* Quick Tour Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => startTour()}
-              className="rounded-none font-mono text-xs uppercase px-2.5 py-1 h-[26px] flex items-center gap-1.5 text-text-muted hover:text-accent-cyan border-border-color cursor-pointer bg-bg-dark"
-              title="Explore Quick Tour & Onboarding Guide"
-            >
-              <HelpCircle size={13} className="text-accent-cyan" />
-              <span>Quick Tour</span>
-            </Button>
-
             {/* Sort Selector */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-bg-dark border border-border-color text-xs font-mono text-text-secondary">
               <ArrowUpDown size={12} className="text-text-muted" />
