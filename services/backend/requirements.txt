@@ -9,7 +9,7 @@ aiofiles>=23.2.1
 python-multipart>=0.0.9
 
 # CAD parsing
-ezdxf>=1.3.0
+ezdxf>=1.4.4
 
 # PDF parsing (standards ingestion)
 pypdf>=4.0.0
