@@ -136,17 +136,32 @@ describe("the shipped CSP and the app's backend address agree", () => {
     }
   });
 
-  it("permits the LAN server the prototype is deployed against", () => {
+  it("permits the LAN servers the prototype is deployed against", () => {
     /**
      * The host axis was opened on 2026-08-27, for ONE host: the shared backend at
      * 192.168.200.105. That was a deliberate decision taken with the CORS origins in `main.py`,
      * the `ALLOWED_HOSTS` guard and a shared `API_TOKEN` — not a config tweak, which is why the
      * test below still exists.
      *
+     * 192.168.200.129 was added 2026-09-07: .105 has no internet access, so it cannot reach
+     * Atlas, and the deployment moved. Named hosts rather than a subnet — CSP has no CIDR form,
+     * so each server is an explicit entry and a new one needs a client rebuild.
+     *
      * Port-wildcarded so a `SIDECAR_PORT` change on the server does not need a client rebuild.
      */
-    for (const url of ["http://192.168.200.105:8080", "http://192.168.200.105:9000"]) {
+    for (const url of [
+      "http://192.168.200.105:8080",
+      "http://192.168.200.105:9000",
+      "http://192.168.200.129:8080",
+      "http://192.168.200.129:9000",
+    ]) {
       expect(allows(url), `connect-src blocks the LAN server at ${url}`).toBe(true);
+    }
+  });
+
+  it("permits the websocket form on both LAN servers", () => {
+    for (const url of ["ws://192.168.200.105:8080", "ws://192.168.200.129:8080"]) {
+      expect(allows(url), `connect-src blocks ${url}`).toBe(true);
     }
   });
 
@@ -165,14 +180,17 @@ describe("the shipped CSP and the app's backend address agree", () => {
 
   it("still refuses every OTHER non-loopback host", () => {
     /**
-     * The half that keeps the widening honest. One named server was added — not a subnet, not a
-     * wildcard. `192.168.1.50` and `192.168.200.106` are the interesting cases: both look like
-     * plausible LAN addresses and both must fail, which is what proves this is a host allowlist
-     * rather than "anything on a private network".
+     * The half that keeps the widening honest. Two named servers were added — not a subnet, not
+     * a wildcard. `192.168.1.50`, `192.168.200.106` and `192.168.200.130` are the interesting
+     * cases: all three look like plausible LAN addresses, and `.130` sits directly beside an
+     * allowed host, so it fails only if this really is a host allowlist rather than "anything on
+     * a private network".
      */
     for (const url of [
       "http://192.168.1.50:8080",
       "http://192.168.200.106:8080",
+      "http://192.168.200.130:8080",
+      "http://192.168.200.12:8080",
       "http://backend.internal:8080",
       "https://evil.example.com",
       "https://evil.onrender.com.attacker.com",

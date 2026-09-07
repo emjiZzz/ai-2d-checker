@@ -408,8 +408,9 @@ Three topologies (ADR-013):
 
 1. **Local sidecar** bound to `127.0.0.1:8080`, or a dynamic port via `SIDECAR_PORT=0`, with a
    machine-bound encrypted bearer token in `storage/secure/`.
-2. **On-premises LAN server** at a fixed host such as `192.168.200.105:8080`, configured via
-   `ALLOWED_HOSTS` and a shared `API_TOKEN`.
+2. **On-premises LAN server** at a fixed host: `192.168.200.129:8080` today, configured via
+   `ALLOWED_HOSTS` and a shared `API_TOKEN`. `192.168.200.105` preceded it and was retired on
+   2026-09-07 for having no internet, and therefore no Atlas. Both stay in `connect-src`.
 3. **Cloud backend** on Render at `https://*.onrender.com`, fixed `API_TOKEN`, with the desktop
    client persisting the token in `localStorage` (`ai_2d_remote_api_token`).
 
@@ -420,7 +421,7 @@ Three topologies (ADR-013):
 | `services/backend/config.py` | Binds `127.0.0.1` locally, `0.0.0.0` on cloud and containers |
 | `main.py` `ALLOWED_HOST_NAMES` | Host must exactly match `ALLOWED_HOSTS` plus `RENDER_EXTERNAL_HOSTNAME` |
 | `main.py` CORS `allow_origins` | `localhost:1420`, `tauri://localhost`, `http://tauri.localhost`, plus `CORS_ORIGINS` |
-| `src-tauri/tauri.conf.json` `connect-src` | loopback on any port, `192.168.200.105:*`, `https://*.onrender.com` |
+| `src-tauri/tauri.conf.json` `connect-src` | loopback on any port, `192.168.200.105:*`, `192.168.200.129:*`, `https://*.onrender.com` |
 
 Changing one alone produces a build that fails in a layer you are not looking at. The CSP is the
 one that hides: it is enforced by the webview, so a blocked address never leaves the app. No
