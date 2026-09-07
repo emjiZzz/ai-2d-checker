@@ -30,12 +30,14 @@ export const DEFAULT_BACKEND_URL =
  * before the request leaves the app, so failover would look like the primary simply staying down.
  * Pinned by `connectionStore.csp.test.ts`.
  *
- * Both backends share one Atlas, so rooms, sessions, markings and entities are the same on
- * either and marking works across a switch. `storage/uploads` is NOT shared -- it is per server
- * -- which is why `uploadDrawingFile` refuses while the fallback is active. A drawing uploaded to
- * the fallback would be invisible to the primary, and on Render's free tier it would also be
- * discarded on the next restart, which is how four rows for two sheets were created on
- * 2026-09-07.
+ * Both backends share one Atlas, so rooms, sessions, markings and ENTITIES are the same on
+ * either: a drawing ingested on the fallback renders and marks from the primary, because the
+ * canvas draws from `extracted_entities` and not from the file. Uploads are therefore allowed
+ * here -- owner's call, 2026-09-07, after an earlier block was found to be over-cautious.
+ *
+ * What does not cross is `storage/uploads`, which is per server. So the source DXF of a drawing
+ * ingested on the fallback lives only there: `/reextract` from the primary answers 422, and any
+ * file-dependent export is unavailable until that file is on the machine serving it.
  */
 export const FALLBACK_BACKEND_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_FALLBACK_BACKEND_URL)

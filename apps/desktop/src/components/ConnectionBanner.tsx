@@ -95,8 +95,8 @@ export const ConnectionBanner: React.FC = () => {
           <div className="flex-1 pr-2">
             <h3 className="text-xs font-bold text-text-primary">Using Backup Server</h3>
             <p className="text-[11px] text-text-muted leading-relaxed mt-0.5">
-              The main server is unreachable. Marking works normally; uploading is disabled until
-              it returns.
+              The main server is unreachable. Work continues normally; drawings uploaded now are
+              stored on the backup until it returns.
             </p>
           </div>
           <button

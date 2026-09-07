@@ -62,18 +62,25 @@ describe("backend failover", () => {
     expect(useConnectionStore.getState().usingFallback).toBe(false);
   });
 
-  it("refuses uploads while on the fallback, and says why", async () => {
+  it("does not refuse uploads on the fallback", async () => {
+    /**
+     * Blocked until 2026-09-07, on the reasoning that a drawing ingested on the fallback would
+     * be unusable from the primary. That was wrong: `extracted_entities` is a Mongo collection,
+     * so entities cross with everything else in Atlas and the canvas -- which draws from
+     * entities, not from the file -- renders it from either server.
+     *
+     * What stays behind is only the source DXF, costing `/reextract` from the other machine.
+     * Owner's call that the fallback should be able to ingest.
+     *
+     * Asserted as "not refused by the fallback check": the upload still fails here, because
+     * there is no server, and the point is that it fails on the network rather than on a guard.
+     */
     useConnectionStore.setState({ backendUrl: BACKUP, usingFallback: true });
     const file = new File(["x"], "drawing.dxf", { type: "application/dxf" });
 
-    const ok = await useWorkspaceStore.getState().uploadDrawingFile(file, "old");
+    await useWorkspaceStore.getState().uploadDrawingFile(file, "old");
 
-    expect(ok).toBe(false);
-    const s = useWorkspaceStore.getState();
-    expect(s.oldUploadState).toBe("failed");
-    expect(s.oldError).toMatch(/fallback backend/i);
-    // No drawing id, so the panel offers no retry: there is nothing on the server to re-extract.
-    expect(s.oldFailedDrawingId).toBeNull();
+    expect(useWorkspaceStore.getState().oldError ?? "").not.toMatch(/fallback backend/i);
   });
 
   it("allows uploads again once the primary is back", async () => {
