@@ -216,6 +216,35 @@ async def get_drawing(id: str):
 
 
 @router.get(
+    "/drawings/{id}/job",
+    response_model=StandardResponse[JobResponse | None],
+    summary="Retrieve latest extraction job for a DrawingDocument",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_drawing_job(id: str):
+    await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
+    job = await ExtractionJob.find({"drawing_id": id}).sort("-created_at").first_or_none()
+    if not job:
+        return StandardResponse(success=True, data=None)
+    return StandardResponse(
+        success=True,
+        data=JobResponse(
+            id=str(job.id),
+            drawing_id=job.drawing_id,
+            status=job.status,
+            error_message=job.error_message,
+            diagnostics=job.diagnostics,
+            conversion_duration_seconds=job.conversion_duration_seconds,
+            parsing_duration_seconds=job.parsing_duration_seconds,
+            total_duration_seconds=job.total_duration_seconds,
+            created_at=job.created_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at
+        )
+    )
+
+
+@router.get(
     "/drawings/{id}/layers",
     response_model=StandardResponse[dict],
     summary="Retrieve serialized geometry layers for a drawing",

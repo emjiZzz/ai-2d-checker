@@ -346,12 +346,25 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       } else if (job.status === "failed") {
         throw new Error(job.error_message || "Background extraction job aborted.");
       } else {
-        // We set the active job ID and the React hook `useUploadJobPolling` takes over polling
-        // NOTE: we need to add activeOldUploadJobId / activeNewUploadJobId to the store for this to work natively
+        // Associate the uploaded drawing with the active room immediately so the room
+        // remembers which drawing belongs in this slot even while background ingestion is in-flight.
+        try {
+          const { useRoomStore } = await import("../../roomStore");
+          const activeRoom = useRoomStore.getState().activeRoom;
+          if (activeRoom) {
+            void useRoomStore.getState().updateRoom(activeRoom.id, {
+              [isOld ? "active_old_drawing_id" : "active_new_drawing_id"]: drawing.id,
+              [isOld ? "active_old_drawing_name" : "active_new_drawing_name"]: drawing.file_name,
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to associate in-flight drawing with active room:", e);
+        }
+
         if (isOld) {
-            set({ oldUploadState: "processing", oldUploadProgress: 80, activeOldJobId: job.id });
+          set({ oldUploadState: "processing", oldUploadProgress: 80, activeOldJobId: job.id });
         } else {
-            set({ newUploadState: "processing", newUploadProgress: 80, activeNewJobId: job.id });
+          set({ newUploadState: "processing", newUploadProgress: 80, activeNewJobId: job.id });
         }
         
         return true; // We successfully queued the upload, polling handles the rest

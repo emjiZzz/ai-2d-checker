@@ -157,4 +157,66 @@ describe('roomStore.openRoom — restoring a compared room', () => {
     const { violations } = useWorkspaceStore.getState();
     expect(violations.filter((v: any) => v.status === 'MATCHED')).toHaveLength(2);
   });
+
+  it('resumes in-flight ingestion when re-entering a room with an ingesting drawing', async () => {
+    global.fetch = vi.fn((url: any) => {
+      const u = String(url);
+      const body = (b: any) => Promise.resolve({ _body: b, ok: true } as any);
+
+      if (u.includes('/rooms/')) return body(baseRoom);
+      if (u.includes('/job')) {
+        return body({ id: 'job_active_999', status: 'processing', drawing_id: 'old_1' });
+      }
+      if (u.includes('/drawings/')) {
+        return body({
+          id: 'old_1',
+          file_name: 'bracket_revA.dxf',
+          file_path: 'p',
+          format: 'dxf',
+          status: 'processing',
+          entity_counts: {},
+          metadata: {},
+          created_at: '',
+        });
+      }
+      return body({});
+    }) as any;
+
+    await useRoomStore.getState().openRoom('room_228');
+
+    const ws = useWorkspaceStore.getState();
+    expect(ws.oldDrawing).toBeNull();
+    expect(ws.oldUploadState).toBe('processing');
+    expect(ws.oldFileName).toBe('bracket_revA.dxf');
+    expect(ws.activeOldJobId).toBe('job_active_999');
+  });
+
+  it('immediately mounts drawing when re-entering a room with a completed drawing', async () => {
+    global.fetch = vi.fn((url: any) => {
+      const u = String(url);
+      const body = (b: any) => Promise.resolve({ _body: b, ok: true } as any);
+
+      if (u.includes('/rooms/')) return body(baseRoom);
+      if (u.includes('/drawings/')) {
+        return body({
+          id: 'old_1',
+          file_name: 'bracket_revA.dxf',
+          file_path: 'p',
+          format: 'dxf',
+          status: 'completed',
+          entity_counts: {},
+          metadata: {},
+          created_at: '',
+        });
+      }
+      return body({});
+    }) as any;
+
+    await useRoomStore.getState().openRoom('room_228');
+
+    const ws = useWorkspaceStore.getState();
+    expect(ws.oldDrawing).not.toBeNull();
+    expect(ws.oldDrawing?.id).toBe('old_1');
+    expect(ws.oldUploadState).toBe('completed');
+  });
 });

@@ -8,6 +8,7 @@
 import { buildHeaders, baseUrl, parseOrThrow } from "./fetchUtils";
 import { isPrototypeMode } from "../config/features";
 import type { DrawingItem } from "../stores/workspaceStore";
+import type { Job } from "../stores/drawingStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,15 @@ export async function fetchDrawing(id: string, signal?: AbortSignal): Promise<Dr
     signal,
   });
   return parseOrThrow<DrawingItem>(res);
+}
+
+/** GET /api/v1/drawings/:id/job — fetches the latest extraction job for a drawing. */
+export async function fetchDrawingJob(id: string, signal?: AbortSignal): Promise<Job | null> {
+  const res = await fetch(`${baseUrl()}/api/v1/drawings/${id}/job`, {
+    headers: buildHeaders(),
+    signal,
+  });
+  return parseOrThrow<Job | null>(res);
 }
 
 /**
