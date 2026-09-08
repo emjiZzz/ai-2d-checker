@@ -6,7 +6,7 @@ import { MARKER_STYLES, type MarkerType } from './markerStyles';
 import { CATEGORY_OPTIONS, findMarkingForEntity } from './manualCheckCategories';
 import { COMPARISON_TAXONOMY } from '../../utils/comparisonTaxonomy';
 import { cleanCadText } from '../../utils/cadGlyphs';
-import { ChevronRight, ArrowLeft } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 /**
  * The menu that belongs to the SELECTED entity.
@@ -45,43 +45,43 @@ import { ChevronRight, ArrowLeft } from 'lucide-react';
  */
 
 /**
- * Highly specific bilingual labels for sub-items so engineers can match drawing cells directly.
+ * Specific labels for sub-items without parenthesis annotations.
  */
 const SPECIFIC_ITEM_LABELS: Record<string, string> = {
   // Title Block
-  unit_number: 'Unit No. (ユニットNo.)',
-  part_number: 'Part No. (コードNo.)',
-  quantity: 'Total Quantity (総製作個数 / T. Q\'ty)',
-  stock_quantity: 'Stock Quantity (在庫棚入庫)',
-  machine_name: 'Machine Name (機名 / ロールカセット)',
-  line_name: 'Line Name (ライン名 / 押工板)',
-  scale: 'Scale (尺度 / 1:1.5)',
-  creation_date: 'Date of Creation (日付 / 04/12/22)',
-  designed: 'Designed (設計)',
-  drawn: 'Drawn (製図)',
-  job_number: 'Job Number (工事番号 / 2589)',
-  machine_unit_code: 'Machine Code (機器記号 / FSRS2)',
-  previous_drawing_number: 'Drawing Number (図面番号 / M745221N01)',
-  revision_code: 'Revision Code (改訂)',
-  cross_reference_number: 'Cross Reference Number (参考図番)',
+  unit_number: 'Unit No.',
+  part_number: 'Part No.',
+  quantity: 'Total Quantity',
+  stock_quantity: 'Stock Quantity',
+  machine_name: 'Machine Name',
+  line_name: 'Line Name',
+  scale: 'Scale',
+  creation_date: 'Date of Creation',
+  designed: 'Designed',
+  drawn: 'Drawn',
+  job_number: 'Job Number',
+  machine_unit_code: 'Machine Code',
+  previous_drawing_number: 'Drawing Number',
+  revision_code: 'Revision Code',
+  cross_reference_number: 'Cross Reference Number',
 
   // Bill of Materials
-  material_type: 'Material Type (材質 / SS400)',
-  material_specification: 'Material Specification (寸法・仕様 / 6×⌀145)',
-  material_weight: 'Material Weight (重量 / 0.78 kg)',
-  ballooning: 'Ballooning (照合番号 / バルーン)',
-  remarks: 'Remarks (記事・備考)',
-  numbering_arrangement: 'Numbering & Arrangement (照合順)',
+  material_type: 'Material Type',
+  material_specification: 'Material Specification',
+  material_weight: 'Material Weight',
+  ballooning: 'Ballooning',
+  remarks: 'Remarks',
+  numbering_arrangement: 'Numbering & Arrangement',
 
   // Drawing Views
-  dimensions: 'Dimensions (寸法 / ⌀145, 120)',
-  hole_properties: 'Hole Properties (キリ穴・タップ / 6-9キリ)',
-  chamfer_radius: 'Chamfer / Radius (面取り・R / C0.5, R5)',
-  machining_symbol: 'Machining Symbol (仕上げ記号 / ▽)',
-  geometric_tolerances: 'Geometric Tolerances (幾何公差)',
-  welding_symbol: 'Welding Symbol (溶接記号)',
-  line_attributes: 'Line Attributes (線種・線幅)',
-  additional_views: 'Additional Views (詳細図・断面図 / A-A)',
+  dimensions: 'Dimensions',
+  hole_properties: 'Hole Properties',
+  chamfer_radius: 'Chamfer / Radius',
+  machining_symbol: 'Machining Symbol',
+  geometric_tolerances: 'Geometric Tolerances',
+  welding_symbol: 'Welding Symbol',
+  line_attributes: 'Line Attributes',
+  additional_views: 'Additional Views',
 };
 
 const TITLE_BLOCK_PRIORITY: Record<string, number> = {
@@ -155,6 +155,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   type Stamp = { tool: StampTool; ref: PickedEntity | null; rev: PickedEntity | null };
   const [awaitingCategory, setAwaitingCategory] = useState<Stamp | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   // A MATCHED with one side resolved, waiting for the engineer to pair it or accept it as-is.
   const [awaitingPairDecision, setAwaitingPairDecision] = useState<Stamp | null>(null);
 
@@ -175,7 +176,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   // Position outside the entity rather than occluding it. If targetBounds are known,
   // place the menu cleanly below the selection box (or flipped above if close to the bottom edge)
   // so the drafter can clearly read the CAD text, leader lines, and counterpart data.
-  const MENU_W = 220;
+  const MENU_W = awaitingCategory ? (selectedCategory ? 200 : 180) : 200;
   const MENU_H = awaitingCategory ? 260 : awaitingPairDecision ? 180 : 160;
   const GAP = 10;
   const CHIP_H = 26;
@@ -264,6 +265,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   /** Advance to the class selection step where the engineer explicitly selects the category. */
   const proceed = (stamp: { tool: StampTool; ref: PickedEntity | null; rev: PickedEntity | null }) => {
     setSelectedCategory(null);
+    setHoveredCategory(null);
     setAwaitingCategory(stamp);
   };
 
@@ -358,15 +360,17 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
   // and the only open question is the category, so offering the statuses again would invite
   // changing an answer that has already been given.
   if (awaitingCategory) {
-    const rawSubItems = selectedCategory ? (COMPARISON_TAXONOMY[selectedCategory] ?? []) : [];
-    const subItems = selectedCategory === 'title_block'
+    const activeCategory = hoveredCategory ?? selectedCategory;
+    const rawSubItems = activeCategory ? (COMPARISON_TAXONOMY[activeCategory] ?? []) : [];
+    const subItems = activeCategory === 'title_block'
       ? [...rawSubItems].sort((a, b) => (TITLE_BLOCK_PRIORITY[a.key] ?? 99) - (TITLE_BLOCK_PRIORITY[b.key] ?? 99))
       : rawSubItems;
-    const selectedCatOption = CATEGORY_OPTIONS.find((c) => c.key === selectedCategory);
+    const isNearRightEdge = canvasWidth ? left + 180 + 205 > canvasWidth - 10 : false;
+    const submenuXClass = isNearRightEdge ? 'right-[calc(100%-1px)]' : 'left-[calc(100%-1px)]';
 
     return (
       <div
-        className={`no-scrollbar absolute z-[10000] flex flex-col py-1 min-w-[270px] max-h-[380px] overflow-y-auto rounded-none border backdrop-blur-md shadow-xl select-none ${
+        className={`absolute z-[10000] flex flex-col py-1 min-w-[180px] rounded-none border backdrop-blur-md shadow-xl select-none ${
           theme === 'hc-light'
             ? 'bg-white border-zinc-300 text-zinc-900 shadow-zinc-400/20'
             : 'bg-zinc-950/95 border-white/10 text-zinc-100 shadow-black/60'
@@ -374,79 +378,85 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
         style={{
           left,
           top,
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onMouseLeave={() => {
+          if (!selectedCategory) {
+            setHoveredCategory(null);
+          }
+        }}
       >
-        <div
-          className={`px-2.5 py-1.5 text-[0.62rem] font-mono truncate border-b flex items-center justify-between ${
-            theme === 'hc-light' ? 'border-zinc-200 text-zinc-500' : 'border-white/10 text-zinc-500'
-          }`}
-        >
-          {selectedCategory ? (
-            <button
-              className="flex items-center gap-1.5 hover:text-cyan-400 text-left transition-colors font-semibold cursor-pointer"
-              onClick={() => setSelectedCategory(null)}
-            >
-              <ArrowLeft className="w-3 h-3 text-cyan-400" />
-              <span>{selectedCatOption?.label ?? selectedCategory} · CHOOSE ITEM</span>
-            </button>
-          ) : (
-            <span>
-              {MARKER_STYLES[awaitingCategory.tool.toUpperCase() as MarkerType]?.label ??
-                awaitingCategory.tool}{' '}
-              · CHOOSE CLASS
-            </span>
-          )}
-        </div>
+        {CATEGORY_OPTIONS.map((opt, idx) => {
+          const isActive = activeCategory === opt.key;
+          const rowScreenY = top + 4 + idx * 24;
+          const isNearBottomEdge = canvasHeight ? rowScreenY + 260 > canvasHeight - 10 : false;
+          const submenuYClass = isNearBottomEdge ? 'bottom-0' : '-top-[1px]';
 
-        {selectedCategory ? (
-          <>
-            <div
-              className={`${rowClass} opacity-60 italic text-[0.68rem] border-b border-white/5`}
-              onClick={() => {
-                write(awaitingCategory, selectedCategory, 'human', null);
-                setAwaitingCategory(null);
-                setSelectedCategory(null);
-                onClose();
-              }}
-            >
-              <span>(General / Auto-classify)</span>
-            </div>
-            {subItems.map((item) => {
-              const displayLabel = SPECIFIC_ITEM_LABELS[item.key] ?? item.label;
-              return (
-                <div
-                  key={item.key}
-                  className={rowClass}
-                  onClick={() => {
-                    write(awaitingCategory, selectedCategory, 'human', item.key);
-                    setAwaitingCategory(null);
-                    setSelectedCategory(null);
-                    onClose();
-                  }}
-                >
-                  <span className="text-[0.72rem] leading-snug">{displayLabel}</span>
-                </div>
-              );
-            })}
-          </>
-        ) : (
-          CATEGORY_OPTIONS.map((opt) => (
+          return (
             <div
               key={opt.key}
-              className={`${rowClass} justify-between`}
+              className={`relative ${rowClass} justify-between ${
+                isActive
+                  ? theme === 'hc-light'
+                    ? 'bg-cyan-600/15 text-cyan-800 font-semibold'
+                    : 'bg-cyan-500/20 text-cyan-300 font-semibold'
+                  : ''
+              }`}
+              onMouseEnter={() => {
+                setHoveredCategory(opt.key);
+              }}
               onClick={() => {
                 setSelectedCategory(opt.key);
+                setHoveredCategory(opt.key);
               }}
             >
               <span className="text-[0.72rem]">{opt.label}</span>
-              <ChevronRight className="w-3 h-3 opacity-40" />
+              <ChevronRight
+                className={`w-3 h-3 transition-colors ${
+                  isActive ? 'opacity-100 text-cyan-400' : 'opacity-40'
+                }`}
+              />
+
+              {/* ── Second context: Sub-item flyout aligned with this row ── */}
+              {isActive && (
+                <div
+                  className={`no-scrollbar absolute ${submenuXClass} ${submenuYClass} flex flex-col py-1 min-w-[200px] max-h-[360px] overflow-y-auto rounded-none border backdrop-blur-md shadow-2xl z-[10001] cursor-default font-normal text-left ${
+                    theme === 'hc-light'
+                      ? 'bg-white border-zinc-300 text-zinc-900 shadow-zinc-400/30'
+                      : 'bg-zinc-950/98 border-white/10 text-zinc-100 shadow-black/70'
+                  }`}
+                  style={{
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none',
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {subItems.map((item) => {
+                    const displayLabel = (SPECIFIC_ITEM_LABELS[item.key] ?? item.label).replace(/\s*\([^)]*\)/g, '').trim();
+                    return (
+                      <div
+                        key={item.key}
+                        className={rowClass}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          write(awaitingCategory, activeCategory, 'human', item.key);
+                          setAwaitingCategory(null);
+                          setSelectedCategory(null);
+                          setHoveredCategory(null);
+                          onClose();
+                        }}
+                      >
+                        <span className="text-[0.72rem] leading-snug">{displayLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
     );
   }
