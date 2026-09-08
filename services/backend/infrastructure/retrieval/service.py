@@ -353,7 +353,7 @@ def ground_truth_record(
     else:
         observed = ref_text or rev_text
 
-    address = marking.ref_address or marking.rev_address
+    address, stored_sheet = marking.addressed_sheet()
     entity_type = (getattr(address, "entity_type", "") or "").strip()
     layer = (getattr(address, "layer", "") or "").strip()
     # Entity type and layer are query terms, so they belong in the text; coordinates are not, and
@@ -361,7 +361,10 @@ def ground_truth_record(
     where = " ".join(p for p in (entity_type, f"on layer {layer}" if layer else "") if p)
 
     drawing_id = getattr(address, "drawing_id", None)
-    sheet = (drawing_names or {}).get(str(drawing_id), "") if drawing_id else ""
+    # The marking's own copy first: deleting a room purges the DrawingDocument, so the lookup
+    # answers "" for exactly the rows whose provenance matters most. The lookup remains for rows
+    # written before the field existed.
+    sheet = stored_sheet or ((drawing_names or {}).get(str(drawing_id), "") if drawing_id else "")
 
     parts = [
         marking.category,

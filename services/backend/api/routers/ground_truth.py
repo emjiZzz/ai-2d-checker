@@ -412,6 +412,19 @@ async def _recount(session: ManualCheckSession) -> None:
     await session.save()
 
 
+async def _sheet_names(ref_drawing_id: str, rev_drawing_id: str) -> tuple[str, str]:
+    """File names for a pair, read once per session rather than once per marking.
+
+    A missing drawing yields "", which is the same answer the old index-time lookup gave; the
+    point of storing it is that a drawing deleted LATER can no longer take the name with it.
+    """
+    names = []
+    for drawing_id in (ref_drawing_id, rev_drawing_id):
+        drawing = await DrawingDocument.get(drawing_id) if drawing_id else None
+        names.append((drawing.file_name if drawing else "") or "")
+    return names[0], names[1]
+
+
 # ── routes ───────────────────────────────────────────────────────────────────────────
 
 
@@ -457,16 +470,27 @@ async def create_session(
 
     existing = await _resume()
     if existing is not None:
+        # Self-heal a session opened before the field existed, while its drawings are still
+        # there to name. Markings written from here on then carry the sheet.
+        if not existing.ref_sheet and not existing.rev_sheet:
+            existing.ref_sheet, existing.rev_sheet = await _sheet_names(
+                existing.ref_drawing_id, existing.rev_drawing_id
+            )
+            if existing.ref_sheet or existing.rev_sheet:
+                await existing.save()
         logger.info(
             f"[ground_truth] Manual check resumed: session {existing.id} on room "
             f"{existing.room_id} by {annotator} ({existing.marking_count} marking(s))"
         )
         return StandardResponse(success=True, data=_session_response(existing))
 
+    ref_sheet, rev_sheet = await _sheet_names(payload.ref_drawing_id, payload.rev_drawing_id)
     session = ManualCheckSession(
         room_id=payload.room_id,
         ref_drawing_id=payload.ref_drawing_id,
         rev_drawing_id=payload.rev_drawing_id,
+        ref_sheet=ref_sheet,
+        rev_sheet=rev_sheet,
         annotator=annotator,
         notes=payload.notes,
     )
@@ -580,6 +604,10 @@ async def create_marking(
         # From the session loaded above, so the room costs no extra read. Never from the payload;
         # `tests/test_ground_truth_hierarchy.py` pins that.
         room_id=session.room_id,
+        # Denormalised for the same reason as `room_id`, and from the same already-loaded
+        # session so it costs no extra read. A room deletion purges the drawings; these survive.
+        ref_sheet=session.ref_sheet,
+        rev_sheet=session.rev_sheet,
         side="rev",  # replaced below, once both addresses are known
         ref_address=await _to_address(payload.ref_address),
         rev_address=await _to_address(payload.rev_address),
