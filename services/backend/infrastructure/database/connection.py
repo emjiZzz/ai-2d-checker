@@ -11,6 +11,11 @@ from ...domain.models import __all_models__
 from ...logger import logger
 
 
+# Bounds on a single socket operation, not on the whole request.
+# 30s is far above any query this app issues and far below "never".
+CONNECT_TIMEOUT_MS = 10_000
+SOCKET_TIMEOUT_MS = 30_000
+
 class DatabaseConnectionManager:
     def __init__(self):
         self.client: AsyncIOMotorClient | None = None
@@ -53,6 +58,14 @@ class DatabaseConnectionManager:
                         self.client = AsyncIOMotorClient(
                             uri,
                             serverSelectionTimeoutMS=timeout_ms,
+                            # PyMongo defaults socketTimeoutMS to None, meaning a read on an
+                            # already-selected socket waits forever. An Atlas connection killed
+                            # without a FIN -- a dropped uplink, a NAT reap -- then wedges every
+                            # handler that touches Mongo, /health included. Measured on Server 3
+                            # on 2026-09-08: 18 CLOSE_WAIT, 0 ESTABLISHED, no recovery.
+                            # See [[Gotcha - A Dead Atlas Socket Wedged Every Request]].
+                            connectTimeoutMS=CONNECT_TIMEOUT_MS,
+                            socketTimeoutMS=SOCKET_TIMEOUT_MS,
                             uuidRepresentation="standard"
                         )
                         

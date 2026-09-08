@@ -1,7 +1,10 @@
+import asyncio
 import time
 
 from ...logger import logger
 from .connection import db_manager
+
+PING_TIMEOUT_SEC = 5.0
 
 
 async def check_database_health() -> dict:
@@ -21,8 +24,11 @@ async def check_database_health() -> dict:
 
     start_time = time.time()
     try:
-        # Perform dynamic latency ping
-        await db_manager.client.admin.command("ping")
+        # Bounded rather than bare: this endpoint needs no token and the desktop client polls it
+        # to decide whether to fail over, so a ping that hangs takes the failover with it.
+        await asyncio.wait_for(
+            db_manager.client.admin.command("ping"), timeout=PING_TIMEOUT_SEC
+        )
         latency_ms = (time.time() - start_time) * 1000
         
         return {
@@ -30,6 +36,16 @@ async def check_database_health() -> dict:
             "latency_ms": round(latency_ms, 2),
             "connected": True,
             "database_name": db_manager.db.name if db_manager.db is not None else None
+        }
+    except TimeoutError:
+        logger.warning(
+            f"Database healthcheck ping exceeded {PING_TIMEOUT_SEC}s; reporting degraded."
+        )
+        return {
+            "status": "degraded",
+            "latency_ms": -1,
+            "connected": False,
+            "error": f"ping timed out after {PING_TIMEOUT_SEC}s",
         }
     except Exception as e:
         logger.warning(f"Database latency healthcheck failed: {str(e)}")
