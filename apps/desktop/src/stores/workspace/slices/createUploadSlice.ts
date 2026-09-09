@@ -254,10 +254,10 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
     // 2. Validate Extension Normalized to Lowercase
     const extension = file.name.split(".").pop()?.toLowerCase();
     const is3D = ["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(extension || "");
-    const is2D = ["dwg", "dxf", "pdf"].includes(extension || "");
+    const is2D = extension === "dxf";
     
     if (!extension || (!is2D && !is3D)) {
-      updateStatus("failed", 0, "Unsupported format. Only 2D (PDF, DWG, DXF) or 3D (STEP, IGES, ICD, SolidWorks sldprt/sldasm) files are allowed.");
+      updateStatus("failed", 0, "Unsupported format. Only DXF files (.dxf) are currently supported.");
       set({ compatibilityStatus: "Unsupported" });
       return false;
     }

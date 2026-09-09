@@ -86,11 +86,11 @@ describe('createUploadSlice', () => {
     
     // Valid CAD content (no MZ header)
     const validContent = new Uint8Array([0x00, 0x01, 0x02]);
-    const mockValid = new File([validContent], 'floorplan.dwg');
+    const mockValid = new File([validContent], 'floorplan.dxf');
 
     // Mock successful uploadFile response
     (uploadFile as any).mockResolvedValueOnce({
-      drawing: { id: 'dwg_123', file_name: 'floorplan.dwg' },
+      drawing: { id: 'dwg_123', file_name: 'floorplan.dxf' },
       job: { id: 'job_abc', status: 'processing' }
     });
 
@@ -112,10 +112,10 @@ describe('createUploadSlice', () => {
 
   it('does not delete anything when the slot was empty', async () => {
     const store = useWorkspaceStore.getState();
-    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dwg');
+    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dxf');
 
     (uploadFile as any).mockResolvedValueOnce({
-      drawing: { id: 'dwg_123', file_name: 'floorplan.dwg' },
+      drawing: { id: 'dwg_123', file_name: 'floorplan.dxf' },
       job: { id: 'job_abc', status: 'processing' }
     });
 
@@ -202,10 +202,10 @@ describe('createUploadSlice', () => {
     useWorkspaceStore.setState({ oldDrawing: { id: 'old_1', file_name: 'prev.dwg' } as any });
 
     const store = useWorkspaceStore.getState();
-    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dwg');
+    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dxf');
 
     (uploadFile as any).mockResolvedValueOnce({
-      drawing: { id: 'dwg_new', file_name: 'floorplan.dwg' },
+      drawing: { id: 'dwg_new', file_name: 'floorplan.dxf' },
       job: { id: 'job_abc', status: 'processing' }
     });
 

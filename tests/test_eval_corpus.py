@@ -505,7 +505,12 @@ def test_uncaptured_sides_are_reported(tmp_path):
 #: Empty this set the moment the reading is captured. The `xfail` below is strict, so the
 #: suite fails on the day it starts passing — which is the reminder, and is deliberate: a standing
 #: allowlist is a place for new breakage to hide.
-KNOWN_UNCAPTURED_OCR = {"M745204N01"}
+#:
+#: M745200N01 joined 2026-09-08 with no reading anywhere to re-key, so capturing costs two live
+#: Gemini calls — the owner's decision on the 2026-08-25 terms. It is the corpus's only A2 sheet,
+#: so its title-block findings are the least like the rest: capture before arguing that category
+#: from it. A third entry would be a pattern, and should be fixed by capturing, not appending.
+KNOWN_UNCAPTURED_OCR = {"M745204N01", "M745200N01"}
 
 
 def _pairs_missing_ocr() -> dict[str, list[str]]:

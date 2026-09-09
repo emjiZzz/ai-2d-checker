@@ -1,0 +1,168 @@
+{
+  "pair_id": "M7452A1N01",
+  "guideline_version": "2026-08-06",
+  "annotator": "Raysan",
+  "annotated_at": "2026-09-07",
+  "notes": "Converted from manual-check session 6a9e5e147e84ab4f93dd4cfd (28 live marking(s), annotator 'Raysan').",
+  "findings": [
+    {
+      "entity_handle": "REV-2BB",
+      "category": "notes_section",
+      "status": "CHANGED",
+      "ref_text": "素材調質施工　硬度HS35～38度",
+      "rev_text": "素材調質施工　硬度ＨＳ３５～３８",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#401",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "10.8",
+      "rev_text": "10.81",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#398",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "7.4",
+      "rev_text": "7.38",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-12D",
+      "category": "drawing_views",
+      "status": "CHANGED",
+      "ref_text": "6-6.6キリ11ザグリ深6.5",
+      "rev_text": "６－６．６キリ１１ザグリ深サ６．５",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#420",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "Roll Cassette 12\" Mill",
+      "rev_text": "ロールカセット 12\"ミル",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#421",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2010/09/13",
+      "rev_text": "2026/07/03",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#422",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "1:2.5",
+      "rev_text": "1/2.5",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#423",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "中川",
+      "rev_text": "ZHR",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#418",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2589",
+      "rev_text": "9324",
+      "notes": "",
+      "is_bulk": false
+    }
+  ],
+  "not_findings": [
+    {
+      "entity_handle": "REV#429",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#428",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#427",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#426",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2BA",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2BD",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2BE",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2BC",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#409",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#406",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#474",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2D1",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2DF",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2FA",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-121",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#419",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#416",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#417",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#424",
+      "reason": "engineer verified this as unchanged"
+    }
+  ]
+}

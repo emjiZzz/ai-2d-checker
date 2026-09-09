@@ -1,0 +1,325 @@
+{
+  "pair_id": "M745200N01",
+  "guideline_version": "2026-08-06",
+  "annotator": "Raysan",
+  "annotated_at": "2026-09-08",
+  "notes": "Converted from manual-check session 6a9f494623df9de67d20ecc5 (61 live marking(s), annotator 'Raysan').",
+  "findings": [
+    {
+      "entity_handle": "REV#432",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "12.14",
+      "rev_text": "6.23",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#429",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "8.41",
+      "rev_text": "3.91",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#447",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "4.44",
+      "rev_text": "4.36",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#468",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "1.75",
+      "rev_text": "1.69",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#489",
+      "category": "bill_of_materials",
+      "status": "CHANGED",
+      "ref_text": "2.22",
+      "rev_text": "2.21",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#512",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "Roll Cassette 12\"Mill",
+      "rev_text": "ロールカセット 12\"ミル",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#510",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "2589",
+      "rev_text": "9324",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#516",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "橋本",
+      "rev_text": "津田",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#515",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "中川",
+      "rev_text": "ZHR",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#514",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "1:3",
+      "rev_text": "1/3",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV#513",
+      "category": "title_block",
+      "status": "CHANGED",
+      "ref_text": "04/12/22",
+      "rev_text": "2026/07/03",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-325",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "タップ、キリ穴は面取り仕上げのこと",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-324",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "指示なき角部は糸面取りのこと",
+      "notes": "",
+      "is_bulk": false
+    },
+    {
+      "entity_handle": "REV-326",
+      "category": "notes_section",
+      "status": "ADDED",
+      "ref_text": "",
+      "rev_text": "完成時、バリ、キリ粉はなきこと",
+      "notes": "",
+      "is_bulk": false
+    }
+  ],
+  "not_findings": [
+    {
+      "entity_handle": "REV#521",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#520",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#519",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#518",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-4C7",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-4C8",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#459",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#480",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#501",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#456",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#477",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#498",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#453",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#474",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#495",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#492",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#471",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#450",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2D3",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2E3",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2AF",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2C5",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2C7",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2F3",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-303",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-2A0",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-290",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-54A",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-565",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-555",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#817",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#820",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-4F2",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-4FE",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-520",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-52B",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-4D5",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-4E4",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-510",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-221",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-268",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-23D",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-24B",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV-259",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#508",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#511",
+      "reason": "engineer verified this as unchanged"
+    },
+    {
+      "entity_handle": "REV#509",
+      "reason": "engineer verified this as unchanged"
+    }
+  ]
+}

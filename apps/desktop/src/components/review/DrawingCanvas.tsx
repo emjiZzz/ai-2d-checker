@@ -23,6 +23,11 @@ export const entityPayloadSchema = z.object({
   geometry: z.any(),
   style: z.any(),
   properties: z.any().optional(),
+  // Stamped from the payload's own map key in `validatedLayers`, never sent by the backend.
+  // `GeometrySerializer.serialize_entities` returns `{layers: {name: [entities]}}`, so an entity
+  // held on its own could not say which layer it was on; `useEntityPicking` fell back to '0' and
+  // every stored marking address recorded layer "0", unresolvable below handle tier.
+  layer: z.string().optional(),
 });
 
 export type EntityPayload = z.infer<typeof entityPayloadSchema>;
@@ -94,7 +99,9 @@ export const DrawingCanvas = React.forwardRef<DrawingCanvasRef, DrawingCanvasPro
           }
           return true;
         });
-        result[layerName] = mergeAdjacentDatePrefixes(filtered);
+        result[layerName] = mergeAdjacentDatePrefixes(
+          filtered.map((item) => ({ ...item, layer: layerName })),
+        );
       });
       return result;
     }, [layers]);
