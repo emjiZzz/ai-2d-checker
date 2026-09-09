@@ -198,11 +198,11 @@ export const RoomsView: React.FC = () => {
     if (totalRooms === 0) return "0 workspaces";
     if (currentPage === 1) {
       const end = Math.min(ROOMS_ON_FIRST_PAGE, totalRooms);
-      return `Showing 1–${end} of ${totalRooms} workspaces`;
+      return `Showing 1–${end} of ${totalRooms} rooms`;
     }
     const start = ROOMS_ON_FIRST_PAGE + (currentPage - 2) * ROOMS_PER_PAGE + 1;
     const end = Math.min(ROOMS_ON_FIRST_PAGE + (currentPage - 1) * ROOMS_PER_PAGE, totalRooms);
-    return `Showing ${start}–${end} of ${totalRooms} workspaces`;
+    return `Showing ${start}–${end} of ${totalRooms} rooms`;
   }, [currentPage, totalRooms]);
 
   //: Open/close the create dialog, always clearing a previous failure.
@@ -466,10 +466,9 @@ export const RoomsView: React.FC = () => {
                 disabled={currentPage <= 1}
                 onClick={() => handlePageChange(currentPage - 1)}
                 className="h-7 px-2 gap-1 rounded-none text-xs font-mono cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Previous Page (Left Arrow)"
+                title="Previous"
               >
                 <ChevronLeft size={13} />
-                <span className="hidden sm:inline">Prev</span>
               </Button>
 
               {/* Page Numbers */}
@@ -492,11 +491,10 @@ export const RoomsView: React.FC = () => {
                         )}
                         <button
                           onClick={() => handlePageChange(page)}
-                          className={`h-7 min-w-[28px] px-2 text-xs font-mono font-semibold transition-colors cursor-pointer border ${
-                            currentPage === page
-                              ? "bg-accent-cyan text-on-accent border-accent-cyan"
-                              : "bg-bg-dark text-text-secondary border-border-color hover:bg-sidebar-item-hover hover:text-text-primary"
-                          }`}
+                          className={`h-7 min-w-[28px] px-2 text-xs font-mono font-semibold transition-colors cursor-pointer border ${currentPage === page
+                            ? "bg-accent-cyan text-on-accent border-accent-cyan"
+                            : "bg-bg-dark text-text-secondary border-border-color hover:bg-sidebar-item-hover hover:text-text-primary"
+                            }`}
                         >
                           {page}
                         </button>
@@ -512,9 +510,8 @@ export const RoomsView: React.FC = () => {
                 disabled={currentPage >= totalPages}
                 onClick={() => handlePageChange(currentPage + 1)}
                 className="h-7 px-2 gap-1 rounded-none text-xs font-mono cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Next Page (Right Arrow)"
+                title="Next"
               >
-                <span className="hidden sm:inline">Next</span>
                 <ChevronRight size={13} />
               </Button>
             </div>
@@ -590,19 +587,19 @@ export const RoomsView: React.FC = () => {
         isOpen={!!deletingRoom}
         onClose={() => !isDeleting && setDeletingRoom(null)}
         onConfirm={handleConfirmDelete}
-        title="DELETE CHECKING ROOM"
+        title="Delete Room"
         message={
           <div className="flex flex-col gap-1.5">
             <p>
-              Are you sure you want to permanently delete room <strong className="font-mono text-text-primary">"{deletingRoom?.name}"</strong>?
+              Are you sure you want to delete room <strong className="font-mono text-text-primary">"{deletingRoom?.name}"</strong>?
             </p>
-            <p className="text-[11px] text-text-muted">
-              All linked CAD drawing vectors, ground truth markings, and session history will be removed.
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              All linked CAD drawing vectors, ground truth markings, and session history will be permanently removed.
             </p>
           </div>
         }
-        confirmText="DELETE ROOM"
-        cancelText="CANCEL"
+        confirmText="Delete Room"
+        cancelText="Cancel"
         variant="danger"
         isLoading={isDeleting}
       />

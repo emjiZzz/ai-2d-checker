@@ -33,6 +33,14 @@ $outDir = Join-Path $repoRoot "dist\server\DraftCheck_Server"
 
 if (-not (Test-Path $python)) { throw "Backend venv not found at $python" }
 
+# Purge old server build and distribution output before freezing
+$distServer = Join-Path $repoRoot "dist\server"
+if (Test-Path $distServer) {
+    Write-Host "Purging old server build directory ($distServer)..." -ForegroundColor Yellow
+    Get-ChildItem $distServer -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Attributes = 'Normal' }
+    Remove-Item -Path $distServer -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host "Freezing backend..." -ForegroundColor Yellow
 & $python -m PyInstaller (Join-Path $repoRoot "tools\draftcheck_server.spec") `
     --noconfirm `

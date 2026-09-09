@@ -104,37 +104,7 @@ if ($LeanCloud) {
     }
 }
 
-Write-Host "Packaging Tauri Desktop Installer (.exe)..." -ForegroundColor Yellow
-& $pnpmExe --filter desktop tauri build
-
-# 4. Verify what actually shipped, rather than trusting step 3.
-#    Reads the stamp `apps/desktop/vite.config.ts` writes at closeBundle. AFTER tauri build,
-#    because that is the build whose output goes into the installer.
-Write-Host "Verifying build mode..." -ForegroundColor Yellow
-& node "$PSScriptRoot\tools\scripts\assert-build-mode.mjs" prototype
-if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "BUILD ABORTED - the bundle is not a prototype build." -ForegroundColor Red
-    Write-Host "Do not distribute the installers in the bundle directory." -ForegroundColor Red
-    exit 1
-}
-
-# 5. Report where the installers ACTUALLY are.
-#
-# This printed "$PSScriptRoot\apps\desktop\src-tauri\target\release\bundle" unconditionally, and
-# that directory does not exist on this project: `apps/desktop/src-tauri/.cargo/config.toml` sets
-#
-#     [build]
-#     target-dir = "C:/tauri-build-cache"
-#
-# so cargo -- and therefore the bundler -- writes to C:\tauri-build-cache\release\bundle instead.
-# A successful build ended by pointing the operator at an empty path, which is the same shape of
-# defect as a checker quoting figures no command can reproduce: the message reads like a fact and
-# is derived from nothing.
-#
-# Resolved in cargo's own precedence order (CARGO_TARGET_DIR beats the config file beats the
-# default), then VERIFIED rather than asserted -- if the directory is missing or holds no
-# installer, this says so instead of printing a confident path.
+# 4. Resolve bundle directory and purge stale installers before packaging
 $targetDir = $env:CARGO_TARGET_DIR
 if ([string]::IsNullOrWhiteSpace($targetDir)) {
     $cargoConfig = "$PSScriptRoot\apps\desktop\src-tauri\.cargo\config.toml"
@@ -147,6 +117,32 @@ if ([string]::IsNullOrWhiteSpace($targetDir)) {
     $targetDir = "$PSScriptRoot\apps\desktop\src-tauri\target"
 }
 $bundleDir = Join-Path $targetDir "release\bundle"
+
+if (Test-Path $bundleDir) {
+    Write-Host "Purging stale installers from bundle directory ($bundleDir)..." -ForegroundColor Yellow
+    Get-ChildItem -Path $bundleDir -Recurse -Include *.msi, *.exe -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            Write-Host "  removed old bundle: $($_.Name)" -ForegroundColor DarkGray
+            Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+}
+
+Write-Host "Packaging Tauri Desktop Installer (.exe)..." -ForegroundColor Yellow
+& $pnpmExe --filter desktop tauri build
+
+# 5. Verify what actually shipped, rather than trusting step 3.
+#    Reads the stamp `apps/desktop/vite.config.ts` writes at closeBundle. AFTER tauri build,
+#    because that is the build whose output goes into the installer.
+Write-Host "Verifying build mode..." -ForegroundColor Yellow
+& node "$PSScriptRoot\tools\scripts\assert-build-mode.mjs" prototype
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "BUILD ABORTED - the bundle is not a prototype build." -ForegroundColor Red
+    Write-Host "Do not distribute the installers in the bundle directory." -ForegroundColor Red
+    exit 1
+}
+
+# 6. Report the verified installer output.
 
 Write-Host ""
 Write-Host "=====================================================" -ForegroundColor Green
@@ -190,10 +186,10 @@ if ($installers.Count -gt 0) {
 
     if ($stale.Count -gt 0) {
         Write-Host ""
-        Write-Host "  $($stale.Count) older installer(s) are also in that folder." -ForegroundColor Yellow
-        Write-Host "  They predate this run and must not be distributed:" -ForegroundColor Yellow
+        Write-Host "  Deleted $($stale.Count) older/stale installer(s) from bundle directory:" -ForegroundColor Yellow
         foreach ($old in $stale) {
-            Write-Host "    $($old.Name)  ($($old.LastWriteTime.ToString('yyyy-MM-dd HH:mm')))" -ForegroundColor DarkYellow
+            Write-Host "    - $($old.Name)" -ForegroundColor DarkGray
+            Remove-Item -Path $old.FullName -Force -ErrorAction SilentlyContinue
         }
     }
 } elseif ($allBundles.Count -gt 0) {

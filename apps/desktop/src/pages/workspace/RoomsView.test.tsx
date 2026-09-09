@@ -91,7 +91,7 @@ describe('RoomsView — Pagination (Max 3 Rows)', () => {
     expect(screen.getByText(/^Create New$/i)).toBeInTheDocument();
 
     // Showing 1-11 of 25
-    expect(screen.getByText(/Showing 1–11 of 25 workspaces/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1–11 of 25 rooms/i)).toBeInTheDocument();
     expect(screen.getByText(/\(Page 1 of 3\)/i)).toBeInTheDocument();
 
     // Sorted by recent descending: Room 25 is newest (page 1), Room 14 is 12th (page 2)
@@ -112,7 +112,7 @@ describe('RoomsView — Pagination (Max 3 Rows)', () => {
     fireEvent.click(nextBtn);
 
     // Page 2 shows items 12 to 23
-    expect(screen.getByText(/Showing 12–23 of 25 workspaces/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 12–23 of 25 rooms/i)).toBeInTheDocument();
     expect(screen.getByText(/\(Page 2 of 3\)/i)).toBeInTheDocument();
 
     // "Create New" card is NOT on page 2
@@ -133,7 +133,7 @@ describe('RoomsView — Pagination (Max 3 Rows)', () => {
     fireEvent.click(page3Btn);
 
     // Page 3 shows remaining items (Room 02 and Room 01)
-    expect(screen.getByText(/Showing 24–25 of 25 workspaces/i)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 24–25 of 25 rooms/i)).toBeInTheDocument();
     expect(screen.getByText(/\(Page 3 of 3\)/i)).toBeInTheDocument();
     expect(screen.getByText('Room 02')).toBeInTheDocument();
     expect(screen.getByText('Room 01')).toBeInTheDocument();

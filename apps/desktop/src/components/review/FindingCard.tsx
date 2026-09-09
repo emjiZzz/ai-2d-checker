@@ -174,8 +174,8 @@ export const ComparisonValues: React.FC<ComparisonValuesProps> = ({
 export interface FindingCardProps {
   /** Left of the badge row: whatever this panel lets you do to a row. */
   actions?: React.ReactNode;
-  statusLabel: string;
-  statusColor: string;
+  statusLabel?: string;
+  statusColor?: string;
   statusBg?: string;
   selected?: boolean;
   /** Hidden or dismissed — still readable, visibly inactive. */
@@ -187,7 +187,7 @@ export interface FindingCardProps {
 export const FindingCard: React.FC<FindingCardProps> = ({
   actions,
   statusLabel,
-  statusColor,
+  statusColor = "var(--text-muted)",
   statusBg,
   selected = false,
   dimmed = false,
@@ -213,7 +213,7 @@ export const FindingCard: React.FC<FindingCardProps> = ({
       containerType: "inline-size",
     }}
   >
-    {/* Header with actions and status badge */}
+    {/* Header with actions and optional status badge */}
     <div
       style={{
         display: "flex",
@@ -235,23 +235,25 @@ export const FindingCard: React.FC<FindingCardProps> = ({
       >
         {actions}
       </div>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          fontSize: "0.62rem",
-          fontWeight: 700,
-          padding: "2px 7px",
-          borderRadius: "999px",
-          color: statusColor,
-          background: statusBg ?? `${statusColor}18`,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          flexShrink: 0,
-        }}
-      >
-        {statusLabel}
-      </span>
+      {statusLabel && (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            fontSize: "0.62rem",
+            fontWeight: 700,
+            padding: "2px 7px",
+            borderRadius: "999px",
+            color: statusColor,
+            background: statusBg ?? `${statusColor}18`,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            flexShrink: 0,
+          }}
+        >
+          {statusLabel}
+        </span>
+      )}
     </div>
 
     {children}

@@ -1,4 +1,4 @@
-import { markerUi, markerStyle } from './markerStyles';
+import { markerUi } from './markerStyles';
 import { ChecklistSection } from './ChecklistSection';
 import { ComparisonGridStyles, ComparisonValues, FindingCard } from './FindingCard';
 import { useThemeStore } from '../../stores/themeStore';
@@ -101,10 +101,6 @@ export const ManualMarkingList: React.FC = () => {
   const totalCount = markings.length + annotations.length;
   const canSubmit = Boolean(manualSessionId) && totalCount > 0 && !submitting && !isSubmitted;
 
-  const matchedCount = markings.filter((m) => m.status === 'MATCHED').length;
-  const changedCount = markings.filter((m) => m.status === 'CHANGED' || m.status === 'MISMATCHED').length;
-  const diffCount = markings.filter((m) => m.status === 'ADDED' || m.status === 'REMOVED').length;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div
@@ -137,55 +133,6 @@ export const ManualMarkingList: React.FC = () => {
             </div>
           </div>
 
-          {totalCount > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {matchedCount > 0 && (
-                <span
-                  title={`${matchedCount} Matched`}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: 999,
-                    color: '#10b981',
-                    background: 'rgba(16,185,129,0.12)',
-                  }}
-                >
-                  ✓ {matchedCount}
-                </span>
-              )}
-              {changedCount > 0 && (
-                <span
-                  title={`${changedCount} Changed / Mismatched`}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: 999,
-                    color: '#ff6b00',
-                    background: 'rgba(255,107,0,0.12)',
-                  }}
-                >
-                  ⚠ {changedCount}
-                </span>
-              )}
-              {diffCount > 0 && (
-                <span
-                  title={`${diffCount} Added / Removed`}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: '2px 6px',
-                    borderRadius: 999,
-                    color: '#a855f7',
-                    background: 'rgba(168,85,247,0.12)',
-                  }}
-                >
-                  ± {diffCount}
-                </span>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -369,48 +316,48 @@ export const ManualMarkingList: React.FC = () => {
                   key={ann.id}
                   statusLabel={badgeLabel}
                   statusColor={theme === 'hc-light' ? '#b91c1c' : '#ef4444'}
-                actions={
-                  <button
-                    type="button"
-                    title="Delete annotation"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteAnnotationById(ann.id);
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                      fontSize: '0.68rem',
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      padding: '1px 4px',
-                      borderRadius: '3px',
-                      transition: 'color 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-                  >
-                    <Trash2 size={12} />
-                    <span>Remove</span>
-                  </button>
-                }
-              >
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
-                  {ann.content || 'Annotation Pin'}
-                </div>
-                {ann.coordinates && (
-                  <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                    CAD Pos: ({Math.round(ann.coordinates[0])}, {Math.round(ann.coordinates[1])})
+                  actions={
+                    <button
+                      type="button"
+                      title="Delete annotation"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAnnotationById(ann.id);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        transition: 'color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                    >
+                      <Trash2 size={12} />
+                      <span>Remove</span>
+                    </button>
+                  }
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
+                    {ann.content || 'Annotation Pin'}
                   </div>
-                )}
-              </FindingCard>
-            );
-          })}
-        </ChecklistSection>
+                  {ann.coordinates && (
+                    <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                      CAD Pos: ({Math.round(ann.coordinates[0])}, {Math.round(ann.coordinates[1])})
+                    </div>
+                  )}
+                </FindingCard>
+              );
+            })}
+          </ChecklistSection>
         )}
 
         {CATEGORY_KEYS.map((key) => {
@@ -439,31 +386,13 @@ export const ManualMarkingList: React.FC = () => {
           const featureItems = resolved.some((r) => r.feature === OTHER_FEATURE_KEY)
             ? getTaxonomyWithOther(key)
             : (COMPARISON_TAXONOMY[key] ?? []);
-          const isLight = theme === 'hc-light';
           const hasRows = rows.length > 0;
-          const hasChanged = rows.some((m) => m.status !== 'MATCHED');
-          const allMatched = hasRows && !hasChanged;
-
-          let statusLabel = undefined;
-          let sectionColor = 'var(--text-muted)';
-          if (hasChanged) {
-            const discCount = rows.filter((m) => m.status !== 'MATCHED').length;
-            statusLabel = `${discCount} changed`;
-            sectionColor = '#ff6b00';
-          } else if (hasRows) {
-            statusLabel = `${rows.length} checked`;
-            sectionColor = markerUi('MATCHED', isLight).color;
-          }
-
           const isCatExpanded = expanded[key] ?? (hasRows || key === 'drawing_views');
 
           return (
             <ChecklistSection
               key={key}
               label={categoryLabel(key)}
-              statusLabel={statusLabel}
-              statusColor={sectionColor}
-              statusIsMatched={allMatched}
               expanded={isCatExpanded}
               onToggle={() =>
                 setExpanded((prev) => ({ ...prev, [key]: !isCatExpanded }))
@@ -480,15 +409,7 @@ export const ManualMarkingList: React.FC = () => {
                 {featureItems.map((feat, idx) => {
                   const featRows = resolved.filter((r) => r.feature === feat.key).map((r) => r.m);
                   const featHasRows = featRows.length > 0;
-                  const featHasChanged = featRows.some((m) => m.status !== 'MATCHED');
-                  const featAllMatched = featHasRows && !featHasChanged;
                   const isLast = idx === featureItems.length - 1;
-
-                  const featPillColor = featHasChanged
-                    ? '#ff6b00'
-                    : featAllMatched
-                    ? markerUi('MATCHED', isLight).color
-                    : 'var(--text-muted)';
 
                   const featExpandedKey = `${key}_${feat.key}`;
                   const isFeatExpanded = expanded[featExpandedKey] ?? featHasRows;
@@ -520,45 +441,8 @@ export const ManualMarkingList: React.FC = () => {
                           transition: 'background 0.15s ease',
                         }}
                       >
-                        {/* Left: subtle status indicator dot + label */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-                          {featHasChanged ? (
-                            <span
-                              title="Discrepancy recorded"
-                              style={{
-                                width: 7,
-                                height: 7,
-                                borderRadius: '50%',
-                                background: '#ff6b00',
-                                boxShadow: '0 0 5px rgba(255, 107, 0, 0.7)',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : featAllMatched ? (
-                            <span
-                              title="All matched"
-                              style={{
-                                width: 7,
-                                height: 7,
-                                borderRadius: '50%',
-                                background: '#10b981',
-                                boxShadow: '0 0 5px rgba(16, 185, 129, 0.7)',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : (
-                            <span
-                              title="Pending"
-                              style={{
-                                width: 7,
-                                height: 7,
-                                borderRadius: '50%',
-                                border: '1.5px solid var(--text-muted)',
-                                opacity: 0.35,
-                                flexShrink: 0,
-                              }}
-                            />
-                          )}
+                        {/* Left: clean label */}
+                        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: 1 }}>
                           <span
                             style={{
                               fontSize: 11,
@@ -573,30 +457,14 @@ export const ManualMarkingList: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Right: compact status pill or subtle pending */}
+                        {/* Right: chevron when items exist, or subtle pending */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                           {featHasRows ? (
-                            <>
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  color: featPillColor,
-                                  background: `${featPillColor}18`,
-                                  padding: '1px 6px',
-                                  borderRadius: 999,
-                                }}
-                              >
-                                {featHasChanged
-                                  ? `${featRows.filter((m) => m.status !== 'MATCHED').length} changed`
-                                  : `✓ ${featRows.length}`}
-                              </span>
-                              {isFeatExpanded ? (
-                                <ChevronDown size={12} color="var(--text-muted)" />
-                              ) : (
-                                <ChevronRight size={12} color="var(--text-muted)" />
-                              )}
-                            </>
+                            isFeatExpanded ? (
+                              <ChevronDown size={12} color="var(--text-muted)" />
+                            ) : (
+                              <ChevronRight size={12} color="var(--text-muted)" />
+                            )
                           ) : (
                             <span
                               style={{
@@ -625,15 +493,9 @@ export const ManualMarkingList: React.FC = () => {
                           }}
                         >
                           {featRows.map((m) => {
-                            const { color: statusColor, background: statusBg } = markerUi(m.status, isLight);
-                            const glyph = m.status === 'MISMATCHED' ? '✕' : (markerStyle(m.status)?.glyph || '✓');
-                            const iconBadge = `${glyph}${m.is_bulk ? ' · bulk' : ''}`;
                             return (
                               <FindingCard
                                 key={m.id}
-                                statusLabel={iconBadge}
-                                statusColor={statusColor}
-                                statusBg={statusBg}
                                 actions={
                                   <button
                                     type="button"
@@ -702,7 +564,7 @@ export const ManualMarkingList: React.FC = () => {
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: isExporting ? 'wait' : 'pointer',
-                background: 'rgba(0, 229, 255, 0.15)',
+                background: 'transparent',
                 border: '1.5px solid var(--accent-cyan)',
                 color: 'var(--accent-cyan)',
                 display: 'flex',

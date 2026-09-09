@@ -30,8 +30,8 @@ const NavTab: React.FC<NavTabProps> = ({ navKey, label, icon: Icon, isActive, ac
     tabIndex={0}
     onClick={() => onSelect(navKey)}
     className={`flex items-center gap-1.5 h-full px-2 py-0.5 rounded-sm text-xs font-semibold transition-all duration-150 shrink-0 cursor-pointer ${isActive
-        ? "text-text-primary font-bold bg-bg-card shadow-xs border border-border-color"
-        : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
+      ? "text-text-primary font-bold bg-bg-card shadow-xs border border-border-color"
+      : "text-text-muted hover:text-text-primary hover:bg-sidebar-item-hover"
       }`}
   >
     <Icon size={13} className={`transition-transform duration-200 shrink-0 ${isActive ? `${activeColor} scale-110` : ""}`} />
@@ -181,8 +181,8 @@ export const AppHeader: React.FC = () => {
                     title="Change Layout"
                     onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
                     className={`flex p-1 rounded-md border transition-all duration-200 cursor-pointer ${isLayoutMenuOpen
-                        ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30"
-                        : "text-text-muted border-border-color hover:text-text-primary hover:bg-sidebar-item-hover"
+                      ? "text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30"
+                      : "text-text-muted border-border-color hover:text-text-primary hover:bg-sidebar-item-hover"
                       }`}
                   >
                     {getActiveLayoutIcon()}
@@ -222,10 +222,10 @@ export const AppHeader: React.FC = () => {
                   onClick={() => setIsUpgradeModalOpen(true)}
                   title="MongoDB Atlas Cluster Storage (Admin View) — Click to view capacity & upgrade details"
                   className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all duration-150 cursor-pointer ${dbStatus.storage.is_warning
-                      ? "bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25 animate-pulse"
-                      : dbStatus.mode === "cloud_primary"
-                        ? "bg-amber-500/10 border-amber-500/25 text-amber-300 hover:bg-amber-500/20"
-                        : "bg-emerald-500/10 border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/20"
+                    ? "bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25 animate-pulse"
+                    : dbStatus.mode === "cloud_primary"
+                      ? "bg-amber-500/10 border-amber-500/25 text-amber-300 hover:bg-amber-500/20"
+                      : "bg-emerald-500/10 border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/20"
                     }`}
                 >
                   <Database size={12} className={dbStatus.storage.is_warning ? "text-rose-400" : "text-amber-400"} />
