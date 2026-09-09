@@ -492,31 +492,20 @@ def test_uncaptured_sides_are_reported(tmp_path):
 
 #: Pairs known to be missing their captured title-block OCR reading, with why.
 #:
-#: `M745204N01` was exported when `storage/cache/` held no reading for either side, and none is
-#: recoverable now — `_find_ocr_reading` misses by drawing id and by file hash. Capturing it means
-#: running a comparison to MAKE the reading, which is a live Gemini call per side, so it is an
-#: owner's decision rather than something a test run can fix. Owner's call 2026-08-25: leave it,
-#: capture it by hand later.
+#: A real exposure, not a formality: `generate_deterministic_candidates` calls Gemini on a
+#: title-block OCR cache miss, so an eval run over such a pair breaks the "zero network calls"
+#: exit criterion and scores its title-block findings differently offline than in the app.
 #:
-#: This is a real exposure, not a formality. `generate_deterministic_candidates` calls
-#: Gemini on a title-block OCR cache miss, so an eval run over this pair breaks the "zero network
-#: calls" exit criterion and scores its title-block findings differently offline than in the app.
-#:
-#: Empty this set the moment the reading is captured. The `xfail` below is strict, so the
-#: suite fails on the day it starts passing — which is the reminder, and is deliberate: a standing
-#: allowlist is a place for new breakage to hide.
-#:
-#: M745204N01 left the set on 2026-09-09: its reading was captured in one batched Gemini call,
-#: cropped from a live re-upload of the same file bytes after checking that its `render_bounds`
-#: matched the frozen payload's. That route is the one to copy.
-#:
-#: M745200N01 cannot be captured by any route. Both its source DXFs are gone from
+#: `M745200N01` cannot be captured by any route. Both its source DXFs are gone from
 #: `storage/uploads`, so there is no image to crop: `/reextract` answers 422 and the renderer has
-#: nothing to render. It stays here until the two files are re-uploaded, and until then its
-#: title-block findings come from spatial heuristics rather than a reading -- it is also the
-#: corpus's only A2 sheet, so that category is the least like the rest on exactly the pair that
-#: cannot be fixed. A third entry would be a pattern, and should be fixed by capturing, not
-#: appending.
+#: nothing to render. Its title-block findings come from spatial heuristics until those files are
+#: restored, and it is the corpus's only A2 sheet.
+#:
+#: `M745204N01` left the set on 2026-09-09, captured in one batched Gemini call from a live
+#: re-upload of the same file bytes after checking `render_bounds` matched the frozen payload's.
+#: That route is the one to copy. The `xfail` below is strict, so the suite fails the day this set
+#: empties -- a standing allowlist is a place for new breakage to hide, and a third entry would be
+#: a pattern to fix by capturing, not by appending.
 KNOWN_UNCAPTURED_OCR = {"M745200N01"}
 
 

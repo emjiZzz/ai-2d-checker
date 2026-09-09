@@ -3,8 +3,8 @@ title: AI Maturity Status
 type: status-ledger
 tags: [status, ledger, agent-guide, roadmap, ai-architecture]
 status: active
-current_rung: 0
-rung_evidence: none
+current_rung: 1
+rung_evidence: tests/fixtures/eval/baseline-human-v54.json
 rung_scale: ADR-007 (re-scoped 2026-08-07; rungs are no longer the ADR-003 LLM ladder)
 date: 2026-08-07
 verified-against: cache v49. `baseline-v48.json` (TEMPLATED — hand-aligned zones applied) and `baseline-v48-detection.json` (SHIPPING — zones detected; F1 0.9231 vs 0.8367) remain the published artifacts, both regenerable from committed tooling via `tools/eval.py --no-templates`, every baseline carrying a `zone_templates: pinned|detected` stamp. ⚠ **A full run no longer reproduces them, by design** — the corpus gained its first human pairs on 2026-08-17. They reproduce exactly under `--provenance mutation` (P 0.9796 / R 0.8727 / F1 0.9231), which also confirms the v49 cache bump inert on the mutation corpus. 36 mutation pairs, **8 labelled human pairs** as of 2026-09-09 (9 registered, 1 held out; annotators imrysn, engineer, Raysan — measure with `tools/eval_corpus.py status`, do not quote this line). `cache_manager.py` reads **v54**; no baseline has been re-verified in this ledger since v49.
@@ -122,9 +122,9 @@ Task: <what you want done>
 rung 0          rung 1        rung 2         rung 3              rung 4
 pre-measure → Measured  →  Calibrated  →  Retrieval-augmented → Learned matching
   ▲            (≥8 human     (Stage 0.5     (stored human        (Stage 3 beats the
-  │             pairs         optima on      decisions move       cascade on held-out
-  │             labelled)     human pairs)   output, measured)    human pairs)
-  └── we are here
+               pairs         optima on      decisions move       cascade on held-out
+               labelled)     human pairs)   output, measured)    human pairs)
+                 └── we are here (2026-09-09)
 ```
 
 **Rung 3's "retrieval" means retrieving prior human decisions** — the learned-dismissal flywheel
@@ -136,10 +136,30 @@ ADR-007's consequences.
 
 ---
 
-## 📍 Current rung: **0 — pre-measurement**
+## 📍 Current rung: **1 — measured**
 
-`rung_evidence:` **none** — and under the rule above, that is exactly why the rung cannot be claimed
-higher. Rung 1 now means *per-category precision/recall/F1 over **human-labelled** pairs*, and the
+`rung_evidence:` **`tests/fixtures/eval/baseline-human-v54.json`** — claimed 2026-09-09, owner's
+call, on ADR-007's stated criterion: per-category precision/recall/F1 over ≥8 human-labelled pairs,
+published as a baseline. The figure is **P 0.44 / R 0.71 / F1 0.54** templated over 8 pairs and 94
+findings, with `-detection.json` beside it at 0.39 / 0.65 / 0.48, both offline and reproducible.
+
+> [!IMPORTANT] What was weighed, so the claim can be argued with rather than inherited
+> Against the claim: Stage 0b's exit also requires **3 pairs held out** and only 1 is, so Stage 0
+> is not complete and the box stays unticked. For the claim: a held-out pair exists to stop you
+> grading yourself on what you tuned against, and **nothing has been tuned against these eight**
+> — the engine predates the corpus. The shortfall therefore blocks **Stage 0.5**, where constants
+> start moving, and it is recorded there. Rung 1 asks only whether an honest measurement exists.
+> It does, it is committed, and anyone can re-run it.
+>
+> The number is a floor, not a grade: n=8, 94 findings, wide error bars, and `M745200N01` scored
+> without a title-block reading it can never get. Recall 0.71 against precision 0.44 means the
+> engine finds most of what a checker marks and buries it in about twice as much noise.
+
+The old reading of this section is kept below, because the argument for staying at 0 is the same
+argument that makes the claim checkable.
+
+`rung_evidence` was **none** — and under the rule above, that was exactly why the rung could not be
+claimed higher. Rung 1 now means *per-category precision/recall/F1 over **human-labelled** pairs*, and the
 corpus is **8 / 8 labelled, 9 registered, 1 of 3 held out** as of 2026-09-09 (`tools/eval_corpus.py status` — measure it, do not
 quote this line). A baseline exists (`baseline-v43.json`) but every number in it comes from mutation
 pairs, which ADR-007 explicitly excludes as rung-1 evidence.
@@ -214,9 +234,14 @@ Not everything is a gap, and the plan is built on these:
   can be run offline, in-process, at zero cost.
 - ~~**A proto-agentic pattern.** `hybrid_orchestrator.py`'s dual-generator + `crop_verifier.py`
   adjudicator is the right shape for rung 4 — it needs generalising, not replacing.~~
-  **Deleted 2026-08-07, [[ADR-006 Removing the Three AI Comparison Methods]].** Rung 4 remains
-  the stated end goal, so this is a real cost and is recorded as one: the pattern is now
-  recoverable only from git
+  **Deleted 2026-08-07, [[ADR-006 Removing the Three AI Comparison Methods]].** ⚠ The clause
+  that used to sit here — "rung 4 remains the stated end goal" — was written under ADR-003's
+  ladder, where rung 4 meant *Agentic & Adaptive*. Corrected 2026-09-09: under
+  [[ADR-007 Re-scoping the Maturity Ladder]] rung 4 means **Learned matching**, a trained matcher
+  beating the calibrated cascade on held-out human pairs, and ADR-007 says in as many words that
+  rung 4 no longer means "agent loop". The agent loop is Stage 4 on the board below and it is
+  **DROPPED**, not deferred. The deletion is still a real cost and is still recorded as one — the
+  pattern is now recoverable only from git
   (`git log --diff-filter=D -- services/backend/infrastructure/audit/comparison/hybrid_orchestrator.py`).
   Worth remembering that `hybrid` **could not complete a single run** until the Stage 0a
   `NameError` fix, so what is preserved is a shape, never a working system.
@@ -956,6 +981,45 @@ output today.*
 leftover of a dropped stage, it is **rung 3's first increment**. "Retrieval" here means
 retrieving prior human decisions, which is what this always was.*
 
+> [!IMPORTANT] The shape rung 3 is being built to, stated by the owner 2026-09-09
+> Prototype mode exists to gather real human pair markings. Those markings then serve the
+> comparison two ways: **a location prior** — a field is always marked in the same place, so
+> compare the right cell against the right cell — and **a relevance test** — if the engine
+> reports something no human-labelled pair has ever marked, it is probably not a pair worth
+> comparing. This is [[ADR-014 The Ground Truth Verification Pass]]'s shape in the owner's words
+> and it is recorded here so it is not re-derived.
+>
+> **The premise is measured, not assumed.** `tools/title_block_anchors.py` over 270 observations
+> from 12 sheet pairs and 2 paper sizes, as offsets from each sheet edge in drawing units:
+>
+> | feature | n | anchor | within-size spread |
+> | :--- | ---: | :--- | :--- |
+> | `title_block` part_number / unit_number / quantity / stock_quantity | 13 each | left/top | **0.00 × 0.00** |
+> | `title_block` scale / drawn / designed / machine_name / line_name / job_number | 10–11 each | right/bottom | **0.00 × 0.00** |
+> | `bill_of_materials` material_weight | 28 | right/top | 14.00 × 7.83 |
+> | `notes_section` standard_notes | 41 | left/top | **7.34 × 12.98** |
+>
+> So "always in the same place" is **true for the title block** — zero spread within a sheet size,
+> across two annotators — and **false for notes and half the BOM**. Fractions of `render_bounds`
+> manufacture variance where the absolute offset is exactly zero, which is why they were rejected
+> on 2026-09-08.
+>
+> **Where that lands the design.** The prior is strongest where the engine already scores best
+> (`title_block` P 0.82 / R 1.00) and weakest where the noise is (`drawing_views` P 0.17 on 78
+> predictions for 21 findings, and drawing views are the region where content legitimately
+> moves). So the payoff is **field-level pairing** — compare the scale cell against the scale
+> cell — rather than filtering. Mis-pairing was the loudest complaint in the deleted correction
+> corpus, and this addresses it without a trained model: a lookup, not a learned component.
+>
+> ⚠ **The relevance test is the false-negative direction and must be built as two measurements.**
+> A location nobody has marked may be a location where nothing has changed yet; absence is weak
+> evidence at 12 pairs. ADR-014 decision 2 already separates **verification** (was this finding
+> right?) from **omission** (a human marked X — did we report it at all?) with separate metrics,
+> because one combined score can raise precision while destroying recall and read as progress.
+> The owner's rule is the verification half; the omission half is what protects recall, and it
+> reads the same markings from the other direction. Off by default until both are measured on
+> held-out pairs — which is also why rung 3 cannot be scored on the markings it retrieves from.
+
 - [x] 1a — learned-dismissal patterns made structured (`exact` / `normalized` / `prefix`)
       *(2026-08-07 — `LearnedDismissal{pattern, category, match_mode}` in `vault_sync`, with
       `normalized` at ≥3 chars and `exact` below, and each zone pool receiving **only its own
@@ -991,7 +1055,19 @@ retrieving prior human decisions, which is what this always was.*
 > fit quality. Learned feature classifier beats rules on ≥4 feature types, or is documented as
 > not-yet-worth-it.
 
-### Stage 3 — Learned matcher → **rung 3: End-to-End Trainable**
+### Stage 3 — Learned matcher → **rung 4: Learned matching**
+
+*Heading corrected 2026-09-09: it read "rung 3: End-to-End Trainable", an ADR-003 name that
+[[ADR-007 Re-scoping the Maturity Ladder]] retired. Stage 3 exits at rung 4.*
+
+> [!WARNING] Where this stage's training data comes from is unanswered, and [[ADR-015 Ground Truth First]] does not answer it.
+> A matcher learns from `mispaired_missing_counterpart` / `mispaired_wrong_match` — corrections
+> on findings the engine reported. Prototype mode forbids engine output, so those verbs cannot be
+> produced there, and the 58 that existed were deleted with the rest of the AI-mode corpus on
+> 2026-09-07. The matcher corpus is **zero rows** today. Not urgent — rung 4 is three gates out
+> and the near-term work is rungs 1 to 3 — but written down so it is not discovered at the point
+> of building: rung 4 needs a second collection mode, engineers correcting a running engine,
+> switched on deliberately after calibration.
 - [ ] `learned_matcher.py` — pairwise scoring + assignment, trained on free mutation labels
 - [ ] Learned overlay broadened from 3 to 6 categories
 - [ ] Shipped behind `ComparisonParams.matcher`, defaulting to `threshold`
@@ -1127,6 +1203,8 @@ explicitly that it is unmeasured — **never omit it.**
 | 2026-09-09 | **The July survey retired, and the client's two undocumented surfaces written down.** [[00 - AI Agent Navigation & System Gap Analysis]] is `status: retired`: it was the standing answer to "what is the state of the system" and `CLAUDE.md` sent every agent to it, while its figures come from 4 drawings at cache v17 and only section 4 was ever re-verified. Kept in place — 11 notes link to it, and the gap it named first is still the headline gap — with a header saying which parts to distrust and pointing here instead. Two notes added under `05 - Desktop Frontend/`: [[Workspace Store Slices & the Ingestion Resume Path]] (the eight slices, the pair-identity guard that deletes the drawing just ingested, and the 2026-09-08 resume path that stopped a still-extracting drawing being mounted as finished) and [[Rooms and Upload Surfaces]] (fixed-page room grid, and an upload zone whose picker now offers only what its validator accepts). `Persistent Sheet Zone Templates.md` deleted: 0 bytes since 2026-08-06, and its subject is already [[Editable Zone Box Template Resolution]]. | — | **Documentation only; no code path touched.** Every note in the vault is now indexed by the MOC and every wiki link resolves, both measured rather than asserted. The lint observation in the store note is measured too: `npx eslint src/stores/roomStore.ts` reports 10 direct `useWorkspaceStore.setState` calls, 4 of them in the resume path. | none |
 | 2026-09-09 | **The operating direction written down as an ADR, five weeks after it started directing the work.** [[ADR-015 Ground Truth First]], accepted. The 2026-09-07 reset set the direction — ground truth comes from human markings made with the engine switched off, and measurement precedes any learned component — and it existed only as the phrase "owner's call" inside a work-log row while the vault's stated direction still described grounding a Gemini finding on an entity handle. The ADR records the structural argument rather than the preference: `AuditFeedbackDocument` requires `original_status` and all seven correction verbs override a finding the engine produced, so the correction stores can measure how often the engine is wrong about what it found and can never measure what it missed. Consequences named: the verdict head's old corpus is not coming back, held-out is the binding half of Stage 0b, and [[ADR-014 The Ground Truth Verification Pass]] stays `proposed` because it must be measured on held-out pairs that do not exist yet. | — | **A decision recorded, not a change made.** No code path, no corpus and no rung moved; `current_rung` stays 0 and `rung_evidence` stays `none`. What it changes is that the next session inherits the direction instead of inferring it from a deleted collection. | none |
 | 2026-09-09 | **The first measurement over eight human pairs, and the title-block reading captured for the pair that could still get one.** `M745204N01`'s reading was made in one batched Gemini call: its manifest drawing ids are dead, so the crop came from a live re-upload of the same file bytes, after asserting that row's `render_bounds` equalled the frozen payload's — a mismatched frame would have OCR'd the wrong region and frozen the result into the corpus. `KNOWN_UNCAPTURED_OCR` drops to one. `M745200N01` cannot be captured by any route: both its source DXFs are gone from `storage/uploads`, so `/reextract` answers 422 and the renderer has nothing to render; the strict `xfail` now says that instead of "costs a call". Also captured the `aspect-1.384` zone template, so `M745200N01` scores against the boxes the app shows rather than detection. | 0b | **The figure exists: over 8 pairs and 94 findings, templated **P 0.44 / R 0.71 / F1 0.54**, macro 0.55, attribution **0.96 (64/67)**; detection-only **P 0.39 / R 0.65 / F1 0.48**, macro 0.38.** Published as `baseline-human-v54.json` and `-detection.json`, offline, zero non-local sockets enforced. Per category the shape is uneven and worth naming: `title_block` R **1.00** (37/37), `drawing_views` P **0.17** on 78 predictions for 21 findings, `isometric_view` **absent** — 0 predicted for 2 expected. 10 `CHANGED` reported as `ADDED`. `current_rung` stays **0** and `rung_evidence` stays `none` pending the owner's call: the ladder's rung 1 wording is met, Stage 0b's held-out clause is not. | none — read at v54 |
+| 2026-09-09 | **Rung 1 claimed, owner's call, with the argument against it kept beside the claim.** `current_rung: 1`, `rung_evidence: tests/fixtures/eval/baseline-human-v54.json`. ADR-007's criterion is a published baseline over ≥8 human-labelled pairs and that now exists; Stage 0b's held-out clause is unmet at 1 of 3, and the reasoning for claiming anyway is recorded rather than assumed — a held-out pair exists to stop you grading yourself on what you tuned against, and nothing has been tuned against these eight, so the shortfall blocks **Stage 0.5** rather than rung 1. Two guards re-scoped with the claim: `test_rung_1_requires_real_retrieval` asserted a retrieval stack for a rung that under ADR-007 means `Measured` and says nothing about retrieval — it is now `test_rung_3_requires_real_retrieval`, gated where the retrieval claim actually lives — and a new `test_rung_1_evidence_is_a_measurement_over_human_pairs` checks the corpus holds ≥8 labelled human pairs, because the baseline artifact carries no provenance stamp and a mutation baseline would pass a file-exists check. Also corrected a contradiction the owner's question surfaced: this ledger still said "rung 4 remains the stated end goal" from the ADR-003 ladder, where rung 4 meant agentic. | 0b → rung 1 | **First rung movement in this project's history, and it is a claim about evidence existing, not about the engine improving.** The engine is unchanged; what changed is that its behaviour is now measured against human judgement and the number is committed. Stage 0b stays unticked on held-out. | none |
+| 2026-09-09 | **Rung 3's shape recorded from the owner, and its premise measured rather than assumed.** The markings serve the comparison two ways — a location prior (compare the right cell against the right cell) and a relevance test (a finding no human pair has ever marked is probably not worth reporting) — which is [[ADR-014 The Ground Truth Verification Pass]]'s shape in the owner's words. Written into Stage 1 so it is not re-derived, with the caution that the relevance test is the false-negative direction and ADR-014's split between verification and omission is what keeps it honest. Also corrected Stage 3's heading, which still carried ADR-003's retired "rung 3: End-to-End Trainable", and recorded that the matcher's training verbs cannot be produced in prototype mode at all. | 1 → 3 (planning) | **Measured with `tools/title_block_anchors.py`: 270 observations, 12 pairs, 2 paper sizes.** Within a sheet size the title-block fields sit at **0.00 × 0.00** drawing units of spread (11 fields, n=10–13 each, two annotators); `bill_of_materials` material_weight is 14.00 × 7.83 and `notes_section` standard_notes **7.34 × 12.98**. So the prior is real for the title block and absent for notes — which is the opposite of where the noise is measured to be (`drawing_views` P 0.17). The payoff is field-level pairing, not filtering, and it needs no trained model: it is a lookup. | none |
 
 ---
 

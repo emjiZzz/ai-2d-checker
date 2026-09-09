@@ -136,27 +136,63 @@ def test_stage_board_covers_every_planned_stage(ledger: str) -> None:
     )
 
 
-def test_rung_1_requires_real_retrieval(meta: dict[str, str]) -> None:
-    """Rung 1 claims Basic RAG. The fake stack must be gone and a real one present."""
+def test_rung_1_evidence_is_a_measurement_over_human_pairs(meta: dict[str, str]) -> None:
+    """Rung 1 is `Measured`: a published baseline over >=8 human-labelled pairs (ADR-007).
+
+    The artifact carries no provenance stamp, so a mutation baseline pointed at this field would
+    satisfy a file-exists check. The substantive half of the claim is therefore checked against
+    the corpus: the pairs the rung rests on must actually be human and labelled.
+    """
     if int(meta["current_rung"]) < 1:
-        pytest.skip("Below rung 1; retrieval work not yet claimed.")
+        pytest.skip("Below rung 1; no measurement claimed.")
+
+    import json
+
+    from services.backend.infrastructure.eval.corpus import default_fixtures_dir, load_corpus
+
+    evidence = json.loads((REPO_ROOT / meta["rung_evidence"].strip()).read_text(encoding="utf-8"))
+    assert evidence.get("pairs", 0) >= 8, (
+        f"rung_evidence scores {evidence.get('pairs')} pair(s); ADR-007 requires >=8."
+    )
+
+    corpus = load_corpus(fixtures_dir=default_fixtures_dir(), allow_stale_guideline=True)
+    human_labelled = [
+        pair for pair in corpus.pairs
+        if getattr(pair, "provenance", "") == "human" and pair.labels is not None
+    ]
+    assert len(human_labelled) >= 8, (
+        f"current_rung >= 1 but the corpus holds {len(human_labelled)} labelled human pair(s). "
+        "Mutation pairs are excluded from rung-1 evidence by ADR-007, so the rung is not "
+        "supported by the corpus it claims to rest on."
+    )
+
+
+def test_rung_3_requires_real_retrieval(meta: dict[str, str]) -> None:
+    """Rung 3 is `Retrieval-augmented`. The fake stack must be gone and a real one present.
+
+    Gated on rung 3 rather than rung 1 since ADR-007: rung 1 means `Measured` and says nothing
+    about retrieval. The assertions are unchanged -- they were always about whether a retrieval
+    claim is real, and only the rung that makes the claim moved.
+    """
+    if int(meta["current_rung"]) < 3:
+        pytest.skip("Below rung 3; retrieval work not yet claimed.")
 
     fake_embeddings = BACKEND / "infrastructure" / "ai" / "embeddings" / "local_embedding_model.py"
     assert not fake_embeddings.exists(), (
-        "current_rung >= 1 claims real retrieval, but the fake embedding model still exists at "
+        "current_rung >= 3 claims real retrieval, but the fake embedding model still exists at "
         f"{fake_embeddings}. It returns SHA-256-seeded Gaussian noise with hardcoded English "
         "keyword bumps — it is not an embedding, so the rung claim is false while it is wired in."
     )
 
     fake_store = BACKEND / "infrastructure" / "ai" / "vectorstore" / "lancedb_manager.py"
     assert not fake_store.exists(), (
-        f"current_rung >= 1 but the fake vector store still exists at {fake_store} "
+        f"current_rung >= 3 but the fake vector store still exists at {fake_store} "
         "(it is a JSON file plus a numpy loop, not LanceDB)."
     )
 
     retrieval_pkg = BACKEND / "infrastructure" / "retrieval"
     assert retrieval_pkg.is_dir(), (
-        f"current_rung >= 1 but there is no retrieval package at {retrieval_pkg}."
+        f"current_rung >= 3 but there is no retrieval package at {retrieval_pkg}."
     )
 
 
