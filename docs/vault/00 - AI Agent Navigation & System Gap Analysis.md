@@ -2,13 +2,33 @@
 title: AI Agent Navigation & System Gap Analysis
 type: navigation-guide
 tags: [agent-guide, codebase-grounding, architecture, system-specs, gap-analysis]
-status: active
+status: retired 2026-09-09 — a point-in-time survey; [[00 - AI Maturity Status]] carries current state
 date: 2026-07-29
 verified-against: 4-drawing corpus (M7452A0N01 + M7452A1N01 pairs), cache v17
 partially-reverified: 2026-08-11 — section 4 (canvas rendering) only; the rest is still at cache v17 and predates ADR-006 through ADR-011
 ---
 
 # 🧭 AI Agent Navigation & System Gap Analysis
+
+> [!WARNING] Retired 2026-09-09. Read this for the gaps it names, not for the system it describes.
+> This note was written as the standing answer to "what is the state of the system", and
+> `CLAUDE.md` sent every agent here for it. It cannot hold that role: its numbers were measured
+> against **4 drawings and cache v17**, the tree is at **v54 with 56 drawings in
+> `storage/uploads`**, and only section 4 was ever re-verified (2026-08-11). Everything else
+> predates ADR-006 through ADR-011, the 2026-08-14 engine split, and the 2026-09-07 corpus reset.
+>
+> Current state lives in [[00 - AI Maturity Status]], which is measured on every change and
+> guarded by `tests/test_maturity_ledger.py`. Nothing is being deleted here — 11 notes link to
+> this one, and the analysis below is the record of what was true in July.
+>
+> **What survives the retirement:** the gap this note named first — that nothing measures whether
+> the engine catches what a human checker would flag — is still the headline gap, and it is now
+> tracked as Stage 0b rather than as prose. The ledger's corpus counts answer it.
+>
+> **What to distrust:** every figure, the test state, and the file inventory below. The comparison
+> engine was one 2049-line `orchestrator.py` when this was written and is now four modules
+> (`CLAUDE.md`, "Where the deterministic comparison engine lives"), and the inventory still names
+> modules that ADR-006 deleted.
 
 > **DIRECTIVE FOR ALL AI AGENTS**:
 > Every concept, schema, and rule in this Second Brain vault is derived directly from verified source files in `ai-2d-checker`. Do NOT guess variable names, file paths, or system behaviors without inspecting the authoritative source files listed below.

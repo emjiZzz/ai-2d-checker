@@ -87,7 +87,7 @@ Two stages, because content alone is not enough:
 
 Content cannot separate a note from the tolerance block's `必要な場合は、粗さ区分を記入のこと` —
 an instruction in identical form. That needs a zone veto, and the veto needs an order, so
-[[zone_ownership]] ranks zones by **whether they have a drawn border**.
+`zone_ownership.py` ranks zones by **whether they have a drawn border**.
 
 `title_upper_left` was ranked **above** `notes` on its 0.62 border ceiling. That was wrong, and the
 eval said so immediately: `notes_section` recall fell to **0.54**, because under detection the UL

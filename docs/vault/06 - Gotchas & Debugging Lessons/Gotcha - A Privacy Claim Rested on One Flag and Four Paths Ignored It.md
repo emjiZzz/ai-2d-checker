@@ -55,8 +55,8 @@ Both contradicting facts were already recorded here:
 
 - [[ADR-010 Grounded LLM Summarization of Comparison Results]] states plainly that
   `execute_title_block_ocr` *"already sends image crops of the customer's title block to Gemini on
-  a cache miss, today, with no flag"*, and says [[ADR-005 Local-Only Processing with Cloud
-  Licensing]] **needs a second amendment** covering it. That amendment was never written — until
+  a cache miss, today, with no flag"*, and says [[ADR-005 Local-Only Processing with Cloud Licensing]] **needs a second
+  amendment** covering it. That amendment was never written — until
   this note prompted it.
 - [[00 - AI Maturity Status]] records that the eval harness *"is **not** network-free: title-block
   OCR calls Gemini on a cache miss."*

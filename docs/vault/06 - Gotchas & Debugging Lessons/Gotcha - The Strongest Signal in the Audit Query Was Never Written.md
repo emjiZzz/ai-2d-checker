@@ -136,7 +136,7 @@ test that checked the code path would have passed against the broken version too
 - **Print what your system actually sends.** This survived code review, a docstring rewrite during
   R1, and an ADR — and died the first time somebody looked at nineteen queries in a column.
 - **An unmeasured path degrades silently and indefinitely.** The absent metric is not a separate
-  problem from this bug; it is the reason this bug is old. Corpus-widening ([[ADR-012]]) is what
+  problem from this bug; it is the reason this bug is old. Corpus-widening ([[ADR-012 Indexing Human Judgement as Retrieval Collections|ADR-012]]) is what
   makes the metric possible, and the metric is what would have caught this on day one.
 - **`dict.get(key, default)` on a dict you do not own is an assumption.** It reads as defensive and
   behaves as a silent branch-off. Where the key is load-bearing, assert it or log its absence.
