@@ -104,6 +104,14 @@ Task: <what you want done>
 
 ## 🎯 The goal
 
+> [!IMPORTANT] The direction is ground truth first — [[ADR-015 Ground Truth First]], accepted 2026-09-09
+> Ground truth comes from human markings made with the engine switched off, and measurement
+> precedes any learned component. The correction stores cannot hold a false negative, so they
+> cannot answer the question this ladder exists to answer; a Manual Check marking can. This was the
+> operating direction from the 2026-09-07 reset onward and was recorded only as "owner's call"
+> inside a work-log row until the ADR was written. It settles which corpus every rung above 0 is
+> measured on; it does not move a rung.
+
 > [!IMPORTANT] The rungs were re-scoped on 2026-08-07 — [[ADR-007 Re-scoping the Maturity Ladder]]
 > The ADR-003 ladder (`Basic RAG → Fine-Tuned RAG → End-to-End Trainable → Agentic & Adaptive`)
 > defined every rung by an **LLM** capability, and [[ADR-006 Removing the Three AI Comparison Methods]] deleted every LLM path. Rung 1 as written was unreachable, so the metric could only
@@ -240,8 +248,51 @@ Not everything is a gap, and the plan is built on these:
 > and the old rung 1's retrieval-recall@5 exit criterion is retired for good. No rung was
 > claimed — the corpus is still 0/8 labelled, which is the whole point.
 
-**Capture the two missing title-block OCR readings, then run the eval over all eight labelled
-pairs. — 2026-09-09.**
+**Done 2026-09-09 — the figure exists. The action is now the rung call, then held-out.**
+
+> [!IMPORTANT] The first measurement over eight human pairs, 94 findings, offline, cache v54
+> Published as `tests/fixtures/eval/baseline-human-v54.json` and `-detection.json`, both
+> reproducible with `tools/eval.py --provenance human [--no-templates]`, zero non-local sockets
+> enforced.
+>
+> | over 8 pairs, 94 findings | precision | recall | F1 | macro | attribution |
+> | :--- | :--- | :--- | :--- | :--- | :--- |
+> | templated | 0.44 (67/154) | **0.71 (67/94)** | 0.54 | 0.55 | 0.96 (64/67) |
+> | detection (`--no-templates`) | 0.39 (61/158) | **0.65 (61/94)** | 0.48 | 0.38 | — |
+>
+> Per category, templated: `title_block` **P 0.82 / R 1.00 (37/37)**, `notes_section`
+> 0.50 / 0.55, `bill_of_materials` 0.67 / 0.43, `drawing_views` **0.17 / 0.62**,
+> `isometric_view` **0 of 2 found, nothing predicted**. Matches: 17 handle, 46 text, 4 spatial.
+>
+> **What the numbers say, stated once and not argued.** Recall is 0.71 and precision is 0.44, so
+> the engine finds most of what a checker marks and reports roughly twice as much as it should.
+> `drawing_views` is where the noise lives — 78 predictions for 21 real findings — which is the
+> catch-all category behaving as the zone notes predict. `title_block` recall is perfect on the
+> corpus, and that is the category the OCR capture feeds. `isometric_view` is not a weak
+> category, it is an absent one. Status confusion is systematic rather than scattered: 10
+> `CHANGED` reported as `ADDED`, 1 as `REMOVED`.
+>
+> **Attribution 0.96 over 67 matched findings is the strongest non-tautological figure this
+> project has produced** — mutation attribution is derived from the same zone boxes the engine
+> uses and agrees by construction; this is not.
+>
+> ⚠ **`M745200N01` scored without a title-block reading and cannot get one.** Both its source
+> DXFs are gone from `storage/uploads`, so `/reextract` answers 422 and there is nothing to crop.
+> Its title-block findings come from spatial heuristics. It is also the corpus's only A2 sheet.
+> `M745204N01` was captured on 2026-09-09 in one batched Gemini call, cropped from a live
+> re-upload of the same bytes after checking `render_bounds` matched the frozen payload.
+
+**The rung call is the owner's, and it is a real question.** [[ADR-007 Re-scoping the Maturity
+Ladder]] defines rung 1 as per-category precision/recall/F1 over **≥8 human-labelled pairs**, and
+that now exists with an evidence artifact to cite. Stage 0b's exit criterion also requires **3
+pairs held out** and only 1 is. Under the ladder's own wording rung 1 is reached; under the stage
+board's wording Stage 0 is not complete. `current_rung` stays **0** until that is decided, because
+the evidence rule exists to stop a rung being claimed by an agent's reading of an ambiguous
+sentence.
+
+**Then held-out, which no amount of labelling closes.** The four sheets marked in prototype mode
+and registered nowhere are the only candidates; the identity question below still blocks counting
+them.
 
 > [!IMPORTANT] The annotation queue emptied on 2026-09-09. The action is the measurement now.
 > `M7452A1N01`, `M7452A2N01` and `M745200N01` were converted from prototype Manual Check sessions
@@ -1074,6 +1125,8 @@ explicitly that it is unmeasured — **never omit it.**
 | 2026-09-09 | **The harvest re-measured: 12 sheet pairs carry human markings, four of them sheets the corpus has never seen.** Against the live Atlas: **429 markings, 419 live, 10 retracted, 15 sessions**, 395 live rows carrying both addresses, every row `category_source: human`, annotators `Raysan` (403) and `MG` (16). By `(ref_sheet, rev_sheet)` that is **12 pairs**; by session drawing ids it is 15, and the gap is the finding — `M745204N01` and `M7452A0N01` were each marked twice through different `DrawingDocument` rows for the same sheet, which is the identity question the held-out rule still has open, now with data behind it. Four marked sheets are registered nowhere: `M745209N01R` (34 live), `M745211N01` (38), `M745213N01` (34), `M745214N01` (23). One pair's 8 markings name `deleted drawing <id>` on both sides and keep their category and text, which is the 2026-09-08 durability fix working on a real purge. Live status mix: 298 `MATCHED`, 97 `CHANGED`, 21 `ADDED`, 2 `MISMATCHED`, 1 `REMOVED`. | 0b | **Measurement only; this row moved nothing.** The four unregistered sheets are the first held-out candidates since 2026-08-06 and are **candidates, not pairs**: `audit_sessions` was purged on 2026-09-07 and no `gemini_comparison_*` entry survives on this disk, so "never compared" can no longer be looked up and has to be asserted from the build the room was opened in. Held-out stays **1 / 3**. | none |
 | 2026-09-09 | **A documentation pass against the running system, after the 2026-09-07 reset left four documents describing components that no longer exist.** Measured, then corrected: this ledger's Learned model row claimed a trained bundle (`label_status.py` reports 0 rows, 0 verdict labels, no live bundle, and `services/backend/storage/models/` is empty) and its Retrieval row claimed 2 learned dismissal patterns (`get_learned_dismissal_rules()` returns 0 across 0 categories); `CLAUDE.md` documented two un-reextractable PDF rows that the reset deleted (29 rows now, 28 at v10, one at v0, nothing skipped), pointed at the navigation note as "current state" when its own header says cache v17 and four drawings against today's v54 and 56, and did not name any of the eight ground-truth and label tools that the labelling route now runs on. Four wiki links resolved to no note and are repointed; the MOC gained a `09 - Learned Models` section, so 154 of 155 notes are indexed — the exception is an empty file, `Persistent Sheet Zone Templates.md`, committed 2026-08-06 with 0 bytes. | — | **Documentation only; no code path touched.** Backend suite 1620 passed / 5 skipped / 1 xfailed with `test_phase4_audit_pipeline.py` ignored; `tsc --noEmit` clean. ⚠ `vitest` is **not** green: four `RoomsView.test.tsx` pagination tests fail against the uncommitted `RoomsView.tsx`, which drops the Previous/Next controls the tests query by title. That is working-tree state, not a documentation finding. | none |
 | 2026-09-09 | **The July survey retired, and the client's two undocumented surfaces written down.** [[00 - AI Agent Navigation & System Gap Analysis]] is `status: retired`: it was the standing answer to "what is the state of the system" and `CLAUDE.md` sent every agent to it, while its figures come from 4 drawings at cache v17 and only section 4 was ever re-verified. Kept in place — 11 notes link to it, and the gap it named first is still the headline gap — with a header saying which parts to distrust and pointing here instead. Two notes added under `05 - Desktop Frontend/`: [[Workspace Store Slices & the Ingestion Resume Path]] (the eight slices, the pair-identity guard that deletes the drawing just ingested, and the 2026-09-08 resume path that stopped a still-extracting drawing being mounted as finished) and [[Rooms and Upload Surfaces]] (fixed-page room grid, and an upload zone whose picker now offers only what its validator accepts). `Persistent Sheet Zone Templates.md` deleted: 0 bytes since 2026-08-06, and its subject is already [[Editable Zone Box Template Resolution]]. | — | **Documentation only; no code path touched.** Every note in the vault is now indexed by the MOC and every wiki link resolves, both measured rather than asserted. The lint observation in the store note is measured too: `npx eslint src/stores/roomStore.ts` reports 10 direct `useWorkspaceStore.setState` calls, 4 of them in the resume path. | none |
+| 2026-09-09 | **The operating direction written down as an ADR, five weeks after it started directing the work.** [[ADR-015 Ground Truth First]], accepted. The 2026-09-07 reset set the direction — ground truth comes from human markings made with the engine switched off, and measurement precedes any learned component — and it existed only as the phrase "owner's call" inside a work-log row while the vault's stated direction still described grounding a Gemini finding on an entity handle. The ADR records the structural argument rather than the preference: `AuditFeedbackDocument` requires `original_status` and all seven correction verbs override a finding the engine produced, so the correction stores can measure how often the engine is wrong about what it found and can never measure what it missed. Consequences named: the verdict head's old corpus is not coming back, held-out is the binding half of Stage 0b, and [[ADR-014 The Ground Truth Verification Pass]] stays `proposed` because it must be measured on held-out pairs that do not exist yet. | — | **A decision recorded, not a change made.** No code path, no corpus and no rung moved; `current_rung` stays 0 and `rung_evidence` stays `none`. What it changes is that the next session inherits the direction instead of inferring it from a deleted collection. | none |
+| 2026-09-09 | **The first measurement over eight human pairs, and the title-block reading captured for the pair that could still get one.** `M745204N01`'s reading was made in one batched Gemini call: its manifest drawing ids are dead, so the crop came from a live re-upload of the same file bytes, after asserting that row's `render_bounds` equalled the frozen payload's — a mismatched frame would have OCR'd the wrong region and frozen the result into the corpus. `KNOWN_UNCAPTURED_OCR` drops to one. `M745200N01` cannot be captured by any route: both its source DXFs are gone from `storage/uploads`, so `/reextract` answers 422 and the renderer has nothing to render; the strict `xfail` now says that instead of "costs a call". Also captured the `aspect-1.384` zone template, so `M745200N01` scores against the boxes the app shows rather than detection. | 0b | **The figure exists: over 8 pairs and 94 findings, templated **P 0.44 / R 0.71 / F1 0.54**, macro 0.55, attribution **0.96 (64/67)**; detection-only **P 0.39 / R 0.65 / F1 0.48**, macro 0.38.** Published as `baseline-human-v54.json` and `-detection.json`, offline, zero non-local sockets enforced. Per category the shape is uneven and worth naming: `title_block` R **1.00** (37/37), `drawing_views` P **0.17** on 78 predictions for 21 findings, `isometric_view` **absent** — 0 predicted for 2 expected. 10 `CHANGED` reported as `ADDED`. `current_rung` stays **0** and `rung_evidence` stays `none` pending the owner's call: the ladder's rung 1 wording is met, Stage 0b's held-out clause is not. | none — read at v54 |
 
 ---
 

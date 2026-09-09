@@ -506,11 +506,18 @@ def test_uncaptured_sides_are_reported(tmp_path):
 #: suite fails on the day it starts passing — which is the reminder, and is deliberate: a standing
 #: allowlist is a place for new breakage to hide.
 #:
-#: M745200N01 joined 2026-09-08 with no reading anywhere to re-key, so capturing costs two live
-#: Gemini calls — the owner's decision on the 2026-08-25 terms. It is the corpus's only A2 sheet,
-#: so its title-block findings are the least like the rest: capture before arguing that category
-#: from it. A third entry would be a pattern, and should be fixed by capturing, not appending.
-KNOWN_UNCAPTURED_OCR = {"M745204N01", "M745200N01"}
+#: M745204N01 left the set on 2026-09-09: its reading was captured in one batched Gemini call,
+#: cropped from a live re-upload of the same file bytes after checking that its `render_bounds`
+#: matched the frozen payload's. That route is the one to copy.
+#:
+#: M745200N01 cannot be captured by any route. Both its source DXFs are gone from
+#: `storage/uploads`, so there is no image to crop: `/reextract` answers 422 and the renderer has
+#: nothing to render. It stays here until the two files are re-uploaded, and until then its
+#: title-block findings come from spatial heuristics rather than a reading -- it is also the
+#: corpus's only A2 sheet, so that category is the least like the rest on exactly the pair that
+#: cannot be fixed. A third entry would be a pattern, and should be fixed by capturing, not
+#: appending.
+KNOWN_UNCAPTURED_OCR = {"M745200N01"}
 
 
 def _pairs_missing_ocr() -> dict[str, list[str]]:
@@ -525,9 +532,9 @@ def _pairs_missing_ocr() -> dict[str, list[str]]:
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "M745204N01 has no OCR reading in storage/cache/ to capture; making one is a live "
-        "Gemini call. Owner's call 2026-08-25. Remove this marker and the entry in "
-        "KNOWN_UNCAPTURED_OCR once it is captured."
+        "M745200N01 has no OCR reading and no way to make one: both its source DXFs are gone "
+        "from storage/uploads, so there is no image to crop. Remove this marker and the entry "
+        "in KNOWN_UNCAPTURED_OCR once those files are restored and the reading is captured."
     ),
 )
 def test_committed_corpus_has_every_ocr_reading_captured():
