@@ -300,8 +300,17 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
     const otherDrawing = isOld ? get().newDrawing : get().oldDrawing;
     if (otherDrawing) {
       const otherExt = otherDrawing.file_name.split(".").pop()?.toLowerCase() || "";
-      if (otherExt !== extension) {
-        updateStatus("failed", 0, `Format Mismatch: Can only compare matching extensions (${otherExt.toUpperCase()} vs ${extension.toUpperCase()}).`);
+      const otherIs2D = isDrawingFormat(otherExt);
+      const otherIs3D = is3DModelFormat(otherExt);
+
+      // Any 2D drawing (.dwg, .dxf, .icd, .pdf) can be compared with any 2D drawing.
+      // Cross-domain comparisons (2D drawing vs 3D model) are prohibited.
+      if ((is2D && !otherIs2D) || (is3D && !otherIs3D)) {
+        updateStatus(
+          "failed",
+          0,
+          `Format Mismatch: Cannot compare 2D drawings with 3D models (${otherExt.toUpperCase()} vs ${extension.toUpperCase()}).`
+        );
         set({ compatibilityStatus: "Mismatch" });
         return false;
       }
@@ -392,15 +401,19 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
     const formats = [...ACCEPTED_FORMATS];
 
     if (oldDrawing && newDrawing) {
-      const extOld = oldDrawing.file_name.split(".").pop()?.toLowerCase();
-      const extNew = newDrawing.file_name.split(".").pop()?.toLowerCase();
+      const extOld = oldDrawing.file_name.split(".").pop()?.toLowerCase() || "";
+      const extNew = newDrawing.file_name.split(".").pop()?.toLowerCase() || "";
+      const oldIs2D = isDrawingFormat(extOld);
+      const newIs2D = isDrawingFormat(extNew);
+      const oldIs3D = is3DModelFormat(extOld);
+      const newIs3D = is3DModelFormat(extNew);
       
-      if (extOld !== extNew) {
-        set({ compatibilityStatus: "Mismatch" });
-      } else if (!formats.includes(extOld || "")) {
+      if (!formats.includes(extOld) || !formats.includes(extNew)) {
         set({ compatibilityStatus: "Unsupported" });
-      } else {
+      } else if ((oldIs2D && newIs2D) || (oldIs3D && newIs3D)) {
         set({ compatibilityStatus: "Compatible" });
+      } else {
+        set({ compatibilityStatus: "Mismatch" });
       }
     } else {
       // Just one loaded

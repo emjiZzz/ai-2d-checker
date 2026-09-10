@@ -2,6 +2,7 @@ import React from "react";
 import { AlertTriangle } from "lucide-react";
 import { DrawingItem, UploadState } from "../../stores/workspaceStore";
 import { SquareAccordion } from "../ui/LoadingOverlay";
+import { DRAWING_FORMATS, MODEL_3D_FORMATS } from "../../config/drawingFormats";
 
 export interface UploadZoneProps {
   side: "old" | "new";
@@ -92,9 +93,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         style={{ display: "none" }}
         onChange={handleFileChange}
         accept={
+          // From the shared lists, so the picker cannot drift from what upload validation
+          // accepts. It only filtered to `.dxf` here, which hid every `.icd` in the dialog
+          // and left drag-and-drop as the only way to put one in a room.
           currentNav === "3d-workspace"
-            ? ".step,.stp,.iges,.igs,.icd,.sldprt,.sldasm"
-            : ".dxf"
+            ? [...MODEL_3D_FORMATS, "icd"].map((f) => `.${f}`).join(",")
+            : DRAWING_FORMATS.map((f) => `.${f}`).join(",")
         }
       />
 
