@@ -7,10 +7,10 @@ Why this test exists: documentation that can drift silently is how this project 
 that the phrase "has no source in this vault — no such list was ever written down." The ledger makes
 a *claim* about system state, so the claim is checked against the filesystem here.
 
-The central rule: a rung claim must be backed by evidence that exists. Rung >= 1 asserts real
-retrieval, so the fake embedding model must be gone and `infrastructure/retrieval/` must be present.
-Rung >= 3 asserts a trainable pipeline, so the params object and learned matcher must exist. If an
-agent bumps `current_rung` without doing the work, this fails.
+The central rule: a rung claim must be backed by evidence that exists. Rung >= 1 asserts a
+published measurement over human-labelled pairs; rung >= 3 asserts real retrieval and a trainable
+pipeline, so the fake embedding model must be gone and `infrastructure/retrieval/`, the params
+object and the learned matcher must exist. Bumping `current_rung` without the work fails here.
 
 Deliberately a lightweight text/frontmatter parse, not a Markdown parser — the ledger's structure is
 a plain YAML frontmatter block plus fixed headings, and keeping this simple mirrors
@@ -29,14 +29,19 @@ LEDGER_PATH = VAULT / "00 - AI Maturity Status.md"
 BACKEND = REPO_ROOT / "services" / "backend"
 COMPARISON = BACKEND / "infrastructure" / "audit" / "comparison"
 
-# Rungs, as declared in the ledger's own frontmatter comment.
+# Rung names, mirrored from ADR-007's table. ADR-003's names (pre-RAG, Basic RAG, Fine-Tuned RAG,
+# End-to-End Trainable, Agentic & Adaptive) were retired by ADR-007 and must not be cited; they sat
+# here until 2026-09-10 and were printed by the failure message below, which is the one place a
+# reader looks while already confused about rungs. Pinned by `test_rung_names_match_adr_007`.
 RUNG_NAMES = {
-    0: "pre-RAG",
-    1: "Basic RAG",
-    2: "Fine-Tuned RAG",
-    3: "End-to-End Trainable",
-    4: "Agentic & Adaptive",
+    0: "Pre-measurement",
+    1: "Measured",
+    2: "Calibrated",
+    3: "Retrieval-augmented",
+    4: "Learned matching",
 }
+
+ADR_007 = VAULT / "07 - Architecture Decision Records (ADRs)" / "ADR-007 Re-scoping the Maturity Ladder.md"
 
 # Headings the ledger must keep, because CLAUDE.md constraint 5 tells agents to update them by name.
 REQUIRED_SECTIONS = (
@@ -93,6 +98,37 @@ def test_ledger_declares_a_valid_rung(meta: dict[str, str]) -> None:
     assert "current_rung" in meta, "Ledger frontmatter must declare `current_rung`"
     rung = int(meta["current_rung"])
     assert rung in RUNG_NAMES, f"current_rung must be one of {sorted(RUNG_NAMES)}, got {rung}"
+
+
+def test_rung_names_match_adr_007(ledger: str) -> None:
+    """The rung names live in ADR-007's table and are hand-mirrored here, so pin the duplication.
+
+    They cannot be shared: the ADR is prose and this is a failure message. They drifted once --
+    ADR-007 re-scoped the ladder on 2026-08-07 and this table kept ADR-003's names for a month,
+    so a rung-1 failure printed "Basic RAG" at a reader who was already confused about rungs.
+    """
+    assert ADR_007.exists(), f"ADR-007 is the source of the rung names and is missing: {ADR_007}"
+    source = ADR_007.read_text(encoding="utf-8")
+
+    declared = dict(re.findall(r"^\|\s*([0-4])\s*\|\s*\*\*([^.*]+)\.", source, re.MULTILINE))
+    assert len(declared) == 5, (
+        f"Could not read all five rungs out of ADR-007's table; found {sorted(declared)}. "
+        "If the table's shape changed, update this parse rather than deleting the pin."
+    )
+    mirrored = {str(rung): name for rung, name in RUNG_NAMES.items()}
+    assert mirrored == declared, (
+        f"RUNG_NAMES has drifted from ADR-007.\n  here: {mirrored}\n  ADR-007: {declared}\n"
+        "ADR-007 is the authority (CLAUDE.md constraint 5); copy its names, do not rename there."
+    )
+
+    # The ledger renders the same names in its ladder diagram, where `Pre-measurement` is
+    # abbreviated to fit the columns.
+    for rung, name in RUNG_NAMES.items():
+        needle = "pre-measure" if rung == 0 else name
+        assert needle in ledger, (
+            f"Rung {rung} is `{name}` in ADR-007 but that name does not appear in the ledger. "
+            "The ladder diagram and the rung headings must use ADR-007's names."
+        )
 
 
 def test_ledger_declares_rung_evidence(meta: dict[str, str]) -> None:
@@ -197,7 +233,7 @@ def test_rung_3_requires_real_retrieval(meta: dict[str, str]) -> None:
 
 
 def test_rung_3_requires_the_trainable_substrate(meta: dict[str, str]) -> None:
-    """Rung 3 claims end-to-end trainable: calibrated params plus a learned matcher."""
+    """Rung 3 also needs the substrate its measurement runs on: calibrated params, learned matcher."""
     if int(meta["current_rung"]) < 3:
         pytest.skip("Below rung 3; learned-matcher work not yet claimed.")
 

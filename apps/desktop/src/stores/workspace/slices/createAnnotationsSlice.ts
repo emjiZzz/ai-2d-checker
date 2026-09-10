@@ -113,6 +113,37 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
     const { manualSessionId, manualSessionStatus } = get();
     const isCurrentlySubmitted = manualSessionStatus === 'completed' || manualSessionStatus === 'submitted';
 
+    const tempId = `optimistic_ann_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticAnnotation = {
+      id: tempId,
+      review_session_id: reviewSessionId,
+      drawing_id: drawingId,
+      author_id: "me",
+      annotation_type: "pin",
+      content,
+      severity,
+      coordinates: coordinates || null,
+      target_entity_ids: [],
+      violation_id: violationId,
+      status: "open",
+      pen_type: penType,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // ── Optimistic update (instant pin placement in UI) ──
+    set((state) => ({
+      annotations: [optimisticAnnotation, ...state.annotations],
+      isPlacingAnnotation: false,
+      pendingAnnotationText: "",
+      selectedAnnotationId: tempId,
+      manualSessionStatus: 'in_progress',
+    }));
+
+    if (isCurrentlySubmitted && manualSessionId) {
+      reopenSession(manualSessionId).catch((err) => console.warn('[annotations] Reopen on annotation create warning:', err));
+    }
+
     try {
       const created = await createAnnotationApi({
         review_session_id: reviewSessionId,
@@ -124,41 +155,60 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
         violation_id: violationId,
       });
       set((state) => ({
-        annotations: [created, ...state.annotations],
-        isPlacingAnnotation: false,
-        pendingAnnotationText: "",
-        selectedAnnotationId: created.id,
-        manualSessionStatus: 'in_progress',
+        annotations: state.annotations.map((a) => (a.id === tempId ? created : a)),
+        selectedAnnotationId: state.selectedAnnotationId === tempId ? created.id : state.selectedAnnotationId,
       }));
-      if (isCurrentlySubmitted && manualSessionId) {
-        reopenSession(manualSessionId).catch((err) => console.warn('[annotations] Reopen on annotation create warning:', err));
-      }
     } catch (err: any) {
       console.error("Failed to create annotation:", err.message);
-      set({ isPlacingAnnotation: false });
+      // Rollback on failure
+      set((state) => ({
+        annotations: state.annotations.filter((a) => a.id !== tempId),
+        selectedAnnotationId: state.selectedAnnotationId === tempId ? null : state.selectedAnnotationId,
+      }));
     }
   },
 
   deleteAnnotationById: async (id) => {
     const { manualSessionId, manualSessionStatus } = get();
     const isCurrentlySubmitted = manualSessionStatus === 'completed' || manualSessionStatus === 'submitted';
+    const targetAnn = get().annotations.find((a) => a.id === id);
+
+    // ── Optimistic removal (instant UI response) ──
+    set((state) => ({
+      annotations: state.annotations.filter((a) => a.id !== id),
+      selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
+      manualSessionStatus: 'in_progress',
+    }));
+
+    if (isCurrentlySubmitted && manualSessionId) {
+      reopenSession(manualSessionId).catch((err) => console.warn('[annotations] Reopen on annotation delete warning:', err));
+    }
+
+    if (id.startsWith('optimistic_ann_')) {
+      return;
+    }
+
     try {
       await deleteAnnotationApi(id);
     } catch (err: any) {
       console.error(`Failed to delete annotation ${id}:`, err.message);
-    } finally {
-      set((state) => ({
-        annotations: state.annotations.filter((a) => a.id !== id),
-        selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
-        manualSessionStatus: 'in_progress',
-      }));
-      if (isCurrentlySubmitted && manualSessionId) {
-        reopenSession(manualSessionId).catch((err) => console.warn('[annotations] Reopen on annotation delete warning:', err));
+      // Rollback on error: re-insert the annotation
+      if (targetAnn) {
+        set((state) => ({
+          annotations: [...state.annotations, targetAnn],
+        }));
       }
     }
   },
 
   updateAnnotationDetails: async (id, updates) => {
+    const previous = get().annotations.find((a) => a.id === id);
+
+    // ── Optimistic update ──
+    set((state) => ({
+      annotations: state.annotations.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+    }));
+
     try {
       const updated = await updateAnnotationApi(id, updates);
       set((state) => ({
@@ -166,6 +216,12 @@ export const createAnnotationsSlice: StateCreator<WorkspaceState, [], [], Annota
       }));
     } catch (err: any) {
       console.error(`Failed to update annotation ${id}:`, err.message);
+      // Rollback on failure
+      if (previous) {
+        set((state) => ({
+          annotations: state.annotations.map((a) => (a.id === id ? previous : a)),
+        }));
+      }
     }
   },
 

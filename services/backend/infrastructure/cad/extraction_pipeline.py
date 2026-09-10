@@ -12,6 +12,7 @@ from ...domain.models.extraction_job import ExtractionJob
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
 from .dxf_parser import DXFParser
+from .icd_converter import ICDConverter, count_drawing_entities
 from .oda_converter import ODAConverter
 from .pdf_parser import PDFParser
 from .three_d_pipeline import ThreeDPipeline
@@ -25,6 +26,7 @@ class ExtractionPipeline:
     """
     def __init__(self):
         self.converter = ODAConverter()
+        self.icd_converter = ICDConverter()
         self.parser = DXFParser()
 
     async def run(self, drawing_id: str, job_id: str) -> None:
@@ -73,7 +75,7 @@ class ExtractionPipeline:
 
         try:
             # 2. Format conversion/handling
-            if drawing.format.lower() in ("step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"):
+            if drawing.format.lower() in ("step", "stp", "iges", "igs", "sldprt", "sldasm"):
                 logger.info(f"Drawing format is 3D model ({drawing.format}). Initializing 3D pipeline for: {input_abs_path}")
                 parser_start = time.time()
                 metadata, mesh_content = await asyncio.to_thread(ThreeDPipeline.parse_and_convert, input_abs_path)
@@ -94,6 +96,39 @@ class ExtractionPipeline:
                     "triangles": metadata.get("triangle_count", 0),
                     "mesh": 1
                 }
+            elif drawing.format.lower() == "icd":
+                # An .icd carries both a 3D model and 2D drawing content. Only the 2D half is
+                # extracted: the comparison engine reads 2D, and the 3D half needs
+                # ICD2STP.exe, which answers exit 102 (batch-STEP licence not active) here
+                # and silently yields a placeholder cube through the 3D pipeline.
+                logger.info(f"Drawing format is iCAD SX. Initializing TR2 conversion for: {input_abs_path}")
+                conv_start = time.time()
+
+                temp_dxf_dir = storage_root / "temp"
+                dxf_file_path = await self.icd_converter.convert_icd_to_dxf(
+                    input_abs_path, temp_dxf_dir
+                )
+                is_temp_dxf = True
+
+                conversion_duration = time.time() - conv_start
+                logger.info(f"iCAD conversion to DXF complete. Duration: {conversion_duration:.4f}s")
+
+                # The translator reports success for an .icd whose 2D drawing was never
+                # created, writing a valid DXF holding nothing. Ingesting that produces a
+                # blank drawing that compares clean against anything, so it fails here
+                # instead. Measured on a production sample: 15 of 27 files.
+                entity_count = await asyncio.to_thread(count_drawing_entities, dxf_file_path)
+                if entity_count == 0:
+                    raise ValueError(
+                        "This iCAD drawing contains no 2D content to check -- its 2D drawing "
+                        "has not been created yet, or holds only a 3D model."
+                    )
+
+                parser_start = time.time()
+                entities, layers, counts, metadata = await asyncio.to_thread(
+                    self.parser.parse_file, dxf_file_path
+                )
+                parsing_duration = time.time() - parser_start
             elif drawing.format.lower() == "dwg":
                 logger.info(f"Drawing format is DWG. Initializing safe ODA conversion for: {input_abs_path}")
                 conv_start = time.time()
@@ -151,8 +186,10 @@ class ExtractionPipeline:
             if drawing.format.lower() == "pdf":
                 from services.backend.infrastructure.rendering.pdf_background_renderer import render_pdf_background
                 await asyncio.to_thread(render_pdf_background, input_abs_path, drawing_id, metadata)
-            elif drawing.format.lower() in ("step", "stp", "iges", "igs", "icd"):
-                # No 2D background raster needed for 3D GLTF models
+            elif drawing.format.lower() in ("step", "stp", "iges", "igs"):
+                # No 2D background raster needed for 3D GLTF models. `.icd` is not in this
+                # list: it converts to DXF above and needs the raster like any other drawing,
+                # because `render_bounds` is what zone template fractions are stored against.
                 pass
             elif dxf_file_path and dxf_file_path.exists():
                 from services.backend.infrastructure.rendering.dxf_background_renderer import render_dxf_background

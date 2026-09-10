@@ -129,6 +129,12 @@ class Settings:
     
     # ODA File Converter Auto-Discovery
     ODA_CONVERTER_PATH: str = _auto_detect_oda_converter()
+
+    # iCAD SX install root; its TR2 translator converts .icd to DXF. The DXF version is the
+    # AutoCAD release the translator targets, 2000 to 2019 -- see MAN/dxf_dwg_trans.pdf 6-1-2.
+    ICAD_DIR: str = os.getenv("ICAD_DIR", "C:/ICADSX")
+    ICAD_DXF_VERSION: str = os.getenv("ICAD_DXF_VERSION", "2000")
+
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "10240"))
 
 settings = Settings()

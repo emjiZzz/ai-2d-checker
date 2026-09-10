@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { uploadFile } from "../services/fetchUtils";
 import { DrawingItem, UploadState } from "./workspace/types";
+import { is3DModelFormat } from "../config/drawingFormats";
 
 export interface ThreeDStoreState {
   activeDrawing: DrawingItem | null;
@@ -61,9 +62,9 @@ export const useThreeDStore = create<ThreeDStoreState>((set) => ({
     };
 
     const extension = file.name.split(".").pop()?.toLowerCase();
-    const is3D = ["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(extension || "");
+    const is3D = is3DModelFormat(extension);
     if (!extension || !is3D) {
-      updateStatus("failed", 0, "Unsupported format. Only 3D (STEP, IGES, ICD, SolidWorks) files are allowed here.");
+      updateStatus("failed", 0, "Unsupported format. Only 3D (STEP, IGES, SolidWorks) files are allowed here.");
       return false;
     }
 

@@ -6,6 +6,7 @@ import {
   describeDrawingPairMismatch,
   isDrawingPairMismatch,
 } from "../../../utils/drawingIdentity";
+import { ACCEPTED_FORMATS, is3DModelFormat, isDrawingFormat } from "../../../config/drawingFormats";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10GB
 
@@ -253,11 +254,11 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
 
     // 2. Validate Extension Normalized to Lowercase
     const extension = file.name.split(".").pop()?.toLowerCase();
-    const is3D = ["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(extension || "");
-    const is2D = extension === "dxf";
-    
+    const is3D = is3DModelFormat(extension);
+    const is2D = isDrawingFormat(extension);
+
     if (!extension || (!is2D && !is3D)) {
-      updateStatus("failed", 0, "Unsupported format. Only DXF files (.dxf) are currently supported.");
+      updateStatus("failed", 0, "Unsupported format. Upload a drawing (.dxf, .dwg, .icd, .pdf) or a 3D model (.step, .iges, .sldprt).");
       set({ compatibilityStatus: "Unsupported" });
       return false;
     }
@@ -388,7 +389,7 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       return;
     }
 
-    const formats = ["dwg", "dxf", "pdf", "step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"];
+    const formats = [...ACCEPTED_FORMATS];
 
     if (oldDrawing && newDrawing) {
       const extOld = oldDrawing.file_name.split(".").pop()?.toLowerCase();

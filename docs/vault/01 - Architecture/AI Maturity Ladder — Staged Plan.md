@@ -19,6 +19,13 @@ Decisions and rejected alternatives: [[ADR-003 AI Maturity Ladder]].
 The goal is **Basic RAG → Fine-Tuned RAG → End-to-End Trainable → Agentic & Adaptive**. Two findings
 reshape it:
 
+> [!WARNING] Those four rung names were retired on 2026-08-07 — [[ADR-007 Re-scoping the Maturity Ladder]]
+> They are left here because this document is a point-in-time plan and the paragraphs below argue
+> against that order, which is only readable if the order is stated. Do not cite them as targets: under
+> ADR-007 the rungs are Pre-measurement, Measured, Calibrated, Retrieval-augmented and Learned matching,
+> and [[00 - AI Maturity Status]] is where the current one lives. The **stages** below are current; the
+> ladder they were originally hung on is not.
+
 **The system is not on rung one.** The default method `rag` contains no retrieval and no LLM; the
 embeddings are SHA-256 noise; the vector store is a JSON file. See [[00 - AI Maturity Status]] for
 the component-by-component reading.
