@@ -97,10 +97,11 @@ class ExtractionPipeline:
                     "mesh": 1
                 }
             elif drawing.format.lower() == "icd":
-                # An .icd carries both a 3D model and 2D drawing content. Only the 2D half is
-                # extracted: the comparison engine reads 2D, and the 3D half needs
-                # ICD2STP.exe, which answers exit 102 (batch-STEP licence not active) here
-                # and silently yields a placeholder cube through the 3D pipeline.
+                # An .icd carries both a 3D model and 2D drawing content, and either half may
+                # be absent. 2D is tried first because it is what the comparison engine reads;
+                # a file with no 2D drawing falls through to the 3D pipeline rather than being
+                # rejected. Measured on a production sample: 15 of 27 files have no 2D drawing,
+                # and one of those carries a 31 MB solid model.
                 logger.info(f"Drawing format is iCAD SX. Initializing TR2 conversion for: {input_abs_path}")
                 conv_start = time.time()
 
@@ -114,21 +115,50 @@ class ExtractionPipeline:
                 logger.info(f"iCAD conversion to DXF complete. Duration: {conversion_duration:.4f}s")
 
                 # The translator reports success for an .icd whose 2D drawing was never
-                # created, writing a valid DXF holding nothing. Ingesting that produces a
-                # blank drawing that compares clean against anything, so it fails here
-                # instead. Measured on a production sample: 15 of 27 files.
+                # created, writing a valid DXF holding nothing. Its exit code proves nothing,
+                # so the output is counted.
                 entity_count = await asyncio.to_thread(count_drawing_entities, dxf_file_path)
-                if entity_count == 0:
-                    raise ValueError(
-                        "This iCAD drawing contains no 2D content to check -- its 2D drawing "
-                        "has not been created yet, or holds only a 3D model."
-                    )
 
-                parser_start = time.time()
-                entities, layers, counts, metadata = await asyncio.to_thread(
-                    self.parser.parse_file, dxf_file_path
-                )
-                parsing_duration = time.time() - parser_start
+                if entity_count:
+                    parser_start = time.time()
+                    entities, layers, counts, metadata = await asyncio.to_thread(
+                        self.parser.parse_file, dxf_file_path
+                    )
+                    parsing_duration = time.time() - parser_start
+                else:
+                    logger.info(
+                        f"No 2D content in {drawing.file_name}; extracting its 3D model instead."
+                    )
+                    # The empty DXF is discarded here rather than at the end: nulling the path
+                    # is also what tells the background raster below to skip this drawing, and
+                    # a raster of an empty sheet is what would otherwise be produced.
+                    try:
+                        dxf_file_path.unlink()
+                    except Exception:
+                        pass
+                    dxf_file_path = None
+                    is_temp_dxf = False
+
+                    parser_start = time.time()
+                    metadata, mesh_content = await asyncio.to_thread(
+                        ThreeDPipeline.parse_and_convert, input_abs_path
+                    )
+                    parsing_duration = time.time() - parser_start
+
+                    mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+                    if isinstance(mesh_content, bytes):
+                        mesh_path.write_bytes(mesh_content)
+                    else:
+                        mesh_path.write_text(mesh_content, encoding="utf-8")
+
+                    entities = []
+                    layers = []
+                    counts = {
+                        "vertices": metadata.get("vertex_count", 0),
+                        "faces": metadata["face_count"],
+                        "triangles": metadata.get("triangle_count", 0),
+                        "mesh": 1,
+                    }
             elif drawing.format.lower() == "dwg":
                 logger.info(f"Drawing format is DWG. Initializing safe ODA conversion for: {input_abs_path}")
                 conv_start = time.time()

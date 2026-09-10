@@ -30,3 +30,17 @@ export function isDrawingFormat(extension: string | undefined | null): boolean {
 export function is3DModelFormat(extension: string | undefined | null): boolean {
   return MODEL_3D_FORMATS.includes((extension || "") as (typeof MODEL_3D_FORMATS)[number]);
 }
+
+/**
+ * Whether this drawing has a tessellated mesh to show, whatever its extension says.
+ *
+ * Format alone is the wrong question for `.icd`. It is a drawing format here, but an .icd whose
+ * 2D drawing was never created falls back to the 3D pipeline at ingestion, and the result is a
+ * mesh under a `.icd` extension. Gating the 3D view on the extension hides it.
+ *
+ * `mesh` is set only by the 3D branch of `extraction_pipeline`, so it means "a glTF was written
+ * for this drawing" rather than "this format could have one".
+ */
+export function hasThreeDMesh(drawing: { entity_counts?: Record<string, number> } | null | undefined): boolean {
+  return Number(drawing?.entity_counts?.mesh) > 0;
+}

@@ -12,6 +12,27 @@ _DEFAULT_GRAY = (192, 192, 192)   # light steel gray
 _UNSET_COLOR  = (0, 0, 0, 0)      # gmsh sentinel for "no colour assigned"
 
 
+class ThreeDConversionError(RuntimeError):
+    """A model could not be read, so no mesh exists to return.
+
+    Raised rather than substituting geometry. The caller decides what a failure means -- for
+    an .icd it is a legitimate outcome, since the file may hold only a 2D drawing.
+    """
+
+
+#: A 31 MB assembly took minutes; the old 30s ceiling failed every real model.
+ICD2STP_TIMEOUT_S = 900
+
+#: MAN/3d_trans.pdf 6-3-4. Kept so a failure names itself instead of printing a bare number.
+_ICD2STP_EXIT_MEANING = {
+    0: "normal",
+    4: "partially converted",
+    8: "conversion failed",
+    101: "bad arguments",
+    102: "bad input or output file specification",
+}
+
+
 class ThreeDPipeline:
     """
     Ingests and parses 3D engineering models (.step, .stp, .iges, .igs, .icd, .sldprt, .sldasm).
@@ -96,36 +117,62 @@ class ThreeDPipeline:
                     file_size = companion_step.stat().st_size
 
                 elif icd2stp_exe.exists():
-                    output_step = file_path.with_suffix(".step")
+                    # `-o` takes the path WITHOUT an extension; the converter appends `.stp`.
+                    # The flags are documented as taking their value with no separating space
+                    # (MAN/3d_trans.pdf 6-3-1), and passing the paths positionally instead is
+                    # what produced exit 102 on every call this ever made. That was read as a
+                    # licence failure and is not one -- 102 is "input or output file
+                    # specification is incorrect", i.e. the arguments. Parasolid and STEP
+                    # import/export are standard features, not licensed options (ibid. 164).
+                    stem = file_path.with_suffix("")
+                    output_step = file_path.with_suffix(".stp")
                     logger.info(f"Invoking ICD2STP.exe: {icd2stp_exe} → {output_step}")
                     try:
                         res = subprocess.run(
-                            [str(icd2stp_exe), str(file_path), str(output_step)],
-                            capture_output=True, text=True, timeout=30,
+                            [str(icd2stp_exe), "-ls", f"-i{file_path}", f"-o{stem}"],
+                            capture_output=True, text=True, timeout=ICD2STP_TIMEOUT_S,
                             cwd=str(icd2stp_exe.parent)
                         )
-                        if output_step.exists():
-                            logger.info(f"iCAD → STEP conversion OK: {output_step}")
-                            file_path = output_step
-                            ext       = ".step"
-                            filename  = output_step.name
-                            file_size = output_step.stat().st_size
-                        elif res.returncode == 102:
+                        # 0 normal, 4 partial (output still written), 8 conversion failed,
+                        # 101 bad arguments, 102 bad input/output file specification.
+                        if res.returncode == 4:
                             logger.warning(
-                                "ICD2STP.exe exit 102: batch-STEP licence not active. "
-                                "gmsh will attempt direct .icd parse as fallback."
+                                f"ICD2STP.exe exit 4: some geometry in {filename} could not be "
+                                "converted. The STEP output is partial."
                             )
-                        else:
-                            logger.error(
-                                f"ICD2STP.exe exit {res.returncode}. "
-                                f"Stderr: {res.stderr[:200]}"
+                        elif res.returncode not in (0, 4):
+                            raise ThreeDConversionError(
+                                f"ICD2STP.exe exit {res.returncode} "
+                                f"({_ICD2STP_EXIT_MEANING.get(res.returncode, 'unknown')}) "
+                                f"for {filename}. Stderr: {res.stderr[:200]}"
                             )
-                    except subprocess.TimeoutExpired:
-                        logger.error("ICD2STP.exe timed out after 30 s.")
+                        if not output_step.exists():
+                            raise ThreeDConversionError(
+                                f"ICD2STP.exe reported exit {res.returncode} but wrote no STEP "
+                                f"file for {filename}."
+                            )
+                        logger.info(f"iCAD → STEP conversion OK: {output_step}")
+                        file_path = output_step
+                        ext       = ".stp"
+                        filename  = output_step.name
+                        file_size = output_step.stat().st_size
+                    except subprocess.TimeoutExpired as exc:
+                        raise ThreeDConversionError(
+                            f"ICD2STP.exe timed out after {ICD2STP_TIMEOUT_S}s on {filename}."
+                        ) from exc
+                    except ThreeDConversionError:
+                        raise
                     except Exception as ex:
-                        logger.error(f"ICD2STP.exe execution failed: {ex}")
+                        raise ThreeDConversionError(
+                            f"ICD2STP.exe execution failed for {filename}: {ex}"
+                        ) from ex
                 else:
-                    logger.warning("ICD2STP.exe not found. Attempting gmsh direct parse.")
+                    # gmsh cannot read .icd -- it is a proprietary binary and the parse fails
+                    # with a syntax error. Saying so beats letting it fail downstream.
+                    raise ThreeDConversionError(
+                        f"ICD2STP.exe not found at {icd2stp_exe}. An .icd cannot be read "
+                        "without it; gmsh has no reader for the format."
+                    )
 
             # ── 2. Tessellate with gmsh + extract per-surface colours ─────── #
             face_count   = 0
@@ -244,27 +291,21 @@ class ThreeDPipeline:
                 except Exception:
                     pass
 
-            # ── 3. Fallback geometry if tessellation produced nothing ─────── #
+            # ── 3. Tessellation produced nothing ──────────────────────────── #
+            #
+            # This used to substitute a 1x1x1 box and return it as a successful conversion,
+            # with `face_count: 12` and `acad_version: 3D_STANDARD_BREP` -- indistinguishable
+            # from a real 12-face model. A 6 MB assembly and a 440 KB drawing produced
+            # byte-identical 1.6 KB glTF cubes and both reported success.
+            #
+            # Volume and surface area were fixed the same way one layer down, and the reason
+            # given there applies here in full: fabricating an engineering quantity a user
+            # could act on is worse than not having it. Geometry is the same kind of claim.
             if not color_groups:
-                logger.warning(f"No geometry from {filename}. Using fallback box.")
-                fv = [
-                    -0.5,-0.5, 0.5,  0.5,-0.5, 0.5,  0.5, 0.5, 0.5,
-                    -0.5,-0.5, 0.5,  0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
-                     0.5,-0.5,-0.5, -0.5,-0.5,-0.5, -0.5, 0.5,-0.5,
-                     0.5,-0.5,-0.5, -0.5, 0.5,-0.5,  0.5, 0.5,-0.5,
-                    -0.5,-0.5,-0.5, -0.5,-0.5, 0.5, -0.5, 0.5, 0.5,
-                    -0.5,-0.5,-0.5, -0.5, 0.5, 0.5, -0.5, 0.5,-0.5,
-                     0.5,-0.5, 0.5,  0.5,-0.5,-0.5,  0.5, 0.5,-0.5,
-                     0.5,-0.5, 0.5,  0.5, 0.5,-0.5,  0.5, 0.5, 0.5,
-                    -0.5, 0.5, 0.5,  0.5, 0.5, 0.5,  0.5, 0.5,-0.5,
-                    -0.5, 0.5, 0.5,  0.5, 0.5,-0.5, -0.5, 0.5,-0.5,
-                    -0.5,-0.5,-0.5,  0.5,-0.5,-0.5,  0.5,-0.5, 0.5,
-                    -0.5,-0.5,-0.5,  0.5,-0.5, 0.5, -0.5,-0.5, 0.5,
-                ]
-                color_groups[_DEFAULT_GRAY] = {"verts": fv, "indices": list(range(36))}
-                face_count   = face_count or 12
-                bounds_min   = [-0.5, -0.5, -0.5]
-                bounds_max   = [ 0.5,  0.5,  0.5]
+                raise ThreeDConversionError(
+                    f"No geometry could be tessellated from {filename}. The file may hold no "
+                    "solid model, or the kernel could not read it."
+                )
 
             # ── 4. Compute global centroid + scale (applied to ALL groups) ── #
             all_verts_flat: List[float] = []

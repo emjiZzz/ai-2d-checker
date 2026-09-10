@@ -10,7 +10,7 @@ import { ThreeDViewer } from "./ThreeDViewer";
 import { UploadZone } from "./UploadZone";
 import { Skeleton } from "../ui/Skeleton";
 import { Select } from "../ui/Select";
-import { is3DModelFormat } from "../../config/drawingFormats";
+import { hasThreeDMesh, is3DModelFormat } from "../../config/drawingFormats";
 
 interface ThreeDWorkspaceProps {
   currentNav: string;
@@ -156,7 +156,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
             />
           </div>
 
-          {(!activeDrawing || !is3DModelFormat(activeDrawing?.format?.toLowerCase())) && (
+          {(!activeDrawing || !(is3DModelFormat(activeDrawing?.format?.toLowerCase()) || hasThreeDMesh(activeDrawing))) && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-bg-dark/80 backdrop-blur-md">
               <div className="w-[400px] bg-bg-card p-5 rounded-sm border border-border-color shadow-xl">
                 <h2 className="text-center text-text-primary text-lg font-bold tracking-tight mb-1">3D Model Ingestion</h2>

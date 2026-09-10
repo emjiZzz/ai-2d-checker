@@ -1,16 +1,17 @@
-"""An .icd must reach the 2D DXF path, and must not ingest when it converts to nothing.
+"""An .icd goes to the 2D path, falls back to its 3D model, and never ingests as nothing.
 
-An iCAD SX .icd carries both a 3D model and 2D drawing content. It used to be routed to
-`ThreeDPipeline` with the STEP/IGES formats, where `ICD2STP.exe` answers exit 102 on an
-install without the batch-STEP licence, gmsh then fails to parse the binary, and the
-pipeline substitutes a 1x1x1 placeholder cube and reports success. The 2D half -- the only
-half the comparison engine reads -- never reached `dxf_parser` at all.
+An iCAD SX .icd carries both a 3D model and 2D drawing content, and either half may be
+absent. 2D is tried first because it is the half the comparison engine reads.
 
-The vendor translator converts that 2D half faithfully, but reports success whether or not
-the drawing had any content: on a 27-file production sample, 15 produced a structurally
-valid DXF holding zero entities while the translator logged `09271 registered` and exited 0.
-Ingesting one of those yields a blank drawing that compares clean against anything, so it
-must fail loudly instead.
+The vendor translator converts that half faithfully but reports success whether or not the
+drawing had any content: on a 27-file production sample, 15 produced a structurally valid
+DXF holding zero entities while the translator logged `09271 registered` and exited 0. So
+the output is counted rather than trusted. A file with no 2D drawing then falls through to
+its 3D model instead of being rejected -- one of those 15 carries a 31 MB solid.
+
+Both halves failing must fail the job. `ThreeDPipeline` used to substitute a 1x1x1
+placeholder cube and report success, which every empty .icd now reaches, so that is pinned
+here too.
 
 See `06 - .../Gotcha - iCAD .icd Converts Silently Empty.md`.
 """
@@ -29,6 +30,7 @@ from services.backend.infrastructure.cad import extraction_pipeline as pipeline_
 from services.backend.infrastructure.cad.extraction_pipeline import ExtractionPipeline
 from services.backend.infrastructure.cad.icd_converter import count_drawing_entities
 from services.backend.infrastructure.cad.summarization_queue import summarization_queue
+from services.backend.infrastructure.cad.three_d_pipeline import ThreeDConversionError
 from services.backend.infrastructure.storage.path_resolver import (
     bootstrap_storage,
     get_storage_root,
@@ -195,15 +197,20 @@ async def _ingest_icd() -> tuple[DrawingDocument, str]:
     return drawing, str(upload_path)
 
 
-async def _run_with_conversion(monkeypatch, drawing, dxf_payload: bytes) -> ExtractionJob:
-    """Drive the pipeline with the translator stubbed out, so no licence is needed."""
-    produced: list = []
+async def _run_with_conversion(
+    monkeypatch, drawing, dxf_payload: bytes, three_d=None
+) -> ExtractionJob:
+    """Drive the pipeline with the translator stubbed out, so no licence is needed.
+
+    `three_d` replaces `ThreeDPipeline.parse_and_convert`. It defaults to a stub that fails
+    the test, because the 2D path must not reach the 3D pipeline at all -- only an .icd whose
+    DXF came back empty may.
+    """
 
     async def fake_convert(self, icd_path, dxf_output_dir, validate_sandbox=True):
         dxf_output_dir.mkdir(parents=True, exist_ok=True)
         out = dxf_output_dir / f"{icd_path.stem}.dxf"
         out.write_bytes(dxf_payload)
-        produced.append(out)
         return out
 
     monkeypatch.setattr(
@@ -212,11 +219,11 @@ async def _run_with_conversion(monkeypatch, drawing, dxf_payload: bytes) -> Extr
     )
 
     def explode(*args, **kwargs):
-        raise AssertionError(
-            "an .icd reached ThreeDPipeline, which yields a placeholder cube for it"
-        )
+        raise AssertionError("a populated .icd reached ThreeDPipeline")
 
-    monkeypatch.setattr(pipeline_module.ThreeDPipeline, "parse_and_convert", explode)
+    monkeypatch.setattr(
+        pipeline_module.ThreeDPipeline, "parse_and_convert", three_d or explode
+    )
 
     job = ExtractionJob(drawing_id=str(drawing.id), status="queued")
     await job.save()
@@ -239,18 +246,60 @@ async def test_an_icd_with_2d_content_extracts_through_the_dxf_parser(harness, m
 
 
 @pytest.mark.asyncio
-async def test_an_icd_whose_2d_drawing_is_empty_fails_instead_of_ingesting_blank(
-    harness, monkeypatch
-):
-    """The translator reports success for these, so the pipeline is the only thing that can
-    stop a blank drawing that compares clean against anything."""
+async def test_an_icd_with_no_2d_drawing_falls_back_to_its_3d_model(harness, monkeypatch):
+    """15 of 27 production files have no 2D drawing, and one of those carries a 31 MB solid.
+
+    Rejecting them threw that away. The empty DXF must still never be ingested -- the drawing
+    ends up holding a mesh and no 2D entities, not a blank sheet.
+    """
+    calls: list = []
+
+    def fake_three_d(path):
+        calls.append(path)
+        return (
+            {"face_count": 7916, "vertex_count": 278190, "triangle_count": 92730},
+            b'{"asset":{"version":"2.0"}}',
+        )
+
     drawing, upload_path = await _ingest_icd()
     try:
-        job = await _run_with_conversion(monkeypatch, drawing, _empty_dxf())
-        assert job.status == "failed", (
-            "an .icd holding only a 3D model ingested as a valid empty drawing"
+        job = await _run_with_conversion(
+            monkeypatch, drawing, _empty_dxf(), three_d=fake_three_d
         )
-        assert "no 2D content" in (job.error_message or "")
+        assert job.status == "completed", job.error_message
+        assert calls, "the 3D pipeline was never reached"
+        assert harness["entities"] == [], "an empty DXF must not produce 2D entities"
+
+        stored = harness["drawings"][str(drawing.id)]
+        assert stored.entity_counts.get("mesh") == 1, (
+            "without `mesh` the client cannot tell this drawing has a model to show"
+        )
+        assert stored.entity_counts.get("faces") == 7916
+    finally:
+        if os.path.exists(upload_path):
+            os.unlink(upload_path)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_3d_conversion_fails_the_job_rather_than_ingesting_a_placeholder(
+    harness, monkeypatch
+):
+    """An .icd with neither half readable must fail, not become a 1x1x1 box.
+
+    `ThreeDPipeline` used to substitute a unit cube and report success, so a 6 MB assembly
+    and a 440 KB drawing produced byte-identical glTF. That is the failure this fallback
+    could otherwise re-introduce at scale, since every empty .icd now reaches it.
+    """
+    def fake_three_d(path):
+        raise ThreeDConversionError("no geometry could be tessellated")
+
+    drawing, upload_path = await _ingest_icd()
+    try:
+        job = await _run_with_conversion(
+            monkeypatch, drawing, _empty_dxf(), three_d=fake_three_d
+        )
+        assert job.status == "failed"
+        assert "tessellated" in (job.error_message or "")
         assert harness["entities"] == []
     finally:
         if os.path.exists(upload_path):
