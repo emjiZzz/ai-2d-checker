@@ -64,6 +64,15 @@ def mock_beanie_docs(monkeypatch):
 
             return _Result()
 
+    class MockField:
+        def __init__(self, name):
+            self.name = name
+
+        def __eq__(self, other):
+            return self
+
+    ExtractedEntity.drawing_id = MockField("drawing_id")
+
     async def mock_insert_many(cls, documents, *args, **kwargs):
         return documents
 

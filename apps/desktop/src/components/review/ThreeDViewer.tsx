@@ -6,6 +6,12 @@ import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { PartsPanel, type AssemblyPart } from './PartsPanel';
+import { useReviewStore } from '../../stores/reviewStore';
+
+/** Stable reference, so the zustand selector does not return a new array every render. */
+const EMPTY_HIDDEN: number[] = [];
 
 interface ThreeDViewerProps {
   drawing: any;
@@ -48,23 +54,60 @@ const CameraFitter = ({ modelRef }: { modelRef: React.RefObject<THREE.Group | nu
   return null;
 };
 
-// ── glTF mesh renderer ───────────────────────────────────────────────────────/** Renders a glTF model — preserves original STEP colours from embedded materials */
+// ── glTF mesh renderer ───────────────────────────────────────────────────────
+/** Renders a glTF model — preserves original STEP colours from embedded materials */
 const GltfMesh = ({
   url,
   onLoaded,
+  hiddenNodes,
 }: {
   url: string;
   onLoaded: (ref: THREE.Group) => void;
+  hiddenNodes: number[];
 }) => {
   const gltf    = useLoader(GLTFLoader, url);
   const groupRef = useRef<THREE.Group>(null!);
+
+  // Visibility is applied by POSITION among the scene's own children, matching the order the
+  // backend emits its nodes. Not by name: iCAD repeats a part name across instances, so two
+  // `φ9×204` share one, and matching on it would hide both.
+  useEffect(() => {
+    const hide = new Set(hiddenNodes);
+    gltf.scene.children.forEach((child, i) => {
+      child.visible = !hide.has(i);
+    });
+  }, [gltf, hiddenNodes]);
 
   // Enhance PBR quality while keeping the colours as defined in the STEP file
   useEffect(() => {
     gltf.scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
-        mesh.geometry.computeVertexNormals();
+
+        // 1. Merge duplicated vertices and compute creased normals so cylinders are silky smooth while 90° edges stay crisp
+        if (mesh.geometry) {
+          try {
+            const merged = BufferGeometryUtils.mergeVertices(mesh.geometry);
+            mesh.geometry = BufferGeometryUtils.toCreasedNormals(merged, THREE.MathUtils.degToRad(35));
+          } catch {
+            mesh.geometry.computeVertexNormals();
+          }
+
+          // 2. Add subtle CAD edge outlines like iCAD / SolidWorks
+          const existingEdges = mesh.children.find((c) => c.name === 'cad_edges');
+          if (!existingEdges) {
+            const edgesGeom = new THREE.EdgesGeometry(mesh.geometry, 28);
+            const edgesMat = new THREE.LineBasicMaterial({
+              color: 0x475569,
+              linewidth: 1,
+              transparent: true,
+              opacity: 0.65,
+            });
+            const line = new THREE.LineSegments(edgesGeom, edgesMat);
+            line.name = 'cad_edges';
+            mesh.add(line);
+          }
+        }
 
         // Support both single and multi-material meshes (one per colour group)
         const srcMats = Array.isArray(mesh.material)
@@ -73,19 +116,22 @@ const GltfMesh = ({
 
         const enhanced = srcMats.map((src) => {
           const m = src as THREE.MeshStandardMaterial;
-          // Clone the STEP colour — fall back to engineering gray if absent
-          const col = m.color ? m.color.clone() : new THREE.Color(0.75, 0.75, 0.75);
+          // Clone the STEP colour — fall back to clean machined steel if absent or black
+          let col = m.color ? m.color.clone() : new THREE.Color(0.82, 0.85, 0.88);
+          if (col.r < 0.08 && col.g < 0.08 && col.b < 0.08) {
+            col = new THREE.Color(0.82, 0.85, 0.88);
+          }
           return new THREE.MeshPhysicalMaterial({
             color:        col,
-            roughness:    0.45,
-            metalness:    0.30,
-            reflectivity: 0.35,
-            clearcoat:    0.08,
+            roughness:    0.35,
+            metalness:    0.25,
+            reflectivity: 0.40,
+            clearcoat:    0.15,
             side:         THREE.DoubleSide,
           });
         });
 
-        mesh.material    = enhanced.length === 1 ? enhanced[0] : enhanced;
+        mesh.material      = enhanced.length === 1 ? enhanced[0] : enhanced;
         mesh.castShadow    = true;
         mesh.receiveShadow = true;
       }
@@ -135,9 +181,11 @@ class ErrorBoundary extends React.Component<
 const ModelScene = ({
   url,
   theme,
+  hiddenNodes,
 }: {
   url: string;
   theme: string;
+  hiddenNodes: number[];
 }) => {
   const modelRef  = useRef<THREE.Group | null>(null);
   const [, forceUpdate] = useState(0);
@@ -149,20 +197,21 @@ const ModelScene = ({
 
   return (
     <>
-      {/* Lighting rig */}
-      <ambientLight intensity={0.45} />
+      {/* Studio CAD Lighting rig */}
+      <ambientLight intensity={0.65} />
       <directionalLight
-        position={[8, 12, 8]}
-        intensity={1.6}
+        position={[12, 16, 12]}
+        intensity={1.8}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
       />
-      <directionalLight position={[-6, -4, -6]} intensity={0.35} />
+      <directionalLight position={[-12, 10, -10]} intensity={0.9} />
+      <directionalLight position={[0, -10, 6]} intensity={0.4} />
       <hemisphereLight
-        color={new THREE.Color('#b0e4ff')}
-        groundColor={new THREE.Color('#1a2a33')}
-        intensity={0.4}
+        color={new THREE.Color('#ffffff')}
+        groundColor={new THREE.Color('#334155')}
+        intensity={0.5}
       />
 
       <OrbitControls
@@ -187,7 +236,7 @@ const ModelScene = ({
             </mesh>
           }
         >
-          <GltfMesh url={url} onLoaded={handleLoaded} />
+          <GltfMesh url={url} onLoaded={handleLoaded} hiddenNodes={hiddenNodes} />
         </React.Suspense>
       </ErrorBoundary>
 
@@ -260,8 +309,15 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
     };
   }, [drawing?.id, backendUrl, apiToken]);
 
+  const parts: AssemblyPart[] = drawing?.metadata?.parts ?? [];
+  const hiddenNodes = useReviewStore((s) => s.hiddenParts[drawing?.id ?? ''] ?? EMPTY_HIDDEN);
+
   return (
     <div style={{ position: 'relative', width, height, overflow: 'hidden' }}>
+
+      {/* Assembly parts, and which of them are drawn. Rendered outside the Canvas: it is DOM,
+          and putting it inside would make it a three.js object. */}
+      {parts.length > 1 && <PartsPanel drawingId={drawing.id} parts={parts} />}
 
       {/* ── 3-D canvas ─────────────────────────────── */}
       {modelUrl && (
@@ -271,7 +327,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
           gl={{ antialias: true, alpha: true, logarithmicDepthBuffer: true }}
           style={{ background: 'transparent' }}
         >
-          <ModelScene url={modelUrl} theme={theme} />
+          <ModelScene url={modelUrl} theme={theme} hiddenNodes={hiddenNodes} />
         </Canvas>
       )}
 

@@ -15,7 +15,7 @@ from .dxf_parser import DXFParser
 from .icd_converter import ICDConverter, count_drawing_entities
 from .oda_converter import ODAConverter
 from .pdf_parser import PDFParser
-from .three_d_pipeline import ThreeDPipeline
+from .three_d_pipeline import ThreeDConversionError, ThreeDPipeline
 from ..storage.entity_cache import clear_for_drawing as clear_entity_cache
 
 
@@ -125,6 +125,24 @@ class ExtractionPipeline:
                         self.parser.parse_file, dxf_file_path
                     )
                     parsing_duration = time.time() - parser_start
+
+                    # Both halves, so the workspace can switch between them without a second
+                    # upload. Done here rather than on demand because gmsh is not safe to run
+                    # from a request thread -- doing so wedged the backend, spinning without
+                    # answering `/health`, which is the failure mode
+                    # `06 - .../Gotcha - A Dead Atlas Socket Wedged Every Request.md` describes.
+                    # This queue has a single serial consumer, which is where it belongs.
+                    #
+                    # Best-effort: an .icd holding only a drawing has no model, and that is a
+                    # normal file, not a failed one. Cost is bounded -- 5.7s to export and 0.7s
+                    # to tessellate on a 196 KB sheet -- and it is paid on the background job,
+                    # not on the upload request.
+                    mesh_faces = await self._try_extract_icd_mesh(
+                        input_abs_path, drawing_id, storage_root, drawing.file_name
+                    )
+                    if mesh_faces is not None:
+                        counts["mesh"] = 1
+                        counts["faces"] = mesh_faces
                 else:
                     logger.info(
                         f"No 2D content in {drawing.file_name}; extracting its 3D model instead."
@@ -400,6 +418,34 @@ class ExtractionPipeline:
                     pass
 
             await self._handle_failure(job, drawing, f"Pipeline Error: {str(pipeline_err)}", error_trace)
+
+    async def _try_extract_icd_mesh(
+        self, source: Path, drawing_id: str, storage_root: Path, file_name: str
+    ) -> int | None:
+        """Write this .icd's 3D model as glTF, or return None if it has none.
+
+        Never raises. The 2D drawing is already extracted by the time this runs, and an .icd
+        holding no model is an ordinary file -- failing the job over it would reject a drawing
+        that is entirely fine.
+        """
+        try:
+            metadata, mesh_content = await asyncio.to_thread(
+                ThreeDPipeline.parse_and_convert, source
+            )
+        except ThreeDConversionError as exc:
+            logger.info(f"No 3D model in {file_name}: {exc}")
+            return None
+        except Exception:
+            logger.exception(f"3D extraction failed for {file_name}; its 2D drawing is unaffected.")
+            return None
+
+        mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+        if isinstance(mesh_content, bytes):
+            mesh_path.write_bytes(mesh_content)
+        else:
+            mesh_path.write_text(mesh_content, encoding="utf-8")
+        logger.info(f"3D model extracted for {file_name}: {metadata['face_count']} faces.")
+        return int(metadata["face_count"])
 
     async def _handle_failure(self, job: ExtractionJob, drawing: DrawingDocument, error_msg: str, traceback_str: str = "") -> None:
         """

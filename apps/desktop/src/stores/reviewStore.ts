@@ -223,6 +223,34 @@ interface ReviewState {
   // Layout Presets
   activeLayoutPreset: "grid" | "left" | "right";
   setActiveLayoutPreset: (preset: "grid" | "left" | "right") => void;
+
+  /**
+   * Which view each pane is showing. An .icd carries a drawing and a model, and iCAD SX
+   * switches between them in one workspace, so this does too.
+   *
+   * Per pane rather than global: the whole point of this view is two drawings side by side,
+   * and forcing both to the same mode would take that away. Kept here beside the other view
+   * toggles rather than on `workspaceStore`, whose state is keyed by drawing id -- this is a
+   * property of the pane, and it survives swapping the drawing in it.
+   */
+  viewMode: { old: "2d" | "3d"; new: "2d" | "3d" };
+  setViewMode: (side: "old" | "new", mode: "2d" | "3d") => void;
+  toggleViewMode: (side: "old" | "new") => void;
+
+  /**
+   * Assembly parts hidden in the 3D view, as glTF node indices, keyed by drawing.
+   *
+   * Hidden rather than visible, so a drawing nobody has touched needs no entry and a part
+   * added by a re-extraction shows by default. Indices, not names: iCAD repeats a part name
+   * across instances (two `φ9×204` on one assembly), so a name identifies a component, never
+   * a row.
+   *
+   * Keyed by drawing rather than by pane: which parts you set aside belongs to the model, and
+   * follows it if the same drawing is opened in the other pane.
+   */
+  hiddenParts: Record<string, number[]>;
+  togglePart: (drawingId: string, node: number) => void;
+  setPartsHidden: (drawingId: string, nodes: number[]) => void;
 }
 
 /**
@@ -620,5 +648,25 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   })),
 
   activeLayoutPreset: "grid",
-  setActiveLayoutPreset: (preset) => set({ activeLayoutPreset: preset })
+  setActiveLayoutPreset: (preset) => set({ activeLayoutPreset: preset }),
+
+  viewMode: { old: "2d", new: "2d" },
+  setViewMode: (side, mode) => set((state) => ({
+    viewMode: { ...state.viewMode, [side]: mode }
+  })),
+  toggleViewMode: (side) => set((state) => ({
+    viewMode: { ...state.viewMode, [side]: state.viewMode[side] === "2d" ? "3d" : "2d" }
+  })),
+
+  hiddenParts: {},
+  togglePart: (drawingId, node) => set((state) => {
+    const current = state.hiddenParts[drawingId] ?? [];
+    const next = current.includes(node)
+      ? current.filter((n) => n !== node)
+      : [...current, node];
+    return { hiddenParts: { ...state.hiddenParts, [drawingId]: next } };
+  }),
+  setPartsHidden: (drawingId, nodes) => set((state) => ({
+    hiddenParts: { ...state.hiddenParts, [drawingId]: nodes }
+  }))
 }));
