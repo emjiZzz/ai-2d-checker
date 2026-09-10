@@ -424,10 +424,17 @@ async def get_drawing_gltf(id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="GLTF asset not found for this 3D model."
         )
+    # The file is binary glTF. Its on-disk name stays `.gltf` because six call sites and the
+    # room-deletion cleanup are keyed on it, and a missed one leaks a mesh per drawing; the
+    # extension is internal plumbing and no reader depends on it, since GLTFLoader identifies a
+    # document by its magic bytes. What a caller sees does have to match the content, so the
+    # media type and the download name say GLB. A `.gltf` file holding GLB would be rejected by
+    # whatever the engineer opened it in.
     return FileResponse(
         str(gltf_path),
-        media_type="model/gltf+json",
-        filename=f"{drawing.file_name}.gltf"
+        media_type="model/gltf-binary",
+        filename=f"{drawing.file_name}.glb",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )
 
 

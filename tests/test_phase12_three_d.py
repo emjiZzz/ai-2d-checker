@@ -1,5 +1,6 @@
 import pytest
 import json
+import struct
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -154,10 +155,26 @@ async def test_three_d_pipeline_conversion(dummy_step_file):
         assert value is None or value > 0.0, f"{key} must be a real measurement or None"
 
 
-    gltf_dict = json.loads(gltf_content)
+    # Binary glTF, not JSON with a base64 `uri`. Base64 inflated the vertex buffer by a third:
+    # on a 12-part assembly, 11.52 MB of an 11.53 MB document was the encoded buffer, and the
+    # same model as GLB is 8.65 MB. A reader that rejects misalignment is entitled to, so the
+    # chunk padding is asserted rather than assumed.
+    magic, version, declared_length = struct.unpack_from("<III", gltf_content, 0)
+    assert magic == 0x46546C67, "not a GLB container"
+    assert version == 2
+    assert declared_length == len(gltf_content), "header length disagrees with the payload"
+
+    json_len, json_type = struct.unpack_from("<II", gltf_content, 12)
+    bin_len, bin_type = struct.unpack_from("<II", gltf_content, 12 + 8 + json_len)
+    assert json_type == 0x4E4F534A  # 'JSON'
+    assert bin_type == 0x004E4942   # 'BIN\x00'
+    assert json_len % 4 == 0 and bin_len % 4 == 0, "chunks must be 4-byte aligned"
+
+    gltf_dict = json.loads(gltf_content[20:20 + json_len])
     assert gltf_dict["asset"]["version"] == "2.0"
     assert len(gltf_dict["buffers"]) == 1
-    assert gltf_dict["buffers"][0]["uri"].startswith("data:application/octet-stream;base64,")
+    assert "uri" not in gltf_dict["buffers"][0], "a GLB buffer is the binary chunk, not a uri"
+    assert gltf_dict["buffers"][0]["byteLength"] > 0
 
 async def test_3d_extraction_pipeline_flow(dummy_step_file):
     """Verify that the ExtractionPipeline ingests 3D files and saves them to the temp cache."""

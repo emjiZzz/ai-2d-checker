@@ -10,6 +10,16 @@ import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUti
 import { PartsPanel, type AssemblyPart } from './PartsPanel';
 import { useReviewStore } from '../../stores/reviewStore';
 
+/**
+ * Triangles above which the CAD edge outlines are skipped.
+ *
+ * `EdgesGeometry` measured 42% of the per-mesh load cost and is linear in triangles, so it
+ * is what makes a large assembly freeze the pane. 120k is a little under the 12-part
+ * assembly that prompted this (180k) and comfortably above every single-part model in the
+ * corpus, the largest of which is 37k -- so nothing that renders quickly today loses them.
+ */
+const EDGE_OUTLINE_TRIANGLE_BUDGET = 120_000;
+
 /** Stable reference, so the zustand selector does not return a new array every render. */
 const EMPTY_HIDDEN: number[] = [];
 
@@ -80,6 +90,25 @@ const GltfMesh = ({
 
   // Enhance PBR quality while keeping the colours as defined in the STEP file
   useEffect(() => {
+    // Every mesh below runs mergeVertices, toCreasedNormals and EdgesGeometry on the main
+    // thread, and all three are linear in triangle count: measured 1144ms per ~92k triangles,
+    // of which EdgesGeometry is 42%. A 12-part assembly is 180k, so the pane sits on its
+    // loading placeholder for over two seconds before anything appears.
+    //
+    // The outlines are the part worth dropping when a model is dense. They are a CAD styling
+    // cue, not geometry, and on a model detailed enough to cross this budget they read as
+    // noise on the silhouette anyway. Shading and normals are kept at every size, because
+    // those change what the surface looks like rather than how it is decorated.
+    let sceneTriangles = 0;
+    gltf.scene.traverse((child) => {
+      const m = child as THREE.Mesh;
+      if (m.isMesh && m.geometry) {
+        const idx = m.geometry.getIndex();
+        sceneTriangles += (idx ? idx.count : m.geometry.attributes.position?.count ?? 0) / 3;
+      }
+    });
+    const drawEdges = sceneTriangles <= EDGE_OUTLINE_TRIANGLE_BUDGET;
+
     gltf.scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -95,7 +124,7 @@ const GltfMesh = ({
 
           // 2. Add subtle CAD edge outlines like iCAD / SolidWorks
           const existingEdges = mesh.children.find((c) => c.name === 'cad_edges');
-          if (!existingEdges) {
+          if (drawEdges && !existingEdges) {
             const edgesGeom = new THREE.EdgesGeometry(mesh.geometry, 28);
             const edgesMat = new THREE.LineBasicMaterial({
               color: 0x475569,
@@ -288,7 +317,10 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
         if (res.ok) {
           // Create blob with explicit MIME so GLTFLoader resolves it correctly
           const arrayBuffer = await res.arrayBuffer();
-          const blob = new Blob([arrayBuffer], { type: 'model/gltf+json' });
+          // The backend now sends binary glTF. GLTFLoader identifies a document by its magic
+          // bytes rather than this type, so both the GLB and any .gltf written before the
+          // switch still load -- but a blob should not claim to be JSON when it is not.
+          const blob = new Blob([arrayBuffer], { type: 'model/gltf-binary' });
           objectUrl = URL.createObjectURL(blob);
           setModelUrl(objectUrl);
         } else {

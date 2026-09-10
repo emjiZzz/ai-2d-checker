@@ -33,6 +33,27 @@ _ICD2STP_EXIT_MEANING = {
 }
 
 
+def _pack_glb(gltf: Dict[str, Any], binary: bytes) -> bytes:
+    """A glTF document and its buffer, as one GLB container.
+
+    Layout is the spec's: a 12-byte header, then length-prefixed chunks. Both chunks are
+    padded to a 4-byte boundary -- JSON with spaces, binary with zeros -- because a reader
+    is entitled to assume alignment and will reject the file otherwise.
+    """
+    json_chunk = json.dumps(gltf, separators=(",", ":")).encode("utf-8")
+    json_chunk += b" " * ((4 - len(json_chunk) % 4) % 4)
+    bin_chunk = binary + b"\x00" * ((4 - len(binary) % 4) % 4)
+
+    total = 12 + 8 + len(json_chunk) + 8 + len(bin_chunk)
+    out = bytearray()
+    out += struct.pack("<III", 0x46546C67, 2, total)          # 'glTF', version 2, length
+    out += struct.pack("<II", len(json_chunk), 0x4E4F534A)    # chunk 0: 'JSON'
+    out += json_chunk
+    out += struct.pack("<II", len(bin_chunk), 0x004E4942)     # chunk 1: 'BIN\x00'
+    out += bin_chunk
+    return bytes(out)
+
+
 class ThreeDPipeline:
     """
     Ingests and parses 3D engineering models (.step, .stp, .iges, .igs, .icd, .sldprt, .sldasm).
@@ -56,7 +77,7 @@ class ThreeDPipeline:
         """
         Returns:
             metadata : dict of extracted physical / topological attributes.
-            gltf_bytes: UTF-8 encoded, self-contained glTF 2.0 JSON document.
+            gltf_bytes: a self-contained binary glTF 2.0 (GLB) document.
         """
         logger.info(f"Parsing 3D CAD model file: {file_path}")
 
@@ -533,9 +554,13 @@ class ThreeDPipeline:
 
             # Concatenate all chunks into one buffer
             total_buffer = b"".join(buffer_chunks)
-            buf_b64      = base64.b64encode(total_buffer).decode("ascii")
-
-            # ── 6. Assemble glTF 2.0 document ─────────────────────────────── #
+            # ── 6. Assemble glTF 2.0, as GLB ──────────────────────────────── #
+            #
+            # Binary container rather than JSON with a base64 `uri`. Base64 inflates the
+            # vertex buffer by a third for nothing -- measured on a 12-part assembly, 11.52 MB
+            # of an 11.53 MB document was the encoded buffer, and the same model as GLB is
+            # 8.65 MB. The client needs no change: GLTFLoader identifies a document by its
+            # magic bytes, so it reads both, and the .gltf files already written stay readable.
             gltf = {
                 "asset":  {"version": "2.0", "generator": "KMTI-AI-2D-Checker ThreeDPipeline"},
                 "scene":  0,
@@ -545,13 +570,11 @@ class ThreeDPipeline:
                 "accessors":   gltf_accessors,
                 "bufferViews": gltf_buffer_views,
                 "materials":   gltf_materials,
-                "buffers": [{
-                    "byteLength": len(total_buffer),
-                    "uri": f"data:application/octet-stream;base64,{buf_b64}",
-                }],
+                # No `uri`: in a GLB the buffer is the binary chunk that follows.
+                "buffers": [{"byteLength": len(total_buffer)}],
             }
 
-            gltf_bytes = json.dumps(gltf, separators=(",", ":")).encode("utf-8")
+            gltf_bytes = _pack_glb(gltf, total_buffer)
 
             # ── 7. Metadata ────────────────────────────────────────────────── #
             n_tris = total_triangles or (sum(len(g["indices"]) for g in color_groups.values()) // 3)
