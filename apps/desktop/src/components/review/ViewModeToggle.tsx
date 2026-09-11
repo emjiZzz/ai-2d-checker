@@ -36,7 +36,7 @@ export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ side, drawing })
       type="button"
       onClick={() => toggleViewMode(side)}
       className="absolute top-2 right-2 z-20 flex items-center justify-center min-w-[36px] h-7 px-2.5 rounded border border-border-color bg-bg-card/90 backdrop-blur-sm text-[11px] font-bold tracking-wider text-text-primary hover:text-accent-primary hover:border-accent-primary/40 shadow-sm transition-all cursor-pointer select-none"
-      title={`Switch to ${label} view (F1)`}
+      title={`Press 'F1' to switch view`}
       aria-label={label}
     >
       {label}

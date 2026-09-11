@@ -2,13 +2,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useThemeStore } from '../../stores/themeStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import {
+  OrbitControls,
+  OrthographicCamera,
+} from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PartsPanel, type AssemblyPart } from './PartsPanel';
 import { useReviewStore } from '../../stores/reviewStore';
 import { Box } from 'lucide-react';
+import { ViewCubeIcon } from './ViewCubeIcon';
+
+export type ViewPreset = 'se' | 'sw' | 'ne' | 'nw' | 'top' | 'front' | 'right' | 'left' | 'back' | 'bottom';
 
 /**
  * Triangles above which the CAD edge outlines are skipped.
@@ -29,37 +35,142 @@ interface ThreeDViewerProps {
   height: number;
 }
 
-// ── Auto-fit camera to the loaded model's bounding box ──────────────────────
-const CameraFitter = ({ modelRef }: { modelRef: React.RefObject<THREE.Group | null> }) => {
+// ── Camera controller for framing and standard CAD view presets ─────────────
+interface CameraControllerProps {
+  modelRef: React.RefObject<THREE.Group | null>;
+  targetView: ViewPreset | null;
+  width: number;
+  height: number;
+  onViewApplied?: () => void;
+}
+
+const CameraController = ({
+  modelRef,
+  targetView,
+  width,
+  height,
+  onViewApplied,
+}: CameraControllerProps) => {
   const { camera, controls } = useThree() as any;
+  const metricsRef = useRef<{ center: THREE.Vector3; dist: number; maxDim: number } | null>(null);
 
-  useEffect(() => {
-    if (!modelRef.current) return;
+  const applyView = (view: ViewPreset) => {
+    if (!metricsRef.current || !camera) return;
+    const { center, dist, maxDim } = metricsRef.current;
 
-    const box   = new THREE.Box3().setFromObject(modelRef.current);
-    const size  = box.getSize(new THREE.Vector3());
-    const center= box.getCenter(new THREE.Vector3());
+    const pos = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
 
-    // Frame the model: pull the camera back so the full diagonal fits in fov
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const fov    = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const dist   = (maxDim / 2) / Math.tan(fov / 2) * 2.2; // 2.2× gives comfortable padding
+    switch (view) {
+      case 'se': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x + c, center.y + c, center.z + c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'sw': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x - c, center.y + c, center.z + c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'ne': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x + c, center.y + c, center.z - c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'nw': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x - c, center.y + c, center.z - c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'top':
+        pos.set(center.x, center.y + dist, center.z);
+        up.set(0, 0, -1);
+        break;
+      case 'front':
+        pos.set(center.x, center.y, center.z + dist);
+        up.set(0, 1, 0);
+        break;
+      case 'right':
+        pos.set(center.x + dist, center.y, center.z);
+        up.set(0, 1, 0);
+        break;
+      case 'left':
+        pos.set(center.x - dist, center.y, center.z);
+        up.set(0, 1, 0);
+        break;
+      case 'back':
+        pos.set(center.x, center.y, center.z - dist);
+        up.set(0, 1, 0);
+        break;
+      case 'bottom':
+        pos.set(center.x, center.y - dist, center.z);
+        up.set(0, 0, 1);
+        break;
+      default: {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x + c, center.y + c, center.z + c);
+        up.set(0, 1, 0);
+        break;
+      }
+    }
 
-    const angle = Math.PI / 5; // ~36° elevation
-    camera.position.set(
-      center.x + dist * Math.cos(angle),
-      center.y + dist * Math.sin(angle),
-      center.z + dist * Math.cos(angle)
-    );
-    camera.near  = dist / 100;
-    camera.far   = dist * 100;
-    camera.updateProjectionMatrix();
+    camera.position.copy(pos);
+    camera.up.copy(up);
+    camera.lookAt(center);
+
+    // True CAD Orthographic parallel projection: zero perspective distortion
+    if (camera.isOrthographicCamera) {
+      const padding = 0.75;
+      camera.zoom = (Math.min(width, height) * padding) / maxDim;
+      camera.near = -dist * 50;
+      camera.far = dist * 50;
+      camera.updateProjectionMatrix();
+    }
 
     if (controls) {
       controls.target.copy(center);
       controls.update();
     }
+
+    onViewApplied?.();
+  };
+
+  // Measure bounding box and apply initial framing
+  useEffect(() => {
+    if (!modelRef.current) return;
+
+    const box = new THREE.Box3().setFromObject(modelRef.current);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 2.5;
+
+    metricsRef.current = { center, dist, maxDim };
+    applyView(targetView ?? 'se');
   }, [modelRef.current]);
+
+  // Apply new view preset when user clicks a button
+  useEffect(() => {
+    if (targetView && metricsRef.current) {
+      applyView(targetView);
+    }
+  }, [targetView]);
+
+  // Adjust zoom when viewport width or height changes
+  useEffect(() => {
+    if (!metricsRef.current || !camera) return;
+    const { maxDim } = metricsRef.current;
+    if (camera.isOrthographicCamera) {
+      const padding = 0.75;
+      camera.zoom = (Math.min(width, height) * padding) / maxDim;
+      camera.updateProjectionMatrix();
+      if (controls) controls.update();
+    }
+  }, [width, height]);
 
   return null;
 };
@@ -209,19 +320,27 @@ const ModelScene = ({
   hiddenNodes,
   onSceneReady,
   onError,
+  targetView,
+  width,
+  height,
+  onStartOrbit,
 }: {
   url: string;
   theme?: string;
   hiddenNodes: number[];
   onSceneReady?: () => void;
   onError?: (error: Error) => void;
+  targetView: ViewPreset | null;
+  width: number;
+  height: number;
+  onStartOrbit?: () => void;
 }) => {
   const modelRef  = useRef<THREE.Group | null>(null);
   const [, forceUpdate] = useState(0);
 
   const handleLoaded = (ref: THREE.Group) => {
     modelRef.current = ref;
-    forceUpdate((n) => n + 1); // trigger re-render so CameraFitter fires
+    forceUpdate((n) => n + 1); // trigger re-render so CameraController fires
     // Ensure the scene has updated and camera fitted before revealing the model
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -232,6 +351,9 @@ const ModelScene = ({
 
   return (
     <>
+      {/* CAD Orthographic Camera (Zero perspective distortion, matching iCAD SX) */}
+      <OrthographicCamera makeDefault near={-100000} far={100000} />
+
       {/* Studio CAD Lighting rig */}
       <ambientLight intensity={0.65} />
       <directionalLight
@@ -251,19 +373,19 @@ const ModelScene = ({
 
       <OrbitControls
         makeDefault
-        enableDamping
-        dampingFactor={0.06}
+        enableDamping={false}
         minDistance={0.1}
         maxDistance={5000}
         target={[0, 0, 0]}
-        /* ── CAD-style mouse mapping ── */
+        /* ── CAD-style direct 1:1 mouse mapping (no inertia/sliding) ── */
         enablePan
-        panSpeed={1.2}
+        panSpeed={1.0}
         screenSpacePanning        /* pan along the camera plane, not the ground */
         enableRotate
-        rotateSpeed={0.8}
+        rotateSpeed={1.0}
         enableZoom
-        zoomSpeed={1.2}
+        zoomSpeed={1.0}
+        onStart={onStartOrbit}
         mouseButtons={{
           LEFT:   THREE.MOUSE.ROTATE,
           MIDDLE: THREE.MOUSE.PAN,
@@ -271,8 +393,14 @@ const ModelScene = ({
         }}
       />
 
-      {/* Auto-fit camera once model is loaded */}
-      <CameraFitter modelRef={modelRef} />
+      {/* Framing & View Presets */}
+      <CameraController
+        modelRef={modelRef}
+        targetView={targetView}
+        width={width}
+        height={height}
+      />
+
 
       {/* Model */}
       <ErrorBoundary onError={onError}>
@@ -293,6 +421,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const [modelUrl,    setModelUrl]    = useState<string | null>(null);
   const [loadError,   setLoadError]   = useState<string | null>(null);
   const [isMeshReady, setIsMeshReady] = useState(false);
+  const [activeView,  setActiveView]  = useState<ViewPreset | null>('se');
 
   // Fetch glTF blob from backend whenever drawing changes
   useEffect(() => {
@@ -302,6 +431,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
     setIsMeshReady(false);
     setLoadError(null);
     setModelUrl(null);
+    setActiveView('se');
 
     const fetchModel = async () => {
       try {
@@ -348,10 +478,66 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
           and putting it inside would make it a three.js object. */}
       {parts.length > 1 && <PartsPanel drawingId={drawing.id} parts={parts} />}
 
+      {/* ── View Presets Toolbar: Orthographic & Isometric in separate containers (aligned with 2D toggle) ── */}
+      {isMeshReady && !loadError && (
+        <div className="absolute top-2 right-13 z-20 flex items-center gap-1.5 select-none">
+          {/* Orthographic Face views: Top, Front, Right, Left, Back, Bottom */}
+          <div className="flex items-center h-7 rounded border border-border-color bg-bg-card/90 backdrop-blur-sm shadow-sm p-0.5 gap-0.5">
+            {([
+              { id: 'top', label: 'Top View' },
+              { id: 'front', label: 'Front View' },
+              { id: 'right', label: 'Right View' },
+              { id: 'left', label: 'Left View' },
+              { id: 'back', label: 'Back View' },
+              { id: 'bottom', label: 'Bottom View' },
+            ] as const).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveView(id)}
+                className={`w-6 h-6 flex items-center justify-center rounded transition-all cursor-pointer ${
+                  activeView === id
+                    ? 'border border-black bg-transparent'
+                    : 'border border-transparent hover:bg-border-color/30'
+                }`}
+                title={label}
+                aria-label={label}
+              >
+                <ViewCubeIcon face={id} size={15} active={activeView === id} />
+              </button>
+            ))}
+          </div>
+
+          {/* Isometric views: SE, SW, NE, NW */}
+          <div className="flex items-center h-7 rounded border border-border-color bg-bg-card/90 backdrop-blur-sm shadow-sm p-0.5 gap-0.5">
+            {([
+              { id: 'se', label: 'SE Isometric (Front-Right)' },
+              { id: 'sw', label: 'SW Isometric (Front-Left)' },
+              { id: 'ne', label: 'NE Isometric (Back-Right)' },
+              { id: 'nw', label: 'NW Isometric (Back-Left)' },
+            ] as const).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveView(id)}
+                className={`w-6 h-6 flex items-center justify-center rounded transition-all cursor-pointer ${
+                  activeView === id
+                    ? 'border border-black bg-transparent'
+                    : 'border border-transparent hover:bg-border-color/30'
+                }`}
+                title={label}
+                aria-label={label}
+              >
+                <ViewCubeIcon face={id} size={15} active={activeView === id} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── 3-D canvas ─────────────────────────────── */}
       {modelUrl && (
         <Canvas
-          camera={{ position: [0, 0, 10], fov: 45, near: 0.01, far: 100000 }}
           shadows
           gl={{ antialias: true, alpha: true, logarithmicDepthBuffer: true }}
           style={{ background: 'transparent' }}
@@ -360,6 +546,10 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
             url={modelUrl}
             theme={theme}
             hiddenNodes={hiddenNodes}
+            targetView={activeView}
+            width={width}
+            height={height}
+            onStartOrbit={() => setActiveView(null)}
             onSceneReady={() => setIsMeshReady(true)}
             onError={(err) => setLoadError(err.message)}
           />
