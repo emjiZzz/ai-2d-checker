@@ -8,8 +8,12 @@
  * The condition is `entity_counts.mesh` -- a glTF was written for this drawing -- rather than
  * the file extension, which only says one might have been. An .icd holding just a sheet gets
  * no toggle, and that is correct.
+ *
+ * Single-button design:
+ * When the canvas is 2D, the button displays "3D".
+ * When the canvas is 3D, the button displays "2D".
  */
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ViewModeToggle } from "./ViewModeToggle";
@@ -41,10 +45,15 @@ describe("ViewModeToggle", () => {
     useReviewStore.setState({ viewMode: { old: "2d", new: "2d" } });
   });
 
-  it("renders for a drawing that has a model", () => {
+  it("renders '3D' button for a 2D drawing that has a 3D model available", () => {
+    render(<ViewModeToggle side="new" drawing={withMesh} />);
+    expect(screen.getByRole("button", { name: "3D" })).toBeInTheDocument();
+  });
+
+  it("renders '2D' button when the pane is currently in 3D mode", () => {
+    useReviewStore.setState({ viewMode: { old: "2d", new: "3d" } });
     render(<ViewModeToggle side="new" drawing={withMesh} />);
     expect(screen.getByRole("button", { name: "2D" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "3D" })).toBeInTheDocument();
   });
 
   it("renders nothing for a 2D-only drawing", () => {
@@ -63,16 +72,20 @@ describe("ViewModeToggle", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("switches only its own pane", () => {
-    render(<ViewModeToggle side="new" drawing={withMesh} />);
-    screen.getByRole("button", { name: "3D" }).click();
+  it("switches only its own pane and toggles the button label", () => {
+    const { rerender } = render(<ViewModeToggle side="new" drawing={withMesh} />);
+    
+    // In 2D mode, button says "3D"
+    const button = screen.getByRole("button", { name: "3D" });
+    act(() => {
+      button.click();
+    });
+    
+    // Store updated to 3D for 'new' pane, 'old' remains 2D
     expect(useReviewStore.getState().viewMode).toEqual({ old: "2d", new: "3d" });
-  });
 
-  it("marks the active mode for assistive tech", () => {
-    useReviewStore.setState({ viewMode: { old: "3d", new: "2d" } });
-    render(<ViewModeToggle side="old" drawing={withMesh} />);
-    expect(screen.getByRole("button", { name: "3D" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "2D" })).toHaveAttribute("aria-pressed", "false");
+    // Rerender shows "2D" label
+    rerender(<ViewModeToggle side="new" drawing={withMesh} />);
+    expect(screen.getByRole("button", { name: "2D" })).toBeInTheDocument();
   });
 });

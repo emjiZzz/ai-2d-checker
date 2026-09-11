@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useThemeStore } from '../../stores/themeStore';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { Box } from 'lucide-react';
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PartsPanel, type AssemblyPart } from './PartsPanel';
 import { useReviewStore } from '../../stores/reviewStore';
+import { Box } from 'lucide-react';
 
 /**
  * Triangles above which the CAD edge outlines are skipped.
@@ -180,27 +180,24 @@ const GltfMesh = ({
 };
 
 
-// ── Simple error boundary that renders a neutral placeholder ─────────────────
+// ── Silent error boundary to prevent scene crashes ─────────────────────────
 class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; message: string }
+  { children: React.ReactNode; onError?: (error: Error) => void },
+  { hasError: boolean }
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; onError?: (error: Error) => void }) {
     super(props);
-    this.state = { hasError: false, message: '' };
+    this.state = { hasError: false };
   }
-  static getDerivedStateFromError(err: Error) {
-    return { hasError: true, message: err.message };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
-  render() {
+  override componentDidCatch(error: Error) {
+    this.props.onError?.(error);
+  }
+  override render() {
     if (this.state.hasError) {
-      // Neutral placeholder — NOT red, so it doesn't alarm users
-      return (
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#1e3a4a" wireframe opacity={0.6} transparent />
-        </mesh>
-      );
+      return null;
     }
     return this.props.children;
   }
@@ -209,12 +206,15 @@ class ErrorBoundary extends React.Component<
 // ── Scene wrapper ─────────────────────────────────────────────────────────────
 const ModelScene = ({
   url,
-  theme,
   hiddenNodes,
+  onSceneReady,
+  onError,
 }: {
   url: string;
-  theme: string;
+  theme?: string;
   hiddenNodes: number[];
+  onSceneReady?: () => void;
+  onError?: (error: Error) => void;
 }) => {
   const modelRef  = useRef<THREE.Group | null>(null);
   const [, forceUpdate] = useState(0);
@@ -222,6 +222,12 @@ const ModelScene = ({
   const handleLoaded = (ref: THREE.Group) => {
     modelRef.current = ref;
     forceUpdate((n) => n + 1); // trigger re-render so CameraFitter fires
+    // Ensure the scene has updated and camera fitted before revealing the model
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        onSceneReady?.();
+      });
+    });
   };
 
   return (
@@ -250,37 +256,31 @@ const ModelScene = ({
         minDistance={0.1}
         maxDistance={5000}
         target={[0, 0, 0]}
+        /* ── CAD-style mouse mapping ── */
+        enablePan
+        panSpeed={1.2}
+        screenSpacePanning        /* pan along the camera plane, not the ground */
+        enableRotate
+        rotateSpeed={0.8}
+        enableZoom
+        zoomSpeed={1.2}
+        mouseButtons={{
+          LEFT:   THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.PAN,
+          RIGHT:  null as any,
+        }}
       />
 
       {/* Auto-fit camera once model is loaded */}
       <CameraFitter modelRef={modelRef} />
 
       {/* Model */}
-      <ErrorBoundary>
-        <React.Suspense
-          fallback={
-            <mesh>
-              <boxGeometry args={[0.5, 0.5, 0.5]} />
-              <meshBasicMaterial color="#1a3a4a" wireframe />
-            </mesh>
-          }
-        >
+      <ErrorBoundary onError={onError}>
+        <React.Suspense fallback={null}>
           <GltfMesh url={url} onLoaded={handleLoaded} hiddenNodes={hiddenNodes} />
         </React.Suspense>
       </ErrorBoundary>
 
-      {/* Ground grid — sized to fit the model */}
-      <Grid
-        args={[2000, 2000]}
-        cellSize={10}
-        cellThickness={0.6}
-        cellColor={theme === 'hc-light' ? '#bbb' : '#2a2a2a'}
-        sectionSize={100}
-        sectionThickness={1.2}
-        sectionColor={theme === 'hc-light' ? '#888' : '#444'}
-        fadeDistance={3000}
-        position={[0, -200, 0]}
-      />
     </>
   );
 };
@@ -290,21 +290,20 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const theme = useThemeStore((s) => s.theme);
   const { backendUrl, apiToken } = useConnectionStore();
 
-  const [modelUrl,  setModelUrl]  = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading,   setLoading]   = useState(false);
+  const [modelUrl,    setModelUrl]    = useState<string | null>(null);
+  const [loadError,   setLoadError]   = useState<string | null>(null);
+  const [isMeshReady, setIsMeshReady] = useState(false);
 
   // Fetch glTF blob from backend whenever drawing changes
   useEffect(() => {
     if (!drawing?.id) return;
 
     let objectUrl: string | null = null;
+    setIsMeshReady(false);
+    setLoadError(null);
+    setModelUrl(null);
 
     const fetchModel = async () => {
-      setLoading(true);
-      setLoadError(null);
-      setModelUrl(null);
-
       try {
         const headers: Record<string, string> = {};
         if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`;
@@ -329,8 +328,6 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
       } catch (err) {
         setLoadError(String(err));
         console.error('3D model fetch error:', err);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -359,84 +356,48 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
           gl={{ antialias: true, alpha: true, logarithmicDepthBuffer: true }}
           style={{ background: 'transparent' }}
         >
-          <ModelScene url={modelUrl} theme={theme} hiddenNodes={hiddenNodes} />
+          <ModelScene
+            url={modelUrl}
+            theme={theme}
+            hiddenNodes={hiddenNodes}
+            onSceneReady={() => setIsMeshReady(true)}
+            onError={(err) => setLoadError(err.message)}
+          />
         </Canvas>
       )}
 
       {/* ── Loading / error placeholders ───────────── */}
-      {!modelUrl && (
+      {loadError ? (
         <div style={{
-          width: '100%', height: '100%',
+          position: 'absolute',
+          inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexDirection: 'column', gap: 12,
           color: theme === 'hc-light' ? '#333' : '#aaa',
+          zIndex: 10,
         }}>
-          {loadError ? (
-            <>
-              <Box size={28} color="#ff6b6b" />
-              <span style={{ fontSize: 12 }}>3D model unavailable — {loadError}</span>
-            </>
-          ) : (
-            <span style={{ fontSize: 13, opacity: 0.6 }}>
-              {loading ? 'Loading 3D geometry…' : 'Ingesting and parsing 3D B-Rep geometry…'}
-            </span>
-          )}
+          <Box size={28} color="#ff6b6b" />
+          <span style={{ fontSize: 12 }}>3D model unavailable — {loadError}</span>
+        </div>
+      ) : (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 12,
+          color: theme === 'hc-light' ? '#333' : '#aaa',
+          pointerEvents: 'none',
+          opacity: isMeshReady ? 0 : 1,
+          transition: 'opacity 0.25s ease-out',
+          zIndex: 10,
+        }}>
+          <span style={{ fontSize: 13, opacity: 0.6 }}>
+            Loading 3D geometry…
+          </span>
         </div>
       )}
 
-      {/* ── Telemetry HUD ──────────────────────────── */}
-      <div style={{
-        position: 'absolute', top: 16, left: 16,
-        padding: '12px 16px',
-        backgroundColor: theme === 'hc-light' ? 'rgba(226,230,237,0.95)' : 'rgba(9,9,11,0.95)',
-        border: `1px solid ${theme === 'hc-light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
-        borderRadius: 8,
-        backdropFilter: 'blur(8px)',
-        pointerEvents: 'none',
-        display: 'flex', flexDirection: 'column', gap: 6,
-        zIndex: 10,
-        minWidth: 180,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <Box size={16} color="#00e5ff" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#00e5ff', letterSpacing: '0.05em' }}>
-            3D TELEMETRY MONITOR
-          </span>
-        </div>
-        <HudRow label="Model Name" value={drawing?.file_name || '—'} />
-        <HudRow label="Format"     value={drawing?.format?.toUpperCase() || '—'} color="#a855f7" />
-        {drawing?.metadata?.triangle_count > 0 && (
-          <HudRow label="Triangles"  value={drawing.metadata.triangle_count.toLocaleString()} color="#10b981" />
-        )}
-        {drawing?.metadata?.face_count > 0 && (
-          <HudRow label="B-Rep Faces" value={drawing.metadata.face_count.toLocaleString()} color="#f59e0b" />
-        )}
-        {drawing?.metadata?.vertex_count > 0 && (
-          <HudRow label="Vertices"   value={drawing.metadata.vertex_count.toLocaleString()} color="#60a5fa" />
-        )}
-        {drawing?.metadata?.color_groups > 1 && (
-          <HudRow label="Colour Groups" value={`${drawing.metadata.color_groups} zones`} color="#e879f9" />
-        )}
-        <div style={{ marginTop: 4, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-          <span style={{ fontSize: 10, opacity: 0.4, fontFamily: 'monospace' }}>
-            Drag to orbit · Scroll to zoom
-          </span>
-        </div>
-      </div>
     </div>
   );
 };
 
-const HudRow = ({
-  label, value, color,
-}: {
-  label: string; value: string; color?: string;
-}) => {
-  const theme = useThemeStore((s) => s.theme);
-  return (
-    <div style={{ fontSize: 12, color: theme === 'hc-light' ? '#333' : '#ddd' }}>
-      <span style={{ opacity: 0.55 }}>{label} : </span>
-      <span style={{ fontWeight: 600, color: color ?? 'inherit' }}>{value}</span>
-    </div>
-  );
-};

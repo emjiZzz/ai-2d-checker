@@ -24,6 +24,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
     fileName,
     fileSize,
     errorMessage,
+    activeUploadJobId,
     uploadDrawingFile,
     clearUpload,
     selectedClient,
@@ -43,7 +44,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
   const { activeSession } = useAuditStore();
 
   // Attach TanStack Query background pollers. They automatically sleep if no active job/session.
-  useJobPolling(activeJob?.id || null);
+  useJobPolling(activeUploadJobId || activeJob?.id || null);
   useAuditPolling(activeSession?.id || null);
 
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
