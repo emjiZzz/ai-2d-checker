@@ -133,3 +133,16 @@ def test_this_repository_satisfies_the_marker_the_rust_side_looks_for() -> None:
         f"none of the Rust side's file markers {file_markers} exist at the repository root, so a "
         "development build no longer resolves to the repository's own storage directory"
     )
+
+
+def test_nas_storage_detection(monkeypatch) -> None:
+    from services.backend.infrastructure.storage.path_resolver import is_nas_storage, check_storage_reachability
+
+    # Local storage
+    monkeypatch.setattr("services.backend.infrastructure.storage.path_resolver.STORAGE_ROOT", Path("./storage"))
+    assert not is_nas_storage()
+
+    # UNC path (e.g. \\KMTI-NAS\Shared\data\ai_checker\storage)
+    monkeypatch.setattr("services.backend.infrastructure.storage.path_resolver.STORAGE_ROOT", Path(r"\\KMTI-NAS\Shared\data\ai_checker\storage"))
+    assert is_nas_storage()
+

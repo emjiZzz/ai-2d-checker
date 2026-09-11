@@ -251,6 +251,8 @@ interface ReviewState {
   hiddenParts: Record<string, number[]>;
   togglePart: (drawingId: string, node: number) => void;
   setPartsHidden: (drawingId: string, nodes: number[]) => void;
+  selectedPart: Record<string, number | null>;
+  setSelectedPart: (drawingId: string, node: number | null) => void;
 }
 
 /**
@@ -668,5 +670,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   }),
   setPartsHidden: (drawingId, nodes) => set((state) => ({
     hiddenParts: { ...state.hiddenParts, [drawingId]: nodes }
+  })),
+
+  selectedPart: {},
+  setSelectedPart: (drawingId, node) => set((state) => ({
+    selectedPart: {
+      ...state.selectedPart,
+      [drawingId]: state.selectedPart[drawingId] === node ? null : node,
+    },
   }))
 }));

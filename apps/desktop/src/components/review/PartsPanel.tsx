@@ -1,5 +1,5 @@
-import React from "react";
-import { Eye, EyeOff, Layers } from "lucide-react";
+import React, { useState } from "react";
+import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useReviewStore } from "../../stores/reviewStore";
 
 export interface AssemblyPart {
@@ -16,75 +16,112 @@ interface PartsPanelProps {
   parts: AssemblyPart[];
 }
 
-/** `1698997.98` -> `1.70e6`, so a column of volumes stays readable at a glance. */
-const formatVolume = (mm3: number | null): string => {
-  if (mm3 === null || !Number.isFinite(mm3)) return "—";
-  if (mm3 >= 1e6) return `${(mm3 / 1e6).toFixed(2)}e6`;
-  if (mm3 >= 1e3) return `${(mm3 / 1e3).toFixed(1)}e3`;
-  return mm3.toFixed(0);
-};
-
 /**
- * The assembly's parts, and which of them are drawn.
+ * Collapsible sidebar overlay for the assembly's parts.
  *
- * The names come from iCAD itself -- through the STEP's PRODUCT entries and out of gmsh as
- * named volumes -- so this list is the same tree the engineer sees in iCAD SX.
- *
- * Names REPEAT. Two `φ9×204` rows are two instances of one part, not a duplicate, so rows are
- * keyed and toggled by glTF node index. Matching on the name would hide both.
- *
- * Absent for a single-solid model: a list of one thing you can only hide is not a feature.
+ * - Clicking an item row highlights that specific part in the 3D model.
+ * - Clicking the eye icon hides/shows that part in the 3D model.
+ * - Pinned to the overlay sidebar with a smooth collapse/expand toggle.
  */
 export const PartsPanel: React.FC<PartsPanelProps> = ({ drawingId, parts }) => {
+  const [isOpen, setIsOpen] = useState(true);
   const hidden = useReviewStore((s) => s.hiddenParts[drawingId]);
   const togglePart = useReviewStore((s) => s.togglePart);
-  const setPartsHidden = useReviewStore((s) => s.setPartsHidden);
+  const selectedPart = useReviewStore((s) => s.selectedPart[drawingId] ?? null);
+  const setSelectedPart = useReviewStore((s) => s.setSelectedPart);
 
   if (!parts || parts.length < 2) return null;
 
   const hiddenSet = new Set(hidden ?? []);
-  const allShown = hiddenSet.size === 0;
+
+  if (!isOpen) {
+    return (
+      <div className="absolute top-11 right-2 z-20 select-none">
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border-color bg-bg-card/90 hover:bg-bg-card hover:border-accent-cyan/80 backdrop-blur-sm text-text-primary shadow-md text-xs font-mono font-semibold cursor-pointer transition-all group"
+          title="Expand Parts Sidebar"
+          aria-label="Expand Parts Sidebar"
+        >
+          <ChevronLeft size={13} className="text-text-muted group-hover:text-accent-cyan transition-colors" />
+          <span>PARTS</span>
+          <span className="text-text-muted text-[10px]">({parts.length})</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="absolute top-30 left-2 z-20 w-56 max-h-[65%] flex flex-col rounded-sm border border-border-color bg-bg-card/95 backdrop-blur-sm text-text-primary shadow-lg">
-      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border-color">
+    <div className="absolute top-11 right-2 z-20 w-44 max-h-[calc(100%-4rem)] flex flex-col rounded border border-border-color bg-bg-card/95 backdrop-blur-md text-text-primary shadow-xl select-none transition-all">
+      {/* Header */}
+      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border-color bg-bg-card/70">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide">
-          <Layers size={12} />
-          PARTS
-          <span className="text-text-muted font-normal">({parts.length})</span>
+          <span>PARTS</span>
+          <span className="text-text-muted font-normal text-[10px]">({parts.length})</span>
         </div>
         <button
           type="button"
-          className="text-[10px] text-text-muted hover:text-text-primary"
-          onClick={() =>
-            setPartsHidden(drawingId, allShown ? parts.map((p) => p.node) : [])
-          }
+          onClick={() => setIsOpen(false)}
+          className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-dark/50 transition-colors cursor-pointer"
+          title="Collapse Parts Sidebar"
+          aria-label="Collapse Parts Sidebar"
         >
-          {allShown ? "Hide all" : "Show all"}
+          <ChevronRight size={14} />
         </button>
       </div>
 
-      <ul className="overflow-y-auto py-1">
+      {/* Parts List */}
+      <ul className="overflow-y-auto py-1 flex-1 min-h-0">
         {parts.map((part) => {
           const isHidden = hiddenSet.has(part.node);
+          const isSelected = selectedPart === part.node;
+
           return (
-            <li key={part.node}>
-              <button
-                type="button"
-                onClick={() => togglePart(drawingId, part.node)}
+            <li key={part.node} className="px-1 py-0.5">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedPart(drawingId, part.node)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedPart(drawingId, part.node);
+                  }
+                }}
                 aria-pressed={!isHidden}
-                title={`${part.name} — ${part.triangles.toLocaleString()} triangles, ${part.surfaces} surfaces`}
+                aria-selected={isSelected}
+                title={`${part.name} — ${part.triangles.toLocaleString()} triangles, ${part.surfaces} surfaces${isSelected ? " (Selected in 3D)" : ""}`}
                 className={[
-                  "w-full flex items-center gap-2 px-2.5 py-1 text-left text-[11px] transition-colors",
-                  isHidden ? "text-text-muted/50" : "text-text-primary hover:bg-bg-dark/50",
+                  "w-full flex items-center justify-between gap-2 px-2 py-1 text-left text-[11px] rounded transition-all cursor-pointer",
+                  isSelected
+                    ? "bg-accent-cyan/15 text-accent-cyan font-medium border border-accent-cyan/40 shadow-xs"
+                    : isHidden
+                    ? "text-text-muted/40 hover:bg-bg-dark/30"
+                    : "text-text-primary hover:bg-bg-dark/50 hover:text-accent-cyan",
                 ].join(" ")}
               >
-                {isHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+                {/* Part Name: clicking row highlights only this part in 3D */}
                 <span className="flex-1 truncate font-mono">{part.name}</span>
-                <span className="text-text-muted text-[10px] tabular-nums">
-                  {formatVolume(part.volume_mm3)}
-                </span>
-              </button>
+
+                {/* Eye Icon button: click toggles visibility on/off on the right side */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePart(drawingId, part.node);
+                  }}
+                  className="p-0.5 rounded hover:bg-bg-dark/60 text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                  aria-label={`Toggle visibility of ${part.name}`}
+                  title={isHidden ? "Show part in 3D" : "Hide part in 3D"}
+                >
+                  {isHidden ? (
+                    <EyeOff size={12} className="text-text-muted/50" />
+                  ) : (
+                    <Eye size={12} className={isSelected ? "text-accent-cyan" : "text-text-muted"} />
+                  )}
+                </button>
+              </div>
             </li>
           );
         })}

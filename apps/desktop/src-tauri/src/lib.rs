@@ -1,5 +1,6 @@
 pub mod security;
 pub mod cad_converter;
+pub mod nas_sync;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -282,7 +283,12 @@ pub fn run() {
             cad_converter::convert_local_dwg,
             cad_converter::convert_local_bytes,
             cad_converter::read_converted_file,
-            cad_converter::cleanup_converted_file
+            cad_converter::cleanup_converted_file,
+            nas_sync::check_nas_reachable,
+            nas_sync::sync_file_to_nas,
+            nas_sync::save_client_local_file,
+            nas_sync::read_client_local_file,
+            nas_sync::delete_client_local_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

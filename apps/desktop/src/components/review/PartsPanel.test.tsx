@@ -1,5 +1,6 @@
 /**
- * The assembly parts list, and which rows it hides.
+ * The assembly parts list: collapsible sidebar, part highlighting on row click,
+ * and visibility toggling via eye icon.
  *
  * The one thing that must not regress: iCAD REPEATS a part name across instances -- two
  * `φ9×204` on one assembly are two real parts, not a duplicate row. Rows are therefore keyed
@@ -21,10 +22,11 @@ const PARTS: AssemblyPart[] = [
 ];
 
 const rows = () => screen.getAllByRole("button").filter((b) => b.textContent?.includes("×"));
+const eyeButtons = () => screen.getAllByTitle(/part in 3D/i);
 
 describe("PartsPanel", () => {
   beforeEach(() => {
-    useReviewStore.setState({ hiddenParts: {} });
+    useReviewStore.setState({ hiddenParts: {}, selectedPart: {} });
   });
 
   it("lists every part, including repeated names", () => {
@@ -33,36 +35,38 @@ describe("PartsPanel", () => {
     expect(screen.getAllByText("φ9×204")).toHaveLength(2);
   });
 
-  it("hides only the instance that was clicked", () => {
+  it("highlights a part when its item row is clicked", () => {
     render(<PartsPanel drawingId="d1" parts={PARTS} />);
-    // The SECOND `φ9×204`. Toggling by name would take its twin with it.
     fireEvent.click(rows()[1]);
-    expect(useReviewStore.getState().hiddenParts["d1"]).toEqual([1]);
+    expect(useReviewStore.getState().selectedPart["d1"]).toBe(1);
+    expect(rows()[1]).toHaveAttribute("aria-selected", "true");
+
+    // Clicking again deselects
+    fireEvent.click(rows()[1]);
+    expect(useReviewStore.getState().selectedPart["d1"]).toBeNull();
+    expect(rows()[1]).toHaveAttribute("aria-selected", "false");
   });
 
-  it("toggles back on a second click", () => {
+  it("hides only the instance whose eye icon was clicked", () => {
     render(<PartsPanel drawingId="d1" parts={PARTS} />);
-    fireEvent.click(rows()[2]);
-    fireEvent.click(rows()[2]);
+    // The SECOND `φ9×204` eye icon. Toggling by name would take its twin with it.
+    fireEvent.click(eyeButtons()[1]);
+    expect(useReviewStore.getState().hiddenParts["d1"]).toEqual([1]);
+
+    // Clicking eye icon again shows it
+    fireEvent.click(eyeButtons()[1]);
     expect(useReviewStore.getState().hiddenParts["d1"]).toEqual([]);
   });
 
   it("keeps each drawing's hidden parts separate", () => {
     useReviewStore.setState({ hiddenParts: { other: [0, 1, 2, 3] } });
     render(<PartsPanel drawingId="d1" parts={PARTS} />);
-    fireEvent.click(rows()[0]);
+    fireEvent.click(eyeButtons()[0]);
     const state = useReviewStore.getState().hiddenParts;
     expect(state["d1"]).toEqual([0]);
     expect(state["other"]).toEqual([0, 1, 2, 3]);
   });
 
-  it("hides all, then shows all", () => {
-    render(<PartsPanel drawingId="d1" parts={PARTS} />);
-    fireEvent.click(screen.getByRole("button", { name: "Hide all" }));
-    expect(useReviewStore.getState().hiddenParts["d1"]).toEqual([0, 1, 2, 3]);
-    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
-    expect(useReviewStore.getState().hiddenParts["d1"]).toEqual([]);
-  });
 
   it("marks a hidden row for assistive tech", () => {
     useReviewStore.setState({ hiddenParts: { d1: [1] } });
@@ -71,8 +75,21 @@ describe("PartsPanel", () => {
     expect(rows()[1]).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("collapses and expands cleanly", () => {
+    render(<PartsPanel drawingId="d1" parts={PARTS} />);
+    expect(screen.getAllByText("φ9×204")).toHaveLength(2);
+
+    // Collapse
+    fireEvent.click(screen.getByTitle("Collapse Parts Sidebar"));
+    expect(screen.queryByText("φ9×204")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Expand Parts Sidebar")).toBeInTheDocument();
+
+    // Expand
+    fireEvent.click(screen.getByTitle("Expand Parts Sidebar"));
+    expect(screen.getAllByText("φ9×204")).toHaveLength(2);
+  });
+
   it("renders nothing for a single-solid model", () => {
-    // A list of one thing you can only hide is not a feature.
     const { container } = render(<PartsPanel drawingId="d1" parts={[PARTS[0]]} />);
     expect(container).toBeEmptyDOMElement();
   });

@@ -109,17 +109,25 @@ class DrawingIngestionService:
         uploads_dir.mkdir(parents=True, exist_ok=True)
         final_path = uploads_dir / secure_filename
 
+        import shutil
         try:
             if final_path.exists():
                 final_path.unlink()
-            temp_path.rename(final_path)
+            shutil.move(str(temp_path), str(final_path))
         except Exception as err:
-            logger.error(f"Failed to move temp upload file to final destination: {err}")
+            logger.error(f"Failed to move temp upload file to final destination ({final_path}): {err}")
             if temp_path.exists():
                 try:
                     temp_path.unlink()
                 except Exception:
                     pass
+            from ..storage.storage_health import get_storage_diagnostics
+            diag = get_storage_diagnostics()
+            if diag.get("is_nas") and not diag.get("reachable"):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="NAS storage is unreachable from server. Use Client PC local storage fallback."
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to finalize drawing storage."
@@ -131,10 +139,11 @@ class DrawingIngestionService:
                 companion_final = uploads_dir / f"{final_path.stem}.stp"
                 if companion_final.exists():
                     companion_final.unlink()
-                companion_temp.rename(companion_final)
+                shutil.move(str(companion_temp), str(companion_final))
                 logger.info(f"Saved companion STEP file to {companion_final}")
             except Exception as e:
                 logger.warning(f"Failed to persist companion STEP file: {e}")
+
 
         drawing = DrawingDocument(
             file_name=file.filename or "drawing.dwg",

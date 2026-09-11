@@ -91,6 +91,22 @@ function App() {
     return () => stopPolling();
   }, [backendUrl, startPolling, stopPolling]);
 
+  // Auto-sync offline Client PC storage files to NAS whenever NAS is reachable
+  useEffect(() => {
+    let unmounted = false;
+    import("./services/clientStorageFallback").then(({ startBackgroundNasSync }) => {
+      if (!unmounted) {
+        startBackgroundNasSync(backendUrl);
+      }
+    });
+    return () => {
+      unmounted = true;
+      import("./services/clientStorageFallback").then(({ stopBackgroundNasSync }) => {
+        stopBackgroundNasSync();
+      });
+    };
+  }, [backendUrl]);
+
   const renderContent = () => {
     // In prototype mode, skip login and render workspace directly
     if (isProto) {

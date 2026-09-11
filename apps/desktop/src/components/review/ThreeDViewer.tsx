@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useThemeStore } from '../../stores/themeStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
@@ -127,8 +127,8 @@ const CameraController = ({
     if (camera.isOrthographicCamera) {
       const padding = 0.75;
       camera.zoom = (Math.min(width, height) * padding) / maxDim;
-      camera.near = -dist * 50;
-      camera.far = dist * 50;
+      camera.near = 0.1;
+      camera.far = dist * 4;
       camera.updateProjectionMatrix();
     }
 
@@ -181,6 +181,8 @@ interface GltfMeshProps {
   gltf: GLTF;
   onLoaded: (ref: THREE.Group) => void;
   hiddenNodes: number[];
+  selectedNode: number | null;
+  onSelectPart?: (node: number | null) => void;
 }
 
 /** Renders a glTF model — preserves original STEP colours from embedded materials */
@@ -188,6 +190,8 @@ const GltfMesh = ({
   gltf,
   onLoaded,
   hiddenNodes,
+  selectedNode,
+  onSelectPart,
 }: GltfMeshProps) => {
   const groupRef = useRef<THREE.Group>(null!);
 
@@ -200,6 +204,51 @@ const GltfMesh = ({
       child.visible = !hide.has(i);
     });
   }, [gltf, hiddenNodes]);
+
+  // Dynamic Part Highlighting: Highlights the outline of the selected part only, keeping natural CAD solid colors
+  useEffect(() => {
+    gltf.scene.children.forEach((child, i) => {
+      const isSelected = selectedNode === i;
+
+      child.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+          materials.forEach((mat) => {
+            if (mat instanceof THREE.MeshStandardMaterial) {
+              // Retain natural CAD solid material colors — no bright emissive wash-out
+              mat.emissive.set(0x000000);
+              mat.emissiveIntensity = 0;
+              mat.transparent = false;
+              mat.opacity = 1.0;
+              mat.needsUpdate = true;
+            }
+          });
+        }
+
+        // Edge outline highlighting: only the selected part has a vivid cyan outline
+        if (obj.name === 'cad_edges' && (obj as THREE.LineSegments).isLineSegments) {
+          const line = obj as THREE.LineSegments;
+          const lineMat = line.material as THREE.LineBasicMaterial;
+          if (lineMat) {
+            if (isSelected) {
+              // Highlighted edges in vivid electric cyan
+              lineMat.color.set(0x00ffff);
+              lineMat.opacity = 1.0;
+              line.renderOrder = 1;
+            } else {
+              // Normal crisp CAD edge outlines
+              lineMat.color.set(0x475569);
+              lineMat.opacity = 0.65;
+              line.renderOrder = 0;
+            }
+            lineMat.needsUpdate = true;
+          }
+        }
+      });
+    });
+  }, [gltf, selectedNode]);
 
   // Enhance PBR quality while keeping the colours as defined in the STEP file
   useEffect(() => {
@@ -247,6 +296,7 @@ const GltfMesh = ({
             });
             const line = new THREE.LineSegments(edgesGeom, edgesMat);
             line.name = 'cad_edges';
+            line.raycast = () => {}; // Prevent edge outlines from intercepting pointer hitboxes
             mesh.add(line);
           }
         }
@@ -273,10 +323,13 @@ const GltfMesh = ({
             }
           }
           return new THREE.MeshStandardMaterial({
-            color:        col,
-            roughness:    0.35,
-            metalness:    0.05,
-            side:         THREE.DoubleSide,
+            color:               col,
+            roughness:           0.35,
+            metalness:           0.05,
+            side:                THREE.DoubleSide,
+            polygonOffset:       true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits:  1,
           });
         });
 
@@ -293,7 +346,46 @@ const GltfMesh = ({
   }, [gltf]);
 
   return (
-    <group ref={groupRef}>
+    <group
+      ref={groupRef}
+      onClick={(e) => {
+        // Ignore drags: only trigger on deliberate stationary click (not orbit or pan)
+        if (e.delta > 3) return;
+
+        // Pinpoint the exact frontmost solid mesh hit by raycast
+        const hit = e.intersections?.find(
+          (item) => (item.object as THREE.Mesh).isMesh && item.object.name !== 'cad_edges'
+        );
+        
+        // If no solid CAD mesh was intersected under cursor, cleanly deselect and do NOT highlight anything
+        if (!hit) {
+          onSelectPart?.(null);
+          return;
+        }
+
+        // Deliberate click on a solid part: stop propagation to prevent background/canvas deselect handlers
+        e.stopPropagation();
+        if (e.nativeEvent?.stopImmediatePropagation) {
+          e.nativeEvent.stopImmediatePropagation();
+        }
+
+        let curr: THREE.Object3D | null = hit.object;
+        while (curr && curr.parent && curr.parent !== gltf.scene) {
+          curr = curr.parent;
+        }
+        if (curr && curr.parent === gltf.scene) {
+          const idx = gltf.scene.children.indexOf(curr);
+          if (idx !== -1) {
+            onSelectPart?.(selectedNode === idx ? null : idx);
+          }
+        } else {
+          onSelectPart?.(null);
+        }
+      }}
+      onPointerMissed={() => {
+        onSelectPart?.(null);
+      }}
+    >
       <primitive object={gltf.scene} />
     </group>
   );
@@ -426,6 +518,8 @@ interface ModelSceneProps {
   gltf: GLTF;
   theme?: string;
   hiddenNodes: number[];
+  selectedNode: number | null;
+  onSelectPart?: (node: number | null) => void;
   onSceneReady?: () => void;
   onError?: (error: Error) => void;
   targetView: ViewPreset | null;
@@ -438,6 +532,8 @@ interface ModelSceneProps {
 const ModelScene = ({
   gltf,
   hiddenNodes,
+  selectedNode,
+  onSelectPart,
   onSceneReady,
   onError,
   targetView,
@@ -468,7 +564,7 @@ const ModelScene = ({
   return (
     <>
       {/* CAD Orthographic Camera */}
-      <OrthographicCamera makeDefault near={-100000} far={100000} />
+      <OrthographicCamera makeDefault near={0.1} far={50000} />
 
       {/* ── Dynamic CAD Lighting Rig (Key light dynamically shines from North-East as model rotates) ── */}
       <DynamicCadLighting modelRef={modelRef} />
@@ -477,7 +573,7 @@ const ModelScene = ({
         makeDefault
         enableDamping={false}
         minDistance={0.1}
-        maxDistance={5000}
+        maxDistance={50000}
         target={[0, 0, 0]}
         /* ── CAD-style direct 1:1 mouse mapping (no inertia/sliding) ── */
         enablePan
@@ -506,7 +602,13 @@ const ModelScene = ({
 
       {/* Model */}
       <ErrorBoundary onError={onError}>
-        <GltfMesh gltf={gltf} onLoaded={handleLoaded} hiddenNodes={hiddenNodes} />
+        <GltfMesh
+          gltf={gltf}
+          onLoaded={handleLoaded}
+          hiddenNodes={hiddenNodes}
+          selectedNode={selectedNode}
+          onSelectPart={onSelectPart}
+        />
       </ErrorBoundary>
     </>
   );
@@ -522,6 +624,10 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const [isMeshReady, setIsMeshReady] = useState(false);
   const [activeView,  setActiveView]  = useState<ViewPreset | null>('sw');
   const [mainCamera,  setMainCamera]  = useState<THREE.Camera | null>(null);
+  const [isFromClientStorage, setIsFromClientStorage] = useState(false);
+
+  const selectedNode = useReviewStore((s) => s.selectedPart[drawing?.id ?? ''] ?? null);
+  const setSelectedPart = useReviewStore((s) => s.setSelectedPart);
 
   // Fetch and parse glTF from backend whenever drawing changes
   useEffect(() => {
@@ -531,6 +637,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
     setIsMeshReady(false);
     setLoadError(null);
     setParsedGltf(null);
+    setIsFromClientStorage(false);
     setActiveView('sw');
 
     const fetchModel = async () => {
@@ -538,17 +645,36 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
         const headers: Record<string, string> = {};
         if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`;
 
-        const res = await fetch(
-          `${backendUrl}/api/v1/drawings/${drawing.id}/gltf?t=${Date.now()}`,
-          { headers }
-        );
+        let arrayBuffer: ArrayBuffer | null = null;
 
-        if (!res.ok) {
-          if (!isCancelled) setLoadError(`HTTP ${res.status}`);
+        try {
+          const res = await fetch(
+            `${backendUrl}/api/v1/drawings/${drawing.id}/gltf?t=${Date.now()}`,
+            { headers }
+          );
+
+          if (res.ok) {
+            arrayBuffer = await res.arrayBuffer();
+          }
+        } catch {
+          // Network fetch error - check client local storage fallback below
+        }
+
+        // Fallback: Check Client PC local storage if backend/NAS could not serve it
+        if (!arrayBuffer) {
+          const { getClientFallbackGltf } = await import('../../services/clientStorageFallback');
+          const fallback = await getClientFallbackGltf(drawing.id);
+          if (fallback) {
+            arrayBuffer = fallback;
+            if (!isCancelled) setIsFromClientStorage(true);
+          }
+        }
+
+        if (!arrayBuffer) {
+          if (!isCancelled) setLoadError(`3D Model not found on NAS or Client local storage.`);
           return;
         }
 
-        const arrayBuffer = await res.arrayBuffer();
         if (isCancelled) return;
 
         const loader = new GLTFLoader();
@@ -582,11 +708,47 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
     };
   }, [drawing?.id, backendUrl, apiToken]);
 
-  const parts: AssemblyPart[] = drawing?.metadata?.parts ?? [];
+  const parts: AssemblyPart[] = useMemo(() => {
+    if (drawing?.metadata?.parts && drawing.metadata.parts.length > 0) {
+      return drawing.metadata.parts.map((p: AssemblyPart) => ({
+        ...p,
+        name: (p.name || '').replace(/\uFFFD~/g, '×').replace(/\uFFFD/g, '×'),
+      }));
+    }
+    if (!parsedGltf?.scene?.children) return [];
+
+    return parsedGltf.scene.children.map((child, i) => {
+      let triangles = 0;
+      let surfaces = 0;
+      child.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (m.isMesh && m.geometry) {
+          const idx = m.geometry.getIndex();
+          triangles += (idx ? idx.count : m.geometry.attributes.position?.count ?? 0) / 3;
+          surfaces++;
+        }
+      });
+      const rawName = child.name || `Part ${i + 1}`;
+      const cleanName = rawName.replace(/\uFFFD~/g, '×').replace(/\uFFFD/g, '×').trim();
+      return {
+        index: i,
+        name: cleanName || `Part ${i + 1}`,
+        node: i,
+        surfaces: Math.max(1, surfaces),
+        triangles: Math.round(triangles),
+      };
+    });
+  }, [drawing?.metadata?.parts, parsedGltf]);
   const hiddenNodes = useReviewStore((s) => s.hiddenParts[drawing?.id ?? ''] ?? EMPTY_HIDDEN);
 
   return (
     <div
+      onClick={(e) => {
+        // Deselect only if clicking the background of the outer wrapper itself (not canvas or children)
+        if (e.target === e.currentTarget) {
+          setSelectedPart(drawing?.id ?? '', null);
+        }
+      }}
       style={{
         position: 'relative',
         width,
@@ -599,6 +761,17 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
       {/* Assembly parts, and which of them are drawn. Rendered outside the Canvas: it is DOM,
           and putting it inside would make it a three.js object. */}
       {parts.length > 1 && <PartsPanel drawingId={drawing.id} parts={parts} />}
+
+      {/* Client Local Storage Offline Fallback Indicator Badge */}
+      {isFromClientStorage && (
+        <div
+          className="absolute bottom-2 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-amber-600/90 text-white shadow-md backdrop-blur-sm pointer-events-auto select-none"
+          title="3D model loaded from Client PC local storage because NAS was unreachable. It will automatically sync to \\KMTI-NAS once online."
+        >
+          <span className="inline-block w-2 h-2 rounded-full bg-amber-200 animate-pulse" />
+          <span>Client Local Storage (Pending NAS Sync)</span>
+        </div>
+      )}
 
       {/* ── View Presets Toolbar: Orthographic & Isometric in separate containers (aligned with 2D toggle) ── */}
       {isMeshReady && !loadError && (
@@ -661,10 +834,15 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
       {parsedGltf && (
         <Canvas
           shadows
+          eventPrefix="client"
+          onPointerMissed={(e) => {
+            if (e.type === 'click') {
+              setSelectedPart(drawing?.id ?? '', null);
+            }
+          }}
           gl={{
             antialias: true,
             alpha: true,
-            logarithmicDepthBuffer: true,
             toneMapping: THREE.LinearToneMapping,
           }}
           style={{ background: 'transparent' }}
@@ -673,6 +851,8 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
             gltf={parsedGltf}
             theme={theme}
             hiddenNodes={hiddenNodes}
+            selectedNode={selectedNode}
+            onSelectPart={(node) => setSelectedPart(drawing?.id ?? '', node)}
             targetView={activeView}
             width={width}
             height={height}
