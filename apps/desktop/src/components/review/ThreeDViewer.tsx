@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useThemeStore } from '../../stores/themeStore';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { Canvas, useLoader, useThree } from '@react-three/fiber';
+import { Canvas, useLoader, useThree, useFrame } from '@react-three/fiber';
 import {
   OrbitControls,
   OrthographicCamera,
@@ -322,6 +322,104 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+// ── Dynamic CAD Lighting Rig: Key light dynamically shines from North-East (screen top-right) ──
+const DynamicCadLighting: React.FC<{ modelRef: React.RefObject<THREE.Group | null> }> = ({ modelRef }) => {
+  const lightRef = useRef<THREE.DirectionalLight>(null);
+  const targetRef = useRef<THREE.Object3D>(null);
+  const fillLightRef = useRef<THREE.DirectionalLight>(null);
+  const fillTargetRef = useRef<THREE.Object3D>(null);
+
+  const vRight = useRef(new THREE.Vector3());
+  const vUp = useRef(new THREE.Vector3());
+  const vFwd = useRef(new THREE.Vector3());
+  const vDir = useRef(new THREE.Vector3());
+  const vFillDir = useRef(new THREE.Vector3());
+
+  useFrame(({ camera }) => {
+    if (!lightRef.current || !targetRef.current || !modelRef.current) return;
+
+    // Model bounding box center and scale
+    const box = new THREE.Box3().setFromObject(modelRef.current);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 2.5;
+
+    // Extract camera orientation basis vectors in world space
+    camera.matrixWorld.extractBasis(vRight.current, vUp.current, vFwd.current);
+
+    // North-East in screen space:
+    // +0.8 Right (East), +1.0 Up (North), +0.9 Forward (out of screen towards viewer)
+    vDir.current
+      .set(0, 0, 0)
+      .addScaledVector(vRight.current, 0.8)
+      .addScaledVector(vUp.current, 1.0)
+      .addScaledVector(vFwd.current, 0.9)
+      .normalize();
+
+    lightRef.current.position.copy(center).addScaledVector(vDir.current, dist);
+    targetRef.current.position.copy(center);
+    targetRef.current.updateMatrixWorld();
+
+    // Dynamically adjust shadow camera frustum so it covers the entire model without clipping
+    const shadowCam = lightRef.current.shadow?.camera as THREE.OrthographicCamera | undefined;
+    const r = maxDim * 1.5;
+    if (shadowCam && shadowCam.left !== -r) {
+      shadowCam.left = -r;
+      shadowCam.right = r;
+      shadowCam.top = r;
+      shadowCam.bottom = -r;
+      shadowCam.near = 0.5;
+      shadowCam.far = dist * 4;
+      shadowCam.updateProjectionMatrix();
+    }
+
+    // Soft opposing fill light from South-West (screen bottom-left)
+    if (fillLightRef.current && fillTargetRef.current) {
+      vFillDir.current
+        .set(0, 0, 0)
+        .addScaledVector(vRight.current, -0.6)
+        .addScaledVector(vUp.current, -0.4)
+        .addScaledVector(vFwd.current, 0.5)
+        .normalize();
+
+      fillLightRef.current.position.copy(center).addScaledVector(vFillDir.current, dist);
+      fillTargetRef.current.position.copy(center);
+      fillTargetRef.current.updateMatrixWorld();
+    }
+  });
+
+  return (
+    <>
+      <object3D ref={targetRef} />
+      <directionalLight
+        ref={lightRef}
+        target={targetRef.current ?? undefined}
+        intensity={1.25}
+        castShadow
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.02}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+      />
+
+      <object3D ref={fillTargetRef} />
+      <directionalLight
+        ref={fillLightRef}
+        target={fillTargetRef.current ?? undefined}
+        intensity={0.4}
+      />
+
+      <ambientLight intensity={0.55} color="#ffffff" />
+      <hemisphereLight
+        color={new THREE.Color('#ffffff')}
+        groundColor={new THREE.Color('#cbd5e1')}
+        intensity={0.35}
+      />
+    </>
+  );
+};
+
 // ── Scene wrapper ─────────────────────────────────────────────────────────────
 const ModelScene = ({
   url,
@@ -366,31 +464,11 @@ const ModelScene = ({
 
   return (
     <>
-      {/* CAD Orthographic Camera with soft fill headlamp */}
-      <OrthographicCamera makeDefault near={-100000} far={100000}>
-        <directionalLight position={[0, 0, 1]} intensity={0.3} />
-      </OrthographicCamera>
+      {/* CAD Orthographic Camera */}
+      <OrthographicCamera makeDefault near={-100000} far={100000} />
 
-      {/* ── CAD Studio Lighting Rig with accurate soft shadow casting ── */}
-      <ambientLight intensity={0.55} color="#ffffff" />
-      <directionalLight
-        position={[14, 22, 16]}
-        intensity={1.25}
-        castShadow
-        shadow-bias={-0.0003}
-        shadow-normalBias={0.02}
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-near={0.5}
-        shadow-camera-far={2000}
-      />
-      <directionalLight position={[-12, 14, -12]} intensity={0.45} />
-      <directionalLight position={[0, -10, 6]} intensity={0.25} />
-      <hemisphereLight
-        color={new THREE.Color('#ffffff')}
-        groundColor={new THREE.Color('#cbd5e1')}
-        intensity={0.35}
-      />
+      {/* ── Dynamic CAD Lighting Rig (Key light dynamically shines from North-East as model rotates) ── */}
+      <DynamicCadLighting modelRef={modelRef} />
 
       <OrbitControls
         makeDefault
