@@ -76,16 +76,34 @@ export const useThreeDStore = create<ThreeDStoreState>((set) => ({
       return false;
     }
 
-    updateStatus("uploading", 40);
+    updateStatus("uploading", 30);
 
+    let uploadPrimaryFile: File = file;
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri && extension === "icd") {
+      try {
+        updateStatus("uploading", 35);
+        const { convertLocalCadFile } = await import("../services/localCadConverter");
+        const converted = await convertLocalCadFile(file);
+        if (converted.companionStepFile) {
+          uploadPrimaryFile = converted.companionStepFile;
+        } else {
+          uploadPrimaryFile = converted.dxfFile;
+        }
+      } catch (convErr: any) {
+        console.warn("Client-side 3D CAD conversion failed, falling back to direct upload:", convErr);
+      }
+    }
+
+    updateStatus("uploading", 50);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadPrimaryFile);
 
     try {
       const uploadResult = await uploadFile<any>(
         "/api/v1/drawings/upload",
         formData,
-        (percent) => updateStatus("processing", percent)
+        (percent) => updateStatus("processing", 50 + Math.round(percent * 0.4))
       );
 
       const { drawing, job } = uploadResult;

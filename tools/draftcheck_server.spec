@@ -78,6 +78,10 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+import os
+
+exe_icon = os.path.abspath(os.path.join(SPECPATH, "../apps/desktop/src-tauri/icons/icon.ico"))
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -94,6 +98,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=exe_icon if os.path.exists(exe_icon) else None,
 )
 
 coll = COLLECT(

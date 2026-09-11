@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useThemeStore } from '../../stores/themeStore';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { Canvas, useLoader, useThree, useFrame } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import {
   OrbitControls,
   OrthographicCamera,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PartsPanel, type AssemblyPart } from './PartsPanel';
 import { useReviewStore } from '../../stores/reviewStore';
@@ -177,17 +177,18 @@ const CameraController = ({
 };
 
 // ── glTF mesh renderer ───────────────────────────────────────────────────────
-/** Renders a glTF model — preserves original STEP colours from embedded materials */
-const GltfMesh = ({
-  url,
-  onLoaded,
-  hiddenNodes,
-}: {
-  url: string;
+interface GltfMeshProps {
+  gltf: GLTF;
   onLoaded: (ref: THREE.Group) => void;
   hiddenNodes: number[];
-}) => {
-  const gltf    = useLoader(GLTFLoader, url);
+}
+
+/** Renders a glTF model — preserves original STEP colours from embedded materials */
+const GltfMesh = ({
+  gltf,
+  onLoaded,
+  hiddenNodes,
+}: GltfMeshProps) => {
   const groupRef = useRef<THREE.Group>(null!);
 
   // Visibility is applied by POSITION among the scene's own children, matching the order the
@@ -421,18 +422,8 @@ const DynamicCadLighting: React.FC<{ modelRef: React.RefObject<THREE.Group | nul
 };
 
 // ── Scene wrapper ─────────────────────────────────────────────────────────────
-const ModelScene = ({
-  url,
-  hiddenNodes,
-  onSceneReady,
-  onError,
-  targetView,
-  width,
-  height,
-  onStartOrbit,
-  onCameraReady,
-}: {
-  url: string;
+interface ModelSceneProps {
+  gltf: GLTF;
   theme?: string;
   hiddenNodes: number[];
   onSceneReady?: () => void;
@@ -442,7 +433,19 @@ const ModelScene = ({
   height: number;
   onStartOrbit?: () => void;
   onCameraReady?: (camera: THREE.Camera) => void;
-}) => {
+}
+
+const ModelScene = ({
+  gltf,
+  hiddenNodes,
+  onSceneReady,
+  onError,
+  targetView,
+  width,
+  height,
+  onStartOrbit,
+  onCameraReady,
+}: ModelSceneProps) => {
   const modelRef  = useRef<THREE.Group | null>(null);
   const [, forceUpdate] = useState(0);
   const { camera } = useThree();
@@ -503,9 +506,7 @@ const ModelScene = ({
 
       {/* Model */}
       <ErrorBoundary onError={onError}>
-        <React.Suspense fallback={null}>
-          <GltfMesh url={url} onLoaded={handleLoaded} hiddenNodes={hiddenNodes} />
-        </React.Suspense>
+        <GltfMesh gltf={gltf} onLoaded={handleLoaded} hiddenNodes={hiddenNodes} />
       </ErrorBoundary>
     </>
   );
@@ -516,20 +517,20 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const theme = useThemeStore((s) => s.theme);
   const { backendUrl, apiToken } = useConnectionStore();
 
-  const [modelUrl,    setModelUrl]    = useState<string | null>(null);
+  const [parsedGltf,  setParsedGltf]  = useState<GLTF | null>(null);
   const [loadError,   setLoadError]   = useState<string | null>(null);
   const [isMeshReady, setIsMeshReady] = useState(false);
   const [activeView,  setActiveView]  = useState<ViewPreset | null>('sw');
   const [mainCamera,  setMainCamera]  = useState<THREE.Camera | null>(null);
 
-  // Fetch glTF blob from backend whenever drawing changes
+  // Fetch and parse glTF from backend whenever drawing changes
   useEffect(() => {
     if (!drawing?.id) return;
 
-    let objectUrl: string | null = null;
+    let isCancelled = false;
     setIsMeshReady(false);
     setLoadError(null);
-    setModelUrl(null);
+    setParsedGltf(null);
     setActiveView('sw');
 
     const fetchModel = async () => {
@@ -542,28 +543,42 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
           { headers }
         );
 
-        if (res.ok) {
-          // Create blob with explicit MIME so GLTFLoader resolves it correctly
-          const arrayBuffer = await res.arrayBuffer();
-          // The backend now sends binary glTF. GLTFLoader identifies a document by its magic
-          // bytes rather than this type, so both the GLB and any .gltf written before the
-          // switch still load -- but a blob should not claim to be JSON when it is not.
-          const blob = new Blob([arrayBuffer], { type: 'model/gltf-binary' });
-          objectUrl = URL.createObjectURL(blob);
-          setModelUrl(objectUrl);
-        } else {
-          setLoadError(`HTTP ${res.status}`);
+        if (!res.ok) {
+          if (!isCancelled) setLoadError(`HTTP ${res.status}`);
+          return;
         }
+
+        const arrayBuffer = await res.arrayBuffer();
+        if (isCancelled) return;
+
+        const loader = new GLTFLoader();
+        loader.parse(
+          arrayBuffer,
+          '',
+          (gltf) => {
+            if (!isCancelled) {
+              setParsedGltf(gltf);
+            }
+          },
+          (err) => {
+            if (!isCancelled) {
+              setLoadError(err instanceof Error ? err.message : String(err));
+              console.error('3D model parse error:', err);
+            }
+          }
+        );
       } catch (err) {
-        setLoadError(String(err));
-        console.error('3D model fetch error:', err);
+        if (!isCancelled) {
+          setLoadError(String(err));
+          console.error('3D model fetch error:', err);
+        }
       }
     };
 
     fetchModel();
 
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      isCancelled = true;
     };
   }, [drawing?.id, backendUrl, apiToken]);
 
@@ -643,7 +658,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
       )}
 
       {/* ── 3-D canvas ─────────────────────────────── */}
-      {modelUrl && (
+      {parsedGltf && (
         <Canvas
           shadows
           gl={{
@@ -655,7 +670,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
           style={{ background: 'transparent' }}
         >
           <ModelScene
-            url={modelUrl}
+            gltf={parsedGltf}
             theme={theme}
             hiddenNodes={hiddenNodes}
             targetView={activeView}

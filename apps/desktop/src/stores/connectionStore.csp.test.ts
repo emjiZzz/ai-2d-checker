@@ -154,13 +154,21 @@ describe("the shipped CSP and the app's backend address agree", () => {
       "http://192.168.200.105:9000",
       "http://192.168.200.129:8080",
       "http://192.168.200.129:9000",
+      "http://192.168.200.149:8080",
+      "http://192.168.200.149:9000",
+      "http://kmti-server-3:8080",
     ]) {
       expect(allows(url), `connect-src blocks the LAN server at ${url}`).toBe(true);
     }
   });
 
-  it("permits the websocket form on both LAN servers", () => {
-    for (const url of ["ws://192.168.200.105:8080", "ws://192.168.200.129:8080"]) {
+  it("permits the websocket form on LAN servers", () => {
+    for (const url of [
+      "ws://192.168.200.105:8080",
+      "ws://192.168.200.129:8080",
+      "ws://192.168.200.149:8080",
+      "ws://kmti-server-3:8080",
+    ]) {
       expect(allows(url), `connect-src blocks ${url}`).toBe(true);
     }
   });

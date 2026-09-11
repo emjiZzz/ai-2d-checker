@@ -1,4 +1,5 @@
 pub mod security;
+pub mod cad_converter;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -268,7 +269,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, get_api_token, start_backend, save_session, load_session, clear_session, log_from_frontend])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            get_api_token,
+            start_backend,
+            save_session,
+            load_session,
+            clear_session,
+            log_from_frontend,
+            cad_converter::check_cad_tools_available,
+            cad_converter::convert_local_icd,
+            cad_converter::convert_local_dwg,
+            cad_converter::convert_local_bytes,
+            cad_converter::read_converted_file,
+            cad_converter::cleanup_converted_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

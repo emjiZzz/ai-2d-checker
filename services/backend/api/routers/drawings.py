@@ -39,6 +39,7 @@ router = APIRouter()
 )
 async def upload_drawing(
     file: UploadFile = File(...),
+    companion_step: UploadFile | None = File(None),
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
     x_engineer_name: str | None = Header(None, alias="X-Engineer-Name"),
 ):
@@ -54,7 +55,7 @@ async def upload_drawing(
 
     try:
         drawing, job, is_duplicate = await DrawingIngestionService.process_ingestion(
-            file, uploaded_by=resolve_username(x_session_token, x_engineer_name)
+            file, companion_step=companion_step, uploaded_by=resolve_username(x_session_token, x_engineer_name)
         )
     except HTTPException:
         raise

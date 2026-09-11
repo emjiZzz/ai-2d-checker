@@ -71,11 +71,39 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   };
 
   const canInteract = uploadState === "idle" || uploadState === "failed";
+  const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 
-  const triggerFileInput = () => {
-    if (canInteract) {
-      fileInputRef.current?.click();
+  const triggerFileInput = async () => {
+    if (!canInteract) return;
+    if (isTauri) {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selected = await open({
+          multiple: false,
+          directory: false,
+          filters: [
+            {
+              name: "CAD Drawings",
+              extensions: [
+                ...(currentNav === "3d-workspace"
+                  ? [...MODEL_3D_FORMATS, "icd"]
+                  : DRAWING_FORMATS),
+              ],
+            },
+          ],
+        });
+        if (selected && typeof selected === "string") {
+          const rawFileName = selected.replace(/\\/g, "/").split("/").pop() || "drawing";
+          const fileObj = new File([], rawFileName);
+          Object.defineProperty(fileObj, "path", { value: selected });
+          await uploadDrawingFile(fileObj, side);
+          return;
+        }
+      } catch (err) {
+        console.warn("Native file dialog failed, falling back to input:", err);
+      }
     }
+    fileInputRef.current?.click();
   };
 
   const containerClass = `relative w-full h-full flex flex-col items-center justify-center p-5 box-border overflow-hidden bg-transparent`;

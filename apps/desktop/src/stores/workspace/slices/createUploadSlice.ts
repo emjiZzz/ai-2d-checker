@@ -321,16 +321,38 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
     // The FastAPI backend securely computes the SHA-256 hash automatically via stream chunking.
 
     // 7. Initiate HTTP multipart upload to local FastAPI sandbox
-    updateStatus("uploading", 40);
+    updateStatus("uploading", 30);
 
+    let uploadPrimaryFile: File = file;
+    let companionStepFile: File | undefined = undefined;
+
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri && (extension === "icd" || extension === "dwg")) {
+      try {
+        updateStatus("uploading", 35);
+        const { convertLocalCadFile } = await import("../../../services/localCadConverter");
+        const converted = await convertLocalCadFile(file, (stage) => {
+          console.log(`[CAD Convert ${side}]`, stage);
+        });
+        uploadPrimaryFile = converted.dxfFile;
+        companionStepFile = converted.companionStepFile;
+      } catch (convErr: any) {
+        console.warn("Client-side CAD conversion failed, falling back to direct upload:", convErr);
+      }
+    }
+
+    updateStatus("uploading", 50);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadPrimaryFile);
+    if (companionStepFile) {
+      formData.append("companion_step", companionStepFile);
+    }
 
     try {
       const uploadResult = await uploadFile<any>(
         "/api/v1/drawings/upload",
         formData,
-        (percent) => updateStatus("processing", percent)
+        (percent) => updateStatus("processing", 50 + Math.round(percent * 0.4))
       );
 
       const { drawing, job } = uploadResult;

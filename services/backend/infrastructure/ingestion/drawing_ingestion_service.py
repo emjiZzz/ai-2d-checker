@@ -82,7 +82,7 @@ class DrawingIngestionService:
 
     @classmethod
     async def process_ingestion(
-        cls, file: UploadFile, uploaded_by: str | None = None
+        cls, file: UploadFile, companion_step: UploadFile | None = None, uploaded_by: str | None = None
     ) -> tuple[DrawingDocument, ExtractionJob, bool]:
         """
         Orchestrates full ingestion flow: temp file save, storage move, database
@@ -124,6 +124,17 @@ class DrawingIngestionService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to finalize drawing storage."
             )
+
+        if companion_step and companion_step.filename:
+            try:
+                companion_temp, _, _ = await cls.save_temp_file(companion_step)
+                companion_final = uploads_dir / f"{final_path.stem}.stp"
+                if companion_final.exists():
+                    companion_final.unlink()
+                companion_temp.rename(companion_final)
+                logger.info(f"Saved companion STEP file to {companion_final}")
+            except Exception as e:
+                logger.warning(f"Failed to persist companion STEP file: {e}")
 
         drawing = DrawingDocument(
             file_name=file.filename or "drawing.dwg",

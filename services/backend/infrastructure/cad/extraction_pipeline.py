@@ -245,6 +245,30 @@ class ExtractionPipeline:
                     render_dxf_background, dxf_file_path, drawing_id, metadata, entities
                 )
 
+            # Check if a companion 3D STEP file exists (from client-side CAD conversion)
+            companion_stp = input_abs_path.with_suffix(".stp")
+            if not companion_stp.exists():
+                companion_stp = input_abs_path.with_suffix(".step")
+
+            if companion_stp.exists() and "mesh" not in counts:
+                try:
+                    logger.info(f"Extracting 3D mesh from companion STEP: {companion_stp}")
+                    mesh_metadata, mesh_content = await asyncio.to_thread(
+                        ThreeDPipeline.parse_and_convert, companion_stp
+                    )
+                    mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+                    if isinstance(mesh_content, bytes):
+                        mesh_path.write_bytes(mesh_content)
+                    else:
+                        mesh_path.write_text(mesh_content, encoding="utf-8")
+                    counts["mesh"] = 1
+                    counts["faces"] = mesh_metadata.get("face_count", 0)
+                    if "parts" in mesh_metadata:
+                        metadata["parts"] = mesh_metadata["parts"]
+                    logger.info(f"Companion STEP mesh extraction successful for drawing {drawing_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract companion STEP mesh for drawing {drawing_id}: {e}")
+
             # 4. Persist Extracted Geometry Records into MongoDB
             # Save layers as well (as an entity type)
             bulk_entities: list[ExtractedEntity] = []
