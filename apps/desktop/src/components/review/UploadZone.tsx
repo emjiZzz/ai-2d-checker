@@ -2,6 +2,7 @@ import React from "react";
 import { AlertTriangle } from "lucide-react";
 import { DrawingItem, UploadState } from "../../stores/workspaceStore";
 import { SquareAccordion } from "../ui/LoadingOverlay";
+import { DRAWING_FORMATS, MODEL_3D_FORMATS } from "../../config/drawingFormats";
 
 export interface UploadZoneProps {
   side: "old" | "new";
@@ -11,6 +12,9 @@ export interface UploadZoneProps {
   fileSize: number | null;
   error: string | null;
   activeDrawing: DrawingItem | null;
+  /** The drawing to re-extract, when the row exists and only its extraction failed. */
+  failedDrawingId?: string | null;
+  retryExtraction?: (side: "old" | "new") => Promise<boolean>;
   uploadDrawingFile: (file: File, side: "old" | "new") => Promise<boolean>;
   clearUpload: (side: "old" | "new") => void;
   currentNav: string;
@@ -22,10 +26,11 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   progress,
   fileName,
   error,
+  failedDrawingId,
+  retryExtraction,
   uploadDrawingFile,
   currentNav,
 }) => {
-  const [isDragActive, setIsDragActive] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [elapsed, setElapsed] = React.useState(0);
@@ -59,73 +64,56 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     };
   }, [uploadState]);
 
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setIsDragActive(true);
-    } else if (e.type === "dragleave") {
-      setIsDragActive(false);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      await uploadDrawingFile(e.dataTransfer.files[0], side);
-    }
-  };
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       await uploadDrawingFile(e.target.files[0], side);
     }
   };
 
-  const triggerFileInput = () => {
+  const canInteract = uploadState === "idle" || uploadState === "failed";
+  const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+
+  const triggerFileInput = async () => {
+    if (!canInteract) return;
+    if (isTauri) {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selected = await open({
+          multiple: false,
+          directory: false,
+          filters: [
+            {
+              name: "CAD Drawings",
+              extensions: [
+                ...(currentNav === "3d-workspace"
+                  ? [...MODEL_3D_FORMATS, "icd"]
+                  : DRAWING_FORMATS),
+              ],
+            },
+          ],
+        });
+        if (selected && typeof selected === "string") {
+          const rawFileName = selected.replace(/\\/g, "/").split("/").pop() || "drawing";
+          const fileObj = new File([], rawFileName);
+          Object.defineProperty(fileObj, "path", { value: selected });
+          await uploadDrawingFile(fileObj, side);
+          return;
+        }
+      } catch (err) {
+        console.warn("Native file dialog failed, falling back to input:", err);
+      }
+    }
     fileInputRef.current?.click();
   };
 
-  const canInteract = uploadState === "idle" || uploadState === "failed";
-
-  const borderHover =
-    side === "old"
-      ? "hover:bg-blue-500/1 hover:border-blue-500/15"
-      : "hover:bg-purple-500/1 hover:border-purple-500/15";
-
-  let draggingStyles = "";
-  if (isDragActive) {
-    draggingStyles =
-      side === "old"
-        ? "border-accent-cyan bg-blue-500/5 shadow-[inset_0_0_10px_rgba(37,99,235,0.1)] data-[theme=hc-dark]:bg-accent-cyan/6"
-        : "border-purple-500 bg-purple-500/5 shadow-[inset_0_0_10px_rgba(139,92,246,0.1)] data-[theme=hc-dark]:border-purple-400 data-[theme=hc-dark]:bg-purple-500/6";
-  }
-
-  const containerClass = `relative w-full h-full transition-all duration-250 ease-out flex flex-col items-center justify-center p-5 box-border overflow-hidden bg-transparent group ${borderHover}`;
-
-  const dropzoneBoxClass = `w-full flex flex-col items-center text-center gap-2.5 py-6 px-4 rounded-sm border border-dashed border-border-color transition-all duration-150 ${draggingStyles}`;
+  const containerClass = `relative w-full h-full flex flex-col items-center justify-center p-5 box-border overflow-hidden bg-transparent`;
 
   return (
     <div
       className={containerClass}
       data-tour={side === "old" ? "upload-reference" : "upload-revision"}
-      role="button"
-      tabIndex={0}
-      aria-label="File Upload Dropzone"
-      onDragEnter={handleDrag}
-      onDragOver={handleDrag}
-      onDragLeave={handleDrag}
-      onDrop={handleDrop}
-      onClick={canInteract ? triggerFileInput : undefined}
-      onKeyDown={canInteract ? (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          triggerFileInput();
-        }
-      } : undefined}
-      style={{ cursor: canInteract ? "pointer" : "default" }}
+      role="region"
+      aria-label="Upload Drawing"
     >
       <input
         ref={fileInputRef}
@@ -133,48 +121,46 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         style={{ display: "none" }}
         onChange={handleFileChange}
         accept={
+          // From the shared lists, so the picker cannot drift from what upload validation
+          // accepts. It only filtered to `.dxf` here, which hid every `.icd` in the dialog
+          // and left drag-and-drop as the only way to put one in a room.
           currentNav === "3d-workspace"
-            ? ".step,.stp,.iges,.igs,.icd,.sldprt,.sldasm"
-            : ".pdf,.dwg,.dxf"
+            ? [...MODEL_3D_FORMATS, "icd"].map((f) => `.${f}`).join(",")
+            : DRAWING_FORMATS.map((f) => `.${f}`).join(",")
         }
       />
 
       {uploadState === "idle" && (
         <div className="flex flex-col items-center text-center gap-4 w-full max-w-[380px]">
-          <div className={dropzoneBoxClass}>
-            <div
-              className={`w-9 h-9 rounded-full bg-sidebar-item-hover border border-border-color flex items-center justify-center text-text-muted transition-all duration-250 group-hover:-translate-y-0.5 ${
-                side === "old"
-                  ? "group-hover:border-accent-cyan group-hover:text-accent-cyan group-hover:bg-blue-600/6"
-                  : "group-hover:border-purple-500 group-hover:text-purple-400 group-hover:bg-purple-500/6"
-              }`}
+          <div
+            className="w-full flex flex-col items-center text-center gap-3 py-6 px-4 rounded-sm border border-dashed border-text-muted/70 hover:border-text-primary hover:bg-sidebar-item-hover/40 transition-all duration-150 cursor-pointer select-none"
+            onClick={triggerFileInput}
+            role="button"
+            tabIndex={0}
+            aria-label="Browse and upload CAD file"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                triggerFileInput();
+              }
+            }}
+          >
+            <svg
+              className="w-7 h-7 text-text-primary transition-transform duration-150"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
             >
-              <svg
-                style={{ width: "14px", height: "14px" }}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-              </svg>
-            </div>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+            </svg>
             <p className="text-xs font-semibold text-text-primary m-0">
-              Drag & drop or{" "}
-              <span
-                className={
-                  side === "old"
-                    ? "text-accent-cyan underline font-bold"
-                    : "text-purple-400 underline font-bold"
-                }
-              >
-                browse
-              </span>
+              Browse and upload
             </p>
-            <p className="text-xs text-text-muted font-medium">
+            <p className="text-xs text-text-muted font-medium m-0">
               {currentNav === "3d-workspace"
                 ? "STEP · IGES · ICD · SolidWorks"
-                : "DWG · DXF · PDF"}
+                : "DXF"}
             </p>
           </div>
         </div>
@@ -263,16 +249,36 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             </p>
           </div>
 
-          <button
-            type="button"
-            className="mt-1 text-[11px] font-semibold px-3 py-1 rounded-sm border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-all cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerFileInput();
-            }}
-          >
-            Try Another File
-          </button>
+          <div className="flex items-center gap-2 mt-1">
+            {/*
+              Retry before re-upload, and only when there is a row to retry. Re-uploading the
+              same file makes a SECOND drawing -- dedupe is deliberately gone -- which is how one
+              sheet became four rows with its markings split across them. `/reextract` keeps the
+              id, the room slot and the history.
+            */}
+            {failedDrawingId && retryExtraction && (
+              <button
+                type="button"
+                className="text-[11px] font-semibold px-3 py-1 rounded-sm border border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20 transition-all cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void retryExtraction(side);
+                }}
+              >
+                Retry Extraction
+              </button>
+            )}
+            <button
+              type="button"
+              className="text-[11px] font-semibold px-3 py-1 rounded-sm border border-border-color bg-bg-sidebar text-text-primary hover:border-accent-cyan hover:text-accent-cyan transition-all cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerFileInput();
+              }}
+            >
+              Try Another File
+            </button>
+          </div>
         </div>
       )}
     </div>

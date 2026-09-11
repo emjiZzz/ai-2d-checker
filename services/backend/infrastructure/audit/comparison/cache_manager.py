@@ -446,7 +446,13 @@ class ComparisonCacheManager:
     # its markings and the checklist groups straight off them, so a hit would show the material
     # name under Material Specification, the specification under Other / Unclassified, and
     # Material Type reporting clean because nothing could ever assign it.
-    COMPARISON_CACHE_VERSION = "v54"
+    # v55: three DWGs were storing `render_bounds` measured by the renderer's except-branch
+    # fallback rather than by the render, because transcoding an INSERT's block reference
+    # unlinked it from its definition and `draw_layout` raised. Their bounds were the extent of
+    # 59 polylines out of 1,231 entities -- aspect 3.43 against the sheet's real 1.42 -- and
+    # `_to_match_space` normalises both sides of a pair against exactly this, so a cached audit
+    # carries pairings computed in a frame that was never the drawing's.
+    COMPARISON_CACHE_VERSION = "v55"
 
     @staticmethod
     def _get_cache_path(

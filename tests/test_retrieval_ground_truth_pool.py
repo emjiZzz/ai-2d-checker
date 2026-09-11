@@ -23,6 +23,12 @@ from services.backend.infrastructure.retrieval.index_builder import (
 )
 
 
+def _addr_on(drawing_id: str) -> EntityAddress:
+    return EntityAddress.model_construct(
+        drawing_id=drawing_id, handle="1B2A", entity_type="text", layer="0", text="45", point=None
+    )
+
+
 def _marking(**overrides):
     """A minimal marking. `model_construct` skips validation so the suite needs no database."""
     fields = {
@@ -180,6 +186,41 @@ def test_a_marking_with_no_address_still_builds():
     record = retrieval_service.ground_truth_record(_marking(ref_address=None, rev_address=None))
     assert record is not None
     assert record.metadata["x"] is None
+
+
+def test_two_sheets_carrying_the_same_value_stay_two_records():
+    """`_collapse_duplicate_texts` keys on text alone, so the sheet must be IN the text.
+
+    Sibling sheets from one template hold the same title-block and BOM values, so without this a
+    second pair's markings collapse into the first pair's and vanish from the index. Measured
+    2026-09-07 on the first two real pairs: 20 of 56 records dropped, and the share grows with
+    every pair marked.
+    """
+    names = {"d1": "M7452A0N01_reference.dxf", "d2": "M7452A1N01_reference.dxf"}
+    first = _marking(id="a", ref_address=_addr_on("d1"))
+    second = _marking(id="b", ref_address=_addr_on("d2"))
+
+    a = retrieval_service.ground_truth_record(first, names)
+    b = retrieval_service.ground_truth_record(second, names)
+
+    assert a.text != b.text
+    assert "M7452A0N01_reference.dxf" in a.text
+    assert "M7452A1N01_reference.dxf" in b.text
+
+
+def test_the_citation_names_the_sheet():
+    """A hit that cannot say which drawing it came from cannot be checked against it."""
+    record = retrieval_service.ground_truth_record(
+        _marking(ref_address=_addr_on("d1")), {"d1": "M7452A0N01_reference.dxf"}
+    )
+    assert "M7452A0N01_reference.dxf" in record.citation()
+
+
+def test_an_unknown_drawing_still_builds_a_record():
+    """A marking whose drawing has been deleted must not drop out of the corpus silently."""
+    record = retrieval_service.ground_truth_record(_marking(ref_address=_addr_on("gone")), {})
+    assert record is not None
+    assert record.source == "Human ground truth"
 
 
 def test_the_citation_says_the_record_is_ground_truth():

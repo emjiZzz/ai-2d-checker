@@ -28,7 +28,7 @@ card on a real pair.
 > text-level signal at all and are never assigned by these rules — **Generator B** (which
 > reasons visually over the rendered image) is the intended source for those four.
 
-[[ADR-006 Retiring the Hybrid Pipeline|ADR-006]] deleted Generator B. The four items were left
+[[ADR-006 Removing the Three AI Comparison Methods|ADR-006]] deleted Generator B. The four items were left
 pointing at a generator that no longer exists, and nothing recorded that their designated
 producer had gone.
 

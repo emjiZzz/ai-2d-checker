@@ -55,6 +55,15 @@ NON_FINDING_REASONS: dict[str, str] = {
     "NOT_A_FINDING": "engineer marked this as deliberately not a finding",
 }
 
+#: Marking statuses that are another status under a different name. The app already answers this
+#: in `ChecklistPanel.tsx` and `ManualMarkingList.tsx`, both of which count MISMATCHED as CHANGED;
+#: sharing that answer beats holding a second opinion about what the engineer meant. The original
+#: is kept in the label's notes so the translation stays auditable.
+#: `tests/test_manual_check_status_coverage.py` fails if a `MarkingStatus` member is handled by
+#: none of these three maps, which is how a status the app can write but the corpus cannot read
+#: gets caught before it blocks a conversion.
+STATUS_ALIASES: dict[str, str] = {"MISMATCHED": "CHANGED"}
+
 
 @dataclass(frozen=True)
 class Unresolved:
@@ -213,11 +222,14 @@ def build_labels(
 
     for marking in markings:
         marking_id = str(marking.get("_id") or marking.get("id") or "?")
-        status = str(marking.get("status") or "").upper()
+        recorded_status = str(marking.get("status") or "").upper()
+        status = STATUS_ALIASES.get(recorded_status, recorded_status)
         category = str(marking.get("category") or "")
         ref_text = str(marking.get("ref_text") or "")
         rev_text = str(marking.get("rev_text") or "")
         note = str(marking.get("notes") or "")
+        if status != recorded_status:
+            note = f"[status:{recorded_status}] {note}".strip()
 
         if marking.get("retracted_at"):
             retracted += 1
@@ -233,6 +245,14 @@ def build_labels(
         # A non-finding is anchored on whichever side it was observed from.
         if side is None:
             side = "rev" if _address_of(marking, "rev") is not None else "ref"
+
+        # A marking whose own `side` names one half was made while looking at that half, so it
+        # outranks the status default. `ExpectedFinding.address` reads the emitted REF-/REV- prefix,
+        # so a reference-anchored CHANGED is representable rather than a contradiction; the default
+        # applies only to `side: "both"`, which is 229 of the 239 markings collected so far.
+        recorded_side = str(marking.get("side") or "")
+        if recorded_side in ("ref", "rev") and _address_of(marking, recorded_side) is not None:
+            side = recorded_side
 
         address = _address_of(marking, side)
         if address is None:

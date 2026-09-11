@@ -1,5 +1,6 @@
 import pytest
 import json
+import struct
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -9,7 +10,10 @@ from services.backend.domain.models.drawing_document import DrawingDocument
 from services.backend.domain.models.extraction_job import ExtractionJob
 from services.backend.domain.models.extracted_entity import ExtractedEntity
 from services.backend.infrastructure.storage.path_resolver import get_storage_root, bootstrap_storage
-from services.backend.infrastructure.cad.three_d_pipeline import ThreeDPipeline
+from services.backend.infrastructure.cad.three_d_pipeline import (
+    ThreeDConversionError,
+    ThreeDPipeline,
+)
 from services.backend.infrastructure.cad.extraction_pipeline import ExtractionPipeline
 
 # Configure Event Loop Scope for Async Testing
@@ -61,6 +65,15 @@ def mock_beanie_docs(monkeypatch):
 
             return _Result()
 
+    class MockField:
+        def __init__(self, name):
+            self.name = name
+
+        def __eq__(self, other):
+            return self
+
+    ExtractedEntity.drawing_id = MockField("drawing_id")
+
     async def mock_insert_many(cls, documents, *args, **kwargs):
         return documents
 
@@ -71,26 +84,58 @@ def mock_beanie_docs(monkeypatch):
     monkeypatch.setattr(ExtractedEntity, "find", classmethod(lambda cls, *a, **k: MockFind()))
     monkeypatch.setattr(ExtractedEntity, "insert_many", classmethod(mock_insert_many))
 
+#: A STEP skeleton whose ADVANCED_FACE rows reference entities that do not exist, so the
+#: kernel reads the file and finds no geometry in it.
+_GEOMETRYLESS_STEP = (
+    "ISO-10303-21;\n"
+    "HEADER;\n"
+    "FILE_DESCRIPTION(('Mechanical Bracket 3D Model'),'2;1');\n"
+    "FILE_NAME('{name}','2026-05-26',('AI-2D-Checker'),('Eng'),'','','');\n"
+    "ENDSEC;\n"
+    "DATA;\n"
+    "#10 = CLOSED_SHELL('',(#20,#30,#40));\n"
+    "#20 = ADVANCED_FACE('',(#21),#22,.T.);\n"
+    "#30 = ADVANCED_FACE('',(#31),#32,.T.);\n"
+    "#40 = ADVANCED_FACE('',(#41),#42,.T.);\n"
+    "ENDSEC;\n"
+    "END-ISO-10303-21;\n"
+)
+
+
+def _write_real_step(path: Path) -> Path:
+    """A STEP file with actual solid geometry in it, written by gmsh's own OCC kernel.
+
+    Every test in this module used the skeleton above and asserted `face_count > 0`. That
+    passed only because `parse_and_convert` substituted a 1x1x1 box whenever tessellation
+    produced nothing -- so none of them ever exercised a conversion, and all three went green
+    against fabricated geometry. Generated rather than committed: a real STEP is 15 KB of
+    kernel output, and generating it keeps the fixture honest about what it is.
+    """
+    import gmsh
+
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add(path.stem)
+        gmsh.model.occ.addBox(0, 0, 0, 10, 20, 30)
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(path))
+    finally:
+        gmsh.finalize()
+    return path
+
+
 @pytest.fixture
 def dummy_step_file(tmp_path) -> Path:
-    """Creates a dummy STEP CAD file to test parsing."""
-    step_path = tmp_path / "bracket_model.step"
-    # Basic standard STEP header + advanced face elements
-    step_content = (
-        "ISO-10303-21;\n"
-        "HEADER;\n"
-        "FILE_DESCRIPTION(('Mechanical Bracket 3D Model'),'2;1');\n"
-        "FILE_NAME('bracket_model.step','2026-05-26',('AI-2D-Checker'),('Eng'),'','','');\n"
-        "ENDSEC;\n"
-        "DATA;\n"
-        "#10 = CLOSED_SHELL('',(#20,#30,#40));\n"
-        "#20 = ADVANCED_FACE('',(#21),#22,.T.);\n"
-        "#30 = ADVANCED_FACE('',(#31),#32,.T.);\n"
-        "#40 = ADVANCED_FACE('',(#41),#42,.T.);\n"
-        "ENDSEC;\n"
-        "END-ISO-10303-21;\n"
-    )
-    step_path.write_text(step_content, encoding="utf-8")
+    """A STEP file carrying a real solid, for the paths that must actually convert."""
+    return _write_real_step(tmp_path / "bracket_model.step")
+
+
+@pytest.fixture
+def geometryless_step_file(tmp_path) -> Path:
+    """A readable STEP file with no geometry in it."""
+    step_path = tmp_path / "empty_model.step"
+    step_path.write_text(_GEOMETRYLESS_STEP.format(name="empty_model.step"), encoding="utf-8")
     return step_path
 
 async def test_three_d_pipeline_conversion(dummy_step_file):
@@ -110,10 +155,26 @@ async def test_three_d_pipeline_conversion(dummy_step_file):
         assert value is None or value > 0.0, f"{key} must be a real measurement or None"
 
 
-    gltf_dict = json.loads(gltf_content)
+    # Binary glTF, not JSON with a base64 `uri`. Base64 inflated the vertex buffer by a third:
+    # on a 12-part assembly, 11.52 MB of an 11.53 MB document was the encoded buffer, and the
+    # same model as GLB is 8.65 MB. A reader that rejects misalignment is entitled to, so the
+    # chunk padding is asserted rather than assumed.
+    magic, version, declared_length = struct.unpack_from("<III", gltf_content, 0)
+    assert magic == 0x46546C67, "not a GLB container"
+    assert version == 2
+    assert declared_length == len(gltf_content), "header length disagrees with the payload"
+
+    json_len, json_type = struct.unpack_from("<II", gltf_content, 12)
+    bin_len, bin_type = struct.unpack_from("<II", gltf_content, 12 + 8 + json_len)
+    assert json_type == 0x4E4F534A  # 'JSON'
+    assert bin_type == 0x004E4942   # 'BIN\x00'
+    assert json_len % 4 == 0 and bin_len % 4 == 0, "chunks must be 4-byte aligned"
+
+    gltf_dict = json.loads(gltf_content[20:20 + json_len])
     assert gltf_dict["asset"]["version"] == "2.0"
     assert len(gltf_dict["buffers"]) == 1
-    assert gltf_dict["buffers"][0]["uri"].startswith("data:application/octet-stream;base64,")
+    assert "uri" not in gltf_dict["buffers"][0], "a GLB buffer is the binary chunk, not a uri"
+    assert gltf_dict["buffers"][0]["byteLength"] > 0
 
 async def test_3d_extraction_pipeline_flow(dummy_step_file):
     """Verify that the ExtractionPipeline ingests 3D files and saves them to the temp cache."""
@@ -160,27 +221,29 @@ async def test_3d_extraction_pipeline_flow(dummy_step_file):
         gltf_path.unlink()
 
 
+async def test_a_model_with_no_geometry_raises_instead_of_returning_a_box(
+    geometryless_step_file,
+):
+    """The failure the fallback box hid, and the reason every other test here was green.
+
+    `parse_and_convert` used to substitute a 1x1x1 cube whenever tessellation produced
+    nothing and return it as a successful conversion -- `face_count: 12`,
+    `acad_version: 3D_STANDARD_BREP`, indistinguishable from a real 12-face model. A 6 MB
+    assembly and a 440 KB drawing produced byte-identical 1.6 KB glTF. The same file already
+    reports `None` for volume and surface area for exactly this reason; geometry is the same
+    kind of claim.
+    """
+    with pytest.raises(ThreeDConversionError) as excinfo:
+        ThreeDPipeline.parse_and_convert(geometryless_step_file)
+    assert "tessellated" in str(excinfo.value)
+
+
 async def test_solidworks_companion_fallback(tmp_path):
     """Verify that if a SolidWorks file has a companion STEP file, the pipeline bypasses COM converter and uses it."""
     sldprt_path = tmp_path / "custom_bracket.sldprt"
     sldprt_path.write_text("dummy sldprt content")
 
-    step_path = tmp_path / "custom_bracket.step"
-    step_content = (
-        "ISO-10303-21;\n"
-        "HEADER;\n"
-        "FILE_DESCRIPTION(('Mechanical Bracket 3D Model'),'2;1');\n"
-        "FILE_NAME('custom_bracket.step','2026-05-26',('AI-2D-Checker'),('Eng'),'','','');\n"
-        "ENDSEC;\n"
-        "DATA;\n"
-        "#10 = CLOSED_SHELL('',(#20,#30,#40));\n"
-        "#20 = ADVANCED_FACE('',(#21),#22,.T.);\n"
-        "#30 = ADVANCED_FACE('',(#31),#32,.T.);\n"
-        "#40 = ADVANCED_FACE('',(#41),#42,.T.);\n"
-        "ENDSEC;\n"
-        "END-ISO-10303-21;\n"
-    )
-    step_path.write_text(step_content, encoding="utf-8")
+    _write_real_step(tmp_path / "custom_bracket.step")
 
     # Run the pipeline with the .sldprt file. Since the companion step exists next to it, it should use the step.
     metadata, gltf_content = ThreeDPipeline.parse_and_convert(sldprt_path)

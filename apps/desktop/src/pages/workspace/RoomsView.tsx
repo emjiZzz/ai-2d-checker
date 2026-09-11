@@ -4,7 +4,9 @@ import {
   X,
   ArrowRight,
   Search,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useRoomStore, type RoomMode } from "../../stores/roomStore";
 import { useRooms } from "../../hooks/useRooms";
@@ -19,7 +21,11 @@ import { useIsEngineerPromptBlocking } from "../../stores/engineerStore";
 
 type SortOption = "recent" | "name" | "created";
 
-const ITEMS_PER_PAGE = 24;
+// 4 columns x 3 rows = 12 slots max per page.
+// Page 1 reserves 1 slot for "Create New" card + 11 room cards.
+// Page 2+ displays 12 room cards.
+export const ROOMS_ON_FIRST_PAGE = 11;
+export const ROOMS_PER_PAGE = 12;
 
 export const RoomsView: React.FC = () => {
   const { rooms, isLoading, createRoom, deleteRoom } = useRooms();
@@ -34,16 +40,6 @@ export const RoomsView: React.FC = () => {
 
   /**
    * Auto-launch the onboarding tour for first-time testers / users.
-   *
-   * Waits for the engineer-identity prompt. This effect used to fire on mount, and in a
-   * prototype build `RoomsView` mounts underneath `EngineerPromptModal` — so a first launch
-   * opened the tour on top of the name prompt, before the tester had entered anything. It was
-   * not even a z-index accident to be nudged: the prompt's backdrop is `z-[100000]` and
-   * deliberately opaque, the tour is `z-[999999]`, so the tour wins by design and always will.
-   * The trigger was the thing that was wrong.
-   *
-   * Once the tester proceeds, `setEngineerName` clears `isModalOpen`, this re-runs, and the tour
-   * starts then — which is the intended sequence and what it now does.
    */
   const engineerPromptBlocking = useIsEngineerPromptBlocking();
   useEffect(() => {
@@ -58,13 +54,13 @@ export const RoomsView: React.FC = () => {
   const [deletingRoom, setDeletingRoom] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Search & Sort State
+  // Search, Sort & Pagination State
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("recent");
-  const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Prototype isolation
   const baseRooms = useMemo(() => {
@@ -138,37 +134,78 @@ export const RoomsView: React.FC = () => {
       });
   }, [baseRooms, searchQuery, sortBy]);
 
-  // Reset pagination limit on filter/search change
+  // Total pages calculation (max 3 rows: 12 cards per page)
+  const totalRooms = filteredRooms.length;
+  const totalPages = Math.max(
+    1,
+    totalRooms <= ROOMS_ON_FIRST_PAGE
+      ? 1
+      : 1 + Math.ceil((totalRooms - ROOMS_ON_FIRST_PAGE) / ROOMS_PER_PAGE)
+  );
+
+  // Reset to page 1 on search or sort change
   useEffect(() => {
-    setDisplayLimit(ITEMS_PER_PAGE);
+    setCurrentPage(1);
   }, [searchQuery, sortBy]);
 
-  // Lazy Loading Sentinel (IntersectionObserver)
+  // Clamp current page if total pages decreases
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && displayLimit < filteredRooms.length) {
-          setDisplayLimit((prev) => Math.min(prev + ITEMS_PER_PAGE, filteredRooms.length));
-        }
-      },
-      { threshold: 0.1, rootMargin: "200px" }
-    );
-
-    const currentSentinel = sentinelRef.current;
-    if (currentSentinel) {
-      observer.observe(currentSentinel);
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
     }
-    return () => {
-      if (currentSentinel) observer.unobserve(currentSentinel);
+  }, [currentPage, totalPages]);
+
+  // Sliced rooms for current page (max 3 rows rendered)
+  const pageRooms = useMemo(() => {
+    if (currentPage === 1) {
+      return filteredRooms.slice(0, ROOMS_ON_FIRST_PAGE);
+    }
+    const startIndex = ROOMS_ON_FIRST_PAGE + (currentPage - 2) * ROOMS_PER_PAGE;
+    return filteredRooms.slice(startIndex, startIndex + ROOMS_PER_PAGE);
+  }, [filteredRooms, currentPage]);
+
+  const handlePageChange = (newPage: number) => {
+    const target = Math.max(1, Math.min(totalPages, newPage));
+    setCurrentPage(target);
+    if (typeof containerRef.current?.scrollTo === "function") {
+      containerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  // Keyboard pagination navigation (Left / Right arrow keys)
+  useEffect(() => {
+    const handlePageArrows = (e: KeyboardEvent) => {
+      if (isCreating || deletingRoom) return;
+      if (
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        handlePageChange(currentPage - 1);
+      } else if (e.key === "ArrowRight") {
+        handlePageChange(currentPage + 1);
+      }
     };
-  }, [displayLimit, filteredRooms.length]);
+    window.addEventListener("keydown", handlePageArrows);
+    return () => window.removeEventListener("keydown", handlePageArrows);
+  }, [isCreating, deletingRoom, currentPage, totalPages]);
 
-  const visibleRooms = useMemo(() => {
-    return filteredRooms.slice(0, displayLimit);
-  }, [filteredRooms, displayLimit]);
+  // Text for item count display
+  const itemRangeText = useMemo(() => {
+    if (totalRooms === 0) return "0 workspaces";
+    if (currentPage === 1) {
+      const end = Math.min(ROOMS_ON_FIRST_PAGE, totalRooms);
+      return `Showing 1–${end} of ${totalRooms} rooms`;
+    }
+    const start = ROOMS_ON_FIRST_PAGE + (currentPage - 2) * ROOMS_PER_PAGE + 1;
+    const end = Math.min(ROOMS_ON_FIRST_PAGE + (currentPage - 1) * ROOMS_PER_PAGE, totalRooms);
+    return `Showing ${start}–${end} of ${totalRooms} rooms`;
+  }, [currentPage, totalRooms]);
 
-  //: Open/close the create dialog, always clearing a previous failure. A stale "not
-  //: authorised" sitting over a fresh attempt is its own small lie.
+  //: Open/close the create dialog, always clearing a previous failure.
   const setCreateOpen = (open: boolean) => {
     setCreateError("");
     setIsCreating(open);
@@ -191,23 +228,6 @@ export const RoomsView: React.FC = () => {
       setRoomMode(isPrototypeMode() ? "manual_check" : "ai_comparison");
       openRoom(newRoom.id);
     } catch (err) {
-      /*
-        This was `catch { // rollback handled by useRooms }` -- an empty block.
-
-        Rollback IS handled there, but rollback is not feedback: `useCreateRoom.onError` only
-        restores the pre-mutation list, so a failed create showed the optimistic row appear, blink
-        out, and nothing else. The dialog stayed open with the name still in it. Reported from the
-        installed prototype as "I can't create a room and proceed", and the button genuinely looked
-        dead.
-
-        Every cause looked identical, which is what made it expensive. The real one was a 401:
-        an installed build cannot find `storage/secure/.api-token`, so it holds no bearer token --
-        while `/health` needs none and returns 200, so the app reports itself connected. A network
-        failure, a duplicate name and an auth failure were all rendered as "nothing happened".
-
-        401 and 403 are called out by name because they are the ones a user cannot act on from
-        this dialog, and the remedy is somewhere else entirely.
-      */
       const message = err instanceof Error ? err.message : String(err);
       const isAuth = /\b40[13]\b|unauthor|forbidden/i.test(message);
       setCreateError(
@@ -250,11 +270,14 @@ export const RoomsView: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col flex-1 w-full h-full bg-bg-dark overflow-y-auto select-none text-text-primary p-6 md:p-8">
-      <div className="max-w-7xl w-full mx-auto flex flex-col flex-1 gap-6">
+    <div
+      ref={containerRef}
+      className="flex flex-col flex-1 w-full h-full bg-bg-dark overflow-y-auto select-none text-text-primary px-6 md:px-8 pt-10 md:pt-14 pb-6 md:pb-8"
+    >
+      <div className="max-w-7xl w-full mx-auto flex flex-col flex-1 min-h-full">
 
-        {/* ── 2. Filters & View Controls Bar ── */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-2 bg-bg-card border border-border-color">
+        {/* ── 1. Filters & View Controls Bar ── */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-2 bg-bg-card border border-border-color shrink-0 mb-4.5">
           {/* Left: Search Input */}
           <div className="relative flex-1 min-w-[240px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
@@ -296,138 +319,202 @@ export const RoomsView: React.FC = () => {
           </div>
         </div>
 
-        {/* ── 3. Main CAD Content Area ── */}
-        {filteredRooms.length === 0 ? (
-          /* Empty Feedback — and the two empty states are NOT the same state.
-           *
-           * "Nothing matches your search" and "you have no workspaces yet" were one branch, which
-           * told a fresh install that no rooms matched a search query it had not typed and offered
-           * it a Clear Search button for an empty search. The only route to `setIsCreating(true)`
-           * is the "Create New" card in the grid below, and the grid does not render when there
-           * are no rooms — so a new install had no way to create its first workspace at all.
-           */
-          <div className="flex flex-col items-center justify-center p-12 bg-bg-card border border-border-color text-center my-6">
-            {rooms.length === 0 ? (
-              <>
-                <Plus size={28} className="text-text-muted mb-3" />
-                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
-                  NO WORKSPACES YET
-                </h3>
-                <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
-                  Create a workspace to compare a reference drawing against its revision.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCreateOpen(true)}
-                  className="rounded-none font-mono text-xs uppercase"
-                >
-                  Create Room
-                </Button>
-              </>
-            ) : (
-              <>
-                <Search size={28} className="text-text-muted mb-3" />
-                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
-                  NO MATCHING WORKSPACES FOUND
-                </h3>
-                <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
-                  No CAD checking rooms match your current search query.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSearchQuery("")}
-                  className="rounded-none font-mono text-xs uppercase"
-                >
-                  Clear Search
-                </Button>
-              </>
-            )}
-          </div>
-        ) : (
-          /* ── 4-COLUMN GRID BLUEPRINT GALLERY ── */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4.5" data-tour="rooms-gallery">
-            {/* Quick Action "Start New Checking" Card */}
-            <div
-              onClick={() => setCreateOpen(true)}
-              className="border-2 border-dashed border-border-color hover:border-accent-cyan bg-bg-card/40 hover:bg-accent-cyan/5 p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[220px] group rounded-none"
-            >
-              <div className="w-12 h-12 border border-dashed border-border-color group-hover:border-accent-cyan group-hover:bg-accent-cyan/10 flex items-center justify-center text-text-muted group-hover:text-accent-cyan mb-3 transition-colors">
-                <Plus size={22} />
-              </div>
-              <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-text-primary group-hover:text-accent-cyan transition-colors">
-                Create New
-              </h3>
-              <p className="text-[11px] text-text-muted mt-1 max-w-[200px] font-sans">
-                Set up a new room for CAD drawing comparison.
-              </p>
+        {/* ── 2. Main CAD Content Area (Max 3 Rows) ── */}
+        <div className="flex-1 flex flex-col justify-start">
+          {filteredRooms.length === 0 ? (
+            /* Empty Feedback */
+            <div className="flex flex-col items-center justify-center p-12 bg-bg-card border border-border-color text-center my-auto">
+              {rooms.length === 0 ? (
+                <>
+                  <Plus size={28} className="text-text-muted mb-3" />
+                  <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
+                    NO WORKSPACES YET
+                  </h3>
+                  <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
+                    Create a workspace to compare a reference drawing against its revision.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    className="rounded-none font-mono text-xs uppercase"
+                  >
+                    Create Room
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Search size={28} className="text-text-muted mb-3" />
+                  <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-text-primary mb-1">
+                    NO MATCHING WORKSPACES FOUND
+                  </h3>
+                  <p className="text-xs text-text-muted mb-4 font-sans max-w-sm">
+                    No CAD checking rooms match your current search query.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearchQuery("")}
+                    className="rounded-none font-mono text-xs uppercase"
+                  >
+                    Clear Search
+                  </Button>
+                </>
+              )}
             </div>
-
-            {/* Checking Room Blueprint Cards */}
-            {visibleRooms.map((room) => {
-              const hasPair = !!(room.active_old_drawing_name && room.active_new_drawing_name);
-              return (
+          ) : (
+            /* ── 4-COLUMN GRID BLUEPRINT GALLERY (MAX 3 ROWS) ── */
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4.5"
+              data-tour="rooms-gallery"
+            >
+              {/* Quick Action "Start New Checking" Card - only on page 1 */}
+              {currentPage === 1 && (
                 <div
-                  key={room.id}
-                  onClick={() => openRoom(room.id)}
-                  title="Click to Open"
-                  className="bg-bg-card border border-border-color hover:border-accent-cyan/70 p-4 flex flex-col gap-3 transition-all cursor-pointer group rounded-none shadow-sm hover:shadow-md hover:shadow-accent-cyan/5 relative"
+                  onClick={() => setCreateOpen(true)}
+                  className="border-2 border-dashed border-border-color hover:border-accent-cyan bg-bg-card/40 hover:bg-accent-cyan/5 p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[220px] group rounded-none"
                 >
-                  {/* Card Header: Name, Status & Delete */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <CadFileIcon size={18} className="text-text-muted group-hover:text-accent-cyan transition-colors shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-mono font-bold text-text-primary group-hover:text-accent-cyan transition-colors truncate">
-                          {room.name}
-                        </h3>
-                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                          {hasPair ? (
-                            <span
-                              className="text-[11px] font-mono text-text-muted/70 truncate font-semibold group-hover:text-accent-cyan transition-colors"
-                              title={room.active_new_drawing_name || undefined}
-                            >
-                              {room.active_new_drawing_name}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono text-text-muted/70">
-                              <span>No drawing detected </span>
-                            </span>
-                          )}
+                  <div className="w-12 h-12 border border-dashed border-border-color group-hover:border-accent-cyan group-hover:bg-accent-cyan/10 flex items-center justify-center text-text-muted group-hover:text-accent-cyan mb-3 transition-colors">
+                    <Plus size={22} />
+                  </div>
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-text-primary group-hover:text-accent-cyan transition-colors">
+                    Create New
+                  </h3>
+                  <p className="text-[11px] text-text-muted mt-1 max-w-[200px] font-sans">
+                    Set up a new room for CAD drawing comparison.
+                  </p>
+                </div>
+              )}
+
+              {/* Checking Room Blueprint Cards */}
+              {pageRooms.map((room) => {
+                const hasPair = !!(room.active_old_drawing_name && room.active_new_drawing_name);
+                return (
+                  <div
+                    key={room.id}
+                    onClick={() => openRoom(room.id)}
+                    title="Click to Open"
+                    className="bg-bg-card border border-border-color hover:border-accent-cyan/70 p-4 flex flex-col gap-3 transition-all cursor-pointer group rounded-none shadow-sm hover:shadow-md hover:shadow-accent-cyan/5 relative"
+                  >
+                    {/* Card Header: Name, Status & Delete */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <CadFileIcon size={20} className="text-text-muted group-hover:text-accent-cyan transition-colors shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <h3 className="text-base font-mono font-bold text-text-primary group-hover:text-accent-cyan transition-colors truncate tracking-tight">
+                            {room.name}
+                          </h3>
+                          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                            {hasPair ? (
+                              <span
+                                className="text-[11px] font-mono text-text-muted/70 truncate font-semibold group-hover:text-accent-cyan transition-colors"
+                                title={room.active_new_drawing_name || undefined}
+                              >
+                                {room.active_new_drawing_name}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-text-muted/70">
+                                <span>No drawing detected </span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
+
+                      {/* Delete Action (X) */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingRoom({ id: room.id, name: room.name });
+                        }}
+                        className="p-1 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer rounded-none shrink-0"
+                        title="Delete Room"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
 
-                    {/* Delete Action (X) */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeletingRoom({ id: room.id, name: room.name });
-                      }}
-                      className="p-1 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer rounded-none shrink-0"
-                      title="Delete Room"
-                    >
-                      <X size={14} />
-                    </button>
+                    {/* Real CAD Drawing Vector Thumbnail Viewport */}
+                    <RealDrawingThumbnail
+                      drawingId={room.active_new_drawing_id || room.active_old_drawing_id}
+                      hasPair={hasPair}
+                    />
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-                  {/* Real CAD Drawing Vector Thumbnail Viewport */}
-                  <RealDrawingThumbnail
-                    drawingId={room.active_new_drawing_id || room.active_old_drawing_id}
-                    hasPair={hasPair}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* ── 3. Pagination Footer Bar (Max 3 Rows) ── */}
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 pb-2 border-t border-border-color text-xs font-mono select-none shrink-0 mt-4.5">
+            {/* Item Range Info */}
+            <div className="text-text-muted text-[11px]">
+              {itemRangeText}
+              <span className="text-text-muted/60 ml-1.5 hidden sm:inline">
+                (Page {currentPage} of {totalPages})
+              </span>
+            </div>
 
-        {/* Lazy Loading Sentinel */}
-        {displayLimit < filteredRooms.length && (
-          <div ref={sentinelRef} className="py-6 flex items-center justify-center text-xs font-mono text-text-muted">
-            <div className="w-4 h-4 border-2 border-accent-cyan border-t-transparent animate-spin mr-2" />
-            <span>Loading additional rooms...</span>
+            {/* Navigation Controls */}
+            <div className="flex items-center gap-1">
+              {/* Previous Page */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                className="h-7 px-2 gap-1 rounded-none text-xs font-mono cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Previous"
+              >
+                <ChevronLeft size={13} />
+              </Button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1 mx-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => {
+                    return (
+                      p === 1 ||
+                      p === totalPages ||
+                      Math.abs(p - currentPage) <= 1
+                    );
+                  })
+                  .map((page, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const hasGap = prev && page - prev > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {hasGap && (
+                          <span className="px-1 text-text-muted/50 select-none">…</span>
+                        )}
+                        <button
+                          onClick={() => handlePageChange(page)}
+                          className={`h-7 min-w-[28px] px-2 text-xs font-mono font-semibold transition-colors cursor-pointer border ${currentPage === page
+                            ? "bg-accent-cyan text-on-accent border-accent-cyan"
+                            : "bg-bg-dark text-text-secondary border-border-color hover:bg-sidebar-item-hover hover:text-text-primary"
+                            }`}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
+              {/* Next Page */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                className="h-7 px-2 gap-1 rounded-none text-xs font-mono cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Next"
+              >
+                <ChevronRight size={13} />
+              </Button>
+            </div>
           </div>
         )}
 
@@ -500,19 +587,19 @@ export const RoomsView: React.FC = () => {
         isOpen={!!deletingRoom}
         onClose={() => !isDeleting && setDeletingRoom(null)}
         onConfirm={handleConfirmDelete}
-        title="DELETE CHECKING ROOM"
+        title="Delete Room"
         message={
           <div className="flex flex-col gap-1.5">
             <p>
-              Are you sure you want to permanently delete room <strong className="font-mono text-text-primary">"{deletingRoom?.name}"</strong>?
+              Are you sure you want to delete room <strong className="font-mono text-text-primary">"{deletingRoom?.name}"</strong>?
             </p>
-            <p className="text-[11px] text-text-muted">
-              All linked CAD drawing vectors, ground truth markings, and session history will be removed.
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              All linked CAD drawing vectors, ground truth markings, and session history will be permanently removed.
             </p>
           </div>
         }
-        confirmText="DELETE ROOM"
-        cancelText="CANCEL"
+        confirmText="Delete Room"
+        cancelText="Cancel"
         variant="danger"
         isLoading={isDeleting}
       />

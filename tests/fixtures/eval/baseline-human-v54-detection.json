@@ -1,0 +1,119 @@
+{
+  "cache_version": "v54",
+  "category_attribution": {
+    "accuracy": 0.9508196721311475,
+    "confusion": {
+      "bill_of_materials->drawing_views": 1,
+      "notes_section->bill_of_materials": 1,
+      "title_block->drawing_views": 1
+    },
+    "correct": 58,
+    "matched": 61
+  },
+  "macro_f1": 0.3784134248665141,
+  "match_tiers": {
+    "handle": 10,
+    "spatial": 6,
+    "text": 45
+  },
+  "method": "deterministic",
+  "micro": {
+    "duplicates": 1,
+    "f1": 0.48412698412698413,
+    "fn": 33,
+    "fp": 97,
+    "precision": 0.3860759493670886,
+    "recall": 0.648936170212766,
+    "tp": 61
+  },
+  "pairs": 8,
+  "per_category": {
+    "bill_of_materials": {
+      "duplicates": 0,
+      "f1": 0.4210526315789473,
+      "fn": 10,
+      "fp": 1,
+      "precision": 0.8,
+      "recall": 0.2857142857142857,
+      "tp": 4
+    },
+    "drawing_views": {
+      "duplicates": 1,
+      "f1": 0.2549019607843137,
+      "fn": 8,
+      "fp": 68,
+      "precision": 0.16049382716049382,
+      "recall": 0.6190476190476191,
+      "tp": 13
+    },
+    "isometric_view": {
+      "duplicates": 0,
+      "f1": 0.0,
+      "fn": 2,
+      "fp": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "tp": 0
+    },
+    "notes_section": {
+      "duplicates": 0,
+      "f1": 0.4117647058823529,
+      "fn": 13,
+      "fp": 7,
+      "precision": 0.5,
+      "recall": 0.35,
+      "tp": 7
+    },
+    "other_engineering_references": {
+      "duplicates": 0,
+      "f1": null,
+      "fn": 0,
+      "fp": 0,
+      "precision": null,
+      "recall": null,
+      "tp": 0
+    },
+    "title_block": {
+      "duplicates": 0,
+      "f1": 0.8043478260869564,
+      "fn": 0,
+      "fp": 18,
+      "precision": 0.6727272727272727,
+      "recall": 1.0,
+      "tp": 37
+    }
+  },
+  "recall_by_entity_type": {
+    "dimension": {
+      "fn": 5,
+      "n": 14,
+      "recall": 0.6428571428571429,
+      "tp": 9
+    },
+    "ellipse": {
+      "fn": 2,
+      "n": 2,
+      "recall": 0.0,
+      "tp": 0
+    },
+    "text": {
+      "fn": 26,
+      "n": 78,
+      "recall": 0.6666666666666666,
+      "tp": 52
+    }
+  },
+  "scored_pairs": 8,
+  "scorer_note": "Mutation pairs are drawn from the engine's own comparison pool, so they cannot reveal a scoping bug and their category attribution is not independent. Human pairs are required for both.",
+  "status_confusion": {
+    "ADDED->ADDED": 5,
+    "ADDED->REMOVED": 1,
+    "CHANGED->ADDED": 19,
+    "CHANGED->CHANGED": 33,
+    "CHANGED->REMOVED": 3
+  },
+  "unresolvable_labels": [],
+  "zero_finding_false_positives": 0,
+  "zero_finding_pairs": 0,
+  "zone_templates": "detected"
+}

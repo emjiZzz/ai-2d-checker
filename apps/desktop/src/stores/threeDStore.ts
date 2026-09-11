@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { uploadFile } from "../services/fetchUtils";
 import { DrawingItem, UploadState } from "./workspace/types";
+import { is3DModelFormat } from "../config/drawingFormats";
 
 export interface ThreeDStoreState {
   activeDrawing: DrawingItem | null;
@@ -61,9 +62,12 @@ export const useThreeDStore = create<ThreeDStoreState>((set) => ({
     };
 
     const extension = file.name.split(".").pop()?.toLowerCase();
-    const is3D = ["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(extension || "");
+    // `.icd` is accepted here despite being a drawing format: an iCAD file carries both a
+    // model and a drawing, and one with no drawing extracts as a mesh. Rejecting it on the
+    // extension leaves those files ingestable and unviewable, which is where they sat.
+    const is3D = is3DModelFormat(extension) || extension === "icd";
     if (!extension || !is3D) {
-      updateStatus("failed", 0, "Unsupported format. Only 3D (STEP, IGES, ICD, SolidWorks) files are allowed here.");
+      updateStatus("failed", 0, "Unsupported format. Only 3D (STEP, IGES, SolidWorks) or iCAD (.icd) files are allowed here.");
       return false;
     }
 
@@ -72,16 +76,34 @@ export const useThreeDStore = create<ThreeDStoreState>((set) => ({
       return false;
     }
 
-    updateStatus("uploading", 40);
+    updateStatus("uploading", 30);
 
+    let uploadPrimaryFile: File = file;
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri && extension === "icd") {
+      try {
+        updateStatus("uploading", 35);
+        const { convertLocalCadFile } = await import("../services/localCadConverter");
+        const converted = await convertLocalCadFile(file);
+        if (converted.companionStepFile) {
+          uploadPrimaryFile = converted.companionStepFile;
+        } else {
+          uploadPrimaryFile = converted.dxfFile;
+        }
+      } catch (convErr: any) {
+        console.warn("Client-side 3D CAD conversion failed, falling back to direct upload:", convErr);
+      }
+    }
+
+    updateStatus("uploading", 50);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadPrimaryFile);
 
     try {
       const uploadResult = await uploadFile<any>(
         "/api/v1/drawings/upload",
         formData,
-        (percent) => updateStatus("processing", percent)
+        (percent) => updateStatus("processing", 50 + Math.round(percent * 0.4))
       );
 
       const { drawing, job } = uploadResult;

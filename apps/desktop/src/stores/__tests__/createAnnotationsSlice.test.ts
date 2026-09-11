@@ -63,6 +63,84 @@ describe("createAnnotationsSlice", () => {
     expect(state.selectedAnnotationId).toBe("ann-1");
   });
 
+  it("createAnnotationAt optimistically places pin before server responds and swaps ID on success", async () => {
+    let resolveCreate: (val: any) => void;
+    const createPromise = new Promise((resolve) => {
+      resolveCreate = resolve;
+    });
+    vi.mocked(annotationsApi.createAnnotation).mockReturnValue(createPromise as any);
+
+    const promise = useWorkspaceStore.getState().createAnnotationAt([50, 60], "Optimistic pin", "drawing-1");
+
+    // Immediately placed in state with 0ms UI delay
+    const stateBefore = useWorkspaceStore.getState();
+    expect(stateBefore.annotations).toHaveLength(1);
+    expect(stateBefore.annotations[0].id).toMatch(/^optimistic_ann_/);
+    expect(stateBefore.annotations[0].content).toBe("Optimistic pin");
+    expect(stateBefore.selectedAnnotationId).toMatch(/^optimistic_ann_/);
+
+    // Resolve server call
+    resolveCreate!({
+      id: "ann-server-123",
+      review_session_id: "drawing-1",
+      drawing_id: "drawing-1",
+      content: "Optimistic pin",
+      coordinates: [50, 60],
+      severity: "high",
+      pen_type: "warning_orange",
+      violation_id: "v-100",
+      status: "open",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    await promise;
+
+    const stateAfter = useWorkspaceStore.getState();
+    expect(stateAfter.annotations[0].id).toBe("ann-server-123");
+    expect(stateAfter.selectedAnnotationId).toBe("ann-server-123");
+  });
+
+  it("deleteAnnotationById optimistically removes pin immediately and rolls back on failure", async () => {
+    const existing = {
+      id: "ann-to-delete",
+      review_session_id: "drawing-1",
+      drawing_id: "drawing-1",
+      author_id: "checker_user",
+      annotation_type: "pin",
+      content: "Do not lose me",
+      severity: "info" as const,
+      coordinates: [10, 20] as [number, number],
+      target_entity_ids: [],
+      violation_id: null,
+      status: "open",
+      pen_type: "checker_blue" as const,
+      created_at: "2026-07-24T00:00:00Z",
+      updated_at: "2026-07-24T00:00:00Z",
+    };
+    useWorkspaceStore.setState({ annotations: [existing] });
+
+    let rejectDelete: (err: any) => void;
+    const deletePromise = new Promise((_, reject) => {
+      rejectDelete = reject;
+    });
+    vi.mocked(annotationsApi.deleteAnnotation).mockReturnValue(deletePromise as any);
+
+    const promise = useWorkspaceStore.getState().deleteAnnotationById("ann-to-delete");
+
+    // Removed immediately from UI
+    expect(useWorkspaceStore.getState().annotations).toHaveLength(0);
+
+    // Network fails
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    rejectDelete!(new Error("Network disconnect"));
+    await promise;
+
+    // Rollback restored the pin
+    expect(useWorkspaceStore.getState().annotations).toHaveLength(1);
+    expect(useWorkspaceStore.getState().annotations[0].id).toBe("ann-to-delete");
+    consoleSpy.mockRestore();
+  });
+
   it("updateAnnotationDetails updates store state and calls updateAnnotation API", async () => {
     const initialAnnotation = {
       id: "ann-1",

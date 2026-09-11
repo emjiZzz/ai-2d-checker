@@ -163,7 +163,11 @@ export function useEntityPicking(params: {
         handle: entity.handle ?? entity.properties?.handle ?? null,
         parentHandle: entity.properties?.parent_handle ?? null,
         entityType: String(entity.type ?? entity.entity_type ?? 'unknown'),
-        layer: String(entity.layer ?? entity.properties?.layer ?? '0'),
+        // `DrawingCanvas.validatedLayers` stamps `layer` from the payload's map key. Falls back to
+        // empty, never to '0': '0' is a real layer name in most DXFs, so the old default produced
+        // an address that read perfectly and resolved to nothing below handle tier. Empty is at
+        // least visibly absent. See the vault note on that address defect.
+        layer: String(entity.layer ?? entity.properties?.layer ?? ''),
         // Read, never typed. Committed labels preserve full-width characters and clean CAD symbols;
         // retyping normalises away the very characters comparison turns on.
         text: entityDisplayText(entity) || String(

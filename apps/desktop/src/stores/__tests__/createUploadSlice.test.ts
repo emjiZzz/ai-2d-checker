@@ -86,11 +86,11 @@ describe('createUploadSlice', () => {
     
     // Valid CAD content (no MZ header)
     const validContent = new Uint8Array([0x00, 0x01, 0x02]);
-    const mockValid = new File([validContent], 'floorplan.dwg');
+    const mockValid = new File([validContent], 'floorplan.dxf');
 
     // Mock successful uploadFile response
     (uploadFile as any).mockResolvedValueOnce({
-      drawing: { id: 'dwg_123', file_name: 'floorplan.dwg' },
+      drawing: { id: 'dwg_123', file_name: 'floorplan.dxf' },
       job: { id: 'job_abc', status: 'processing' }
     });
 
@@ -112,10 +112,10 @@ describe('createUploadSlice', () => {
 
   it('does not delete anything when the slot was empty', async () => {
     const store = useWorkspaceStore.getState();
-    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dwg');
+    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dxf');
 
     (uploadFile as any).mockResolvedValueOnce({
-      drawing: { id: 'dwg_123', file_name: 'floorplan.dwg' },
+      drawing: { id: 'dwg_123', file_name: 'floorplan.dxf' },
       job: { id: 'job_abc', status: 'processing' }
     });
 
@@ -202,10 +202,10 @@ describe('createUploadSlice', () => {
     useWorkspaceStore.setState({ oldDrawing: { id: 'old_1', file_name: 'prev.dwg' } as any });
 
     const store = useWorkspaceStore.getState();
-    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dwg');
+    const mockValid = new File([new Uint8Array([0x00, 0x01, 0x02])], 'floorplan.dxf');
 
     (uploadFile as any).mockResolvedValueOnce({
-      drawing: { id: 'dwg_new', file_name: 'floorplan.dwg' },
+      drawing: { id: 'dwg_new', file_name: 'floorplan.dxf' },
       job: { id: 'job_abc', status: 'processing' }
     });
 
@@ -215,5 +215,68 @@ describe('createUploadSlice', () => {
     // The displaced drawing is hard-deleted; the fresh one is not.
     expect(deleteDrawing).toHaveBeenCalledTimes(1);
     expect(deleteDrawing).toHaveBeenCalledWith('old_1');
+  });
+
+  describe('cross-format 2D drawing comparison', () => {
+    it('allows cross-format 2D drawing pairing (e.g. .dwg reference vs .icd revision)', async () => {
+      useWorkspaceStore.setState({
+        oldDrawing: { id: 'dwg_old', file_name: 'bracket_ref.dwg' } as any,
+      });
+
+      const store = useWorkspaceStore.getState();
+      const mockIcd = new File([new Uint8Array([0x00, 0x01, 0x02])], 'bracket_rev.icd');
+
+      (uploadFile as any).mockResolvedValueOnce({
+        drawing: { id: 'icd_new', file_name: 'bracket_rev.icd' },
+        job: { id: 'job_123', status: 'processing' },
+      });
+
+      const result = await store.uploadDrawingFile(mockIcd, 'new');
+
+      expect(result).toBe(true);
+      const state = useWorkspaceStore.getState();
+      expect(state.newUploadState).toBe('processing');
+      expect(state.newError).toBeNull();
+    });
+
+    it('rejects cross-domain pairing between 2D drawing and 3D model (e.g. .dwg vs .step)', async () => {
+      useWorkspaceStore.setState({
+        oldDrawing: { id: 'dwg_old', file_name: 'part.dwg' } as any,
+      });
+
+      const store = useWorkspaceStore.getState();
+      const mockStep = new File([new Uint8Array([0x00, 0x01, 0x02])], 'part.step');
+
+      const result = await store.uploadDrawingFile(mockStep, 'new');
+
+      expect(result).toBe(false);
+      const state = useWorkspaceStore.getState();
+      expect(state.newUploadState).toBe('failed');
+      expect(state.compatibilityStatus).toBe('Mismatch');
+      expect(state.newError).toContain('Format Mismatch: Cannot compare 2D drawings with 3D models');
+      expect(uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('sets compatibilityStatus to Compatible for .dwg and .icd in recalculateCompatibility', () => {
+      useWorkspaceStore.setState({
+        oldDrawing: { id: 'dwg_old', file_name: 'bracket_ref.dwg' } as any,
+        newDrawing: { id: 'icd_new', file_name: 'bracket_rev.icd' } as any,
+      });
+
+      useWorkspaceStore.getState().recalculateCompatibility();
+
+      expect(useWorkspaceStore.getState().compatibilityStatus).toBe('Compatible');
+    });
+
+    it('sets compatibilityStatus to Mismatch for 2D drawing and 3D model in recalculateCompatibility', () => {
+      useWorkspaceStore.setState({
+        oldDrawing: { id: 'dwg_old', file_name: 'bracket_ref.dwg' } as any,
+        newDrawing: { id: 'step_new', file_name: 'bracket_rev.step' } as any,
+      });
+
+      useWorkspaceStore.getState().recalculateCompatibility();
+
+      expect(useWorkspaceStore.getState().compatibilityStatus).toBe('Mismatch');
+    });
   });
 });

@@ -20,7 +20,12 @@ the way it is. It holds defects and constraints that are expensive to rediscover
 - `00 - Map of Content (MOC).md` — index of everything
 - `00 - AI Maturity Status.md` — which rung the AI is on, what is done, what is next. Read before
   AI or comparison work; update after. See constraint 5.
-- `00 - AI Agent Navigation & System Gap Analysis.md` — current state and the open gaps
+- `00 - AI Agent Navigation & System Gap Analysis.md` — **retired 2026-09-09.** A July survey
+  measured against 4 drawings and cache v17, against today's v54 and 56. Kept for the gaps it
+  names and because 11 notes link to it; the ledger above is the answer to "what is the state of
+  the system". Do not quote its figures or its file inventory.
+- `05 - Desktop Frontend/` — how the client is put together: the workspace store's slices, the
+  ingestion resume path, and the rooms and upload surfaces.
 - `07 - Architecture Decision Records (ADRs)/` — decisions already made; do not re-litigate
 - `06 - Gotchas & Debugging Lessons/` — bugs already paid for once
 
@@ -354,10 +359,12 @@ deliberately not counted: deleting a room purges both slots and keeps the record
 dangle by design. The rule is `extraction_status.referenced_ids`, pinned by
 `tests/test_extraction_referrers.py`.
 
-Two rows can never be brought current. `MD511367B01_WABC-new.pdf` and `MD51167B01_WABC-old.pdf` are
-`DrawingDocument` rows whose stored source file no longer exists, so `/reextract` answers 422; they
-are also PDFs, from before the vector path. A run reporting `skipped 2 (source file gone)` is
-healthy — treat a rising skip count as the signal, not a non-zero one.
+The two rows that could never be brought current are gone. `MD511367B01_WABC-new.pdf` and
+`MD51167B01_WABC-old.pdf` were `DrawingDocument` rows whose source file no longer existed, so
+`/reextract` answered 422 and a healthy run reported `skipped 2 (source file gone)`. They went with
+the 2026-09-07 corpus reset. Measured 2026-09-09: 29 rows, 28 at v10, one at v0, nothing skipped, so
+a skip is now a new event rather than the documented baseline. The v0 row is
+`M7452A2N01_FSRS2_kmti2.dxf`, a side of a labelled corpus pair.
 
 "Stored drawings" means `DrawingDocument` rows, which is not the same as files in
 `storage/uploads`. The sweep above asks about files on disk; this asks about rows in the database.
@@ -382,6 +389,42 @@ overwrites it. Use `--json <scratch>` to inspect a run. For the invariant use
 `--provenance mutation` — a full run no longer reproduces the committed baselines, because the
 corpus grows.
 
+### Ground truth, labels and the learned corpus
+
+The app writes `ground_truth_markings`; the corpus counts `tests/fixtures/eval/labels/`. These are
+the tools that sit between them. All are read-only unless given `--apply` or `--write`, and all
+read the app's configured Mongo rather than a local default.
+
+```bash
+services/backend/.venv/Scripts/python.exe tools/eval_corpus.py from-manual-check --pair-id <id>
+```
+
+Converts a Manual Check session into a label draft and stops. Installing is still
+`eval_corpus.py label --from`, which demands a named annotator and a current guideline version.
+Called with no `--session-id` it lists the sessions that cover the pair. This is the labelling
+route since 2026-09-07; hand-annotation via `worksheet` is the fallback, not the default.
+
+- `tools/label_status.py` — what the next training run would see: verdict label counts, class
+  balance, which verbs train nothing, and which bundle is live. The class balance is the number
+  that matters, not the row count.
+- `tools/matcher_status.py` — what the parked `MATCHER_FEEDBACK` rows say about the matcher.
+- `tools/title_block_anchors.py` — where the title block and BOM sit, measured from markings in
+  drawing units per sheet edge, with a committed observation fixture. Fractions of `render_bounds`
+  were measured and rejected for this; see the vault note on fraction space.
+- `tools/backfill_marking_addresses.py`, `tools/backfill_marking_sheets.py` — repair `layer` and
+  `text` on stored addresses, and fill `ref_sheet`/`rev_sheet` on markings written before those
+  fields existed.
+- `tools/migrate_label_addresses.py` — re-address corpus labels after a re-export, by unique text
+  match only.
+- `tools/merge_duplicate_check_sessions.py` — one-off repair for markings scattered across the
+  duplicate sessions minted before 2026-08-18.
+- `tools/retrieval_eval.py` — Stage R2 retrieval measurement; `census` first, because a recall
+  figure over an empty collection is arithmetic rather than evidence.
+
+Since the 2026-09-07 reset, `audit_feedback`, `audit_violations` and `audit_sessions` are empty and
+no learned bundle is live, so `label_status.py` and `matcher_status.py` both report zero. That is
+the owner's deprecation of the AI-mode corpus as a ground-truth basis, not a fault.
+
 ## Test suite state
 
 Both suites are green. Treat any failure you see as yours, and verify before inheriting a
@@ -393,6 +436,12 @@ costs a live Gemini call per side. Owner's call, 2026-08-25 — capture by hand 
 so the suite fails the day it starts passing, and
 `test_no_pair_beyond_the_known_one_is_missing_its_ocr_reading` keeps the other pairs guarded,
 because an xfail on a test that checks every pair excuses every pair.
+
+`KNOWN_UNCAPTURED_OCR` holds two pairs since 2026-09-09, not one. Registering `M745200N01` added the
+second, and because `_upsert_pair` sorts the manifest by `pair_id` it took index 0 — which is the
+pair `test_deterministic_candidates_run_offline_over_a_real_pair` drives, so that test now skips
+instead of exercising the engine. An eval over all eight labelled pairs makes live Gemini calls
+until both readings are captured.
 
 Suite counts are deliberately not recorded here. They move every week, a stale count reads as a
 regression, and the commands above report the current ones. Two facts about the shape of a run do

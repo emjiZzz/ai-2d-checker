@@ -94,8 +94,8 @@ test.describe('CAD Ingestion Critical Path', () => {
     // First ensure we're not stuck on loading state
     await expect(page.getByText(/Loading workspace state/i)).not.toBeVisible({ timeout: 10000 });
     
-    // Look for the text that indicates the dropzone is ready
-    const dropzoneText = page.locator('p', { hasText: /Drag & drop or/i }).first();
+    // Look for the element that indicates the upload zone is ready
+    const dropzoneText = page.getByRole('button', { name: /Browse/i }).first();
     await expect(dropzoneText).toBeVisible({ timeout: 10000 });
   });
 });

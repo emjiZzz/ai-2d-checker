@@ -23,66 +23,65 @@ const PolicyModal: React.FC<PolicyModalProps> = ({ isOpen, onClose, onAccept }) 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/85 p-6 animate-in fade-in duration-150 select-none">
-      <div className="bg-bg-card border-2 border-border-color shadow-2xl w-full max-w-2xl p-8 text-text-primary flex flex-col gap-6 relative rounded-none animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 md:p-6 animate-in fade-in duration-150 select-none">
+      <div className="bg-bg-card border border-border-color shadow-2xl w-full max-w-xl p-6 md:p-7 text-text-primary flex flex-col gap-5 relative rounded-none animate-in zoom-in-95 duration-150">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-text-muted hover:text-text-primary p-2 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 text-text-muted hover:text-text-primary p-1.5 transition-colors cursor-pointer rounded-sm hover:bg-sidebar-item-hover"
           title="Close Policy"
         >
-          <X size={22} />
+          <X size={18} />
         </button>
 
-        <div className="flex items-center gap-4 border-b border-border-color pb-4">
-          <div className="w-12 h-12 bg-accent-cyan/15 border border-accent-cyan/40 flex items-center justify-center shrink-0 rounded-none">
-            <ShieldCheck size={26} className="text-accent-cyan" />
+        <div className="flex items-center gap-3.5 border-b border-border-color pb-4 pr-8">
+          <div className="w-9 h-9 bg-accent-cyan/10 border border-accent-cyan/25 flex items-center justify-center shrink-0 rounded-none">
+            <ShieldCheck size={20} className="text-accent-cyan" />
           </div>
           <div>
-            <h3 className="text-lg font-bold tracking-wide uppercase text-text-primary font-mono">
+            <h3 className="text-base font-bold tracking-tight text-text-primary">
               Terms of Evaluation & Data Policy
             </h3>
-            <p className="text-sm text-text-muted">KMTI Engineering CAD Verification Platform</p>
+            <p className="text-xs text-text-muted mt-0.5">KMTI Engineering CAD Verification Platform</p>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 text-sm text-text-muted leading-relaxed max-h-[60vh] overflow-y-auto pr-2">
-          <div className="p-4 bg-bg-dark border border-border-color">
-            <h4 className="text-sm font-bold text-text-primary uppercase tracking-wide mb-1.5 flex items-center gap-2">
-              <span className="w-2 h-2 bg-accent-cyan inline-block"></span>
+        <div className="flex flex-col gap-4 text-xs leading-relaxed max-h-[55vh] overflow-y-auto pr-1.5">
+          <div>
+            <h4 className="font-bold text-text-primary text-xs uppercase tracking-wider mb-1">
               1. Ground Truth & Annotation Collection
             </h4>
-            <p className="text-xs leading-relaxed text-text-secondary">
+            <p className="text-text-secondary leading-relaxed">
               This evaluation build is configured for engineering verification, discrepancy identification, and ground-truth benchmarking. All coordinate markings, severity classifications, and reviewer notes are captured to calibrate quality baselines.
             </p>
           </div>
 
-          <div className="p-4 bg-bg-dark border border-border-color">
-            <h4 className="text-sm font-bold text-text-primary uppercase tracking-wide mb-1.5 flex items-center gap-2">
-              <span className="w-2 h-2 bg-accent-cyan inline-block"></span>
+          <div className="border-t border-border-color/30 pt-3.5">
+            <h4 className="font-bold text-text-primary text-xs uppercase tracking-wider mb-1">
               2. Centralized Database Synchronization
             </h4>
-            <p className="text-xs leading-relaxed text-text-secondary">
+            <p className="text-text-secondary leading-relaxed">
               Review sessions and markings are synchronized to the organization's central MongoDB Atlas cluster under your designated engineer identifier. Offline evaluations are queued locally and pushed automatically upon network connection.
             </p>
           </div>
 
-          <div className="p-4 bg-bg-dark border border-border-color">
-            <h4 className="text-sm font-bold text-text-primary uppercase tracking-wide mb-1.5 flex items-center gap-2">
-              <span className="w-2 h-2 bg-accent-cyan inline-block"></span>
+          <div className="border-t border-border-color/30 pt-3.5">
+            <h4 className="font-bold text-text-primary text-xs uppercase tracking-wider mb-1">
               3. Vector Data Security & Intellectual Property
             </h4>
-            <p className="text-xs leading-relaxed text-text-secondary">
+            <p className="text-text-secondary leading-relaxed">
               Proprietary CAD files (.dwg / .dxf) remain strictly protected and processed within the local secure sandbox environment. No raw engineering drawings are distributed to unauthorized third parties.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-border-color mt-2">
-          <span className="text-xs text-text-muted">Please confirm your understanding of the evaluation terms.</span>
+        <div className="flex items-center justify-between pt-4 border-t border-border-color mt-1">
+          <span className="text-xs text-text-muted max-w-[55%]">
+            Please confirm your understanding of the evaluation terms.
+          </span>
           <Button
             variant="primary"
             onClick={onAccept}
-            className="px-7 py-3 text-sm font-bold uppercase tracking-wider rounded-none shadow-md cursor-pointer font-mono"
+            className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider rounded-none shadow-sm cursor-pointer"
           >
             I Understand & Agree
           </Button>

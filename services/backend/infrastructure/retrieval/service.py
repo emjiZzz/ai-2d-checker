@@ -198,7 +198,17 @@ async def rebuild_ground_truth_index(root: Path | None = None) -> BuildResult:
     `ground_truth_record`, not here, so that rule has one implementation.
     """
     markings = await GroundTruthMarking.find_all().limit(MAX_RECORDS_PER_COLLECTION).to_list()
-    records = [r for r in (ground_truth_record(m) for m in markings) if r is not None]
+
+    # Which sheet a marking is about has to reach the indexed TEXT, because
+    # `_collapse_duplicate_texts` keys on text alone. Sibling sheets from one template carry the
+    # same title-block and BOM values, so without this a second pair's markings collapse into the
+    # first pair's: 20 of 56 dropped on 2026-09-07, and the share grows with every pair marked.
+    names: dict[str, str] = {}
+    for drawing in await DrawingDocument.find_all().limit(MAX_RECORDS_PER_COLLECTION).to_list():
+        if drawing.id is not None:
+            names[str(drawing.id)] = drawing.file_name or str(drawing.id)
+
+    records = [r for r in (ground_truth_record(m, names) for m in markings) if r is not None]
     return await asyncio.to_thread(build_index, GROUND_TRUTH, records, root)
 
 
@@ -317,7 +327,9 @@ def feedback_record(feedback: AuditFeedbackDocument) -> Record | None:
     )
 
 
-def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
+def ground_truth_record(
+    marking: GroundTruthMarking, drawing_names: dict[str, str] | None = None
+) -> Record | None:
     """One independent human marking as a retrievable record.
 
     A retracted marking is not indexed, and the status reaches the indexed text rather than only
@@ -341,16 +353,23 @@ def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
     else:
         observed = ref_text or rev_text
 
-    address = marking.ref_address or marking.rev_address
+    address, stored_sheet = marking.addressed_sheet()
     entity_type = (getattr(address, "entity_type", "") or "").strip()
     layer = (getattr(address, "layer", "") or "").strip()
     # Entity type and layer are query terms, so they belong in the text; coordinates are not, and
     # sit in metadata where a consumer can place the hit without polluting the lexical index.
     where = " ".join(p for p in (entity_type, f"on layer {layer}" if layer else "") if p)
 
+    drawing_id = getattr(address, "drawing_id", None)
+    # The marking's own copy first: deleting a room purges the DrawingDocument, so the lookup
+    # answers "" for exactly the rows whose provenance matters most. The lookup remains for rows
+    # written before the field existed.
+    sheet = stored_sheet or ((drawing_names or {}).get(str(drawing_id), "") if drawing_id else "")
+
     parts = [
         marking.category,
         marking.feature or "",
+        sheet,
         where,
         observed,
         f"Human ground truth: {marking.status}",
@@ -362,10 +381,10 @@ def ground_truth_record(marking: GroundTruthMarking) -> Record | None:
     return Record(
         id=str(marking.id),
         text=text,
-        source="Human ground truth",
+        source=f"Human ground truth on {sheet}" if sheet else "Human ground truth",
         section=marking.category,
         metadata={
-            "drawing_id": getattr(address, "drawing_id", None),
+            "drawing_id": drawing_id,
             "room_id": getattr(marking, "room_id", ""),
             "session_id": marking.session_id,
             "annotator": marking.annotator,

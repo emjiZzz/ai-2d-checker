@@ -17,22 +17,25 @@ import {
   type CreateMarkingPayload,
   type EntityAddressPayload,
   type MarkingStatus,
+  type GroundTruthMarking,
 } from "../../../services/groundTruthApi";
 import { useEngineerStore } from "../../engineerStore";
 
 /**
  * Manual engineer check — ground-truth capture.
  *
- * ## Every marking is written through, not batched
+ * ## Optimistic Updates with Background Persistence & Rollback
  *
- * `recordStamp` posts immediately and only then updates local state. A session on a dense sheet
- * is an hour of work (`M745230A01` carries 68 addressable rows); holding it in memory until a
- * submit button means one crash, one closed laptop or one dropped websocket loses all of it,
- * and an annotator who has lost an hour does not come back. `submitManualSession` finalises a
- * session that already holds its data.
+ * `recordStamp` and `retractManualMarking` write immediately to local state so the UI responds
+ * with 0ms latency (green checkmarks, status chips, and list trays update instantly without waiting
+ * for network round-trips to free-tier cloud servers).
  *
- * The consequence, accepted deliberately: a stamp is not instant. That is the right trade for a
- * tool whose entire output is the records it keeps.
+ * The authoritative server write happens concurrently in the background:
+ *  - On success: the optimistic temporary ID (`optimistic_...`) is swapped for the server's persisted ID.
+ *  - On failure: the optimistic operation is cleanly rolled back, restoring the true state and surfacing
+ *    the error via `markingError`.
+ *  - If an optimistic marking is retracted while creation is still in flight, the background handler
+ *    automatically cleans up by retracting the item on the server once saved.
  *
  * ## No write may fail silently — `markingError`
  *
@@ -343,85 +346,137 @@ export const createManualCheckSlice: StateCreator<
       notes: input.notes,
     };
 
+    const tempId = `optimistic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const engineerName = useEngineerStore.getState().engineerName || "engineer";
+
+    let stampSide: 'ref' | 'rev' | 'both' = 'both';
+    if (pendingStamp.ref && !pendingStamp.rev) {
+      stampSide = 'ref';
+    } else if (!pendingStamp.ref && pendingStamp.rev) {
+      stampSide = 'rev';
+    }
+
+    const optimisticMarking: GroundTruthMarking = {
+      id: tempId,
+      session_id: manualSessionId,
+      side: stampSide,
+      status: payload.status,
+      category: payload.category,
+      feature: payload.feature ?? null,
+      category_source: payload.category_source ?? 'human',
+      ref_text: input.refText,
+      rev_text: input.revText,
+      text_was_edited: input.textWasEdited,
+      is_bulk: input.isBulk,
+      notes: input.notes,
+      annotator: engineerName,
+      ref_handle: pendingStamp.ref?.handle ?? null,
+      rev_handle: pendingStamp.rev?.handle ?? null,
+      ref_coordinates: pendingStamp.ref?.coordinates ?? null,
+      rev_coordinates: pendingStamp.rev?.coordinates ?? null,
+      created_at: new Date().toISOString(),
+      retracted_at: null,
+    };
+
+    const isCurrentlySubmitted =
+      get().manualSessionStatus === 'completed' || get().manualSessionStatus === 'submitted';
+
+    // ── Step 1: Optimistic write to local state (0ms UI latency) ────────────
+    set((state) => ({
+      markings: [...state.markings, optimisticMarking],
+      pendingPairRef: null,
+      manualSessionStatus: 'in_progress',
+      markingError: null,
+    }));
+
+    if (isCurrentlySubmitted && manualSessionId) {
+      reopenSession(manualSessionId).catch((err) =>
+        console.warn('[manualCheck] Reopen on stamp warning:', err)
+      );
+    }
+
+    // ── Step 2: Background network call to cloud server ─────────────────────
     try {
       const saved = await createMarking(manualSessionId, payload);
-      const isCurrentlySubmitted = get().manualSessionStatus === 'completed' || get().manualSessionStatus === 'submitted';
-      set((state) => ({
-        markings: [...state.markings, saved],
-        pendingPairRef: null,
-        manualSessionStatus: 'in_progress',
-        // Cleared only by a write that actually succeeded. A stale error standing over a panel
-        // that is recording fine is its own kind of lie.
-        markingError: null,
-      }));
-      if (isCurrentlySubmitted) {
-        reopenSession(manualSessionId).catch((err) => console.warn('[manualCheck] Reopen on stamp warning:', err));
-      }
+      set((state) => {
+        const stillPresent = state.markings.some((m) => m.id === tempId);
+        if (!stillPresent) {
+          // Marking was retracted while creation was in flight; retract on server now
+          retractMarking(saved.id).catch((err) =>
+            console.warn('[manualCheck] Retract orphaned marking warning:', err)
+          );
+          return state;
+        }
+        return {
+          markings: state.markings.map((m) => (m.id === tempId ? saved : m)),
+        };
+      });
     } catch (err: any) {
       console.error("Failed to record marking:", err?.message ?? err);
 
-      // The session this client is holding no longer exists on the server — it was deleted, or
-      // the database was replaced under a running app. Clearing the id is a REPAIR, not just a
-      // reset: `TwoDWorkspace`'s open effect watches `manualSessionId` and reopens as soon as it
-      // goes null, so the next attempt lands in a live session.
-      //
-      // Without this the app dead-ends. The id lives only in memory, so every retry re-sends the
-      // same dead id and the only way out is a full restart.
-      //
-      // Plain `/404/`, with no word-boundary escapes, deliberately.
-      //
-      // This test was written with word-boundary escapes until 2026-08-20 and they had been
-      // mangled into two literal BACKSPACE bytes (0x08) by whatever wrote the file. The regex
-      // therefore matched only a message containing a backspace character — i.e. never — so
-      // the repair below had not run once since it was written, and the app dead-ended on a
-      // dead session id exactly as the comment above says it must not. `unwrap` in
-      // `groundTruthApi` builds the message as `... failed (404): ...`, so there is nothing
-      // here that needs bounding. Keep it escape-free: this file is the one place in the repo
-      // that has already been bitten by that mangling.
+      // Rollback optimistic marking on failure
       const message = String(err?.message ?? err);
-      if (/404/.test(message) || /session not found/i.test(message)) {
-        set({
-          manualSessionId: null,
-          markingError:
-            "That check session no longer exists on the server, so this marking was NOT " +
-            "recorded. A new session is opening — select the entity and stamp it again.",
-        });
-        return;
-      }
-      set({ markingError: `That marking was NOT recorded — stamp it again. ${message}` });
+      const isNotFound = /404/.test(message) || /session not found/i.test(message);
+
+      set((state) => ({
+        markings: state.markings.filter((m) => m.id !== tempId),
+        ...(isNotFound ? { manualSessionId: null } : {}),
+        markingError: isNotFound
+          ? "That check session no longer exists on the server, so this marking was NOT " +
+            "recorded. A new session is opening — select the entity and stamp it again."
+          : `That marking was NOT recorded — stamp it again. ${message}`,
+      }));
     }
   },
 
   /**
-   * Retract, and drop the row locally ONLY once the server has confirmed it.
+   * Retract a marking optimistically, reconciling with the server in the background.
    *
-   * The ordering is the whole point. Dropping first and reconciling on failure would leave the
-   * engineer looking at a panel that agrees with them and a database that does not — and the
-   * export path reads the database. `from-manual-check` filters on `retracted_at`, so a
-   * retraction the server never applied comes back as a LIVE marking and is converted into a
-   * finding the engineer explicitly withdrew. That is fabricated ground truth, and nothing
-   * downstream could tell. 31 of the 38 markings behind `M745204N01` were retractions.
+   * If the deletion fails on the server, rolls back by re-inserting the marking
+   * and surfacing the error banner so the UI never diverges from the true database state.
    */
   retractManualMarking: async (markingId) => {
     const { manualSessionId } = get();
-    const isCurrentlySubmitted = get().manualSessionStatus === 'completed' || get().manualSessionStatus === 'submitted';
-    try {
-      await retractMarking(markingId);
-      // The server keeps the row marked rather than deleted — the collection is the audit trail
-      // of who asserted what. Only the local view drops it.
+    const isCurrentlySubmitted =
+      get().manualSessionStatus === 'completed' || get().manualSessionStatus === 'submitted';
+
+    // If it's an in-flight optimistic marking, drop it immediately from state
+    if (markingId.startsWith('optimistic_')) {
       set((state) => ({
         markings: state.markings.filter((m) => m.id !== markingId),
         manualSessionStatus: 'in_progress',
         markingError: null,
       }));
-      if (isCurrentlySubmitted && manualSessionId) {
-        reopenSession(manualSessionId).catch((err) => console.warn('[manualCheck] Reopen on retract warning:', err));
-      }
+      return true;
+    }
+
+    const previousMarkings = get().markings;
+    const previousMarking = previousMarkings.find((m) => m.id === markingId);
+    if (!previousMarking) return true;
+
+    // ── Step 1: Optimistic drop (0ms UI latency) ───────────────────────────
+    set((state) => ({
+      markings: state.markings.filter((m) => m.id !== markingId),
+      manualSessionStatus: 'in_progress',
+      markingError: null,
+    }));
+
+    if (isCurrentlySubmitted && manualSessionId) {
+      reopenSession(manualSessionId).catch((err) =>
+        console.warn('[manualCheck] Reopen on retract warning:', err)
+      );
+    }
+
+    // ── Step 2: Background sync with server, rollback on failure ───────────
+    try {
+      await retractMarking(markingId);
       return true;
     } catch (err: any) {
       const message = String(err?.message ?? err);
       console.error("Failed to retract marking:", message);
+      // Rollback on server error: restore original markings so local view and DB stay aligned
       set({
+        markings: previousMarkings,
         markingError:
           "That marking was NOT retracted and is still recorded on the server — try again. " +
           message,

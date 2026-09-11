@@ -163,9 +163,12 @@ def load_and_transcode(dxf_path: Path, jp_font_filename: str | None) -> Any:
             elif dxftype == "DIMENSION":
                 if hasattr(entity.dxf, "text"):
                     entity.dxf.text = transcode_str(entity.dxf.text)
-            elif dxftype == "INSERT":
-                if hasattr(entity.dxf, "name"):
-                    entity.dxf.name = transcode_str(entity.dxf.name)
+            # INSERT deliberately not transcoded. `dxf.name` is a pointer into the block
+            # table, not text, and rewriting it renamed the reference while the BLOCK record
+            # kept its raw name -- so a block whose name carries Shift-JIS bytes lost its
+            # referent and `draw_layout` raised DXFStructureError. Every consumer of this
+            # function renders; none displays a block name, so recovering it buys nothing.
+            # See `06 - .../Gotcha - Transcoding an INSERT Name Unlinks Its Block.md`.
 
     for block in doc.blocks:
         for entity in block:

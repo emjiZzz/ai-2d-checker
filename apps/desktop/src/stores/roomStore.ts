@@ -11,9 +11,89 @@ import { create } from "zustand";
 import { parseOrThrow, parseAndValidate, buildHeaders, baseUrl } from "../services/fetchUtils";
 import { RoomSchema, RoomListSchema } from "../schemas/apiSchemas";
 import { useWorkspaceStore, DrawingItem, saveWorkspaceState, loadWorkspaceState } from "./workspaceStore";
+import { fetchDrawingJob } from "../services/drawingsApi";
 import { reconcilePersistedIds } from "../utils/persistedViolations";
 import { fetchPersistedViolations } from "../utils/persistedViolationsApi";
 import { mapCanvasMarkingsToMarkers } from "../utils/restoreCanvasMarkings";
+
+/**
+ * Applies a drawing to the workspace, or resumes background ingestion polling if the drawing
+ * is currently extracting on the backend.
+ */
+const applyOrResumeDrawing = async (
+  doc: DrawingItem | null,
+  side: "old" | "new",
+  ws: ReturnType<typeof useWorkspaceStore.getState>
+) => {
+  if (!doc) {
+    ws.clearUpload(side);
+    return;
+  }
+
+  const isOld = side === "old";
+  if (doc.status === "completed") {
+    if (isOld) {
+      ws.setOldDrawing(doc);
+      useWorkspaceStore.setState({
+        oldUploadState: "completed",
+        oldUploadProgress: 100,
+        activeOldJobId: null,
+        oldError: null,
+      });
+    } else {
+      ws.setNewDrawing(doc);
+      useWorkspaceStore.setState({
+        newUploadState: "completed",
+        newUploadProgress: 100,
+        activeNewJobId: null,
+        newError: null,
+      });
+    }
+  } else if (doc.status === "queued" || doc.status === "processing") {
+    // Drawing is still extracting on the backend: mount the UploadZone in processing state
+    if (isOld) {
+      useWorkspaceStore.setState({
+        oldDrawing: null,
+        oldUploadState: "processing",
+        oldUploadProgress: 80,
+        oldFileName: doc.file_name,
+        oldFileSize: doc.file_size_bytes,
+        oldError: null,
+      });
+    } else {
+      useWorkspaceStore.setState({
+        newDrawing: null,
+        newUploadState: "processing",
+        newUploadProgress: 80,
+        newFileName: doc.file_name,
+        newFileSize: doc.file_size_bytes,
+        newError: null,
+      });
+    }
+
+    try {
+      const job = await fetchDrawingJob(doc.id);
+      if (job) {
+        if (job.status === "completed") {
+          ws.applyCompletedDrawing(doc, side);
+        } else if (job.status === "failed") {
+          ws.setUploadFailure(side, doc.id, job.error_message || "Extraction failed");
+        } else {
+          useWorkspaceStore.setState({
+            [isOld ? "activeOldJobId" : "activeNewJobId"]: job.id,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[roomStore] Failed to fetch extraction job for ${side} drawing:`, err);
+    }
+  } else if (doc.status === "failed") {
+    ws.setUploadFailure(side, doc.id, "Extraction failed. Please retry.");
+  } else {
+    if (isOld) ws.setOldDrawing(doc);
+    else ws.setNewDrawing(doc);
+  }
+};
 
 /**
  * The only comparison method. Renamed from `"rag"`, which named a technique it does not
@@ -255,11 +335,10 @@ export const useRoomStore = create<RoomState>((set, get) => ({
           }
         } catch {}
       } else {
-        if (oldDoc) ws.setOldDrawing(oldDoc);
-        else ws.clearUpload("old");
-        
-        if (newDoc) ws.setNewDrawing(newDoc);
-        else ws.clearUpload("new");
+        await Promise.all([
+          applyOrResumeDrawing(oldDoc, "old", ws),
+          applyOrResumeDrawing(newDoc, "new", ws),
+        ]);
 
         if (roomData.physical_comparison_results && roomData.physical_comparison_results.canvas_markings) {
           const mappedMarkings = mapCanvasMarkingsToMarkers(

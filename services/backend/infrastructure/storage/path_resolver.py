@@ -37,10 +37,28 @@ STORAGE_ROOT = _resolve_storage_root()
 def get_storage_root() -> Path:
     return STORAGE_ROOT
 
+def is_nas_storage() -> bool:
+    """True if STORAGE_ROOT is configured as a network UNC or share path."""
+    raw = str(STORAGE_ROOT)
+    return raw.startswith(("\\\\", "//"))
+
+def check_storage_reachability() -> bool:
+    """Check if STORAGE_ROOT is currently mounted and writable."""
+    try:
+        if not STORAGE_ROOT.exists():
+            return False
+        test_file = STORAGE_ROOT / ".reachability_probe"
+        test_file.write_text("probe", encoding="utf-8")
+        test_file.unlink()
+        return True
+    except Exception:
+        return False
+
 def bootstrap_storage() -> bool:
     folders = [
         "secure",
         "uploads",
+        "processed",
         "cache",
         "temp",
         "quarantine",
@@ -65,3 +83,4 @@ def bootstrap_storage() -> bool:
     except Exception as e:
         logger.critical(f"Storage bootstrap failed: {e}")
         return False
+

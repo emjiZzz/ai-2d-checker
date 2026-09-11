@@ -119,7 +119,7 @@ DWG.No. path. Pinned in `tests/test_margin_grid_labels.py::TestAmendmentTableRec
 - **Zones here come from a template, not detection.** The revision (aspect 1.4141) matched
   template `aspect-1.414` and its 9 boxes were pinned; the reference (aspect 1.3611) did
   not and used content detection + percentage fallback. A zone-box change you expect to see
-  may be masked by a pinned template. See [[Persistent Sheet Zone Templates]] if present.
+  may be masked by a pinned template. See [[Editable Zone Box Template Resolution]].
 - **`views` is the sheet.** Anything no other zone claims lands in `drawing_views`. Reducing
   drawing_views noise is mostly about making the *other* zones claim correctly, not about
   touching `views`. See [[Gotcha - Zone Detection Accuracy & Stability]].

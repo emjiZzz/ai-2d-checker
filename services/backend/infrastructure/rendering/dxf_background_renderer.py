@@ -3,6 +3,14 @@ from pathlib import Path
 from typing import Any
 from ...logger import logger
 
+# Every geometry key a coordinate can arrive under, for the fallback below. Single points
+# ("start") and lists of them ("points") both appear, so the fallback sniffs the shape rather
+# than keeping two lists that can drift apart.
+_BOUNDS_POINT_KEYS = (
+    "points", "vertices", "start", "end", "center", "location", "insert",
+    "def_point", "text_point", "control_points", "fit_points",
+)
+
 def render_dxf_background(dxf_path: Path, drawing_id: str, metadata: dict[str, Any], entities: list[dict[str, Any]]) -> None:
     try:
         import matplotlib
@@ -121,26 +129,40 @@ def render_dxf_background(dxf_path: Path, drawing_id: str, metadata: dict[str, A
     except Exception as render_e:
         logger.error(f"High-fidelity rendering generation failed: {str(render_e)}\n{traceback.format_exc()}")
         
-        # Fallback: compute bounds manually from extracted entities if Matplotlib failed (e.g. missing block definitions)
+        # Fallback bounds, when the render failed. This read only `geometry["points"]` until
+        # 2026-09-10, which on a DWG meant 59 polylines out of 1,231 entities: the stored
+        # `render_bounds` was the extent of those polylines, the canvas normalised to it, and
+        # the pane silently disagreed with its neighbour instead of erroring. Every key a
+        # point can arrive under has to be read, or this produces a plausible wrong answer.
+        #
+        # These bounds are not the same measurement as the success path's. That one is
+        # matplotlib's autoscale over a paper-space layout, so viewport-projected model
+        # geometry lands in paper coordinates; this is the raw extent of extracted entities in
+        # their own spaces. Treat a drawing carrying `render_aspect` as one to re-extract once
+        # the render is fixed, not as one that is merely 10% loose.
         if "render_bounds" not in metadata and entities:
-            logger.info("Computing fallback render_bounds from extracted entities.")
-            min_x = float("inf")
-            min_y = float("inf")
-            max_x = float("-inf")
-            max_y = float("-inf")
-            has_valid_point = False
+            logger.warning(
+                "Falling back to entity-derived render_bounds -- these are NOT in the same "
+                "frame as a rendered sheet's. Re-extract this drawing once the render works."
+            )
+            xs: list[float] = []
+            ys: list[float] = []
             for e in entities:
-                if "geometry" in e and "points" in e["geometry"]:
-                    for pt in e["geometry"]["points"]:
-                        min_x = min(min_x, pt[0])
-                        min_y = min(min_y, pt[1])
-                        max_x = max(max_x, pt[0])
-                        max_y = max(max_y, pt[1])
-                        has_valid_point = True
-            
-            if has_valid_point and min_x < max_x and min_y < max_y:
-                metadata["render_bounds"] = [min_x, min_y, max_x, max_y]
-                metadata["render_aspect"] = (max_x - min_x) / (max_y - min_y)
+                geometry = e.get("geometry") or {}
+                for key in _BOUNDS_POINT_KEYS:
+                    value = geometry.get(key)
+                    if not isinstance(value, (list, tuple)) or not value:
+                        continue
+                    # A single point, or a list of them.
+                    points = value if isinstance(value[0], (list, tuple)) else [value]
+                    for pt in points:
+                        if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                            xs.append(float(pt[0]))
+                            ys.append(float(pt[1]))
+
+            if xs and min(xs) < max(xs) and min(ys) < max(ys):
+                metadata["render_bounds"] = [min(xs), min(ys), max(xs), max(ys)]
+                metadata["render_aspect"] = (max(xs) - min(xs)) / (max(ys) - min(ys))
                 logger.info(f"Fallback render_bounds computed: {metadata['render_bounds']}")
         # Ensure figure resources are cleaned up
         try:

@@ -7,10 +7,10 @@ Why this test exists: documentation that can drift silently is how this project 
 that the phrase "has no source in this vault — no such list was ever written down." The ledger makes
 a *claim* about system state, so the claim is checked against the filesystem here.
 
-The central rule: a rung claim must be backed by evidence that exists. Rung >= 1 asserts real
-retrieval, so the fake embedding model must be gone and `infrastructure/retrieval/` must be present.
-Rung >= 3 asserts a trainable pipeline, so the params object and learned matcher must exist. If an
-agent bumps `current_rung` without doing the work, this fails.
+The central rule: a rung claim must be backed by evidence that exists. Rung >= 1 asserts a
+published measurement over human-labelled pairs; rung >= 3 asserts real retrieval and a trainable
+pipeline, so the fake embedding model must be gone and `infrastructure/retrieval/`, the params
+object and the learned matcher must exist. Bumping `current_rung` without the work fails here.
 
 Deliberately a lightweight text/frontmatter parse, not a Markdown parser — the ledger's structure is
 a plain YAML frontmatter block plus fixed headings, and keeping this simple mirrors
@@ -29,14 +29,19 @@ LEDGER_PATH = VAULT / "00 - AI Maturity Status.md"
 BACKEND = REPO_ROOT / "services" / "backend"
 COMPARISON = BACKEND / "infrastructure" / "audit" / "comparison"
 
-# Rungs, as declared in the ledger's own frontmatter comment.
+# Rung names, mirrored from ADR-007's table. ADR-003's names (pre-RAG, Basic RAG, Fine-Tuned RAG,
+# End-to-End Trainable, Agentic & Adaptive) were retired by ADR-007 and must not be cited; they sat
+# here until 2026-09-10 and were printed by the failure message below, which is the one place a
+# reader looks while already confused about rungs. Pinned by `test_rung_names_match_adr_007`.
 RUNG_NAMES = {
-    0: "pre-RAG",
-    1: "Basic RAG",
-    2: "Fine-Tuned RAG",
-    3: "End-to-End Trainable",
-    4: "Agentic & Adaptive",
+    0: "Pre-measurement",
+    1: "Measured",
+    2: "Calibrated",
+    3: "Retrieval-augmented",
+    4: "Learned matching",
 }
+
+ADR_007 = VAULT / "07 - Architecture Decision Records (ADRs)" / "ADR-007 Re-scoping the Maturity Ladder.md"
 
 # Headings the ledger must keep, because CLAUDE.md constraint 5 tells agents to update them by name.
 REQUIRED_SECTIONS = (
@@ -95,6 +100,37 @@ def test_ledger_declares_a_valid_rung(meta: dict[str, str]) -> None:
     assert rung in RUNG_NAMES, f"current_rung must be one of {sorted(RUNG_NAMES)}, got {rung}"
 
 
+def test_rung_names_match_adr_007(ledger: str) -> None:
+    """The rung names live in ADR-007's table and are hand-mirrored here, so pin the duplication.
+
+    They cannot be shared: the ADR is prose and this is a failure message. They drifted once --
+    ADR-007 re-scoped the ladder on 2026-08-07 and this table kept ADR-003's names for a month,
+    so a rung-1 failure printed "Basic RAG" at a reader who was already confused about rungs.
+    """
+    assert ADR_007.exists(), f"ADR-007 is the source of the rung names and is missing: {ADR_007}"
+    source = ADR_007.read_text(encoding="utf-8")
+
+    declared = dict(re.findall(r"^\|\s*([0-4])\s*\|\s*\*\*([^.*]+)\.", source, re.MULTILINE))
+    assert len(declared) == 5, (
+        f"Could not read all five rungs out of ADR-007's table; found {sorted(declared)}. "
+        "If the table's shape changed, update this parse rather than deleting the pin."
+    )
+    mirrored = {str(rung): name for rung, name in RUNG_NAMES.items()}
+    assert mirrored == declared, (
+        f"RUNG_NAMES has drifted from ADR-007.\n  here: {mirrored}\n  ADR-007: {declared}\n"
+        "ADR-007 is the authority (CLAUDE.md constraint 5); copy its names, do not rename there."
+    )
+
+    # The ledger renders the same names in its ladder diagram, where `Pre-measurement` is
+    # abbreviated to fit the columns.
+    for rung, name in RUNG_NAMES.items():
+        needle = "pre-measure" if rung == 0 else name
+        assert needle in ledger, (
+            f"Rung {rung} is `{name}` in ADR-007 but that name does not appear in the ledger. "
+            "The ladder diagram and the rung headings must use ADR-007's names."
+        )
+
+
 def test_ledger_declares_rung_evidence(meta: dict[str, str]) -> None:
     """A rung claim without evidence is the failure mode this whole file exists to prevent."""
     assert "rung_evidence" in meta, (
@@ -136,32 +172,68 @@ def test_stage_board_covers_every_planned_stage(ledger: str) -> None:
     )
 
 
-def test_rung_1_requires_real_retrieval(meta: dict[str, str]) -> None:
-    """Rung 1 claims Basic RAG. The fake stack must be gone and a real one present."""
+def test_rung_1_evidence_is_a_measurement_over_human_pairs(meta: dict[str, str]) -> None:
+    """Rung 1 is `Measured`: a published baseline over >=8 human-labelled pairs (ADR-007).
+
+    The artifact carries no provenance stamp, so a mutation baseline pointed at this field would
+    satisfy a file-exists check. The substantive half of the claim is therefore checked against
+    the corpus: the pairs the rung rests on must actually be human and labelled.
+    """
     if int(meta["current_rung"]) < 1:
-        pytest.skip("Below rung 1; retrieval work not yet claimed.")
+        pytest.skip("Below rung 1; no measurement claimed.")
+
+    import json
+
+    from services.backend.infrastructure.eval.corpus import default_fixtures_dir, load_corpus
+
+    evidence = json.loads((REPO_ROOT / meta["rung_evidence"].strip()).read_text(encoding="utf-8"))
+    assert evidence.get("pairs", 0) >= 8, (
+        f"rung_evidence scores {evidence.get('pairs')} pair(s); ADR-007 requires >=8."
+    )
+
+    corpus = load_corpus(fixtures_dir=default_fixtures_dir(), allow_stale_guideline=True)
+    human_labelled = [
+        pair for pair in corpus.pairs
+        if getattr(pair, "provenance", "") == "human" and pair.labels is not None
+    ]
+    assert len(human_labelled) >= 8, (
+        f"current_rung >= 1 but the corpus holds {len(human_labelled)} labelled human pair(s). "
+        "Mutation pairs are excluded from rung-1 evidence by ADR-007, so the rung is not "
+        "supported by the corpus it claims to rest on."
+    )
+
+
+def test_rung_3_requires_real_retrieval(meta: dict[str, str]) -> None:
+    """Rung 3 is `Retrieval-augmented`. The fake stack must be gone and a real one present.
+
+    Gated on rung 3 rather than rung 1 since ADR-007: rung 1 means `Measured` and says nothing
+    about retrieval. The assertions are unchanged -- they were always about whether a retrieval
+    claim is real, and only the rung that makes the claim moved.
+    """
+    if int(meta["current_rung"]) < 3:
+        pytest.skip("Below rung 3; retrieval work not yet claimed.")
 
     fake_embeddings = BACKEND / "infrastructure" / "ai" / "embeddings" / "local_embedding_model.py"
     assert not fake_embeddings.exists(), (
-        "current_rung >= 1 claims real retrieval, but the fake embedding model still exists at "
+        "current_rung >= 3 claims real retrieval, but the fake embedding model still exists at "
         f"{fake_embeddings}. It returns SHA-256-seeded Gaussian noise with hardcoded English "
         "keyword bumps — it is not an embedding, so the rung claim is false while it is wired in."
     )
 
     fake_store = BACKEND / "infrastructure" / "ai" / "vectorstore" / "lancedb_manager.py"
     assert not fake_store.exists(), (
-        f"current_rung >= 1 but the fake vector store still exists at {fake_store} "
+        f"current_rung >= 3 but the fake vector store still exists at {fake_store} "
         "(it is a JSON file plus a numpy loop, not LanceDB)."
     )
 
     retrieval_pkg = BACKEND / "infrastructure" / "retrieval"
     assert retrieval_pkg.is_dir(), (
-        f"current_rung >= 1 but there is no retrieval package at {retrieval_pkg}."
+        f"current_rung >= 3 but there is no retrieval package at {retrieval_pkg}."
     )
 
 
 def test_rung_3_requires_the_trainable_substrate(meta: dict[str, str]) -> None:
-    """Rung 3 claims end-to-end trainable: calibrated params plus a learned matcher."""
+    """Rung 3 also needs the substrate its measurement runs on: calibrated params, learned matcher."""
     if int(meta["current_rung"]) < 3:
         pytest.skip("Below rung 3; learned-matcher work not yet claimed.")
 

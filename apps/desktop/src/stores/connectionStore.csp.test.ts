@@ -46,7 +46,7 @@ import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_BACKEND_URL } from "./connectionStore";
+import { DEFAULT_BACKEND_URL, FALLBACK_BACKEND_URL } from "./connectionStore";
 
 const TAURI_CONF = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -154,15 +154,37 @@ describe("the shipped CSP and the app's backend address agree", () => {
       "http://192.168.200.105:9000",
       "http://192.168.200.129:8080",
       "http://192.168.200.129:9000",
+      "http://192.168.200.149:8080",
+      "http://192.168.200.149:9000",
+      "http://kmti-server-3:8080",
     ]) {
       expect(allows(url), `connect-src blocks the LAN server at ${url}`).toBe(true);
     }
   });
 
-  it("permits the websocket form on both LAN servers", () => {
-    for (const url of ["ws://192.168.200.105:8080", "ws://192.168.200.129:8080"]) {
+  it("permits the websocket form on LAN servers", () => {
+    for (const url of [
+      "ws://192.168.200.105:8080",
+      "ws://192.168.200.129:8080",
+      "ws://192.168.200.149:8080",
+      "ws://kmti-server-3:8080",
+    ]) {
       expect(allows(url), `connect-src blocks ${url}`).toBe(true);
     }
+  });
+
+  it("permits whatever FALLBACK_BACKEND_URL is set to", () => {
+    /**
+     * Failover is invisible when the CSP blocks its destination: the request never leaves the
+     * app, so the fallback looks exactly like the primary staying down. A build that bakes a
+     * fallback the allowlist does not cover has no failover at all, and nothing else would say
+     * so. Empty means the feature is off, which is a valid build.
+     */
+    if (!FALLBACK_BACKEND_URL) return;
+    expect(
+      allows(FALLBACK_BACKEND_URL),
+      `connect-src blocks the configured fallback ${FALLBACK_BACKEND_URL}`,
+    ).toBe(true);
   });
 
   it("permits the cloud backend on Render", () => {

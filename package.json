@@ -1,6 +1,6 @@
 {
   "name": "ai-2d-checker-monorepo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Enterprise-grade local-first AI-powered engineering drawing compliance desktop application",

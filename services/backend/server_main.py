@@ -27,6 +27,27 @@ from __future__ import annotations
 import sys
 
 
+def _install_ca_bundle() -> None:
+    """Make `certifi`'s roots the process default, when they are available.
+
+    Silent when certifi is absent: running from source on a machine with a working certificate
+    store is a legitimate configuration, and failing to start over it would be worse than the
+    problem. The frozen build carries certifi -- see `tools/draftcheck_server.spec`.
+    """
+    import os
+
+    try:
+        import certifi
+    except ImportError:
+        return
+
+    bundle = certifi.where()
+    if not os.path.exists(bundle):
+        return
+    os.environ.setdefault("SSL_CERT_FILE", bundle)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", bundle)
+
+
 def main() -> int:
     import uvicorn
 
@@ -37,6 +58,19 @@ def main() -> int:
     from services.backend.config import settings
     from services.backend.infrastructure.storage.path_resolver import get_storage_root
     from services.backend.runtime_paths import app_root, is_frozen
+
+    # Point OpenSSL at the bundled CA roots before anything opens a TLS connection.
+    #
+    # A frozen build has no site-packages, so `ssl` falls back to the host's certificate store.
+    # That store is not a constant: this worked on the build machine and failed on a fresh
+    # Windows Server with `CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`,
+    # against Atlas, which is TLS-only. The backend then ran in disconnected mode with no
+    # database -- a startup that looks successful and can do nothing.
+    #
+    # Set for the whole process rather than passed to the Mongo client alone, because every
+    # outbound TLS call has the same dependency: Atlas, the Gemini API, licence checks.
+    # `setdefault`, so an operator who points these at a corporate CA bundle keeps that.
+    _install_ca_bundle()
 
     host = settings.HOST
     port = settings.PORT

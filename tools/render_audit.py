@@ -111,6 +111,18 @@ BRANCH_TABLE: dict[str, tuple[str, ...]] = {
 #: the serializer payload, so the HUD's denominator counts entities that can never be drawn.
 NON_DRAWABLE_TYPES = frozenset({"layer", "block", "xref"})
 
+#: Drawable, extracted, and deliberately left undrawn.
+#:
+#: HATCH could be drawn — its boundary loops are extracted, and the DXF carries the pattern
+#: definition that `ezdxf.render.hatching` resolves into real ruling. It is not, by decision:
+#: `COMPARABLE_ENTITY_TYPES` is text + dimension, so a hatch can never produce a finding, and
+#: its ruling sits on top of the geometry a checker reads. Owner's call, 2026-09-10, after both
+#: a tinted fill and true ANSI31 ruling were built and shown against iCAD SX.
+#:
+#: Its own bucket rather than `no-branch`, which is what this reported before and which reads as
+#: "the renderer forgot". See `06 - .../Gotcha - Hatch Is Extracted and Deliberately Not Drawn.md`.
+DELIBERATELY_UNDRAWN_TYPES = frozenset({"hatch"})
+
 
 #: Mirrors `SECTION_DESIGNATION_RE` / `LONE_LETTER_RE` in
 #: `apps/desktop/src/components/review/sectionCallouts.ts`. Same letter both sides.
@@ -263,6 +275,11 @@ def classify(entity: dict[str, Any]) -> str:
 
     if etype in NON_DRAWABLE_TYPES:
         return "not-drawable"
+
+    # Before the geometry checks: this is a decision about the type, not about whether this
+    # particular entity happens to carry usable coordinates.
+    if etype in DELIBERATELY_UNDRAWN_TYPES:
+        return "excluded-by-design"
 
     # Model-space geometry that fell outside every paper-space viewport window. CAD clips it and
     # the ezdxf raster never draws it, so the renderer skips it too -- correctly.

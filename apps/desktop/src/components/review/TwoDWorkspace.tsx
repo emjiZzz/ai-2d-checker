@@ -32,6 +32,9 @@ import { LoadingOverlay, SquareAccordion } from "../ui/LoadingOverlay";
 import { registerExportCanvas } from "./canvasExportRegistry";
 import { downloadRedlineDxf } from "../../services/reportsApi";
 import { DrawingCanvas } from "./DrawingCanvas";
+import { ThreeDViewer } from "./ThreeDViewer";
+import { ViewModeToggle } from "./ViewModeToggle";
+import { hasThreeDMesh } from "../../config/drawingFormats";
 import { UploadZone } from "./UploadZone";
 import { Button } from "../ui/Button";
 import { TwoDLeftPanel } from "./TwoDLeftPanel";
@@ -94,8 +97,11 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
   const fileName = useWorkspaceStore(s => s.oldFileName);
   const fileSize = useWorkspaceStore(s => s.oldFileSize);
   const error = useWorkspaceStore(s => s.oldError);
+  const failedDrawingId = useWorkspaceStore(s => s.oldFailedDrawingId);
+  const retryExtraction = useWorkspaceStore(s => s.retryExtraction);
   const uploadDrawingFile = useWorkspaceStore(s => s.uploadDrawingFile);
   const clearUpload = useWorkspaceStore(s => s.clearUpload);
+  const viewMode = useReviewStore(s => s.viewMode.old);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 480, height: 400 });
@@ -128,13 +134,18 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
       >
         {drawing ? (
           <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-            <DrawingCanvas
-              ref={canvasRef}
-              layers={layers}
-              width={size.width}
-              height={size.height}
-              drawing={drawing}
-            />
+            <ViewModeToggle side="old" drawing={drawing} />
+            {viewMode === "3d" && hasThreeDMesh(drawing) ? (
+              <ThreeDViewer drawing={drawing} width={size.width} height={size.height} />
+            ) : (
+              <DrawingCanvas
+                ref={canvasRef}
+                layers={layers}
+                width={size.width}
+                height={size.height}
+                drawing={drawing}
+              />
+            )}
           </div>
         ) : (
           <UploadZone
@@ -145,6 +156,8 @@ const OriginalDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefO
             fileSize={fileSize}
             error={error}
             activeDrawing={drawing}
+            failedDrawingId={failedDrawingId}
+            retryExtraction={retryExtraction}
             uploadDrawingFile={uploadDrawingFile}
             clearUpload={clearUpload}
             currentNav={currentNav}
@@ -163,8 +176,11 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
   const fileName = useWorkspaceStore(s => s.newFileName);
   const fileSize = useWorkspaceStore(s => s.newFileSize);
   const error = useWorkspaceStore(s => s.newError);
+  const failedDrawingId = useWorkspaceStore(s => s.newFailedDrawingId);
+  const retryExtraction = useWorkspaceStore(s => s.retryExtraction);
   const uploadDrawingFile = useWorkspaceStore(s => s.uploadDrawingFile);
   const clearUpload = useWorkspaceStore(s => s.clearUpload);
+  const viewMode = useReviewStore(s => s.viewMode.new);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 480, height: 400 });
@@ -197,13 +213,18 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
       >
         {drawing ? (
           <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-            <DrawingCanvas
-              ref={canvasRef}
-              layers={layers}
-              width={size.width}
-              height={size.height}
-              drawing={drawing}
-            />
+            <ViewModeToggle side="new" drawing={drawing} />
+            {viewMode === "3d" && hasThreeDMesh(drawing) ? (
+              <ThreeDViewer drawing={drawing} width={size.width} height={size.height} />
+            ) : (
+              <DrawingCanvas
+                ref={canvasRef}
+                layers={layers}
+                width={size.width}
+                height={size.height}
+                drawing={drawing}
+              />
+            )}
           </div>
         ) : (
           <UploadZone
@@ -214,6 +235,8 @@ const KMTIDrawingPanel = ({ canvasRef, currentNav }: { canvasRef: React.RefObjec
             fileSize={fileSize}
             error={error}
             activeDrawing={drawing}
+            failedDrawingId={failedDrawingId}
+            retryExtraction={retryExtraction}
             uploadDrawingFile={uploadDrawingFile}
             clearUpload={clearUpload}
             currentNav={currentNav}

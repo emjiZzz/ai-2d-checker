@@ -1,0 +1,3166 @@
+{
+  "note": "Observations only. The anchor rules live in tests/test_title_block_anchors.py.",
+  "regenerate": "services/backend/.venv/Scripts/python.exe tools/title_block_anchors.py --write-fixture",
+  "observations": [
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 56.0,
+        "right": 406.0,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.121212,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 75.75,
+        "right": 386.25,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.163961,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 115.25,
+        "right": 346.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.249459,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 236.1325,
+        "right": 225.8675,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.511109,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 272.0184,
+        "right": 189.9816,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.588784,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 339.0,
+        "right": 123.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.733766,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 367.0,
+        "right": 95.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.794372,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 122.9278,
+        "right": 339.0722,
+        "bottom": 244.9825,
+        "top": 81.7175
+      },
+      "fraction": {
+        "fx": 0.266077,
+        "fy": 0.74987
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 114.6464,
+        "right": 347.3536,
+        "bottom": 237.8875,
+        "top": 88.8125
+      },
+      "fraction": {
+        "fx": 0.248152,
+        "fy": 0.728153
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 117.4069,
+        "right": 344.5931,
+        "bottom": 225.7825,
+        "top": 100.9175
+      },
+      "fraction": {
+        "fx": 0.254127,
+        "fy": 0.6911
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 120.1673,
+        "right": 341.8327,
+        "bottom": 264.1825,
+        "top": 62.5175
+      },
+      "fraction": {
+        "fx": 0.260102,
+        "fy": 0.808639
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 125.6882,
+        "right": 336.3118,
+        "bottom": 254.5825,
+        "top": 72.1175
+      },
+      "fraction": {
+        "fx": 0.272052,
+        "fy": 0.779255
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 55.35,
+        "top": 271.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.169421
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "line_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 47.35,
+        "top": 279.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.144934
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "previous_drawing_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.1836,
+        "right": 82.8164,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.820744,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_unit_code",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 288.5801,
+        "right": 173.4199,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.624632,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "job_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 217.0,
+        "right": 245.0,
+        "bottom": 31.682,
+        "top": 295.018
+      },
+      "fraction": {
+        "fx": 0.469697,
+        "fy": 0.096976
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 303.0,
+        "right": 159.0,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.655844,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "scale",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 282.25,
+        "right": 179.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.610931,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "drawn",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 267.75,
+        "right": 194.25,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.579545,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "designed",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e4b08a895c732e03ed048",
+      "drawing_id": "6a9e4bbfc133ccf21f2f0499",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 253.25,
+        "right": 208.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.54816,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 56.0,
+        "right": 406.0,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.121212,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 75.75,
+        "right": 386.25,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.163961,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 115.25,
+        "right": 346.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.249459,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 120.1673,
+        "right": 341.8327,
+        "bottom": 264.1825,
+        "top": 62.5175
+      },
+      "fraction": {
+        "fx": 0.260102,
+        "fy": 0.808639
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": null,
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 125.6882,
+        "right": 336.3118,
+        "bottom": 254.5825,
+        "top": 72.1175
+      },
+      "fraction": {
+        "fx": 0.272052,
+        "fy": 0.779255
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 122.9278,
+        "right": 339.0722,
+        "bottom": 244.9825,
+        "top": 81.7175
+      },
+      "fraction": {
+        "fx": 0.266077,
+        "fy": 0.74987
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 114.6464,
+        "right": 347.3536,
+        "bottom": 237.8875,
+        "top": 88.8125
+      },
+      "fraction": {
+        "fx": 0.248152,
+        "fy": 0.728153
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 117.4069,
+        "right": 344.5931,
+        "bottom": 225.7825,
+        "top": 100.9175
+      },
+      "fraction": {
+        "fx": 0.254127,
+        "fy": 0.6911
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 236.1325,
+        "right": 225.8675,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.511109,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 272.0612,
+        "right": 189.9388,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.588877,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 339.0,
+        "right": 123.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.733766,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 367.0,
+        "right": 95.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.794372,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 55.35,
+        "top": 271.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.169421
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "line_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 47.35,
+        "top": 279.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.144934
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "previous_drawing_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.1836,
+        "right": 82.8164,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.820744,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_unit_code",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 288.5801,
+        "right": 173.4199,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.624632,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 303.0,
+        "right": 159.0,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.655844,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "scale",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 282.25,
+        "right": 179.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.610931,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "drawn",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 267.75,
+        "right": 194.25,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.579545,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "designed",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 253.25,
+        "right": 208.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.54816,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "job_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e5d0a22d5a319b8d60e1c",
+      "drawing_id": "6a9e5ddf7e84ab4f93dd4ac2",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 217.0,
+        "right": 245.0,
+        "bottom": 31.682,
+        "top": 295.018
+      },
+      "fraction": {
+        "fx": 0.469697,
+        "fy": 0.096976
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 367.0,
+        "right": 95.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.794372,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 236.1325,
+        "right": 225.8675,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.511109,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 272.0184,
+        "right": 189.9816,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.588784,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 339.0,
+        "right": 123.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.733766,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 367.0,
+        "right": 95.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.794372,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 120.1673,
+        "right": 341.8327,
+        "bottom": 264.0441,
+        "top": 62.6559
+      },
+      "fraction": {
+        "fx": 0.260102,
+        "fy": 0.808216
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 125.6882,
+        "right": 336.3118,
+        "bottom": 254.4441,
+        "top": 72.2559
+      },
+      "fraction": {
+        "fx": 0.272052,
+        "fy": 0.778831
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 122.9278,
+        "right": 339.0722,
+        "bottom": 244.8441,
+        "top": 81.8559
+      },
+      "fraction": {
+        "fx": 0.266077,
+        "fy": 0.749446
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 114.6464,
+        "right": 347.3536,
+        "bottom": 237.7491,
+        "top": 88.9509
+      },
+      "fraction": {
+        "fx": 0.248152,
+        "fy": 0.727729
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f700b0eeec74042ff6b71",
+      "drawing_id": "6a9f70db153641ede6216c8d",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 117.4069,
+        "right": 344.5931,
+        "bottom": 225.6441,
+        "top": 101.0559
+      },
+      "fraction": {
+        "fx": 0.254127,
+        "fy": 0.690677
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 339.0,
+        "right": 123.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.733766,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 273.0293,
+        "right": 188.9707,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.590973,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 237.2906,
+        "right": 224.7094,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.513616,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 56.0,
+        "right": 406.0,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.121212,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 75.75,
+        "right": 386.25,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.163961,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 115.25,
+        "right": 346.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.249459,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 122.9278,
+        "right": 339.0722,
+        "bottom": 266.5441,
+        "top": 60.1559
+      },
+      "fraction": {
+        "fx": 0.266077,
+        "fy": 0.815868
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 114.6464,
+        "right": 347.3536,
+        "bottom": 259.4491,
+        "top": 67.2509
+      },
+      "fraction": {
+        "fx": 0.248152,
+        "fy": 0.794151
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 117.4069,
+        "right": 344.5931,
+        "bottom": 247.3441,
+        "top": 79.3559
+      },
+      "fraction": {
+        "fx": 0.254127,
+        "fy": 0.757098
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 176.5037,
+        "right": 285.4963,
+        "bottom": 289.2823,
+        "top": 37.4177
+      },
+      "fraction": {
+        "fx": 0.382043,
+        "fy": 0.885468
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 176.5037,
+        "right": 285.4963,
+        "bottom": 280.3479,
+        "top": 46.3521
+      },
+      "fraction": {
+        "fx": 0.382043,
+        "fy": 0.85812
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "previous_drawing_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.1836,
+        "right": 82.8164,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.820744,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_unit_code",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 288.5801,
+        "right": 173.4199,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.624632,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "job_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 217.0,
+        "right": 245.0,
+        "bottom": 31.4605,
+        "top": 295.2395
+      },
+      "fraction": {
+        "fx": 0.469697,
+        "fy": 0.096298
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "line_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 47.35,
+        "top": 279.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.144934
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 55.35,
+        "top": 271.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.169421
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 303.0,
+        "right": 159.0,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.655844,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "scale",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 282.25,
+        "right": 179.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.610931,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "drawn",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 267.75,
+        "right": 194.25,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.579545,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "designed",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f4fb3aba7eadb3c172c71",
+      "drawing_id": "6a9f5179a0ed8a98e326f603",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 253.25,
+        "right": 208.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.54816,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 56.0,
+        "right": 406.0,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.121212,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 75.75,
+        "right": 386.25,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.163961,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 115.25,
+        "right": 346.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.249459,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 236.1325,
+        "right": 225.8675,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.511109,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 272.0612,
+        "right": 189.9388,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.588877,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 339.0,
+        "right": 123.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.733766,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 367.0,
+        "right": 95.0,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.794372,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 125.6882,
+        "right": 336.3118,
+        "bottom": 254.5825,
+        "top": 72.1175
+      },
+      "fraction": {
+        "fx": 0.272052,
+        "fy": 0.779255
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 120.1673,
+        "right": 341.8327,
+        "bottom": 264.1825,
+        "top": 62.5175
+      },
+      "fraction": {
+        "fx": 0.260102,
+        "fy": 0.808639
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 122.9278,
+        "right": 339.0722,
+        "bottom": 244.9825,
+        "top": 81.7175
+      },
+      "fraction": {
+        "fx": 0.266077,
+        "fy": 0.74987
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 114.6464,
+        "right": 347.3536,
+        "bottom": 237.8875,
+        "top": 88.8125
+      },
+      "fraction": {
+        "fx": 0.248152,
+        "fy": 0.728153
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 117.4069,
+        "right": 344.5931,
+        "bottom": 225.7825,
+        "top": 100.9175
+      },
+      "fraction": {
+        "fx": 0.254127,
+        "fy": 0.6911
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "previous_drawing_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.1836,
+        "right": 82.8164,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.820744,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "line_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 47.35,
+        "top": 279.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.144934
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 55.35,
+        "top": 271.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.169421
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_unit_code",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 288.5801,
+        "right": 173.4199,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.624632,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "job_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 217.0,
+        "right": 245.0,
+        "bottom": 31.682,
+        "top": 295.018
+      },
+      "fraction": {
+        "fx": 0.469697,
+        "fy": 0.096976
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 303.0,
+        "right": 159.0,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.655844,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 282.25,
+        "right": 179.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.610931,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "drawn",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 267.75,
+        "right": 194.25,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.579545,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "designed",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9e7b3cf92bc99faf01b8af",
+      "drawing_id": "6a9e7cfeff9511e0d2068ffe",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 253.25,
+        "right": 208.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.54816,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 64.7,
+        "right": 588.7,
+        "bottom": 412.0,
+        "top": 50.0
+      },
+      "fraction": {
+        "fx": 0.099021,
+        "fy": 0.891775
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 84.45,
+        "right": 568.95,
+        "bottom": 412.0,
+        "top": 50.0
+      },
+      "fraction": {
+        "fx": 0.129247,
+        "fy": 0.891775
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 104.95,
+        "right": 548.45,
+        "bottom": 412.0,
+        "top": 50.0
+      },
+      "fraction": {
+        "fx": 0.160621,
+        "fy": 0.891775
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 123.95,
+        "right": 529.45,
+        "bottom": 412.0,
+        "top": 50.0
+      },
+      "fraction": {
+        "fx": 0.1897,
+        "fy": 0.891775
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 185.7491,
+        "right": 467.6509,
+        "bottom": 414.5381,
+        "top": 47.4619
+      },
+      "fraction": {
+        "fx": 0.284281,
+        "fy": 0.897269
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 185.7491,
+        "right": 467.6509,
+        "bottom": 405.951,
+        "top": 56.049
+      },
+      "fraction": {
+        "fx": 0.284281,
+        "fy": 0.878682
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 414.9906,
+        "right": 238.4094,
+        "bottom": 401.5,
+        "top": 60.5
+      },
+      "fraction": {
+        "fx": 0.635125,
+        "fy": 0.869048
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 414.9906,
+        "right": 238.4094,
+        "bottom": 394.5,
+        "top": 67.5
+      },
+      "fraction": {
+        "fx": 0.635125,
+        "fy": 0.853896
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 414.9906,
+        "right": 238.4094,
+        "bottom": 387.5,
+        "top": 74.5
+      },
+      "fraction": {
+        "fx": 0.635125,
+        "fy": 0.838745
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 449.6752,
+        "right": 203.7248,
+        "bottom": 401.5,
+        "top": 60.5
+      },
+      "fraction": {
+        "fx": 0.688208,
+        "fy": 0.869048
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 449.5875,
+        "right": 203.8125,
+        "bottom": 394.5,
+        "top": 67.5
+      },
+      "fraction": {
+        "fx": 0.688074,
+        "fy": 0.853896
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_specification",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 450.8059,
+        "right": 202.5941,
+        "bottom": 387.5,
+        "top": 74.5
+      },
+      "fraction": {
+        "fx": 0.689939,
+        "fy": 0.838745
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 496.2,
+        "right": 157.2,
+        "bottom": 401.5,
+        "top": 60.5
+      },
+      "fraction": {
+        "fx": 0.759412,
+        "fy": 0.869048
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 496.2,
+        "right": 157.2,
+        "bottom": 394.5,
+        "top": 67.5
+      },
+      "fraction": {
+        "fx": 0.759412,
+        "fy": 0.853896
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 496.2,
+        "right": 157.2,
+        "bottom": 387.5,
+        "top": 74.5
+      },
+      "fraction": {
+        "fx": 0.759412,
+        "fy": 0.838745
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 516.7,
+        "right": 136.7,
+        "bottom": 387.5,
+        "top": 74.5
+      },
+      "fraction": {
+        "fx": 0.790787,
+        "fy": 0.838745
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 516.7,
+        "right": 136.7,
+        "bottom": 394.5,
+        "top": 67.5
+      },
+      "fraction": {
+        "fx": 0.790787,
+        "fy": 0.853896
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 516.7,
+        "right": 136.7,
+        "bottom": 401.5,
+        "top": 60.5
+      },
+      "fraction": {
+        "fx": 0.790787,
+        "fy": 0.869048
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 516.7,
+        "right": 136.7,
+        "bottom": 408.5,
+        "top": 53.5
+      },
+      "fraction": {
+        "fx": 0.790787,
+        "fy": 0.884199
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 544.7,
+        "right": 108.7,
+        "bottom": 408.5,
+        "top": 53.5
+      },
+      "fraction": {
+        "fx": 0.833639,
+        "fy": 0.884199
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 544.7,
+        "right": 108.7,
+        "bottom": 401.5,
+        "top": 60.5
+      },
+      "fraction": {
+        "fx": 0.833639,
+        "fy": 0.869048
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 544.7,
+        "right": 108.7,
+        "bottom": 394.5,
+        "top": 67.5
+      },
+      "fraction": {
+        "fx": 0.833639,
+        "fy": 0.853896
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_weight",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 544.7,
+        "right": 108.7,
+        "bottom": 387.5,
+        "top": 74.5
+      },
+      "fraction": {
+        "fx": 0.833639,
+        "fy": 0.838745
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "previous_drawing_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 556.8836,
+        "right": 96.5164,
+        "bottom": 42.5,
+        "top": 419.5
+      },
+      "fraction": {
+        "fx": 0.852286,
+        "fy": 0.091991
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "line_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 556.825,
+        "right": 96.575,
+        "bottom": 58.5,
+        "top": 403.5
+      },
+      "fraction": {
+        "fx": 0.852196,
+        "fy": 0.126623
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 556.825,
+        "right": 96.575,
+        "bottom": 66.5,
+        "top": 395.5
+      },
+      "fraction": {
+        "fx": 0.852196,
+        "fy": 0.143939
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_unit_code",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 466.2801,
+        "right": 187.1199,
+        "bottom": 42.5,
+        "top": 419.5
+      },
+      "fraction": {
+        "fx": 0.713621,
+        "fy": 0.091991
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "job_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 394.7,
+        "right": 258.7,
+        "bottom": 42.6105,
+        "top": 419.3895
+      },
+      "fraction": {
+        "fx": 0.604071,
+        "fy": 0.092231
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "designed",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 430.95,
+        "right": 222.45,
+        "bottom": 62.0,
+        "top": 400.0
+      },
+      "fraction": {
+        "fx": 0.65955,
+        "fy": 0.134199
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "drawn",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 445.45,
+        "right": 207.95,
+        "bottom": 62.0,
+        "top": 400.0
+      },
+      "fraction": {
+        "fx": 0.681742,
+        "fy": 0.134199
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "scale",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 459.95,
+        "right": 193.45,
+        "bottom": 62.0,
+        "top": 400.0
+      },
+      "fraction": {
+        "fx": 0.703933,
+        "fy": 0.134199
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 480.7,
+        "right": 172.7,
+        "bottom": 62.0,
+        "top": 400.0
+      },
+      "fraction": {
+        "fx": 0.73569,
+        "fy": 0.134199
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 131.6278,
+        "right": 521.7722,
+        "bottom": 383.9187,
+        "top": 78.0813
+      },
+      "fraction": {
+        "fx": 0.201451,
+        "fy": 0.830993
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 123.3464,
+        "right": 530.0536,
+        "bottom": 376.8237,
+        "top": 85.1763
+      },
+      "fraction": {
+        "fx": 0.188776,
+        "fy": 0.815636
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9f490e23df9de67d20e6ec",
+      "drawing_id": "6a9f493c23df9de67d20e978",
+      "bounds_width": 653.4,
+      "bounds_height": 462.0,
+      "offsets": {
+        "left": 126.1069,
+        "right": 527.2931,
+        "bottom": 364.7187,
+        "top": 97.2813
+      },
+      "fraction": {
+        "fx": 0.193001,
+        "fy": 0.789434
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 56.0,
+        "right": 406.0,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.121212,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 75.75,
+        "right": 386.25,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.163961,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 115.25,
+        "right": 346.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.249459,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 178.7829,
+        "right": 283.2171,
+        "bottom": 289.8636,
+        "top": 36.8364
+      },
+      "fraction": {
+        "fx": 0.386976,
+        "fy": 0.887247
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 178.7829,
+        "right": 283.2171,
+        "bottom": 281.3446,
+        "top": 45.3554
+      },
+      "fraction": {
+        "fx": 0.386976,
+        "fy": 0.861171
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 241.6493,
+        "right": 220.3507,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.52305,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "ref",
+      "space": "paper",
+      "room_id": "6a9faa16590f184ca228a4ee",
+      "drawing_id": "6a9faa23590f184ca228a683",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 95.3232,
+        "right": 366.6768,
+        "bottom": 266.5458,
+        "top": 60.1542
+      },
+      "fraction": {
+        "fx": 0.206327,
+        "fy": 0.815873
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "unit_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 56.0,
+        "right": 406.0,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.121212,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "part_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 75.75,
+        "right": 386.25,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.163961,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 96.25,
+        "right": 365.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.208333,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "stock_quantity",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 115.25,
+        "right": 346.75,
+        "bottom": 287.85,
+        "top": 38.85
+      },
+      "fraction": {
+        "fx": 0.249459,
+        "fy": 0.881084
+      }
+    },
+    {
+      "category": "bill_of_materials",
+      "feature": "material_type",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 241.6493,
+        "right": 220.3507,
+        "bottom": 284.35,
+        "top": 42.35
+      },
+      "fraction": {
+        "fx": 0.52305,
+        "fy": 0.87037
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "standard_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 95.3232,
+        "right": 366.6768,
+        "bottom": 266.5458,
+        "top": 60.1542
+      },
+      "fraction": {
+        "fx": 0.206327,
+        "fy": 0.815873
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 178.7829,
+        "right": 283.2171,
+        "bottom": 289.8636,
+        "top": 36.8364
+      },
+      "fraction": {
+        "fx": 0.386976,
+        "fy": 0.887247
+      }
+    },
+    {
+      "category": "notes_section",
+      "feature": "special_notes",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 178.7829,
+        "right": 283.2171,
+        "bottom": 281.3446,
+        "top": 45.3554
+      },
+      "fraction": {
+        "fx": 0.386976,
+        "fy": 0.861171
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "previous_drawing_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.1836,
+        "right": 82.8164,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.820744,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "line_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 47.35,
+        "top": 279.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.144934
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_name",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 379.125,
+        "right": 82.875,
+        "bottom": 55.35,
+        "top": 271.35
+      },
+      "fraction": {
+        "fx": 0.820617,
+        "fy": 0.169421
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "machine_unit_code",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 288.5801,
+        "right": 173.4199,
+        "bottom": 31.35,
+        "top": 295.35
+      },
+      "fraction": {
+        "fx": 0.624632,
+        "fy": 0.09596
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "job_number",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 217.0,
+        "right": 245.0,
+        "bottom": 31.4632,
+        "top": 295.2368
+      },
+      "fraction": {
+        "fx": 0.469697,
+        "fy": 0.096306
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "creation_date",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 303.0,
+        "right": 159.0,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.655844,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "scale",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 282.25,
+        "right": 179.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.610931,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "drawn",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 267.75,
+        "right": 194.25,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.579545,
+        "fy": 0.155647
+      }
+    },
+    {
+      "category": "title_block",
+      "feature": "designed",
+      "side": "rev",
+      "space": "paper",
+      "room_id": "6a9fbc73994aad2f8a5fd039",
+      "drawing_id": "6a9fc4849b3b107a55539837",
+      "bounds_width": 462.0,
+      "bounds_height": 326.7,
+      "offsets": {
+        "left": 253.25,
+        "right": 208.75,
+        "bottom": 50.85,
+        "top": 275.85
+      },
+      "fraction": {
+        "fx": 0.54816,
+        "fy": 0.155647
+      }
+    }
+  ]
+}

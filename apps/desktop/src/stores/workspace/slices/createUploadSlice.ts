@@ -1,11 +1,12 @@
 import { StateCreator } from "zustand";
 import { WorkspaceState, UploadSlice, UploadState, QueueEntry } from "../types";
 import { uploadFile } from "../../../services/fetchUtils";
-import { deleteDrawing } from "../../../services/drawingsApi";
+import { deleteDrawing, reextractDrawing } from "../../../services/drawingsApi";
 import {
   describeDrawingPairMismatch,
   isDrawingPairMismatch,
 } from "../../../utils/drawingIdentity";
+import { ACCEPTED_FORMATS, is3DModelFormat, isDrawingFormat } from "../../../config/drawingFormats";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10GB
 
@@ -24,9 +25,56 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
   uploadQueue: [],
   activeOldJobId: null,
   activeNewJobId: null,
+  oldFailedDrawingId: null,
+  newFailedDrawingId: null,
 
   setOldUploadState: (state) => set({ oldUploadState: state }),
   setNewUploadState: (state) => set({ newUploadState: state }),
+
+  setUploadFailure: (side, drawingId, message) => {
+    if (side === "old") {
+      set({ oldUploadState: "failed", oldError: message, oldFailedDrawingId: drawingId });
+    } else {
+      set({ newUploadState: "failed", newError: message, newFailedDrawingId: drawingId });
+    }
+  },
+
+  retryExtraction: async (side) => {
+    const isOld = side === "old";
+    const drawingId = isOld ? get().oldFailedDrawingId : get().newFailedDrawingId;
+    if (!drawingId) return false;
+
+    // Back to `processing` immediately: the retry is queued server-side and the existing job
+    // polling drives the rest, so the panel shows the same progress it would on a first run.
+    if (isOld) {
+      set({ oldUploadState: "processing", oldUploadProgress: 10, oldError: null });
+    } else {
+      set({ newUploadState: "processing", newUploadProgress: 10, newError: null });
+    }
+
+    try {
+      const job = await reextractDrawing(drawingId);
+      if (isOld) {
+        set({ activeOldJobId: job.id, oldFailedDrawingId: null });
+      } else {
+        set({ activeNewJobId: job.id, newFailedDrawingId: null });
+      }
+      return true;
+    } catch (err) {
+      // 422 means the source file is gone, which a retry cannot fix -- an ephemeral disk
+      // discards the upload before extraction runs. Say so rather than inviting another retry.
+      const message = err instanceof Error ? err.message : String(err);
+      const gone = message.includes("422");
+      get().setUploadFailure(
+        side,
+        gone ? null : drawingId,
+        gone
+          ? "The uploaded file is no longer on the server, so extraction cannot be retried. Upload it again."
+          : message,
+      );
+      return false;
+    }
+  },
 
   applyCompletedDrawing: (drawing, side) => {
     const isOld = side === "old";
@@ -139,6 +187,7 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
   uploadDrawingFile: async (file, side) => {
     const isOld = side === "old";
 
+
     // Capture the drawing this slot currently holds BEFORE the reset below nulls
     // it. In the room-owned model each drawing belongs to exactly one slot, so
     // replacing a slot must hard-delete the drawing it displaced (§ room-owned
@@ -205,11 +254,11 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
 
     // 2. Validate Extension Normalized to Lowercase
     const extension = file.name.split(".").pop()?.toLowerCase();
-    const is3D = ["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(extension || "");
-    const is2D = ["dwg", "dxf", "pdf"].includes(extension || "");
-    
+    const is3D = is3DModelFormat(extension);
+    const is2D = isDrawingFormat(extension);
+
     if (!extension || (!is2D && !is3D)) {
-      updateStatus("failed", 0, "Unsupported format. Only 2D (PDF, DWG, DXF) or 3D (STEP, IGES, ICD, SolidWorks sldprt/sldasm) files are allowed.");
+      updateStatus("failed", 0, "Unsupported format. Upload a drawing (.dxf, .dwg, .icd, .pdf) or a 3D model (.step, .iges, .sldprt).");
       set({ compatibilityStatus: "Unsupported" });
       return false;
     }
@@ -251,8 +300,17 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
     const otherDrawing = isOld ? get().newDrawing : get().oldDrawing;
     if (otherDrawing) {
       const otherExt = otherDrawing.file_name.split(".").pop()?.toLowerCase() || "";
-      if (otherExt !== extension) {
-        updateStatus("failed", 0, `Format Mismatch: Can only compare matching extensions (${otherExt.toUpperCase()} vs ${extension.toUpperCase()}).`);
+      const otherIs2D = isDrawingFormat(otherExt);
+      const otherIs3D = is3DModelFormat(otherExt);
+
+      // Any 2D drawing (.dwg, .dxf, .icd, .pdf) can be compared with any 2D drawing.
+      // Cross-domain comparisons (2D drawing vs 3D model) are prohibited.
+      if ((is2D && !otherIs2D) || (is3D && !otherIs3D)) {
+        updateStatus(
+          "failed",
+          0,
+          `Format Mismatch: Cannot compare 2D drawings with 3D models (${otherExt.toUpperCase()} vs ${extension.toUpperCase()}).`
+        );
         set({ compatibilityStatus: "Mismatch" });
         return false;
       }
@@ -263,16 +321,38 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
     // The FastAPI backend securely computes the SHA-256 hash automatically via stream chunking.
 
     // 7. Initiate HTTP multipart upload to local FastAPI sandbox
-    updateStatus("uploading", 40);
+    updateStatus("uploading", 30);
 
+    let uploadPrimaryFile: File = file;
+    let companionStepFile: File | undefined = undefined;
+
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri && (extension === "icd" || extension === "dwg")) {
+      try {
+        updateStatus("uploading", 35);
+        const { convertLocalCadFile } = await import("../../../services/localCadConverter");
+        const converted = await convertLocalCadFile(file, (stage) => {
+          console.log(`[CAD Convert ${side}]`, stage);
+        });
+        uploadPrimaryFile = converted.dxfFile;
+        companionStepFile = converted.companionStepFile;
+      } catch (convErr: any) {
+        console.warn("Client-side CAD conversion failed, falling back to direct upload:", convErr);
+      }
+    }
+
+    updateStatus("uploading", 50);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadPrimaryFile);
+    if (companionStepFile) {
+      formData.append("companion_step", companionStepFile);
+    }
 
     try {
       const uploadResult = await uploadFile<any>(
         "/api/v1/drawings/upload",
         formData,
-        (percent) => updateStatus("processing", percent)
+        (percent) => updateStatus("processing", 50 + Math.round(percent * 0.4))
       );
 
       const { drawing, job } = uploadResult;
@@ -298,12 +378,25 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       } else if (job.status === "failed") {
         throw new Error(job.error_message || "Background extraction job aborted.");
       } else {
-        // We set the active job ID and the React hook `useUploadJobPolling` takes over polling
-        // NOTE: we need to add activeOldUploadJobId / activeNewUploadJobId to the store for this to work natively
+        // Associate the uploaded drawing with the active room immediately so the room
+        // remembers which drawing belongs in this slot even while background ingestion is in-flight.
+        try {
+          const { useRoomStore } = await import("../../roomStore");
+          const activeRoom = useRoomStore.getState().activeRoom;
+          if (activeRoom) {
+            void useRoomStore.getState().updateRoom(activeRoom.id, {
+              [isOld ? "active_old_drawing_id" : "active_new_drawing_id"]: drawing.id,
+              [isOld ? "active_old_drawing_name" : "active_new_drawing_name"]: drawing.file_name,
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to associate in-flight drawing with active room:", e);
+        }
+
         if (isOld) {
-            set({ oldUploadState: "processing", oldUploadProgress: 80, activeOldJobId: job.id });
+          set({ oldUploadState: "processing", oldUploadProgress: 80, activeOldJobId: job.id });
         } else {
-            set({ newUploadState: "processing", newUploadProgress: 80, activeNewJobId: job.id });
+          set({ newUploadState: "processing", newUploadProgress: 80, activeNewJobId: job.id });
         }
         
         return true; // We successfully queued the upload, polling handles the rest
@@ -327,18 +420,22 @@ export const createUploadSlice: StateCreator<WorkspaceState, [], [], UploadSlice
       return;
     }
 
-    const formats = ["dwg", "dxf", "pdf", "step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"];
+    const formats = [...ACCEPTED_FORMATS];
 
     if (oldDrawing && newDrawing) {
-      const extOld = oldDrawing.file_name.split(".").pop()?.toLowerCase();
-      const extNew = newDrawing.file_name.split(".").pop()?.toLowerCase();
+      const extOld = oldDrawing.file_name.split(".").pop()?.toLowerCase() || "";
+      const extNew = newDrawing.file_name.split(".").pop()?.toLowerCase() || "";
+      const oldIs2D = isDrawingFormat(extOld);
+      const newIs2D = isDrawingFormat(extNew);
+      const oldIs3D = is3DModelFormat(extOld);
+      const newIs3D = is3DModelFormat(extNew);
       
-      if (extOld !== extNew) {
-        set({ compatibilityStatus: "Mismatch" });
-      } else if (!formats.includes(extOld || "")) {
+      if (!formats.includes(extOld) || !formats.includes(extNew)) {
         set({ compatibilityStatus: "Unsupported" });
-      } else {
+      } else if ((oldIs2D && newIs2D) || (oldIs3D && newIs3D)) {
         set({ compatibilityStatus: "Compatible" });
+      } else {
+        set({ compatibilityStatus: "Mismatch" });
       }
     } else {
       // Just one loaded

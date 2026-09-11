@@ -10,6 +10,7 @@ import { ThreeDViewer } from "./ThreeDViewer";
 import { UploadZone } from "./UploadZone";
 import { Skeleton } from "../ui/Skeleton";
 import { Select } from "../ui/Select";
+import { hasThreeDMesh, is3DModelFormat } from "../../config/drawingFormats";
 
 interface ThreeDWorkspaceProps {
   currentNav: string;
@@ -23,6 +24,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
     fileName,
     fileSize,
     errorMessage,
+    activeUploadJobId,
     uploadDrawingFile,
     clearUpload,
     selectedClient,
@@ -42,7 +44,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
   const { activeSession } = useAuditStore();
 
   // Attach TanStack Query background pollers. They automatically sleep if no active job/session.
-  useJobPolling(activeJob?.id || null);
+  useJobPolling(activeUploadJobId || activeJob?.id || null);
   useAuditPolling(activeSession?.id || null);
 
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -155,7 +157,7 @@ export const ThreeDWorkspace: React.FC<ThreeDWorkspaceProps> = ({ currentNav }) 
             />
           </div>
 
-          {(!activeDrawing || !["step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"].includes(activeDrawing?.format?.toLowerCase() || "")) && (
+          {(!activeDrawing || !(is3DModelFormat(activeDrawing?.format?.toLowerCase()) || hasThreeDMesh(activeDrawing))) && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-bg-dark/80 backdrop-blur-md">
               <div className="w-[400px] bg-bg-card p-5 rounded-sm border border-border-color shadow-xl">
                 <h2 className="text-center text-text-primary text-lg font-bold tracking-tight mb-1">3D Model Ingestion</h2>

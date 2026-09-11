@@ -8,6 +8,7 @@
 import { buildHeaders, baseUrl, parseOrThrow } from "./fetchUtils";
 import { isPrototypeMode } from "../config/features";
 import type { DrawingItem } from "../stores/workspaceStore";
+import type { Job } from "../stores/drawingStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,6 +169,15 @@ export async function fetchDrawing(id: string, signal?: AbortSignal): Promise<Dr
   return parseOrThrow<DrawingItem>(res);
 }
 
+/** GET /api/v1/drawings/:id/job — fetches the latest extraction job for a drawing. */
+export async function fetchDrawingJob(id: string, signal?: AbortSignal): Promise<Job | null> {
+  const res = await fetch(`${baseUrl()}/api/v1/drawings/${id}/job`, {
+    headers: buildHeaders(),
+    signal,
+  });
+  return parseOrThrow<Job | null>(res);
+}
+
 /**
  * DELETE /api/v1/drawings/:id — hard-deletes a drawing and every artifact it owns
  * (entities, jobs, files, caches). Used by the room-owned upload flow to purge the
@@ -179,6 +189,25 @@ export async function deleteDrawing(id: string): Promise<void> {
     headers: buildHeaders(),
   });
   await parseOrThrow<{ deleted_id: string }>(res);
+}
+
+/**
+ * POST /api/v1/drawings/:id/reextract — re-runs extraction on a drawing that already exists.
+ *
+ * The recovery path for an ingestion that failed after the row was created. Re-uploading the
+ * same file is not that: dedupe is deliberately gone, so a second upload is a second drawing,
+ * which is how one sheet became four rows and scattered its markings across sessions.
+ *
+ * Keeps the drawing's id, room slot and audit history. Answers 409 while an extraction is
+ * already running and 422 when the source file is gone — which is what an ephemeral disk
+ * produces, and is not retryable.
+ */
+export async function reextractDrawing(id: string): Promise<{ id: string }> {
+  const res = await fetch(`${baseUrl()}/api/v1/drawings/${id}/reextract`, {
+    method: "POST",
+    headers: buildHeaders(),
+  });
+  return parseOrThrow<{ id: string }>(res);
 }
 
 /** GET /api/v1/drawings/:id/scene — fetches vector scene primitives and CAD handles. */

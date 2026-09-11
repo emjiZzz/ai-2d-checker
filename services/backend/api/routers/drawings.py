@@ -2,7 +2,7 @@ import os
 import hashlib
 import uuid
 import aiofiles
-from fastapi import APIRouter, Depends, Header, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, Header, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from ...domain.models.drawing_document import DrawingDocument
@@ -11,6 +11,7 @@ from ...domain.models.extraction_job import ExtractionJob
 from ...infrastructure.cad.processing_queue import processing_queue
 from ...infrastructure.cad.diagnostics import CADDiagnostics
 from ...infrastructure.rendering.geometry_serializer import GeometrySerializer
+from ...infrastructure.storage.path_resolver import get_storage_root, is_nas_storage
 from ...core.security import sandboxed_path
 from ...logger import logger, correlation_id_var
 from ...config import settings
@@ -39,6 +40,7 @@ router = APIRouter()
 )
 async def upload_drawing(
     file: UploadFile = File(...),
+    companion_step: UploadFile | None = File(None),
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
     x_engineer_name: str | None = Header(None, alias="X-Engineer-Name"),
 ):
@@ -54,7 +56,7 @@ async def upload_drawing(
 
     try:
         drawing, job, is_duplicate = await DrawingIngestionService.process_ingestion(
-            file, uploaded_by=resolve_username(x_session_token, x_engineer_name)
+            file, companion_step=companion_step, uploaded_by=resolve_username(x_session_token, x_engineer_name)
         )
     except HTTPException:
         raise
@@ -212,6 +214,35 @@ async def get_drawing(id: str):
     return StandardResponse(
         success=True,
         data=DrawingResponse.from_document(drawing)
+    )
+
+
+@router.get(
+    "/drawings/{id}/job",
+    response_model=StandardResponse[JobResponse | None],
+    summary="Retrieve latest extraction job for a DrawingDocument",
+    dependencies=[Depends(get_auth_token)]
+)
+async def get_drawing_job(id: str):
+    await get_or_404(DrawingDocument, id, f"Drawing document not found for ID: {id}")
+    job = await ExtractionJob.find({"drawing_id": id}).sort("-created_at").first_or_none()
+    if not job:
+        return StandardResponse(success=True, data=None)
+    return StandardResponse(
+        success=True,
+        data=JobResponse(
+            id=str(job.id),
+            drawing_id=job.drawing_id,
+            status=job.status,
+            error_message=job.error_message,
+            diagnostics=job.diagnostics,
+            conversion_duration_seconds=job.conversion_duration_seconds,
+            parsing_duration_seconds=job.parsing_duration_seconds,
+            total_duration_seconds=job.total_duration_seconds,
+            created_at=job.created_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at
+        )
     )
 
 
@@ -391,15 +422,67 @@ async def get_drawing_gltf(id: str):
     # is the classic way out of a directory that looks hardcoded.
     gltf_path = sandboxed_path("temp", f"model_{id}.gltf")
     if not gltf_path.exists():
+        from ...infrastructure.storage.storage_health import get_storage_diagnostics
+        diag = get_storage_diagnostics()
+        headers = {}
+        if diag.get("is_nas") and not diag.get("reachable"):
+            headers["X-Storage-Fallback"] = "client_pc"
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="GLTF asset not found for this 3D model."
+            detail="GLTF asset not found for this 3D model.",
+            headers=headers
         )
+    # The file is binary glTF. Its on-disk name stays `.gltf` because six call sites and the
+    # room-deletion cleanup are keyed on it, and a missed one leaks a mesh per drawing; the
+    # extension is internal plumbing and no reader depends on it, since GLTFLoader identifies a
+    # document by its magic bytes. What a caller sees does have to match the content, so the
+    # media type and the download name say GLB. A `.gltf` file holding GLB would be rejected by
+    # whatever the engineer opened it in.
     return FileResponse(
         str(gltf_path),
-        media_type="model/gltf+json",
-        filename=f"{drawing.file_name}.gltf"
+        media_type="model/gltf-binary",
+        filename=f"{drawing.file_name}.glb",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "X-Storage-Source": "nas" if is_nas_storage() else "local"},
     )
+
+
+@router.post(
+    "/drawings/sync-file",
+    summary="Sync offline file from Client PC to server/NAS storage",
+    dependencies=[Depends(get_auth_token)]
+)
+async def sync_client_file(
+    file: UploadFile = File(...),
+    subfolder: str = Form("uploads"),
+    target_name: str | None = Form(None)
+):
+    """
+    Receives an offline cached drawing or glTF file from the Client PC and persists
+    it into the NAS/production storage root. Verifies write success before returning 200.
+    """
+    allowed_subfolders = ("uploads", "temp", "processed")
+    if subfolder not in allowed_subfolders:
+        raise HTTPException(status_code=400, detail="Invalid storage subfolder target.")
+
+    safe_name = target_name or file.filename or "synced_file.bin"
+    # Basic filename sanitize
+    safe_name = Path(safe_name).name
+    dest_dir = get_storage_root() / subfolder
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / safe_name
+
+    import aiofiles
+    bytes_written = 0
+    async with aiofiles.open(dest_path, "wb") as f:
+        while chunk := await file.read(1024 * 1024):
+            bytes_written += len(chunk)
+            await f.write(chunk)
+
+    if not dest_path.exists() or dest_path.stat().st_size != bytes_written:
+        raise HTTPException(status_code=500, detail="Storage verification failed during NAS sync.")
+
+    return {"success": True, "synced_path": str(dest_path), "bytes": bytes_written}
+
 
 
 class SimilarityResult(BaseModel):

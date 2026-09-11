@@ -1,11 +1,34 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useThemeStore } from '../../stores/themeStore';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { Box } from 'lucide-react';
-import { Canvas, useLoader, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import {
+  OrbitControls,
+  OrthographicCamera,
+} from '@react-three/drei';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { PartsPanel, type AssemblyPart } from './PartsPanel';
+import { useReviewStore } from '../../stores/reviewStore';
+import { Box } from 'lucide-react';
+import { ViewCubeIcon } from './ViewCubeIcon';
+import { CadTripodOverlay } from './CadTripodOverlay';
+
+export type ViewPreset = 'se' | 'sw' | 'ne' | 'nw' | 'top' | 'front' | 'right' | 'left' | 'back' | 'bottom';
+
+/**
+ * Triangles above which the CAD edge outlines are skipped.
+ *
+ * `EdgesGeometry` measured 42% of the per-mesh load cost and is linear in triangles, so it
+ * is what makes a large assembly freeze the pane. 120k is a little under the 12-part
+ * assembly that prompted this (180k) and comfortably above every single-part model in the
+ * corpus, the largest of which is 37k -- so nothing that renders quickly today loses them.
+ */
+const EDGE_OUTLINE_TRIANGLE_BUDGET = 120_000;
+
+/** Stable reference, so the zustand selector does not return a new array every render. */
+const EMPTY_HIDDEN: number[] = [];
 
 interface ThreeDViewerProps {
   drawing: any;
@@ -13,58 +36,270 @@ interface ThreeDViewerProps {
   height: number;
 }
 
-// ── Auto-fit camera to the loaded model's bounding box ──────────────────────
-const CameraFitter = ({ modelRef }: { modelRef: React.RefObject<THREE.Group | null> }) => {
+// ── Camera controller for framing and standard CAD view presets ─────────────
+interface CameraControllerProps {
+  modelRef: React.RefObject<THREE.Group | null>;
+  targetView: ViewPreset | null;
+  width: number;
+  height: number;
+  onViewApplied?: () => void;
+}
+
+const CameraController = ({
+  modelRef,
+  targetView,
+  width,
+  height,
+  onViewApplied,
+}: CameraControllerProps) => {
   const { camera, controls } = useThree() as any;
+  const metricsRef = useRef<{ center: THREE.Vector3; dist: number; maxDim: number } | null>(null);
 
-  useEffect(() => {
-    if (!modelRef.current) return;
+  const applyView = (view: ViewPreset) => {
+    if (!metricsRef.current || !camera) return;
+    const { center, dist, maxDim } = metricsRef.current;
 
-    const box   = new THREE.Box3().setFromObject(modelRef.current);
-    const size  = box.getSize(new THREE.Vector3());
-    const center= box.getCenter(new THREE.Vector3());
+    const pos = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
 
-    // Frame the model: pull the camera back so the full diagonal fits in fov
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const fov    = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const dist   = (maxDim / 2) / Math.tan(fov / 2) * 2.2; // 2.2× gives comfortable padding
+    switch (view) {
+      case 'sw': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x + c, center.y + c, center.z + c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'nw': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x + c, center.y + c, center.z - c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'ne': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x - c, center.y + c, center.z - c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'se': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x - c, center.y + c, center.z + c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'top':
+        pos.set(center.x, center.y + dist, center.z);
+        up.set(0, 0, -1);
+        break;
+      case 'front':
+        pos.set(center.x, center.y, center.z + dist);
+        up.set(0, 1, 0);
+        break;
+      case 'right':
+        pos.set(center.x + dist, center.y, center.z);
+        up.set(0, 1, 0);
+        break;
+      case 'left':
+        pos.set(center.x - dist, center.y, center.z);
+        up.set(0, 1, 0);
+        break;
+      case 'back':
+        pos.set(center.x, center.y, center.z - dist);
+        up.set(0, 1, 0);
+        break;
+      case 'bottom':
+        pos.set(center.x, center.y - dist, center.z);
+        up.set(0, 0, 1);
+        break;
+      default: {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x + c, center.y + c, center.z + c);
+        up.set(0, 1, 0);
+        break;
+      }
+    }
 
-    const angle = Math.PI / 5; // ~36° elevation
-    camera.position.set(
-      center.x + dist * Math.cos(angle),
-      center.y + dist * Math.sin(angle),
-      center.z + dist * Math.cos(angle)
-    );
-    camera.near  = dist / 100;
-    camera.far   = dist * 100;
-    camera.updateProjectionMatrix();
+    camera.position.copy(pos);
+    camera.up.copy(up);
+    camera.lookAt(center);
+
+    // True CAD Orthographic parallel projection: zero perspective distortion
+    if (camera.isOrthographicCamera) {
+      const padding = 0.75;
+      camera.zoom = (Math.min(width, height) * padding) / maxDim;
+      camera.near = 0.1;
+      camera.far = dist * 4;
+      camera.updateProjectionMatrix();
+    }
 
     if (controls) {
       controls.target.copy(center);
       controls.update();
     }
+
+    onViewApplied?.();
+  };
+
+  // Measure bounding box and apply initial framing
+  useEffect(() => {
+    if (!modelRef.current) return;
+
+    const box = new THREE.Box3().setFromObject(modelRef.current);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 2.5;
+
+    metricsRef.current = { center, dist, maxDim };
+    applyView(targetView ?? 'sw');
   }, [modelRef.current]);
+
+  // Apply new view preset when user clicks a button
+  useEffect(() => {
+    if (targetView && metricsRef.current) {
+      applyView(targetView);
+    }
+  }, [targetView]);
+
+  // Adjust zoom when viewport width or height changes
+  useEffect(() => {
+    if (!metricsRef.current || !camera) return;
+    const { maxDim } = metricsRef.current;
+    if (camera.isOrthographicCamera) {
+      const padding = 0.75;
+      camera.zoom = (Math.min(width, height) * padding) / maxDim;
+      camera.updateProjectionMatrix();
+      if (controls) controls.update();
+    }
+  }, [width, height]);
 
   return null;
 };
 
-// ── glTF mesh renderer ───────────────────────────────────────────────────────/** Renders a glTF model — preserves original STEP colours from embedded materials */
-const GltfMesh = ({
-  url,
-  onLoaded,
-}: {
-  url: string;
+// ── glTF mesh renderer ───────────────────────────────────────────────────────
+interface GltfMeshProps {
+  gltf: GLTF;
   onLoaded: (ref: THREE.Group) => void;
-}) => {
-  const gltf    = useLoader(GLTFLoader, url);
+  hiddenNodes: number[];
+  selectedNode: number | null;
+  onSelectPart?: (node: number | null) => void;
+}
+
+/** Renders a glTF model — preserves original STEP colours from embedded materials */
+const GltfMesh = ({
+  gltf,
+  onLoaded,
+  hiddenNodes,
+  selectedNode,
+  onSelectPart,
+}: GltfMeshProps) => {
   const groupRef = useRef<THREE.Group>(null!);
+
+  // Visibility is applied by POSITION among the scene's own children, matching the order the
+  // backend emits its nodes. Not by name: iCAD repeats a part name across instances, so two
+  // `φ9×204` share one, and matching on it would hide both.
+  useEffect(() => {
+    const hide = new Set(hiddenNodes);
+    gltf.scene.children.forEach((child, i) => {
+      child.visible = !hide.has(i);
+    });
+  }, [gltf, hiddenNodes]);
+
+  // Dynamic Part Highlighting: Highlights the outline of the selected part only, keeping natural CAD solid colors
+  useEffect(() => {
+    gltf.scene.children.forEach((child, i) => {
+      const isSelected = selectedNode === i;
+
+      child.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+          materials.forEach((mat) => {
+            if (mat instanceof THREE.MeshStandardMaterial) {
+              // Retain natural CAD solid material colors — no bright emissive wash-out
+              mat.emissive.set(0x000000);
+              mat.emissiveIntensity = 0;
+              mat.transparent = false;
+              mat.opacity = 1.0;
+              mat.needsUpdate = true;
+            }
+          });
+        }
+
+        // Edge outline highlighting: only the selected part has a vivid cyan outline
+        if (obj.name === 'cad_edges' && (obj as THREE.LineSegments).isLineSegments) {
+          const line = obj as THREE.LineSegments;
+          const lineMat = line.material as THREE.LineBasicMaterial;
+          if (lineMat) {
+            if (isSelected) {
+              // Highlighted edges in vivid electric cyan
+              lineMat.color.set(0x00ffff);
+              lineMat.opacity = 1.0;
+              line.renderOrder = 1;
+            } else {
+              // Normal crisp CAD edge outlines
+              lineMat.color.set(0x475569);
+              lineMat.opacity = 0.65;
+              line.renderOrder = 0;
+            }
+            lineMat.needsUpdate = true;
+          }
+        }
+      });
+    });
+  }, [gltf, selectedNode]);
 
   // Enhance PBR quality while keeping the colours as defined in the STEP file
   useEffect(() => {
+    // Every mesh below runs mergeVertices, toCreasedNormals and EdgesGeometry on the main
+    // thread, and all three are linear in triangle count: measured 1144ms per ~92k triangles,
+    // of which EdgesGeometry is 42%. A 12-part assembly is 180k, so the pane sits on its
+    // loading placeholder for over two seconds before anything appears.
+    //
+    // The outlines are the part worth dropping when a model is dense. They are a CAD styling
+    // cue, not geometry, and on a model detailed enough to cross this budget they read as
+    // noise on the silhouette anyway. Shading and normals are kept at every size, because
+    // those change what the surface looks like rather than how it is decorated.
+    let sceneTriangles = 0;
+    gltf.scene.traverse((child) => {
+      const m = child as THREE.Mesh;
+      if (m.isMesh && m.geometry) {
+        const idx = m.geometry.getIndex();
+        sceneTriangles += (idx ? idx.count : m.geometry.attributes.position?.count ?? 0) / 3;
+      }
+    });
+    const drawEdges = sceneTriangles <= EDGE_OUTLINE_TRIANGLE_BUDGET;
+
     gltf.scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
-        mesh.geometry.computeVertexNormals();
+
+        // 1. Merge duplicated vertices and compute creased normals so cylinders are silky smooth while 90° edges stay crisp
+        if (mesh.geometry) {
+          try {
+            const merged = BufferGeometryUtils.mergeVertices(mesh.geometry);
+            mesh.geometry = BufferGeometryUtils.toCreasedNormals(merged, THREE.MathUtils.degToRad(35));
+          } catch {
+            mesh.geometry.computeVertexNormals();
+          }
+
+          // 2. Add subtle CAD edge outlines like iCAD / SolidWorks
+          const existingEdges = mesh.children.find((c) => c.name === 'cad_edges');
+          if (drawEdges && !existingEdges) {
+            const edgesGeom = new THREE.EdgesGeometry(mesh.geometry, 28);
+            const edgesMat = new THREE.LineBasicMaterial({
+              color: 0x475569,
+              linewidth: 1,
+              transparent: true,
+              opacity: 0.65,
+            });
+            const line = new THREE.LineSegments(edgesGeom, edgesMat);
+            line.name = 'cad_edges';
+            line.raycast = () => {}; // Prevent edge outlines from intercepting pointer hitboxes
+            mesh.add(line);
+          }
+        }
 
         // Support both single and multi-material meshes (one per colour group)
         const srcMats = Array.isArray(mesh.material)
@@ -73,19 +308,32 @@ const GltfMesh = ({
 
         const enhanced = srcMats.map((src) => {
           const m = src as THREE.MeshStandardMaterial;
-          // Clone the STEP colour — fall back to engineering gray if absent
-          const col = m.color ? m.color.clone() : new THREE.Color(0.75, 0.75, 0.75);
-          return new THREE.MeshPhysicalMaterial({
-            color:        col,
-            roughness:    0.45,
-            metalness:    0.30,
-            reflectivity: 0.35,
-            clearcoat:    0.08,
-            side:         THREE.DoubleSide,
+          // Clone the STEP colour — fall back to clean machined steel if absent or black
+          let col = m.color ? m.color.clone() : new THREE.Color(0.85, 0.85, 0.85);
+          if (col.r < 0.08 && col.g < 0.08 && col.b < 0.08) {
+            col = new THREE.Color(0.85, 0.85, 0.85);
+          } else {
+            // Restore rich CAD color saturation matching iCAD SX golden tone
+            const hsl = { h: 0, s: 0, l: 0 };
+            col.getHSL(hsl);
+            if (hsl.s > 0.08) {
+              hsl.s = Math.min(1.0, hsl.s * 1.35);
+              hsl.l = Math.max(0.44, Math.min(hsl.l, 0.52));
+              col.setHSL(hsl.h, hsl.s, hsl.l);
+            }
+          }
+          return new THREE.MeshStandardMaterial({
+            color:               col,
+            roughness:           0.35,
+            metalness:           0.05,
+            side:                THREE.DoubleSide,
+            polygonOffset:       true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits:  1,
           });
         });
 
-        mesh.material    = enhanced.length === 1 ? enhanced[0] : enhanced;
+        mesh.material      = enhanced.length === 1 ? enhanced[0] : enhanced;
         mesh.castShadow    = true;
         mesh.receiveShadow = true;
       }
@@ -98,111 +346,270 @@ const GltfMesh = ({
   }, [gltf]);
 
   return (
-    <group ref={groupRef}>
+    <group
+      ref={groupRef}
+      onClick={(e) => {
+        // Ignore drags: only trigger on deliberate stationary click (not orbit or pan)
+        if (e.delta > 3) return;
+
+        // Pinpoint the exact frontmost solid mesh hit by raycast
+        const hit = e.intersections?.find(
+          (item) => (item.object as THREE.Mesh).isMesh && item.object.name !== 'cad_edges'
+        );
+        
+        // If no solid CAD mesh was intersected under cursor, cleanly deselect and do NOT highlight anything
+        if (!hit) {
+          onSelectPart?.(null);
+          return;
+        }
+
+        // Deliberate click on a solid part: stop propagation to prevent background/canvas deselect handlers
+        e.stopPropagation();
+        if (e.nativeEvent?.stopImmediatePropagation) {
+          e.nativeEvent.stopImmediatePropagation();
+        }
+
+        let curr: THREE.Object3D | null = hit.object;
+        while (curr && curr.parent && curr.parent !== gltf.scene) {
+          curr = curr.parent;
+        }
+        if (curr && curr.parent === gltf.scene) {
+          const idx = gltf.scene.children.indexOf(curr);
+          if (idx !== -1) {
+            onSelectPart?.(selectedNode === idx ? null : idx);
+          }
+        } else {
+          onSelectPart?.(null);
+        }
+      }}
+      onPointerMissed={() => {
+        onSelectPart?.(null);
+      }}
+    >
       <primitive object={gltf.scene} />
     </group>
   );
 };
 
 
-// ── Simple error boundary that renders a neutral placeholder ─────────────────
+// ── Silent error boundary to prevent scene crashes ─────────────────────────
 class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; message: string }
+  { children: React.ReactNode; onError?: (error: Error) => void },
+  { hasError: boolean }
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; onError?: (error: Error) => void }) {
     super(props);
-    this.state = { hasError: false, message: '' };
+    this.state = { hasError: false };
   }
-  static getDerivedStateFromError(err: Error) {
-    return { hasError: true, message: err.message };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
-  render() {
+  override componentDidCatch(error: Error) {
+    this.props.onError?.(error);
+  }
+  override render() {
     if (this.state.hasError) {
-      // Neutral placeholder — NOT red, so it doesn't alarm users
-      return (
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#1e3a4a" wireframe opacity={0.6} transparent />
-        </mesh>
-      );
+      return null;
     }
     return this.props.children;
   }
 }
 
+// ── Dynamic CAD Lighting Rig: Key light dynamically shines from North-East (screen top-right) ──
+const DynamicCadLighting: React.FC<{ modelRef: React.RefObject<THREE.Group | null> }> = ({ modelRef }) => {
+  const lightRef = useRef<THREE.DirectionalLight>(null);
+  const targetRef = useRef<THREE.Object3D>(null);
+  const fillLightRef = useRef<THREE.DirectionalLight>(null);
+  const fillTargetRef = useRef<THREE.Object3D>(null);
+
+  const vRight = useRef(new THREE.Vector3());
+  const vUp = useRef(new THREE.Vector3());
+  const vFwd = useRef(new THREE.Vector3());
+  const vDir = useRef(new THREE.Vector3());
+  const vFillDir = useRef(new THREE.Vector3());
+
+  useFrame(({ camera }) => {
+    if (!lightRef.current || !targetRef.current || !modelRef.current) return;
+
+    // Model bounding box center and scale
+    const box = new THREE.Box3().setFromObject(modelRef.current);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 2.5;
+
+    // Extract camera orientation basis vectors in world space
+    camera.matrixWorld.extractBasis(vRight.current, vUp.current, vFwd.current);
+
+    // North-East in screen space:
+    // +0.8 Right (East), +1.0 Up (North), +0.9 Forward (out of screen towards viewer)
+    vDir.current
+      .set(0, 0, 0)
+      .addScaledVector(vRight.current, 0.8)
+      .addScaledVector(vUp.current, 1.0)
+      .addScaledVector(vFwd.current, 0.9)
+      .normalize();
+
+    lightRef.current.position.copy(center).addScaledVector(vDir.current, dist);
+    targetRef.current.position.copy(center);
+    targetRef.current.updateMatrixWorld();
+
+    // Dynamically adjust shadow camera frustum so it covers the entire model without clipping
+    const shadowCam = lightRef.current.shadow?.camera as THREE.OrthographicCamera | undefined;
+    const r = maxDim * 1.5;
+    if (shadowCam && shadowCam.left !== -r) {
+      shadowCam.left = -r;
+      shadowCam.right = r;
+      shadowCam.top = r;
+      shadowCam.bottom = -r;
+      shadowCam.near = 0.5;
+      shadowCam.far = dist * 4;
+      shadowCam.updateProjectionMatrix();
+    }
+
+    // Soft opposing fill light from South-West (screen bottom-left)
+    if (fillLightRef.current && fillTargetRef.current) {
+      vFillDir.current
+        .set(0, 0, 0)
+        .addScaledVector(vRight.current, -0.6)
+        .addScaledVector(vUp.current, -0.4)
+        .addScaledVector(vFwd.current, 0.5)
+        .normalize();
+
+      fillLightRef.current.position.copy(center).addScaledVector(vFillDir.current, dist);
+      fillTargetRef.current.position.copy(center);
+      fillTargetRef.current.updateMatrixWorld();
+    }
+  });
+
+  return (
+    <>
+      <object3D ref={targetRef} />
+      <directionalLight
+        ref={lightRef}
+        target={targetRef.current ?? undefined}
+        intensity={1.25}
+        castShadow
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.02}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+      />
+
+      <object3D ref={fillTargetRef} />
+      <directionalLight
+        ref={fillLightRef}
+        target={fillTargetRef.current ?? undefined}
+        intensity={0.4}
+      />
+
+      <ambientLight intensity={0.55} color="#ffffff" />
+      <hemisphereLight
+        color={new THREE.Color('#ffffff')}
+        groundColor={new THREE.Color('#cbd5e1')}
+        intensity={0.35}
+      />
+    </>
+  );
+};
+
 // ── Scene wrapper ─────────────────────────────────────────────────────────────
+interface ModelSceneProps {
+  gltf: GLTF;
+  theme?: string;
+  hiddenNodes: number[];
+  selectedNode: number | null;
+  onSelectPart?: (node: number | null) => void;
+  onSceneReady?: () => void;
+  onError?: (error: Error) => void;
+  targetView: ViewPreset | null;
+  width: number;
+  height: number;
+  onStartOrbit?: () => void;
+  onCameraReady?: (camera: THREE.Camera) => void;
+}
+
 const ModelScene = ({
-  url,
-  theme,
-}: {
-  url: string;
-  theme: string;
-}) => {
+  gltf,
+  hiddenNodes,
+  selectedNode,
+  onSelectPart,
+  onSceneReady,
+  onError,
+  targetView,
+  width,
+  height,
+  onStartOrbit,
+  onCameraReady,
+}: ModelSceneProps) => {
   const modelRef  = useRef<THREE.Group | null>(null);
   const [, forceUpdate] = useState(0);
+  const { camera } = useThree();
+
+  useEffect(() => {
+    onCameraReady?.(camera);
+  }, [camera, onCameraReady]);
 
   const handleLoaded = (ref: THREE.Group) => {
     modelRef.current = ref;
-    forceUpdate((n) => n + 1); // trigger re-render so CameraFitter fires
+    forceUpdate((n) => n + 1); // trigger re-render so CameraController fires
+    // Ensure the scene has updated and camera fitted before revealing the model
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        onSceneReady?.();
+      });
+    });
   };
 
   return (
     <>
-      {/* Lighting rig */}
-      <ambientLight intensity={0.45} />
-      <directionalLight
-        position={[8, 12, 8]}
-        intensity={1.6}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-      />
-      <directionalLight position={[-6, -4, -6]} intensity={0.35} />
-      <hemisphereLight
-        color={new THREE.Color('#b0e4ff')}
-        groundColor={new THREE.Color('#1a2a33')}
-        intensity={0.4}
-      />
+      {/* CAD Orthographic Camera */}
+      <OrthographicCamera makeDefault near={0.1} far={50000} />
+
+      {/* ── Dynamic CAD Lighting Rig (Key light dynamically shines from North-East as model rotates) ── */}
+      <DynamicCadLighting modelRef={modelRef} />
 
       <OrbitControls
         makeDefault
-        enableDamping
-        dampingFactor={0.06}
+        enableDamping={false}
         minDistance={0.1}
-        maxDistance={5000}
+        maxDistance={50000}
         target={[0, 0, 0]}
+        /* ── CAD-style direct 1:1 mouse mapping (no inertia/sliding) ── */
+        enablePan
+        panSpeed={1.0}
+        screenSpacePanning        /* pan along the camera plane, not the ground */
+        enableRotate
+        rotateSpeed={1.0}
+        enableZoom
+        zoomSpeed={1.0}
+        onStart={onStartOrbit}
+        mouseButtons={{
+          LEFT:   THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.PAN,
+          RIGHT:  null as any,
+        }}
       />
 
-      {/* Auto-fit camera once model is loaded */}
-      <CameraFitter modelRef={modelRef} />
+      {/* Framing & View Presets */}
+      <CameraController
+        modelRef={modelRef}
+        targetView={targetView}
+        width={width}
+        height={height}
+      />
+
 
       {/* Model */}
-      <ErrorBoundary>
-        <React.Suspense
-          fallback={
-            <mesh>
-              <boxGeometry args={[0.5, 0.5, 0.5]} />
-              <meshBasicMaterial color="#1a3a4a" wireframe />
-            </mesh>
-          }
-        >
-          <GltfMesh url={url} onLoaded={handleLoaded} />
-        </React.Suspense>
+      <ErrorBoundary onError={onError}>
+        <GltfMesh
+          gltf={gltf}
+          onLoaded={handleLoaded}
+          hiddenNodes={hiddenNodes}
+          selectedNode={selectedNode}
+          onSelectPart={onSelectPart}
+        />
       </ErrorBoundary>
-
-      {/* Ground grid — sized to fit the model */}
-      <Grid
-        args={[2000, 2000]}
-        cellSize={10}
-        cellThickness={0.6}
-        cellColor={theme === 'hc-light' ? '#bbb' : '#2a2a2a'}
-        sectionSize={100}
-        sectionThickness={1.2}
-        sectionColor={theme === 'hc-light' ? '#888' : '#444'}
-        fadeDistance={3000}
-        position={[0, -200, 0]}
-      />
     </>
   );
 };
@@ -212,143 +619,288 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const theme = useThemeStore((s) => s.theme);
   const { backendUrl, apiToken } = useConnectionStore();
 
-  const [modelUrl,  setModelUrl]  = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading,   setLoading]   = useState(false);
+  const [parsedGltf,  setParsedGltf]  = useState<GLTF | null>(null);
+  const [loadError,   setLoadError]   = useState<string | null>(null);
+  const [isMeshReady, setIsMeshReady] = useState(false);
+  const [activeView,  setActiveView]  = useState<ViewPreset | null>('sw');
+  const [mainCamera,  setMainCamera]  = useState<THREE.Camera | null>(null);
+  const [isFromClientStorage, setIsFromClientStorage] = useState(false);
 
-  // Fetch glTF blob from backend whenever drawing changes
+  const selectedNode = useReviewStore((s) => s.selectedPart[drawing?.id ?? ''] ?? null);
+  const setSelectedPart = useReviewStore((s) => s.setSelectedPart);
+
+  // Fetch and parse glTF from backend whenever drawing changes
   useEffect(() => {
     if (!drawing?.id) return;
 
-    let objectUrl: string | null = null;
+    let isCancelled = false;
+    setIsMeshReady(false);
+    setLoadError(null);
+    setParsedGltf(null);
+    setIsFromClientStorage(false);
+    setActiveView('sw');
 
     const fetchModel = async () => {
-      setLoading(true);
-      setLoadError(null);
-      setModelUrl(null);
-
       try {
         const headers: Record<string, string> = {};
         if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`;
 
-        const res = await fetch(
-          `${backendUrl}/api/v1/drawings/${drawing.id}/gltf?t=${Date.now()}`,
-          { headers }
-        );
+        let arrayBuffer: ArrayBuffer | null = null;
 
-        if (res.ok) {
-          // Create blob with explicit MIME so GLTFLoader resolves it correctly
-          const arrayBuffer = await res.arrayBuffer();
-          const blob = new Blob([arrayBuffer], { type: 'model/gltf+json' });
-          objectUrl = URL.createObjectURL(blob);
-          setModelUrl(objectUrl);
-        } else {
-          setLoadError(`HTTP ${res.status}`);
+        try {
+          const res = await fetch(
+            `${backendUrl}/api/v1/drawings/${drawing.id}/gltf?t=${Date.now()}`,
+            { headers }
+          );
+
+          if (res.ok) {
+            arrayBuffer = await res.arrayBuffer();
+          }
+        } catch {
+          // Network fetch error - check client local storage fallback below
         }
+
+        // Fallback: Check Client PC local storage if backend/NAS could not serve it
+        if (!arrayBuffer) {
+          const { getClientFallbackGltf } = await import('../../services/clientStorageFallback');
+          const fallback = await getClientFallbackGltf(drawing.id);
+          if (fallback) {
+            arrayBuffer = fallback;
+            if (!isCancelled) setIsFromClientStorage(true);
+          }
+        }
+
+        if (!arrayBuffer) {
+          if (!isCancelled) setLoadError(`3D Model not found on NAS or Client local storage.`);
+          return;
+        }
+
+        if (isCancelled) return;
+
+        const loader = new GLTFLoader();
+        loader.parse(
+          arrayBuffer,
+          '',
+          (gltf) => {
+            if (!isCancelled) {
+              setParsedGltf(gltf);
+            }
+          },
+          (err) => {
+            if (!isCancelled) {
+              setLoadError(err instanceof Error ? err.message : String(err));
+              console.error('3D model parse error:', err);
+            }
+          }
+        );
       } catch (err) {
-        setLoadError(String(err));
-        console.error('3D model fetch error:', err);
-      } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoadError(String(err));
+          console.error('3D model fetch error:', err);
+        }
       }
     };
 
     fetchModel();
 
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      isCancelled = true;
     };
   }, [drawing?.id, backendUrl, apiToken]);
 
+  const parts: AssemblyPart[] = useMemo(() => {
+    if (drawing?.metadata?.parts && drawing.metadata.parts.length > 0) {
+      return drawing.metadata.parts.map((p: AssemblyPart) => ({
+        ...p,
+        name: (p.name || '').replace(/\uFFFD~/g, '×').replace(/\uFFFD/g, '×'),
+      }));
+    }
+    if (!parsedGltf?.scene?.children) return [];
+
+    return parsedGltf.scene.children.map((child, i) => {
+      let triangles = 0;
+      let surfaces = 0;
+      child.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (m.isMesh && m.geometry) {
+          const idx = m.geometry.getIndex();
+          triangles += (idx ? idx.count : m.geometry.attributes.position?.count ?? 0) / 3;
+          surfaces++;
+        }
+      });
+      const rawName = child.name || `Part ${i + 1}`;
+      const cleanName = rawName.replace(/\uFFFD~/g, '×').replace(/\uFFFD/g, '×').trim();
+      return {
+        index: i,
+        name: cleanName || `Part ${i + 1}`,
+        node: i,
+        surfaces: Math.max(1, surfaces),
+        triangles: Math.round(triangles),
+      };
+    });
+  }, [drawing?.metadata?.parts, parsedGltf]);
+  const hiddenNodes = useReviewStore((s) => s.hiddenParts[drawing?.id ?? ''] ?? EMPTY_HIDDEN);
+
   return (
-    <div style={{ position: 'relative', width, height, overflow: 'hidden' }}>
+    <div
+      onClick={(e) => {
+        // Deselect only if clicking the background of the outer wrapper itself (not canvas or children)
+        if (e.target === e.currentTarget) {
+          setSelectedPart(drawing?.id ?? '', null);
+        }
+      }}
+      style={{
+        position: 'relative',
+        width,
+        height,
+        overflow: 'hidden',
+        background: 'linear-gradient(180deg, #f1f5f9 0%, #cbd5e1 45%, #8290a4 100%)',
+      }}
+    >
+
+      {/* Assembly parts, and which of them are drawn. Rendered outside the Canvas: it is DOM,
+          and putting it inside would make it a three.js object. */}
+      {parts.length > 1 && <PartsPanel drawingId={drawing.id} parts={parts} />}
+
+      {/* Client Local Storage Offline Fallback Indicator Badge */}
+      {isFromClientStorage && (
+        <div
+          className="absolute bottom-2 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-amber-600/90 text-white shadow-md backdrop-blur-sm pointer-events-auto select-none"
+          title="3D model loaded from Client PC local storage because NAS was unreachable. It will automatically sync to \\KMTI-NAS once online."
+        >
+          <span className="inline-block w-2 h-2 rounded-full bg-amber-200 animate-pulse" />
+          <span>Client Local Storage (Pending NAS Sync)</span>
+        </div>
+      )}
+
+      {/* ── View Presets Toolbar: Orthographic & Isometric in separate containers (aligned with 2D toggle) ── */}
+      {isMeshReady && !loadError && (
+        <div className="absolute top-2 right-13 z-20 flex items-center gap-1.5 select-none">
+          {/* Orthographic Face views: Top, Front, Right, Left, Back, Bottom */}
+          <div className="flex items-center h-7 rounded border border-border-color bg-bg-card/90 backdrop-blur-sm shadow-sm p-0.5 gap-0.5">
+            {([
+              { id: 'top', label: 'Top View' },
+              { id: 'front', label: 'Front View' },
+              { id: 'right', label: 'Right View' },
+              { id: 'left', label: 'Left View' },
+              { id: 'back', label: 'Back View' },
+              { id: 'bottom', label: 'Bottom View' },
+            ] as const).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveView(id)}
+                className={`w-6 h-6 flex items-center justify-center rounded transition-all cursor-pointer ${
+                  activeView === id
+                    ? 'border border-black bg-transparent'
+                    : 'border border-transparent hover:bg-border-color/30'
+                }`}
+                title={label}
+                aria-label={label}
+              >
+                <ViewCubeIcon face={id} size={15} active={activeView === id} />
+              </button>
+            ))}
+          </div>
+
+          {/* Isometric views: SW, NW, NE, SE */}
+          <div className="flex items-center h-7 rounded border border-border-color bg-bg-card/90 backdrop-blur-sm shadow-sm p-0.5 gap-0.5">
+            {([
+              { id: 'sw', label: 'SW Isometric (Front-Left)' },
+              { id: 'nw', label: 'NW Isometric (Back-Left)' },
+              { id: 'ne', label: 'NE Isometric (Back-Right)' },
+              { id: 'se', label: 'SE Isometric (Front-Right)' },
+            ] as const).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveView(id)}
+                className={`w-6 h-6 flex items-center justify-center rounded transition-all cursor-pointer ${
+                  activeView === id
+                    ? 'border border-black bg-transparent'
+                    : 'border border-transparent hover:bg-border-color/30'
+                }`}
+                title={label}
+                aria-label={label}
+              >
+                <ViewCubeIcon face={id} size={15} active={activeView === id} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── 3-D canvas ─────────────────────────────── */}
-      {modelUrl && (
+      {parsedGltf && (
         <Canvas
-          camera={{ position: [0, 0, 10], fov: 45, near: 0.01, far: 100000 }}
           shadows
-          gl={{ antialias: true, alpha: true, logarithmicDepthBuffer: true }}
+          eventPrefix="client"
+          onPointerMissed={(e) => {
+            if (e.type === 'click') {
+              setSelectedPart(drawing?.id ?? '', null);
+            }
+          }}
+          gl={{
+            antialias: true,
+            alpha: true,
+            toneMapping: THREE.LinearToneMapping,
+          }}
           style={{ background: 'transparent' }}
         >
-          <ModelScene url={modelUrl} theme={theme} />
+          <ModelScene
+            gltf={parsedGltf}
+            theme={theme}
+            hiddenNodes={hiddenNodes}
+            selectedNode={selectedNode}
+            onSelectPart={(node) => setSelectedPart(drawing?.id ?? '', node)}
+            targetView={activeView}
+            width={width}
+            height={height}
+            onStartOrbit={() => setActiveView(null)}
+            onCameraReady={setMainCamera}
+            onSceneReady={() => setIsMeshReady(true)}
+            onError={(err) => setLoadError(err.message)}
+          />
         </Canvas>
       )}
 
+      {/* ── CAD 3D Orientation Tripod (X: Red, Y: Blue, Z: Yellow) ── */}
+      {isMeshReady && !loadError && mainCamera && (
+        <CadTripodOverlay mainCamera={mainCamera} />
+      )}
+
       {/* ── Loading / error placeholders ───────────── */}
-      {!modelUrl && (
+      {loadError ? (
         <div style={{
-          width: '100%', height: '100%',
+          position: 'absolute',
+          inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexDirection: 'column', gap: 12,
           color: theme === 'hc-light' ? '#333' : '#aaa',
+          zIndex: 10,
         }}>
-          {loadError ? (
-            <>
-              <Box size={28} color="#ff6b6b" />
-              <span style={{ fontSize: 12 }}>3D model unavailable — {loadError}</span>
-            </>
-          ) : (
-            <span style={{ fontSize: 13, opacity: 0.6 }}>
-              {loading ? 'Loading 3D geometry…' : 'Ingesting and parsing 3D B-Rep geometry…'}
-            </span>
-          )}
+          <Box size={28} color="#ff6b6b" />
+          <span style={{ fontSize: 12 }}>3D model unavailable — {loadError}</span>
+        </div>
+      ) : (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 12,
+          color: theme === 'hc-light' ? '#333' : '#aaa',
+          pointerEvents: 'none',
+          opacity: isMeshReady ? 0 : 1,
+          transition: 'opacity 0.25s ease-out',
+          zIndex: 10,
+        }}>
+          <span style={{ fontSize: 13, opacity: 0.6 }}>
+            Loading 3D geometry…
+          </span>
         </div>
       )}
 
-      {/* ── Telemetry HUD ──────────────────────────── */}
-      <div style={{
-        position: 'absolute', top: 16, left: 16,
-        padding: '12px 16px',
-        backgroundColor: theme === 'hc-light' ? 'rgba(226,230,237,0.95)' : 'rgba(9,9,11,0.95)',
-        border: `1px solid ${theme === 'hc-light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
-        borderRadius: 8,
-        backdropFilter: 'blur(8px)',
-        pointerEvents: 'none',
-        display: 'flex', flexDirection: 'column', gap: 6,
-        zIndex: 10,
-        minWidth: 180,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <Box size={16} color="#00e5ff" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#00e5ff', letterSpacing: '0.05em' }}>
-            3D TELEMETRY MONITOR
-          </span>
-        </div>
-        <HudRow label="Model Name" value={drawing?.file_name || '—'} />
-        <HudRow label="Format"     value={drawing?.format?.toUpperCase() || '—'} color="#a855f7" />
-        {drawing?.metadata?.triangle_count > 0 && (
-          <HudRow label="Triangles"  value={drawing.metadata.triangle_count.toLocaleString()} color="#10b981" />
-        )}
-        {drawing?.metadata?.face_count > 0 && (
-          <HudRow label="B-Rep Faces" value={drawing.metadata.face_count.toLocaleString()} color="#f59e0b" />
-        )}
-        {drawing?.metadata?.vertex_count > 0 && (
-          <HudRow label="Vertices"   value={drawing.metadata.vertex_count.toLocaleString()} color="#60a5fa" />
-        )}
-        {drawing?.metadata?.color_groups > 1 && (
-          <HudRow label="Colour Groups" value={`${drawing.metadata.color_groups} zones`} color="#e879f9" />
-        )}
-        <div style={{ marginTop: 4, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-          <span style={{ fontSize: 10, opacity: 0.4, fontFamily: 'monospace' }}>
-            Drag to orbit · Scroll to zoom
-          </span>
-        </div>
-      </div>
     </div>
   );
 };
 
-const HudRow = ({
-  label, value, color,
-}: {
-  label: string; value: string; color?: string;
-}) => {
-  const theme = useThemeStore((s) => s.theme);
-  return (
-    <div style={{ fontSize: 12, color: theme === 'hc-light' ? '#333' : '#ddd' }}>
-      <span style={{ opacity: 0.55 }}>{label} : </span>
-      <span style={{ fontWeight: 600, color: color ?? 'inherit' }}>{value}</span>
-    </div>
-  );
-};

@@ -202,6 +202,13 @@ export interface ComparisonSlice {
 export interface UploadSlice {
   oldUploadState: UploadState;
   newUploadState: UploadState;
+  /**
+   * The drawing whose extraction failed, per side. Set only when the row exists and the
+   * failure happened after it — which is when `/reextract` is the recovery rather than a
+   * re-upload. Null for a failure before the row was created, where there is nothing to retry.
+   */
+  oldFailedDrawingId: string | null;
+  newFailedDrawingId: string | null;
   oldUploadProgress: number;
   newUploadProgress: number;
   oldFileName: string | null;
@@ -217,6 +224,10 @@ export interface UploadSlice {
 
   setOldUploadState: (state: UploadState) => void;
   setNewUploadState: (state: UploadState) => void;
+  /** Record a failed extraction with the drawing to retry and the reason to show. */
+  setUploadFailure: (side: "old" | "new", drawingId: string | null, message: string | null) => void;
+  /** Re-run extraction on the failed drawing. False when there is nothing to retry. */
+  retryExtraction: (side: "old" | "new") => Promise<boolean>;
   uploadDrawingFile: (file: File, side: "old" | "new") => Promise<boolean>;
   /**
    * Installs a finished drawing into its slot, or rejects it as not belonging to this room.

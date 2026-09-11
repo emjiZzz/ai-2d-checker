@@ -223,19 +223,29 @@ async def health_check(response: Response) -> dict:
     db_health = await check_database_health()
     storage_diag = get_storage_diagnostics()
     
-    is_healthy = bool(db_health["connected"] and storage_diag["write_permission"])
-    if not is_healthy:
+    # DB connectivity is required for basic server health.
+    # For local storage, write_permission is required. For NAS, if NAS is offline,
+    # the server enters 'degraded' state and signals CAD fallback to Client PC local storage.
+    is_db_ok = bool(db_health["connected"])
+    is_storage_ok = bool(storage_diag["write_permission"])
+    
+    # Only return 503 if DB is completely down, or if non-NAS local storage is broken
+    if not is_db_ok or (not storage_diag["is_nas"] and not is_storage_ok):
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
     return {
-        "status": "healthy" if is_healthy else "degraded",
+        "status": "healthy" if (is_db_ok and is_storage_ok) else ("degraded" if is_db_ok else "unhealthy"),
         "version": settings.VERSION,
         "name": settings.PROJECT_NAME,
         "timestamp": time.time(),
         "services": {
             "mongodb": db_health["connected"],
-            "storage_root": storage_diag["write_permission"],
+            "storage_root": is_storage_ok,
+            "nas_storage": storage_diag["reachable"] if storage_diag["is_nas"] else None,
+            "fallback_target": "client_pc",
+            "storage_path": storage_diag["root_path"],
             "gemini_api": settings.GEMINI_API_KEY is not None and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE",
             "openai_api": settings.OPENAI_API_KEY is not None and settings.OPENAI_API_KEY != "YOUR_OPENAI_API_KEY_HERE"
         }
     }
+

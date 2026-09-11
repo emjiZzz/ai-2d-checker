@@ -170,9 +170,88 @@ describe('recordStamp', () => {
     expect(createMarking).not.toHaveBeenCalled();
     expect(useWorkspaceStore.getState().markingError).toMatch(/No check session/);
   });
+
+  it('optimistically appends marking with temporary ID immediately before server resolves', async () => {
+    let resolveServerCall: (val: any) => void;
+    const serverPromise = new Promise((resolve) => {
+      resolveServerCall = resolve;
+    });
+    vi.mocked(createMarking).mockReturnValue(serverPromise as any);
+
+    // Trigger recordStamp (do NOT await yet)
+    const recordPromise = useWorkspaceStore
+      .getState()
+      .recordStamp({ tool: 'matched', ref: picked('ref', '1F7') as any, rev: picked('rev', '1F7') as any }, input);
+
+    // Check synchronous state immediately (0ms UI latency)
+    const markingsBeforeResolve = useWorkspaceStore.getState().markings;
+    expect(markingsBeforeResolve).toHaveLength(1);
+    expect(markingsBeforeResolve[0].id).toMatch(/^optimistic_/);
+    expect(markingsBeforeResolve[0].status).toBe('MATCHED');
+    expect(markingsBeforeResolve[0].side).toBe('both');
+
+    // Resolve the server call
+    resolveServerCall!(marking('server-m1'));
+    await recordPromise;
+
+    // After server confirms, optimistic temporary ID is replaced with the server's record
+    const markingsAfterResolve = useWorkspaceStore.getState().markings;
+    expect(markingsAfterResolve).toHaveLength(1);
+    expect(markingsAfterResolve[0].id).toBe('server-m1');
+  });
+
+  it('cleans up and calls retractMarking on server if an in-flight optimistic marking was retracted', async () => {
+    let resolveServerCall: (val: any) => void;
+    const serverPromise = new Promise((resolve) => {
+      resolveServerCall = resolve;
+    });
+    vi.mocked(createMarking).mockReturnValue(serverPromise as any);
+    vi.mocked(retractMarking).mockResolvedValue(undefined as any);
+
+    // 1. Trigger recordStamp
+    const recordPromise = useWorkspaceStore
+      .getState()
+      .recordStamp({ tool: 'matched', ref: picked('ref', '1F7') as any, rev: picked('rev', '1F7') as any }, input);
+
+    const tempId = useWorkspaceStore.getState().markings[0].id;
+    expect(tempId).toMatch(/^optimistic_/);
+
+    // 2. User retracts while creation is still in flight
+    await useWorkspaceStore.getState().retractManualMarking(tempId);
+    expect(useWorkspaceStore.getState().markings).toHaveLength(0);
+
+    // 3. Server finally returns saved marking
+    resolveServerCall!(marking('server-orphaned-m1'));
+    await recordPromise;
+
+    // Markings should still be empty (not resurrecting the deleted item)
+    expect(useWorkspaceStore.getState().markings).toHaveLength(0);
+    // And retractMarking was called with the server-generated ID to prevent orphan in database
+    expect(retractMarking).toHaveBeenCalledWith('server-orphaned-m1');
+  });
 });
 
 describe('retractManualMarking', () => {
+  it('optimistically drops the row immediately before server confirms', async () => {
+    let resolveRetract: (val: any) => void;
+    const retractPromise = new Promise((resolve) => {
+      resolveRetract = resolve;
+    });
+    vi.mocked(retractMarking).mockReturnValue(retractPromise as any);
+    useWorkspaceStore.setState({ markings: [marking('m1'), marking('m2')] });
+
+    // Trigger retract without awaiting
+    const p = useWorkspaceStore.getState().retractManualMarking('m1');
+
+    // UI has dropped it immediately (0ms delay)
+    expect(useWorkspaceStore.getState().markings.map((m) => m.id)).toEqual(['m2']);
+
+    resolveRetract!(undefined);
+    const ok = await p;
+    expect(ok).toBe(true);
+    expect(useWorkspaceStore.getState().markings.map((m) => m.id)).toEqual(['m2']);
+  });
+
   it('drops the row once the server has confirmed it', async () => {
     vi.mocked(retractMarking).mockResolvedValue(undefined as any);
     useWorkspaceStore.setState({ markings: [marking('m1'), marking('m2')] });

@@ -6,7 +6,7 @@ status: proposed
 date: 2026-09-07
 supersedes: none
 amends: none
-related: [ADR-007 Re-scoping the Maturity Ladder, ADR-010 Grounded LLM Summarization of Comparison Results, ADR-012 Indexing Human Judgement as Retrieval Collections, 00 - AI Maturity Status]
+related: [ADR-007 Re-scoping the Maturity Ladder, ADR-010 Grounded LLM Summarization of Comparison Results, ADR-012 Indexing Human Judgement as Retrieval Collections, 00 - AI Maturity Status, ADR-015 Ground Truth First]
 ---
 
 # ADR-014 — Consult the ground truth after the comparison, and never grade yourself on what you studied

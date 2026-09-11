@@ -51,6 +51,20 @@ export const saveWorkspaceState = async (roomId: string): Promise<void> => {
   const partial = {
     oldDrawing: state.oldDrawing,
     newDrawing: state.newDrawing,
+    oldUploadState: state.oldUploadState,
+    newUploadState: state.newUploadState,
+    oldUploadProgress: state.oldUploadProgress,
+    newUploadProgress: state.newUploadProgress,
+    oldFileName: state.oldFileName,
+    newFileName: state.newFileName,
+    oldFileSize: state.oldFileSize,
+    newFileSize: state.newFileSize,
+    activeOldJobId: state.activeOldJobId,
+    activeNewJobId: state.activeNewJobId,
+    oldFailedDrawingId: state.oldFailedDrawingId,
+    newFailedDrawingId: state.newFailedDrawingId,
+    oldError: state.oldError,
+    newError: state.newError,
     violations: state.violations,
     complianceScore: state.complianceScore,
     panX: state.panX,
@@ -82,11 +96,11 @@ export const loadWorkspaceState = async (roomId: string): Promise<void> => {
       });
       
       const state = useWorkspaceStore.getState();
-      if (state.oldDrawing) {
+      if (state.oldDrawing && state.oldDrawing.status !== "processing" && state.oldDrawing.status !== "queued") {
         state.fetchLayers(state.oldDrawing.id, "old");
         state.fetchAnnotations(state.oldDrawing.id);
       }
-      if (state.newDrawing) {
+      if (state.newDrawing && state.newDrawing.status !== "processing" && state.newDrawing.status !== "queued") {
         state.fetchLayers(state.newDrawing.id, "new");
         state.fetchAnnotations(state.newDrawing.id);
       }

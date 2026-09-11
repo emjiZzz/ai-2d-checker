@@ -24,6 +24,30 @@ export const DEFAULT_BACKEND_URL =
     : (typeof import.meta !== "undefined" && import.meta.env?.DEV ? LOCAL_DEV_URL : PROD_CLOUD_URL);
 
 /**
+ * Where to go when the primary backend is unreachable. Empty disables failover entirely.
+ *
+ * Must also be permitted by `connect-src`, for the reason above: a fallback the CSP blocks fails
+ * before the request leaves the app, so failover would look like the primary simply staying down.
+ * Pinned by `connectionStore.csp.test.ts`.
+ *
+ * Both backends share one Atlas, so rooms, sessions, markings and ENTITIES are the same on
+ * either: a drawing ingested on the fallback renders and marks from the primary, because the
+ * canvas draws from `extracted_entities` and not from the file. Uploads are therefore allowed
+ * here -- owner's call, 2026-09-07, after an earlier block was found to be over-cautious.
+ *
+ * What does not cross is `storage/uploads`, which is per server. So the source DXF of a drawing
+ * ingested on the fallback lives only there: `/reextract` from the primary answers 422, and any
+ * file-dependent export is unavailable until that file is on the machine serving it.
+ */
+export const FALLBACK_BACKEND_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_FALLBACK_BACKEND_URL)
+    ? (import.meta.env.VITE_FALLBACK_BACKEND_URL as string)
+    : "";
+
+/** How many polls to wait before re-probing the primary while running on the fallback. */
+export const PRIMARY_RECHECK_EVERY_N_POLLS = 5;
+
+/**
  * The bearer token for a remote backend, injected at build time and never written down here.
  *
  * This was a string literal, which meant the credential for the live cloud backend was in the
@@ -85,6 +109,12 @@ interface ConnectionState {
   failedAttempts: number;
   /** One bundled-backend start attempt per app session; see the offline branch of checkHealth. */
   backendStartAttempted: boolean;
+  /** The backend this client prefers: the baked default, or whatever the user last chose. */
+  primaryBackendUrl: string;
+  /** True while serving from `FALLBACK_BACKEND_URL` because the primary was unreachable. */
+  usingFallback: boolean;
+  /** Polls since the primary was last probed, so a failback attempt is not made every tick. */
+  pollsSincePrimaryProbe: number;
 
   // Actions
   setBackendUrl: (url: string) => void;
@@ -95,6 +125,10 @@ interface ConnectionState {
   fetchApiToken: () => Promise<string | null>;
   /** Discard the cached token and read it again. See the 401 path in `fetchUtils`. */
   refreshApiToken: () => Promise<string | null>;
+  /** Move to the fallback backend. False when none is configured or it is unhealthy too. */
+  failOverToFallback: () => Promise<boolean>;
+  /** Return to the primary once it answers again. False while it is still down. */
+  restorePrimary: () => Promise<boolean>;
 }
 
 /**
@@ -104,6 +138,30 @@ interface ConnectionState {
  * and putting a promise in a zustand store makes every subscriber re-render on a value none of
  * them can use.
  */
+/**
+ * Does this backend answer `/health` with a healthy payload?
+ *
+ * Deliberately separate from `checkHealth`: that one owns the store's status, the grace period
+ * and the token error, and a probe must not touch any of it. Failover asks about a backend the
+ * app is NOT currently on, so a probe that mutated status would report the other machine's
+ * health as this connection's.
+ */
+async function probeBackend(url: string, token: string | null, timeoutMs: number): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const response = await fetch(`${url}/health`, { signal: controller.signal, headers });
+    clearTimeout(timeoutId);
+    if (!response.ok) return false;
+    const data = await response.json();
+    return !!data && (data.status === "healthy" || data.status === "degraded");
+  } catch {
+    return false;
+  }
+}
+
 let inFlightTokenRead: Promise<string | null> | null = null;
 
 export const useConnectionStore = create<ConnectionState>((set, get) => {
@@ -126,11 +184,23 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
     remoteApiToken: initialRemoteToken,
     failedAttempts: 0,
   backendStartAttempted: false,
+  primaryBackendUrl: initialBackendUrl,
+  usingFallback: false,
+  pollsSincePrimaryProbe: 0,
   setBackendUrl: (url: string) => {
     // Sanitize trailing slash
     const sanitizedUrl = url.endsWith("/") ? url.slice(0, -1) : url;
     localStorage.setItem(BACKEND_URL_STORAGE_KEY, sanitizedUrl);
-    set({ backendUrl: sanitizedUrl, status: "connecting", error: null, failedAttempts: 0 });
+    // A deliberate choice becomes the primary. Otherwise the next failback would drag the app
+    // back to the baked default and silently undo what the engineer just typed.
+    set({
+      backendUrl: sanitizedUrl,
+      primaryBackendUrl: sanitizedUrl,
+      usingFallback: false,
+      status: "connecting",
+      error: null,
+      failedAttempts: 0,
+    });
     get().checkHealth();
   },
   setRemoteApiToken: (token: string) => {
@@ -243,6 +313,50 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
     }
   },
 
+  failOverToFallback: async () => {
+    const { usingFallback, primaryBackendUrl, apiToken, remoteApiToken } = get();
+    if (usingFallback || !FALLBACK_BACKEND_URL) return false;
+    if (FALLBACK_BACKEND_URL === primaryBackendUrl) return false;
+
+    const token = remoteApiToken || apiToken;
+    if (!(await probeBackend(FALLBACK_BACKEND_URL, token, 45000))) return false;
+
+    // Not written to localStorage: a fallback is a temporary answer to the primary being down,
+    // and persisting it would make a restart come up on the wrong backend long after the primary
+    // recovered -- with uploads disabled and no obvious reason why.
+    set({
+      backendUrl: FALLBACK_BACKEND_URL,
+      usingFallback: true,
+      apiToken: token,
+      status: "online",
+      error: null,
+      failedAttempts: 0,
+      pollsSincePrimaryProbe: 0,
+      lastChecked: Date.now(),
+    });
+    return true;
+  },
+
+  restorePrimary: async () => {
+    const { usingFallback, primaryBackendUrl, apiToken, remoteApiToken } = get();
+    if (!usingFallback) return false;
+
+    const isLoopback = isLoopbackBackend(primaryBackendUrl);
+    const token = isLoopback ? apiToken : (remoteApiToken || apiToken);
+    if (!(await probeBackend(primaryBackendUrl, token, isLoopback ? 8000 : 45000))) return false;
+
+    set({
+      backendUrl: primaryBackendUrl,
+      usingFallback: false,
+      status: "online",
+      error: null,
+      failedAttempts: 0,
+      pollsSincePrimaryProbe: 0,
+      lastChecked: Date.now(),
+    });
+    return true;
+  },
+
   checkHealth: async () => {
     const { backendUrl, status, apiToken, failedAttempts } = get();
     const isLoopback = isLoopbackBackend(backendUrl);
@@ -321,6 +435,19 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
           lastChecked: Date.now(),
           failedAttempts: 0,
         });
+
+        // Healthy on the fallback is not a resting state: uploads are disabled there, so the app
+        // has to keep trying to get home. Every Nth poll rather than every one, because the
+        // primary being down is the normal case here and probing it costs a timeout each time.
+        if (get().usingFallback) {
+          const polls = get().pollsSincePrimaryProbe + 1;
+          if (polls >= PRIMARY_RECHECK_EVERY_N_POLLS) {
+            set({ pollsSincePrimaryProbe: 0 });
+            await get().restorePrimary();
+          } else {
+            set({ pollsSincePrimaryProbe: polls });
+          }
+        }
         return true;
       } else {
         const nextFailed = failedAttempts + 1;
@@ -357,6 +484,20 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
         lastChecked: Date.now(),
         failedAttempts: nextFailed,
       });
+
+      // Confirmed down. If a fallback is configured and answers, move there rather than leaving
+      // the engineer on a dead connection -- both backends share one Atlas, so every room,
+      // session and marking is the same on either. Uploads are refused while there; see
+      // FALLBACK_BACKEND_URL for why that is not a limitation but the point.
+      // Never from a loopback primary. There the backend is this machine's own sidecar, holding
+      // this machine's storage, and the recovery is to start it -- see the start_backend block
+      // below, which this would otherwise pre-empt by moving to a different data location
+      // entirely. The mirror of the rule that a remote failure must never spawn a local server.
+      if (!isLoopback && !get().usingFallback && FALLBACK_BACKEND_URL) {
+        if (await get().failOverToFallback()) {
+          return true;
+        }
+      }
 
       /*
         Confirmed offline -- try to start the bundled local backend ONLY if loopback.

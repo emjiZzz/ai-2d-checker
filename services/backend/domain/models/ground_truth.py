@@ -141,6 +141,11 @@ class ManualCheckSession(Document):
     room_id: str = Field(..., description="Room the pair was opened from")
     ref_drawing_id: str = Field(..., description="Reference drawing")
     rev_drawing_id: str = Field(..., description="Revision drawing")
+
+    #: File names captured at open, so a marking can carry its sheet without a per-marking read.
+    #: See the marking's own copies for why the name is stored rather than resolved.
+    ref_sheet: str = Field("", description="Reference drawing file name when the pair was opened")
+    rev_sheet: str = Field("", description="Revision drawing file name when the pair was opened")
     annotator: str = Field(..., description="Who did the checking")
     status: SessionStatus = Field("in_progress")
     notes: str = Field(
@@ -237,6 +242,14 @@ class GroundTruthMarking(Document):
     #: `tests/test_ground_truth_hierarchy.py`.
     room_id: str = Field("", description="Room the owning session was opened from")
 
+    #: The sheet this marking is about, denormalised from the session at write time.
+    #: Deleting a room hard-deletes both `DrawingDocument` rows while markings survive, so a name
+    #: resolved at index time becomes "" and the record silently loses its sheet from both its
+    #: text and its citation -- which then lets unrelated markings collapse as duplicates.
+    #: See [[Gotcha - A Deleted Room Took Its Markings' Provenance]].
+    ref_sheet: str = Field("", description="Reference drawing file name when marked")
+    rev_sheet: str = Field("", description="Revision drawing file name when marked")
+
     #: Which side the engineer clicked. A CHANGED carries both addresses; an ADDED carries only
     #: `rev_address`; a REMOVED only `ref_address` -- the reference is where a removal exists.
     side: Literal["ref", "rev", "both"] = Field(...)
@@ -294,6 +307,16 @@ class GroundTruthMarking(Document):
     #: human retraction is a judgement a consumer may want to weigh, a supersession is
     #: bookkeeping. Names the row that replaced it, so the history is walkable.
     superseded_by: str | None = Field(None, description="Marking that replaced this one")
+
+    def addressed_sheet(self) -> "tuple[EntityAddress | None, str]":
+        """The address a record indexes, paired with the sheet it sits on.
+
+        Returned together so the two cannot drift: a retrieval record picks `ref_address` when
+        there is one, and reading the sheet from the other side would mislabel the hit.
+        """
+        if self.ref_address is not None:
+            return self.ref_address, (self.ref_sheet or "").strip()
+        return self.rev_address, (self.rev_sheet or "").strip()
 
     def targets_same_entity_as(self, other: "GroundTruthMarking") -> bool:
         """Whether two markings are about the same thing, so the later one replaces the earlier.

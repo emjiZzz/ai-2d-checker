@@ -21,10 +21,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   isOpen,
   onClose,
   onConfirm,
-  title = "CONFIRM ACTION",
+  title = "Confirm Action",
   message,
-  confirmText = "CONFIRM",
-  cancelText = "CANCEL",
+  confirmText = "Confirm",
+  cancelText = "Cancel",
   variant = "danger",
   isLoading = false,
 }) => {
@@ -50,28 +50,22 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   if (!isOpen) return null;
 
-  const iconVariants = {
+  const variantConfig = {
     danger: {
-      icon: <AlertTriangle size={18} className="text-rose-500" />,
-      tag: "CRITICAL ACTION",
-      tagClass: "text-rose-500 border-rose-500/30 bg-rose-500/10",
-      btnClass: "bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20",
+      icon: <AlertTriangle size={17} className="text-red-500 shrink-0" />,
+      btnClass: "bg-red-600 hover:bg-red-700 text-white",
     },
     warning: {
-      icon: <AlertCircle size={18} className="text-amber-500" />,
-      tag: "WARNING",
-      tagClass: "text-amber-500 border-amber-500/30 bg-amber-500/10",
-      btnClass: "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20",
+      icon: <AlertCircle size={17} className="text-amber-500 shrink-0" />,
+      btnClass: "bg-amber-600 hover:bg-amber-700 text-white",
     },
     info: {
-      icon: <Info size={18} className="text-accent-cyan" />,
-      tag: "NOTICE",
-      tagClass: "text-accent-cyan border-accent-cyan/30 bg-accent-cyan/10",
-      btnClass: "bg-accent-cyan hover:bg-accent-cyan/80 text-zinc-950 shadow-accent-cyan/20",
+      icon: <Info size={17} className="text-accent-cyan shrink-0" />,
+      btnClass: "bg-accent-cyan hover:bg-accent-cyan/80 text-zinc-950",
     },
   };
 
-  const currentVariant = iconVariants[variant] || iconVariants.danger;
+  const current = variantConfig[variant] || variantConfig.danger;
 
   return createPortal(
     <div
@@ -82,52 +76,46 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       role="dialog"
       aria-modal="true"
     >
-      {/* Compact Industrial CAD Dialog Box */}
-      <div className="bg-bg-card border-2 border-border-color shadow-2xl w-full max-w-md text-text-primary flex flex-col rounded-none animate-in zoom-in-95 duration-100 overflow-hidden">
+      {/* Clean Desktop Confirmation Dialog */}
+      <div className="bg-bg-card border border-border-color shadow-2xl w-full max-w-md text-text-primary flex flex-col rounded-none animate-in zoom-in-95 duration-100 overflow-hidden">
         {/* Title Bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-bg-sidebar border-b border-border-color">
-          <div className="flex items-center gap-2">
-            {currentVariant.icon}
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-text-primary">
+        <div className="flex items-center justify-between px-4 py-3 bg-bg-sidebar border-b border-border-color">
+          <div className="flex items-center gap-2.5">
+            {current.icon}
+            <h3 className="text-sm font-semibold text-text-primary tracking-tight">
               {title}
-            </span>
+            </h3>
           </div>
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="text-text-muted hover:text-rose-500 p-1 transition-colors cursor-pointer rounded-none disabled:opacity-50"
+            className="text-text-muted hover:text-text-primary p-1 transition-colors cursor-pointer rounded-none disabled:opacity-50"
             title="Cancel (Esc)"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
 
         {/* Dialog Body */}
-        <div className="p-5 flex flex-col gap-3.5">
-          <div className="inline-flex self-start items-center px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider border rounded-none">
-            <span className={currentVariant.tagClass}>{currentVariant.tag}</span>
-          </div>
-
-          <div className="text-xs text-text-secondary leading-relaxed font-sans">
-            {typeof message === "string" ? <p>{message}</p> : message}
-          </div>
+        <div className="p-5 flex flex-col gap-2 text-xs text-text-secondary leading-relaxed font-sans">
+          {typeof message === "string" ? <p>{message}</p> : message}
         </div>
 
         {/* Action Controls */}
-        <div className="px-4 py-3 bg-bg-sidebar/50 border-t border-border-color flex items-center justify-end gap-2.5">
+        <div className="px-4 py-3 bg-bg-sidebar/50 border-t border-border-color flex items-center justify-end gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size="default"
             onClick={onClose}
             disabled={isLoading}
-            className="rounded-none font-mono font-bold text-xs uppercase px-4 h-8 cursor-pointer"
+            className="rounded-none text-xs px-3.5 h-8 cursor-pointer font-sans"
           >
             {cancelText}
           </Button>
           <button
             onClick={onConfirm}
             disabled={isLoading}
-            className={`px-5 h-8 rounded-none font-mono font-bold text-xs uppercase transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${currentVariant.btnClass}`}
+            className={`px-4 h-8 rounded-none text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${current.btnClass}`}
           >
             {isLoading && <Loader2 size={13} className="animate-spin" />}
             <span>{confirmText}</span>

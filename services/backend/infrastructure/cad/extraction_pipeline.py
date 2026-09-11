@@ -12,9 +12,10 @@ from ...domain.models.extraction_job import ExtractionJob
 from ...infrastructure.storage.path_resolver import get_storage_root
 from ...logger import logger
 from .dxf_parser import DXFParser
+from .icd_converter import ICDConverter, count_drawing_entities
 from .oda_converter import ODAConverter
 from .pdf_parser import PDFParser
-from .three_d_pipeline import ThreeDPipeline
+from .three_d_pipeline import ThreeDConversionError, ThreeDPipeline
 from ..storage.entity_cache import clear_for_drawing as clear_entity_cache
 
 
@@ -25,6 +26,7 @@ class ExtractionPipeline:
     """
     def __init__(self):
         self.converter = ODAConverter()
+        self.icd_converter = ICDConverter()
         self.parser = DXFParser()
 
     async def run(self, drawing_id: str, job_id: str) -> None:
@@ -73,7 +75,7 @@ class ExtractionPipeline:
 
         try:
             # 2. Format conversion/handling
-            if drawing.format.lower() in ("step", "stp", "iges", "igs", "icd", "sldprt", "sldasm"):
+            if drawing.format.lower() in ("step", "stp", "iges", "igs", "sldprt", "sldasm"):
                 logger.info(f"Drawing format is 3D model ({drawing.format}). Initializing 3D pipeline for: {input_abs_path}")
                 parser_start = time.time()
                 metadata, mesh_content = await asyncio.to_thread(ThreeDPipeline.parse_and_convert, input_abs_path)
@@ -94,6 +96,87 @@ class ExtractionPipeline:
                     "triangles": metadata.get("triangle_count", 0),
                     "mesh": 1
                 }
+            elif drawing.format.lower() == "icd":
+                # An .icd carries both a 3D model and 2D drawing content, and either half may
+                # be absent. 2D is tried first because it is what the comparison engine reads;
+                # a file with no 2D drawing falls through to the 3D pipeline rather than being
+                # rejected. Measured on a production sample: 15 of 27 files have no 2D drawing,
+                # and one of those carries a 31 MB solid model.
+                logger.info(f"Drawing format is iCAD SX. Initializing TR2 conversion for: {input_abs_path}")
+                conv_start = time.time()
+
+                temp_dxf_dir = storage_root / "temp"
+                dxf_file_path = await self.icd_converter.convert_icd_to_dxf(
+                    input_abs_path, temp_dxf_dir
+                )
+                is_temp_dxf = True
+
+                conversion_duration = time.time() - conv_start
+                logger.info(f"iCAD conversion to DXF complete. Duration: {conversion_duration:.4f}s")
+
+                # The translator reports success for an .icd whose 2D drawing was never
+                # created, writing a valid DXF holding nothing. Its exit code proves nothing,
+                # so the output is counted.
+                entity_count = await asyncio.to_thread(count_drawing_entities, dxf_file_path)
+
+                if entity_count:
+                    parser_start = time.time()
+                    entities, layers, counts, metadata = await asyncio.to_thread(
+                        self.parser.parse_file, dxf_file_path
+                    )
+                    parsing_duration = time.time() - parser_start
+
+                    # Both halves, so the workspace can switch between them without a second
+                    # upload. Done here rather than on demand because gmsh is not safe to run
+                    # from a request thread -- doing so wedged the backend, spinning without
+                    # answering `/health`, which is the failure mode
+                    # `06 - .../Gotcha - A Dead Atlas Socket Wedged Every Request.md` describes.
+                    # This queue has a single serial consumer, which is where it belongs.
+                    #
+                    # Best-effort: an .icd holding only a drawing has no model, and that is a
+                    # normal file, not a failed one. Cost is bounded -- 5.7s to export and 0.7s
+                    # to tessellate on a 196 KB sheet -- and it is paid on the background job,
+                    # not on the upload request.
+                    mesh_faces = await self._try_extract_icd_mesh(
+                        input_abs_path, drawing_id, storage_root, drawing.file_name
+                    )
+                    if mesh_faces is not None:
+                        counts["mesh"] = 1
+                        counts["faces"] = mesh_faces
+                else:
+                    logger.info(
+                        f"No 2D content in {drawing.file_name}; extracting its 3D model instead."
+                    )
+                    # The empty DXF is discarded here rather than at the end: nulling the path
+                    # is also what tells the background raster below to skip this drawing, and
+                    # a raster of an empty sheet is what would otherwise be produced.
+                    try:
+                        dxf_file_path.unlink()
+                    except Exception:
+                        pass
+                    dxf_file_path = None
+                    is_temp_dxf = False
+
+                    parser_start = time.time()
+                    metadata, mesh_content = await asyncio.to_thread(
+                        ThreeDPipeline.parse_and_convert, input_abs_path
+                    )
+                    parsing_duration = time.time() - parser_start
+
+                    mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+                    if isinstance(mesh_content, bytes):
+                        mesh_path.write_bytes(mesh_content)
+                    else:
+                        mesh_path.write_text(mesh_content, encoding="utf-8")
+
+                    entities = []
+                    layers = []
+                    counts = {
+                        "vertices": metadata.get("vertex_count", 0),
+                        "faces": metadata["face_count"],
+                        "triangles": metadata.get("triangle_count", 0),
+                        "mesh": 1,
+                    }
             elif drawing.format.lower() == "dwg":
                 logger.info(f"Drawing format is DWG. Initializing safe ODA conversion for: {input_abs_path}")
                 conv_start = time.time()
@@ -151,14 +234,40 @@ class ExtractionPipeline:
             if drawing.format.lower() == "pdf":
                 from services.backend.infrastructure.rendering.pdf_background_renderer import render_pdf_background
                 await asyncio.to_thread(render_pdf_background, input_abs_path, drawing_id, metadata)
-            elif drawing.format.lower() in ("step", "stp", "iges", "igs", "icd"):
-                # No 2D background raster needed for 3D GLTF models
+            elif drawing.format.lower() in ("step", "stp", "iges", "igs"):
+                # No 2D background raster needed for 3D GLTF models. `.icd` is not in this
+                # list: it converts to DXF above and needs the raster like any other drawing,
+                # because `render_bounds` is what zone template fractions are stored against.
                 pass
             elif dxf_file_path and dxf_file_path.exists():
                 from services.backend.infrastructure.rendering.dxf_background_renderer import render_dxf_background
                 await asyncio.to_thread(
                     render_dxf_background, dxf_file_path, drawing_id, metadata, entities
                 )
+
+            # Check if a companion 3D STEP file exists (from client-side CAD conversion)
+            companion_stp = input_abs_path.with_suffix(".stp")
+            if not companion_stp.exists():
+                companion_stp = input_abs_path.with_suffix(".step")
+
+            if companion_stp.exists() and "mesh" not in counts:
+                try:
+                    logger.info(f"Extracting 3D mesh from companion STEP: {companion_stp}")
+                    mesh_metadata, mesh_content = await asyncio.to_thread(
+                        ThreeDPipeline.parse_and_convert, companion_stp
+                    )
+                    mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+                    if isinstance(mesh_content, bytes):
+                        mesh_path.write_bytes(mesh_content)
+                    else:
+                        mesh_path.write_text(mesh_content, encoding="utf-8")
+                    counts["mesh"] = 1
+                    counts["faces"] = mesh_metadata.get("face_count", 0)
+                    if "parts" in mesh_metadata:
+                        metadata["parts"] = mesh_metadata["parts"]
+                    logger.info(f"Companion STEP mesh extraction successful for drawing {drawing_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract companion STEP mesh for drawing {drawing_id}: {e}")
 
             # 4. Persist Extracted Geometry Records into MongoDB
             # Save layers as well (as an entity type)
@@ -307,12 +416,14 @@ class ExtractionPipeline:
             drawing.updated_at = datetime.now(UTC)
             await drawing.save()
 
-            # --- PHASE 8: Async 6-View AI Summarization Enrichment ---
-            try:
-                from .summarization_queue import summarization_queue
-                await summarization_queue.enqueue(str(drawing.id))
-            except Exception as queue_err:
-                logger.error(f"Failed to enqueue summarization task for drawing {drawing.id}: {queue_err}")
+            # --- PHASE 8: Async 6-View AI Summarization Enrichment (Disabled) ---
+            # Disabled to avoid consuming external API tokens during standard ingestion.
+            # Local CAD geometry extraction, rendering, and indexing are completely self-sufficient.
+            # try:
+            #     from .summarization_queue import summarization_queue
+            #     await summarization_queue.enqueue(str(drawing.id))
+            # except Exception as queue_err:
+            #     logger.error(f"Failed to enqueue summarization task for drawing {drawing.id}: {queue_err}")
 
             logger.info(
                 f"Successfully completed CAD drawing ingestion pipeline for {drawing.file_name} "
@@ -331,6 +442,34 @@ class ExtractionPipeline:
                     pass
 
             await self._handle_failure(job, drawing, f"Pipeline Error: {str(pipeline_err)}", error_trace)
+
+    async def _try_extract_icd_mesh(
+        self, source: Path, drawing_id: str, storage_root: Path, file_name: str
+    ) -> int | None:
+        """Write this .icd's 3D model as glTF, or return None if it has none.
+
+        Never raises. The 2D drawing is already extracted by the time this runs, and an .icd
+        holding no model is an ordinary file -- failing the job over it would reject a drawing
+        that is entirely fine.
+        """
+        try:
+            metadata, mesh_content = await asyncio.to_thread(
+                ThreeDPipeline.parse_and_convert, source
+            )
+        except ThreeDConversionError as exc:
+            logger.info(f"No 3D model in {file_name}: {exc}")
+            return None
+        except Exception:
+            logger.exception(f"3D extraction failed for {file_name}; its 2D drawing is unaffected.")
+            return None
+
+        mesh_path = storage_root / "temp" / f"model_{drawing_id}.gltf"
+        if isinstance(mesh_content, bytes):
+            mesh_path.write_bytes(mesh_content)
+        else:
+            mesh_path.write_text(mesh_content, encoding="utf-8")
+        logger.info(f"3D model extracted for {file_name}: {metadata['face_count']} faces.")
+        return int(metadata["face_count"])
 
     async def _handle_failure(self, job: ExtractionJob, drawing: DrawingDocument, error_msg: str, traceback_str: str = "") -> None:
         """
