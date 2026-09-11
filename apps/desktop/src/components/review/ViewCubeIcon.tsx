@@ -21,8 +21,8 @@ export const ViewCubeIcon: React.FC<ViewCubeIconProps> = ({ face, size = 16, act
   const r_col = active ? '#2563eb' : '#1d4ed8';
   const s_col = '#1e3a8a';
 
-  if (face === 'se') {
-    // SE Isometric: low front-left step, tall back-right tower
+  if (face === 'sw') {
+    // SW Isometric (Icon 1): low front-left step, tall back-right tower
     return (
       <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0 pointer-events-none">
         <polygon points="9.5,1.5 13.2,3.4 9.8,5.2 6.1,3.4" fill={t_col} stroke={s_col} strokeWidth="0.6" />
@@ -35,8 +35,8 @@ export const ViewCubeIcon: React.FC<ViewCubeIconProps> = ({ face, size = 16, act
     );
   }
 
-  if (face === 'sw') {
-    // SW Isometric: low front-right step, tall back-left tower
+  if (face === 'se') {
+    // SE Isometric (Icon 4): low front-right step, tall back-left tower
     return (
       <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0 pointer-events-none">
         <polygon points="6.5,1.5 10.2,3.4 6.8,5.2 3.1,3.4" fill={t_col} stroke={s_col} strokeWidth="0.6" />

@@ -46,7 +46,7 @@ export const PartsPanel: React.FC<PartsPanelProps> = ({ drawingId, parts }) => {
   const allShown = hiddenSet.size === 0;
 
   return (
-    <div className="absolute top-2 left-2 z-20 w-56 max-h-[70%] flex flex-col rounded-sm border border-border-color bg-bg-card/95 backdrop-blur-sm text-text-primary shadow-lg">
+    <div className="absolute top-30 left-2 z-20 w-56 max-h-[65%] flex flex-col rounded-sm border border-border-color bg-bg-card/95 backdrop-blur-sm text-text-primary shadow-lg">
       <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border-color">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide">
           <Layers size={12} />

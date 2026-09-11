@@ -13,6 +13,7 @@ import { PartsPanel, type AssemblyPart } from './PartsPanel';
 import { useReviewStore } from '../../stores/reviewStore';
 import { Box } from 'lucide-react';
 import { ViewCubeIcon } from './ViewCubeIcon';
+import { CadTripodOverlay } from './CadTripodOverlay';
 
 export type ViewPreset = 'se' | 'sw' | 'ne' | 'nw' | 'top' | 'front' | 'right' | 'left' | 'back' | 'bottom';
 
@@ -62,27 +63,27 @@ const CameraController = ({
     const up = new THREE.Vector3(0, 1, 0);
 
     switch (view) {
-      case 'se': {
+      case 'sw': {
         const c = dist / Math.sqrt(3);
         pos.set(center.x + c, center.y + c, center.z + c);
         up.set(0, 1, 0);
         break;
       }
-      case 'sw': {
-        const c = dist / Math.sqrt(3);
-        pos.set(center.x - c, center.y + c, center.z + c);
-        up.set(0, 1, 0);
-        break;
-      }
-      case 'ne': {
+      case 'nw': {
         const c = dist / Math.sqrt(3);
         pos.set(center.x + c, center.y + c, center.z - c);
         up.set(0, 1, 0);
         break;
       }
-      case 'nw': {
+      case 'ne': {
         const c = dist / Math.sqrt(3);
         pos.set(center.x - c, center.y + c, center.z - c);
+        up.set(0, 1, 0);
+        break;
+      }
+      case 'se': {
+        const c = dist / Math.sqrt(3);
+        pos.set(center.x - c, center.y + c, center.z + c);
         up.set(0, 1, 0);
         break;
       }
@@ -150,7 +151,7 @@ const CameraController = ({
     const dist = maxDim * 2.5;
 
     metricsRef.current = { center, dist, maxDim };
-    applyView(targetView ?? 'se');
+    applyView(targetView ?? 'sw');
   }, [modelRef.current]);
 
   // Apply new view preset when user clicks a button
@@ -257,16 +258,23 @@ const GltfMesh = ({
         const enhanced = srcMats.map((src) => {
           const m = src as THREE.MeshStandardMaterial;
           // Clone the STEP colour — fall back to clean machined steel if absent or black
-          let col = m.color ? m.color.clone() : new THREE.Color(0.82, 0.85, 0.88);
+          let col = m.color ? m.color.clone() : new THREE.Color(0.85, 0.85, 0.85);
           if (col.r < 0.08 && col.g < 0.08 && col.b < 0.08) {
-            col = new THREE.Color(0.82, 0.85, 0.88);
+            col = new THREE.Color(0.85, 0.85, 0.85);
+          } else {
+            // Restore rich CAD color saturation matching iCAD SX golden tone
+            const hsl = { h: 0, s: 0, l: 0 };
+            col.getHSL(hsl);
+            if (hsl.s > 0.08) {
+              hsl.s = Math.min(1.0, hsl.s * 1.35);
+              hsl.l = Math.max(0.44, Math.min(hsl.l, 0.52));
+              col.setHSL(hsl.h, hsl.s, hsl.l);
+            }
           }
-          return new THREE.MeshPhysicalMaterial({
+          return new THREE.MeshStandardMaterial({
             color:        col,
             roughness:    0.35,
-            metalness:    0.25,
-            reflectivity: 0.40,
-            clearcoat:    0.15,
+            metalness:    0.05,
             side:         THREE.DoubleSide,
           });
         });
@@ -324,6 +332,7 @@ const ModelScene = ({
   width,
   height,
   onStartOrbit,
+  onCameraReady,
 }: {
   url: string;
   theme?: string;
@@ -334,9 +343,15 @@ const ModelScene = ({
   width: number;
   height: number;
   onStartOrbit?: () => void;
+  onCameraReady?: (camera: THREE.Camera) => void;
 }) => {
   const modelRef  = useRef<THREE.Group | null>(null);
   const [, forceUpdate] = useState(0);
+  const { camera } = useThree();
+
+  useEffect(() => {
+    onCameraReady?.(camera);
+  }, [camera, onCameraReady]);
 
   const handleLoaded = (ref: THREE.Group) => {
     modelRef.current = ref;
@@ -351,24 +366,30 @@ const ModelScene = ({
 
   return (
     <>
-      {/* CAD Orthographic Camera (Zero perspective distortion, matching iCAD SX) */}
-      <OrthographicCamera makeDefault near={-100000} far={100000} />
+      {/* CAD Orthographic Camera with soft fill headlamp */}
+      <OrthographicCamera makeDefault near={-100000} far={100000}>
+        <directionalLight position={[0, 0, 1]} intensity={0.3} />
+      </OrthographicCamera>
 
-      {/* Studio CAD Lighting rig */}
-      <ambientLight intensity={0.65} />
+      {/* ── CAD Studio Lighting Rig with accurate soft shadow casting ── */}
+      <ambientLight intensity={0.55} color="#ffffff" />
       <directionalLight
-        position={[12, 16, 12]}
-        intensity={1.8}
+        position={[14, 22, 16]}
+        intensity={1.25}
         castShadow
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.02}
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
+        shadow-camera-near={0.5}
+        shadow-camera-far={2000}
       />
-      <directionalLight position={[-12, 10, -10]} intensity={0.9} />
-      <directionalLight position={[0, -10, 6]} intensity={0.4} />
+      <directionalLight position={[-12, 14, -12]} intensity={0.45} />
+      <directionalLight position={[0, -10, 6]} intensity={0.25} />
       <hemisphereLight
         color={new THREE.Color('#ffffff')}
-        groundColor={new THREE.Color('#334155')}
-        intensity={0.5}
+        groundColor={new THREE.Color('#cbd5e1')}
+        intensity={0.35}
       />
 
       <OrbitControls
@@ -408,7 +429,6 @@ const ModelScene = ({
           <GltfMesh url={url} onLoaded={handleLoaded} hiddenNodes={hiddenNodes} />
         </React.Suspense>
       </ErrorBoundary>
-
     </>
   );
 };
@@ -421,7 +441,8 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const [modelUrl,    setModelUrl]    = useState<string | null>(null);
   const [loadError,   setLoadError]   = useState<string | null>(null);
   const [isMeshReady, setIsMeshReady] = useState(false);
-  const [activeView,  setActiveView]  = useState<ViewPreset | null>('se');
+  const [activeView,  setActiveView]  = useState<ViewPreset | null>('sw');
+  const [mainCamera,  setMainCamera]  = useState<THREE.Camera | null>(null);
 
   // Fetch glTF blob from backend whenever drawing changes
   useEffect(() => {
@@ -431,7 +452,7 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
     setIsMeshReady(false);
     setLoadError(null);
     setModelUrl(null);
-    setActiveView('se');
+    setActiveView('sw');
 
     const fetchModel = async () => {
       try {
@@ -472,7 +493,15 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
   const hiddenNodes = useReviewStore((s) => s.hiddenParts[drawing?.id ?? ''] ?? EMPTY_HIDDEN);
 
   return (
-    <div style={{ position: 'relative', width, height, overflow: 'hidden' }}>
+    <div
+      style={{
+        position: 'relative',
+        width,
+        height,
+        overflow: 'hidden',
+        background: 'linear-gradient(180deg, #f1f5f9 0%, #cbd5e1 45%, #8290a4 100%)',
+      }}
+    >
 
       {/* Assembly parts, and which of them are drawn. Rendered outside the Canvas: it is DOM,
           and putting it inside would make it a three.js object. */}
@@ -508,13 +537,13 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
             ))}
           </div>
 
-          {/* Isometric views: SE, SW, NE, NW */}
+          {/* Isometric views: SW, NW, NE, SE */}
           <div className="flex items-center h-7 rounded border border-border-color bg-bg-card/90 backdrop-blur-sm shadow-sm p-0.5 gap-0.5">
             {([
-              { id: 'se', label: 'SE Isometric (Front-Right)' },
               { id: 'sw', label: 'SW Isometric (Front-Left)' },
-              { id: 'ne', label: 'NE Isometric (Back-Right)' },
               { id: 'nw', label: 'NW Isometric (Back-Left)' },
+              { id: 'ne', label: 'NE Isometric (Back-Right)' },
+              { id: 'se', label: 'SE Isometric (Front-Right)' },
             ] as const).map(({ id, label }) => (
               <button
                 key={id}
@@ -539,7 +568,12 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
       {modelUrl && (
         <Canvas
           shadows
-          gl={{ antialias: true, alpha: true, logarithmicDepthBuffer: true }}
+          gl={{
+            antialias: true,
+            alpha: true,
+            logarithmicDepthBuffer: true,
+            toneMapping: THREE.LinearToneMapping,
+          }}
           style={{ background: 'transparent' }}
         >
           <ModelScene
@@ -550,10 +584,16 @@ export const ThreeDViewer: React.FC<ThreeDViewerProps> = ({ drawing, width, heig
             width={width}
             height={height}
             onStartOrbit={() => setActiveView(null)}
+            onCameraReady={setMainCamera}
             onSceneReady={() => setIsMeshReady(true)}
             onError={(err) => setLoadError(err.message)}
           />
         </Canvas>
+      )}
+
+      {/* ── CAD 3D Orientation Tripod (X: Red, Y: Blue, Z: Yellow) ── */}
+      {isMeshReady && !loadError && mainCamera && (
+        <CadTripodOverlay mainCamera={mainCamera} />
       )}
 
       {/* ── Loading / error placeholders ───────────── */}
